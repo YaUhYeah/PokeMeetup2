@@ -1,0 +1,8 @@
+{
+serverIP: 0.0.0.0
+tcpPort: 54551
+maxPlayers: 100
+udpPort: 54552
+serverName: Pokemon Meetup Server
+isDefault: true
+}

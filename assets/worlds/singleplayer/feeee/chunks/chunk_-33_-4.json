@@ -1,0 +1,58 @@
+{
+"x": -33,
+"y": -4,
+"biomeType": "SNOW",
+"tileData": [
+	[ 5, 5, 7, 7, 4, 4, 6, 4, 4, 4, 52, 4, 4, 4, 4, 4 ],
+	[ 7, 8, 5, 7, 51, 4, 4, 6, 4, 6, 6, 4, 4, 4, 6, 4 ],
+	[ 5, 5, 7, 5, 4, 4, 52, 4, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 7, 5, 7, 5, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 8, 5, 5, 5, 4, 51, 52, 4, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 7, 5, 5, 7, 4, 4, 51, 4, 6, 4, 4, 4, 4, 4, 6, 6 ],
+	[ 5, 5, 5, 7, 4, 4, 6, 4, 4, 4, 4, 4, 6, 4, 4, 4 ],
+	[ 5, 7, 7, 4, 4, 6, 4, 4, 4, 51, 4, 6, 4, 4, 4, 4 ],
+	[ 7, 5, 5, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 5, 5, 5, 4, 52, 4, 4, 6, 51, 4, 4, 4, 4, 4, 6, 6 ],
+	[ 7, 7, 6, 4, 4, 4, 6, 4, 4, 6, 4, 4, 4, 6, 4, 4 ],
+	[ 7, 6, 4, 52, 4, 51, 4, 52, 4, 4, 4, 4, 4, 6, 4, 4 ],
+	[ 7, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4 ],
+	[ 4, 4, 51, 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 51, 4, 4 ],
+	[ 6, 4, 4, 4, 51, 6, 4, 4, 4, 51, 6, 51, 6, 4, 4, 4 ],
+	[ 4, 6, 6, 4, 4, 4, 4, 4, 4, 4, 4, 51, 4, 4, 4, 4 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16800,
+		"y": -2016,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16704,
+		"y": -2016,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16576,
+		"y": -2016,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16896,
+		"y": -2016,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16512,
+		"y": -2048,
+		"type": "VINES"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

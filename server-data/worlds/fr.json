@@ -1,0 +1,23 @@
+{
+name: fr
+lastPlayed: 1729907251639
+config: {}
+players: {
+	fr: {
+		username: fr
+		inventoryItemNames: []
+	}
+	Player: {
+		username: Player
+		x: 2656
+		y: 2432
+		direction: 1
+		inventoryItemNames: [
+			Elixir:8
+			Potion:1
+			Stick:8
+			Pokeball:5
+		]
+	}
+}
+}

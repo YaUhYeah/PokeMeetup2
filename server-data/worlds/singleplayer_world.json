@@ -1,0 +1,19 @@
+{
+name: singleplayer_world
+lastPlayed: 1729875755329
+config: {
+	seed: 1729868102401
+}
+players: {
+	singleplayer_world: {
+		username: singleplayer_world
+		inventoryItemNames: []
+	}
+	Player: {
+		username: Player
+		x: 800
+		y: 800
+		inventoryItemNames: []
+	}
+}
+}

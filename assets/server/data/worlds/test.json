@@ -1,0 +1,29 @@
+{
+name: test
+lastPlayed: 1730537121536
+config: {
+	seed: 1730476435583
+}
+players: {
+	Player: {
+		username: Player
+		y: 64
+		direction: up
+		inventoryItems: [
+			{
+				itemId: Stick
+				count: 1
+				uuid: {}
+			}
+		]
+	}
+}
+pokemonData: {
+	playerParties: {
+		class: java.util.concurrent.ConcurrentHashMap
+		Player: {
+			username: Player
+		}
+	}
+}
+}

@@ -1,0 +1,10 @@
+package io.github.pokemeetup.system.gameplay.inventory.secureinventories;
+
+import io.github.pokemeetup.system.data.ItemData;
+
+public interface ItemContainer {
+    ItemData getItemAt(int index);
+    void setItemAt(int index, ItemData item);
+    int getSize();
+    InventorySlotData getSlotData(int index);
+}

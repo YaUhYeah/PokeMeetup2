@@ -1,0 +1,112 @@
+{
+"x": -124,
+"y": -12,
+"biomeType": "SNOW",
+"tileData": [
+	[ 4, 4, 4, 4, 4, 51, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4 ],
+	[ 4, 4, 6, 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 4, 4, 4, 4, 4, 6, 4, 4, 4, 51, 4, 4, 4, 4, 4, 4 ],
+	[ 4, 4, 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4 ],
+	[ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4, 4, 4, 6 ],
+	[ 4, 4, 4, 6, 4, 4, 4, 6, 6, 4, 52, 4, 4, 4, 4, 4 ],
+	[ 6, 51, 4, 4, 52, 4, 4, 4, 4, 51, 4, 4, 4, 4, 4, 4 ],
+	[ 6, 4, 4, 4, 4, 51, 4, 4, 4, 4, 51, 4, 4, 4, 4, 4 ],
+	[ 6, 4, 6, 51, 4, 4, 4, 4, 4, 4, 52, 4, 51, 6, 51, 4 ],
+	[ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4, 4, 52, 4, 4 ],
+	[ 4, 4, 6, 4, 4, 6, 4, 4, 4, 6, 4, 4, 4, 4, 4, 4 ],
+	[ 4, 6, 4, 4, 4, 4, 4, 4, 6, 4, 6, 4, 4, 52, 52, 6 ],
+	[ 4, 4, 4, 4, 4, 4, 4, 51, 4, 6, 4, 4, 4, 4, 4, 4 ],
+	[ 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 51, 4, 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 51, 4, 4 ],
+	[ 51, 4, 4, 4, 4, 4, 6, 4, 4, 4, 4, 52, 4, 51, 4, 4 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63392,
+		"y": -5824,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63392,
+		"y": -6112,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63168,
+		"y": -5696,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63456,
+		"y": -5952,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63264,
+		"y": -5856,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63200,
+		"y": -6048,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63488,
+		"y": -5824,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63072,
+		"y": -5824,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63072,
+		"y": -6048,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63296,
+		"y": -5984,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63072,
+		"y": -5952,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63008,
+		"y": -5664,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63200,
+		"y": -5952,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63360,
+		"y": -5696,
+		"type": "SNOW_TREE"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

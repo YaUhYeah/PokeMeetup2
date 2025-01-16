@@ -1,0 +1,11 @@
+[
+{
+	"class": "io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig",
+	"serverIP": "127.0.0.1",
+	"tcpPort": 25555,
+	"maxPlayers": 100,
+	"udpPort": 25556,
+	"serverName": "Local Server",
+	"isDefault": true
+}
+]

@@ -1,0 +1,76 @@
+{
+"x": -125,
+"y": -50,
+"biomeType": "HAUNTED",
+"tileData": [
+	[ 4, 4, 4, 4, 4, 9, 5, 5, 5, 7, 5, 7, 5, 7, 5, 5 ],
+	[ 4, 4, 51, 4, 6, 5, 5, 5, 8, 9, 5, 9, 7, 5, 5, 5 ],
+	[ 4, 4, 4, 6, 4, 5, 5, 7, 7, 5, 9, 5, 5, 5, 8, 1 ],
+	[ 6, 4, 4, 51, 4, 5, 8, 7, 5, 5, 5, 5, 5, 5, 7, 1 ],
+	[ 52, 4, 4, 6, 4, 7, 5, 8, 8, 7, 5, 5, 7, 5, 5, 7 ],
+	[ 51, 4, 4, 4, 6, 4, 5, 5, 7, 5, 5, 8, 9, 5, 7, 9 ],
+	[ 4, 4, 4, 51, 51, 4, 9, 7, 5, 5, 7, 5, 5, 7, 5, 5 ],
+	[ 4, 4, 4, 4, 4, 6, 5, 5, 7, 5, 8, 8, 5, 5, 5, 7 ],
+	[ 4, 4, 51, 4, 6, 4, 9, 5, 5, 7, 8, 5, 7, 5, 5, 8 ],
+	[ 4, 4, 4, 4, 4, 4, 5, 5, 5, 7, 1, 5, 5, 5, 5, 5 ],
+	[ 51, 4, 51, 6, 4, 5, 7, 5, 1, 5, 5, 5, 5, 8, 5, 5 ],
+	[ 4, 4, 4, 4, 4, 5, 9, 1, 7, 5, 5, 5, 5, 7, 7, 8 ],
+	[ 6, 51, 4, 4, 51, 5, 5, 9, 5, 5, 5, 5, 5, 8, 7, 7 ],
+	[ 4, 6, 4, 51, 4, 8, 7, 1, 5, 8, 1, 7, 7, 5, 9, 5 ],
+	[ 4, 4, 6, 4, 6, 5, 7, 5, 5, 7, 9, 5, 5, 7, 5, 5 ],
+	[ 51, 4, 51, 4, 4, 5, 5, 5, 5, 5, 5, 5, 7, 5, 5, 7 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63712,
+		"y": -25472,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63616,
+		"y": -25568,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63936,
+		"y": -25568,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63840,
+		"y": -25600,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64000,
+		"y": -25472,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63744,
+		"y": -25568,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63840,
+		"y": -25504,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -63584,
+		"y": -25280,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

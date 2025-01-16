@@ -1,0 +1,154 @@
+{
+"x": -16,
+"y": 1,
+"biomeType": "PLAINS",
+"tileData": [
+	[ 1, 10, 1, 1, 1, 10, 1, 1, 10, 1, 1, 1, 24, 1, 24, 1 ],
+	[ 10, 1, 10, 1, 10, 1, 1, 23, 1, 1, 1, 10, 10, 1, 10, 1 ],
+	[ 10, 1, 1, 10, 10, 10, 10, 24, 1, 10, 10, 10, 10, 1, 10, 1 ],
+	[ 1, 1, 24, 10, 1, 10, 1, 1, 10, 24, 1, 1, 1, 1, 10, 1 ],
+	[ 10, 10, 10, 10, 1, 10, 10, 1, 1, 1, 1, 24, 10, 1, 10, 1 ],
+	[ 1, 1, 1, 10, 1, 1, 10, 24, 1, 1, 24, 1, 1, 10, 10, 1 ],
+	[ 1, 10, 10, 10, 1, 1, 10, 1, 24, 10, 1, 1, 1, 24, 24, 10 ],
+	[ 1, 24, 1, 10, 10, 10, 1, 24, 1, 10, 10, 1, 1, 10, 1, 1 ],
+	[ 10, 10, 1, 1, 1, 1, 1, 24, 1, 1, 10, 1, 10, 1, 24, 10 ],
+	[ 10, 1, 1, 24, 10, 23, 24, 1, 1, 10, 22, 1, 1, 10, 10, 1 ],
+	[ 1, 10, 1, 24, 1, 10, 10, 1, 10, 10, 24, 10, 1, 10, 10, 10 ],
+	[ 1, 24, 1, 10, 10, 10, 1, 10, 1, 1, 24, 1, 1, 1, 10, 10 ],
+	[ 1, 24, 1, 24, 1, 1, 1, 1, 1, 10, 10, 10, 10, 1, 1, 10 ],
+	[ 24, 1, 1, 1, 10, 1, 24, 1, 1, 1, 1, 1, 1, 1, 1, 1 ],
+	[ 1, 1, 1, 1, 1, 1, 1, 24, 1, 1, 1, 1, 24, 1, 10, 10 ],
+	[ 24, 10, 1, 1, 24, 1, 24, 24, 1, 1, 10, 1, 1, 1, 10, 1 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8096,
+		"y": 832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8096,
+		"y": 544,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7872,
+		"y": 960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8160,
+		"y": 704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7968,
+		"y": 800,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7904,
+		"y": 608,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8192,
+		"y": 832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7776,
+		"y": 832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7776,
+		"y": 608,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8000,
+		"y": 672,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7776,
+		"y": 704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7712,
+		"y": 992,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7904,
+		"y": 704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8064,
+		"y": 960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8000,
+		"y": 544,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7904,
+		"y": 800,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7808,
+		"y": 512,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7808,
+		"y": 992,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8096,
+		"y": 704,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7712,
+		"y": 704,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -8000,
+		"y": 736,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

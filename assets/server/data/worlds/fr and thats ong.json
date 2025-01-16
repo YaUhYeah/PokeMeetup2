@@ -1,0 +1,41 @@
+{
+name: fr and thats ong
+lastPlayed: 1730541841220
+config: {
+	seed: 1730537213048
+}
+players: {
+	Player: {
+		username: Player
+	}
+}
+pokemonData: {}
+playerDataMap: {
+	class: java.util.concurrent.ConcurrentHashMap
+	Player: {
+		username: Player
+		x: 512
+		y: -96
+		inventoryItems: [
+			{
+				itemId: CraftingTable
+				count: 1
+				uuid: {}
+			}
+		]
+	}
+}
+playerDataLock: {}
+lastValidState: {
+	username: Player
+	x: 512
+	y: -96
+	inventoryItems: [
+		{
+			itemId: CraftingTable
+			count: 1
+			uuid: {}
+		}
+	]
+}
+}

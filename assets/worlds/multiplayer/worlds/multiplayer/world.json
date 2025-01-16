@@ -1,0 +1,43 @@
+{
+"worldTimeInMinutes": 480,
+"playedTime": 0,
+"dayLength": 10,
+"name": "multiplayer",
+"lastPlayed": 1733662620832,
+"config": {
+	"seed": 1733662620324,
+	"treeSpawnRate": 0.15,
+	"pokemonSpawnRate": 0.05,
+	"spawnTileX": 0,
+	"spawnTileY": 0
+},
+"players": {},
+"pokemonData": {
+	"name": null,
+	"uuid": "a6440ece-cc38-4fd7-84de-0f2eda5fa3a6",
+	"level": 0,
+	"nature": null,
+	"primaryType": "NORMAL",
+	"stats": {
+		"hp": 1,
+		"attack": 1,
+		"defense": 1,
+		"specialAttack": 1,
+		"specialDefense": 1,
+		"speed": 1,
+		"ivs": [ 0, 0, 0, 0, 0, 0 ],
+		"evs": [ 0, 0, 0, 0, 0, 0 ]
+	},
+	"baseHp": 0,
+	"baseAttack": 0,
+	"baseDefense": 0,
+	"baseSpAtk": 0,
+	"baseSpDef": 0,
+	"baseSpeed": 0,
+	"currentExperience": 0,
+	"experienceToNextLevel": 0,
+	"currentHp": 1,
+	"moves": []
+},
+"commands_allowed": false
+}

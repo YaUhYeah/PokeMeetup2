@@ -1,0 +1,148 @@
+  {
+  "com.badlogic.gdx.graphics.g2d.BitmapFont": {
+    "default": {
+      "file": "default.fnt"
+    },
+    "default-font": {
+      "file": "default.fnt"
+    },
+    "battle": {
+      "file": "default.fnt"
+    }
+  },
+  "com.badlogic.gdx.graphics.Color": {
+    "white": { "r": 1, "g": 1, "b": 1, "a": 1 },
+    "gray": { "r": 0.5, "g": 0.5, "b": 0.5, "a": 1 },
+    "black": { "r": 0, "g": 0, "b": 0, "a": 1 },
+    "light-gray": { "r": 0.8, "g": 0.8, "b": 0.8, "a": 1 },
+    "transparent": { "r": 0, "g": 0, "b": 0, "a": 0.5 },
+    "hp-green": { "r": 0.28, "g": 0.78, "b": 0.45, "a": 1 },
+    "hp-yellow": { "r": 1, "g": 0.85, "b": 0, "a": 1 },
+    "hp-red": { "r": 1, "g": 0.22, "b": 0.38, "a": 1 },
+    "blue-down": { "r": 0.23, "g": 0.44, "b": 0.79, "a": 1 }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Skin$TintedDrawable": {
+    "button-pressed": {
+      "name": "button",
+      "color": "blue-down"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.TextField$TextFieldStyle": {
+    "default": {
+      "font": "default",
+      "fontColor": "white",
+      "background": "textfield",
+      "cursor": "cursor",
+      "selection": "selection",
+      "messageFont": "default",
+      "messageFontColor": "gray"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.TextButton$TextButtonStyle": {
+    "default": {
+      "up": "button",
+      "down": "button-pressed",
+      "over": "button-over",
+      "font": "default",
+      "fontColor": "white",
+      "downFontColor": "light-gray"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Button$ButtonStyle": {
+    "default": {
+      "up": "button",
+      "down": "button-pressed",
+      "over": "button-over"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Label$LabelStyle": {
+    "default": {
+      "font": "default",
+      "fontColor": "white"
+    },
+    "battle": {
+      "font": "battle",
+      "fontColor": "white"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Window$WindowStyle": {
+    "default": {
+      "titleFont": "default",
+      "background": "window",
+      "titleFontColor": "white"
+    },
+    "dialog": {
+      "titleFont": "default",
+      "background": "battle-menu-bg",
+      "titleFontColor": "white"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.ProgressBar$ProgressBarStyle": {
+    "hp-bar-green": {
+      "background": "slot_normal",
+      "knob": "hp-green",
+      "knobBefore": "hp-green"
+    },
+    "hp-bar-yellow": {
+      "background": "slot_normal",
+      "knob": "hp-yellow",
+      "knobBefore": "hp-yellow"
+    },
+    "hp-bar-red": {
+      "background": "slot_normal",
+      "knob": "hp-red",
+      "knobBefore": "hp-red"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.CheckBox$CheckBoxStyle": {
+    "default": {
+      "checkboxOn": "checkbox-on",
+      "checkboxOff": "checkbox-off",
+      "font": "default",
+      "fontColor": "white"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.List$ListStyle": {
+    "default": {
+      "font": "default",
+      "fontColorSelected": "white",
+      "fontColorUnselected": "gray",
+      "selection": "selection",
+      "background": "list-bg"
+    }
+  }, "com.badlogic.gdx.scenes.scene2d.ui.ScrollPane$ScrollPaneStyle": {
+  "default": {
+    "background": "window",
+    "hScroll": "scrollbar-h",
+    "hScrollKnob": "scrollbar-knob-h",
+    "vScroll": "scrollbar-v",
+    "vScrollKnob": "scrollbar-knob-v"
+  }
+}, "com.badlogic.gdx.scenes.scene2d.ui.SelectBox$SelectBoxStyle": {
+  "default": {
+    "font": "default",
+    "fontColor": "white",
+    "background": "selectbox",
+    "scrollStyle": "default",
+    "listStyle": "default",
+    "backgroundOver": "selectbox-over"
+  }
+}, "com.badlogic.gdx.scenes.scene2d.ui.ProgressBar$ProgressBarStyle": {
+  "default-horizontal": {
+    "background": "progress-bar-bg",
+    "knob": "progress-bar-knob",
+    "knobBefore": "progress-bar-knob",
+    "disabledBackground": "progress-bar-bg",
+    "disabledKnob": "progress-bar-knob",
+    "disabledKnobBefore": "progress-bar-knob"
+  },
+  "default-vertical": {
+    "background": "progress-bar-v",
+    "knob": "progress-bar-knob-v",
+    "knobBefore": "progress-bar-knob-v",
+    "disabledBackground": "progress-bar-v",
+    "disabledKnob": "progress-bar-knob-v",
+    "disabledKnobBefore": "progress-bar-knob-v"
+  }
+}
+}

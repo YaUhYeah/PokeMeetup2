@@ -1,0 +1,64 @@
+{
+"x": -3,
+"y": -8,
+"biomeType": "SNOW",
+"tileData": [
+	[ 4, 4, 4, 4, 206, 203, 203, 203, 200, 6, 4, 4, 4, 4, 4, 4 ],
+	[ 4, 4, 4, 206, 204, 204, 204, 204, 204, 200, 6, 4, 4, 4, 4, 4 ],
+	[ 4, 4, 206, 204, 204, 204, 204, 204, 204, 204, 200, 4, 4, 4, 4, 4 ],
+	[ 4, 206, 204, 204, 204, 204, 204, 204, 204, 204, 204, 200, 4, 4, 4, 4 ],
+	[ 206, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 200, 4, 51, 4 ],
+	[ 207, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 201, 4, 6, 4 ],
+	[ 207, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 201, 4, 4, 4 ],
+	[ 207, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 201, 4, 6, 4 ],
+	[ 208, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 204, 202, 4, 6, 4 ],
+	[ 4, 208, 204, 204, 204, 204, 204, 204, 204, 204, 204, 202, 51, 52, 4, 4 ],
+	[ 4, 4, 208, 204, 204, 204, 204, 204, 204, 204, 202, 51, 4, 4, 4, 4 ],
+	[ 4, 51, 4, 208, 204, 204, 204, 204, 204, 202, 4, 4, 4, 4, 52, 4 ],
+	[ 4, 4, 51, 4, 208, 205, 205, 205, 202, 6, 4, 4, 4, 4, 4, 6 ],
+	[ 6, 51, 4, 4, 4, 52, 4, 4, 6, 4, 4, 4, 6, 4, 4, 51 ],
+	[ 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 4, 4 ],
+	[ 52, 4, 4, 6, 6, 4, 6, 4, 4, 4, 6, 4, 4, 4, 4, 4 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1184,
+		"y": -4032,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1056,
+		"y": -3904,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1088,
+		"y": -3808,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1536,
+		"y": -3648,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1216,
+		"y": -3680,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1472,
+		"y": -4096,
+		"type": "SNOW_TREE"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

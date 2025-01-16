@@ -1,0 +1,82 @@
+{
+"x": -43,
+"y": 3,
+"biomeType": "HAUNTED",
+"tileData": [
+	[ 4, 4, 4, 4, 5, 1, 5, 5, 5, 5, 5, 7, 5, 4, 51, 6 ],
+	[ 6, 4, 52, 5, 10, 5, 5, 5, 5, 5, 9, 7, 5, 4, 4, 51 ],
+	[ 6, 51, 4, 5, 5, 5, 5, 5, 7, 5, 7, 5, 4, 6, 4, 4 ],
+	[ 4, 4, 5, 5, 5, 1, 8, 8, 1, 7, 5, 5, 4, 6, 4, 4 ],
+	[ 4, 51, 7, 5, 8, 8, 5, 5, 5, 5, 5, 7, 4, 4, 51, 4 ],
+	[ 4, 5, 5, 5, 1, 7, 9, 5, 5, 5, 7, 7, 4, 4, 4, 4 ],
+	[ 5, 5, 8, 5, 5, 8, 5, 5, 5, 8, 8, 4, 4, 4, 4, 4 ],
+	[ 5, 7, 9, 9, 5, 5, 5, 5, 5, 7, 7, 4, 4, 4, 4, 51 ],
+	[ 5, 5, 5, 7, 5, 5, 5, 7, 9, 5, 7, 4, 4, 51, 4, 4 ],
+	[ 7, 5, 7, 7, 5, 5, 5, 7, 5, 5, 5, 4, 4, 4, 4, 6 ],
+	[ 5, 5, 5, 5, 5, 7, 7, 5, 7, 5, 7, 4, 6, 4, 51, 4 ],
+	[ 7, 1, 5, 5, 5, 7, 5, 7, 7, 5, 5, 4, 4, 4, 4, 4 ],
+	[ 1, 5, 7, 7, 5, 5, 5, 7, 5, 7, 4, 4, 51, 4, 4, 6 ],
+	[ 5, 5, 5, 5, 5, 5, 9, 5, 7, 8, 4, 6, 6, 4, 4, 4 ],
+	[ 5, 8, 9, 5, 5, 7, 5, 5, 7, 7, 4, 6, 4, 4, 4, 6 ],
+	[ 5, 7, 5, 5, 7, 5, 5, 5, 7, 5, 51, 4, 4, 4, 51, 6 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -21920,
+		"y": 2016,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22016,
+		"y": 1600,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -21792,
+		"y": 1920,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -21888,
+		"y": 1568,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -21664,
+		"y": 1888,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22016,
+		"y": 1952,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -21664,
+		"y": 2016,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -21536,
+		"y": 1888,
+		"type": "SNOW_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22016,
+		"y": 1696,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

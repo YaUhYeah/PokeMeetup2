@@ -1,0 +1,81 @@
+{
+  "com.badlogic.gdx.graphics.g2d.BitmapFont": {
+    "default-font": {
+      "file": "Fonts/pkmn.fnt"
+    }
+  },
+  "com.badlogic.gdx.graphics.Color": {
+    "white": { "r": 1, "g": 1, "b": 1, "a": 1 },
+    "gray": { "r": 0.5, "g": 0.5, "b": 0.5, "a": 1 },
+    "black": { "r": 0, "g": 0, "b": 0, "a": 1 },
+    "transparent": { "r": 0, "g": 0, "b": 0, "a": 0.5 }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Skin$TintedDrawable": {
+    "button-up": {
+      "name": "white",
+      "color": { "r": 0.3, "g": 0.3, "b": 0.3, "a": 1 }
+    },
+    "button-down": {
+      "name": "white",
+      "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 1 }
+    },
+    "button-over": {
+      "name": "white",
+      "color": { "r": 0.4, "g": 0.4, "b": 0.4, "a": 1 }
+    },
+    "window-bg": {
+      "name": "white",
+      "color": { "r": 0.1, "g": 0.1, "b": 0.1, "a": 0.9 }
+    },
+    "select-box": {
+      "name": "white",
+      "color": { "r": 0.3, "g": 0.3, "b": 0.3, "a": 1 }
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.TextButton$TextButtonStyle": {
+    "default": {
+      "up": "button-up",
+      "down": "button-down",
+      "over": "button-over",
+      "font": "default-font",
+      "fontColor": "white"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Label$LabelStyle": {
+    "default": {
+      "font": "default-font",
+      "fontColor": "white"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.Window$WindowStyle": {
+    "default": {
+      "titleFont": "default-font",
+      "background": "window-bg",
+      "titleFontColor": "white"
+    },
+    "dialog": {
+      "titleFont": "default-font",
+      "background": "window-bg",
+      "titleFontColor": "white"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.ProgressBar$ProgressBarStyle": {
+    "hp-bar": {
+      "background": "hp_bar_background",
+      "knob": "hp_bar_fill",
+      "knobBefore": "hp_bar_fill"
+    }
+  },
+  "com.badlogic.gdx.scenes.scene2d.ui.TextButton$TextButtonStyle": {
+    "move-button": {
+      "up": "move_button_normal",
+      "down": "move_button_pressed",
+      "font": "battle-font"
+    },
+    "action-button": {
+      "up": "action_button_normal",
+      "down": "action_button_pressed",
+      "font": "battle-font"
+    }
+  }
+}

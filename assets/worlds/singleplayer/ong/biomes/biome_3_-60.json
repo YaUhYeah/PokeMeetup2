@@ -1,0 +1,15 @@
+{
+  "allowedTileTypes": [
+    15,
+    16,
+    17,
+    2
+  ],
+  "tileDistribution": {
+    "16": 10,
+    "17": 10,
+    "2": 15,
+    "15": 65
+  },
+  "primaryBiomeType": "DESERT"
+}

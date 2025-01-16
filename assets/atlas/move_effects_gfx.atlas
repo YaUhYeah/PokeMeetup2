@@ -1,0 +1,15 @@
+move_effects_gfx.png
+size:256,256
+repeat:none
+fog
+bounds:2,45,128,128
+rain_drop
+bounds:132,45,32,128
+sand_particle
+bounds:73,27,16,16
+snowflake
+bounds:2,2,16,16
+water_player_moving
+bounds:2,20,69,23
+water_player_standing
+bounds:166,161,24,12

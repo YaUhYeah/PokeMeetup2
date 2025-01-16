@@ -1,0 +1,64 @@
+{
+"x": -25,
+"y": -82,
+"biomeType": "PLAINS",
+"tileData": [
+	[ 56, 1, 1, 10, 1, 1, 1, 1, 24, 9, 8, 5, 8, 5, 1, 23 ],
+	[ 56, 54, 24, 10, 1, 1, 10, 24, 1, 10, 1, 7, 5, 1, 10, 1 ],
+	[ 54, 56, 55, 1, 1, 10, 24, 22, 10, 1, 1, 5, 1, 24, 10, 1 ],
+	[ 55, 56, 1, 1, 1, 24, 10, 1, 10, 1, 1, 1, 10, 1, 10, 10 ],
+	[ 54, 56, 10, 1, 1, 1, 1, 10, 1, 1, 1, 10, 1, 10, 10, 1 ],
+	[ 56, 56, 10, 24, 1, 10, 1, 1, 10, 10, 1, 10, 24, 10, 1, 1 ],
+	[ 56, 56, 56, 55, 10, 1, 10, 1, 1, 1, 1, 10, 1, 1, 1, 10 ],
+	[ 54, 53, 1, 10, 24, 10, 1, 1, 24, 10, 10, 1, 1, 1, 10, 1 ],
+	[ 56, 56, 10, 56, 1, 1, 10, 24, 10, 1, 10, 1, 10, 10, 23, 1 ],
+	[ 56, 56, 1, 56, 1, 10, 1, 1, 24, 10, 1, 10, 1, 1, 1, 10 ],
+	[ 56, 56, 54, 1, 10, 1, 1, 1, 10, 1, 10, 1, 1, 1, 1, 10 ],
+	[ 56, 56, 56, 54, 1, 10, 1, 10, 10, 1, 10, 23, 1, 1, 10, 1 ],
+	[ 56, 1, 56, 56, 1, 10, 22, 10, 1, 10, 23, 1, 10, 1, 1, 1 ],
+	[ 56, 1, 1, 56, 10, 10, 1, 1, 10, 1, 1, 10, 24, 1, 10, 10 ],
+	[ 54, 24, 53, 1, 1, 1, 1, 1, 24, 1, 10, 10, 1, 10, 1, 24 ],
+	[ 55, 56, 10, 24, 1, 1, 10, 24, 10, 1, 22, 1, 1, 1, 23, 10 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -12544,
+		"y": -41952,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -12320,
+		"y": -41984,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -12640,
+		"y": -41952,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -12448,
+		"y": -41920,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -12736,
+		"y": -41952,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -12448,
+		"y": -41504,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

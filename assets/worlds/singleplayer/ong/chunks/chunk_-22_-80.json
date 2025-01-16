@@ -1,0 +1,148 @@
+{
+"x": -22,
+"y": -80,
+"biomeType": "PLAINS",
+"tileData": [
+	[ 10, 1, 1, 10, 1, 10, 1, 1, 1, 11, 11, 11, 12, 11, 12, 12 ],
+	[ 1, 10, 1, 10, 1, 10, 1, 1, 11, 12, 11, 1, 12, 11, 11, 11 ],
+	[ 1, 1, 1, 1, 1, 1, 11, 11, 11, 11, 12, 20, 12, 12, 11, 11 ],
+	[ 1, 1, 1, 1, 24, 10, 1, 11, 11, 12, 1, 12, 11, 11, 11, 11 ],
+	[ 10, 1, 1, 10, 10, 1, 10, 1, 12, 1, 11, 11, 11, 11, 11, 11 ],
+	[ 1, 1, 10, 24, 1, 1, 10, 10, 11, 1, 10, 11, 11, 11, 11, 12 ],
+	[ 24, 1, 1, 10, 1, 10, 1, 10, 1, 11, 11, 11, 1, 11, 12, 1 ],
+	[ 10, 1, 1, 1, 1, 1, 10, 24, 1, 11, 11, 1, 11, 11, 11, 11 ],
+	[ 10, 1, 10, 10, 10, 1, 24, 24, 1, 1, 11, 11, 11, 11, 1, 12 ],
+	[ 1, 10, 10, 1, 10, 10, 10, 1, 1, 10, 12, 12, 1, 12, 11, 11 ],
+	[ 10, 10, 1, 24, 1, 24, 1, 1, 1, 1, 1, 12, 11, 11, 11, 11 ],
+	[ 1, 23, 1, 24, 24, 1, 1, 10, 1, 10, 10, 1, 11, 11, 11, 11 ],
+	[ 1, 10, 10, 10, 1, 10, 24, 10, 1, 10, 10, 10, 11, 12, 1, 12 ],
+	[ 1, 24, 1, 1, 1, 1, 24, 1, 10, 1, 1, 1, 11, 11, 10, 11 ],
+	[ 1, 10, 1, 1, 1, 10, 1, 1, 1, 10, 1, 10, 10, 1, 11, 12 ],
+	[ 1, 1, 1, 10, 10, 1, 24, 10, 1, 10, 10, 24, 1, 10, 12, 12 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10784,
+		"y": -40768,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11136,
+		"y": -40800,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11008,
+		"y": -40736,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11008,
+		"y": -40928,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10976,
+		"y": -40832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10848,
+		"y": -40512,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10848,
+		"y": -40640,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10784,
+		"y": -40960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11232,
+		"y": -40608,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11232,
+		"y": -40736,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11104,
+		"y": -40928,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11200,
+		"y": -40928,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11104,
+		"y": -40672,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10848,
+		"y": -40864,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10944,
+		"y": -40640,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11168,
+		"y": -40640,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11040,
+		"y": -40608,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10880,
+		"y": -40736,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11072,
+		"y": -40480,
+		"type": "APRICORN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -10944,
+		"y": -40768,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

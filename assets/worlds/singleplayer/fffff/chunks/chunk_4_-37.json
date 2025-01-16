@@ -1,0 +1,148 @@
+{
+"x": 4,
+"y": -37,
+"biomeType": "FOREST",
+"tileData": [
+	[ 12, 12, 11, 11, 11, 11, 11, 12, 12, 1, 11, 11, 11, 11, 1, 1 ],
+	[ 11, 11, 11, 12, 11, 11, 12, 1, 10, 11, 11, 12, 11, 11, 12, 11 ],
+	[ 11, 12, 12, 12, 12, 12, 11, 11, 10, 1, 11, 11, 11, 11, 11, 12 ],
+	[ 12, 11, 11, 11, 20, 11, 11, 12, 10, 11, 11, 11, 11, 1, 12, 11 ],
+	[ 12, 11, 12, 1, 11, 12, 10, 11, 11, 11, 11, 12, 1, 20, 10, 11 ],
+	[ 11, 12, 20, 11, 11, 11, 11, 11, 11, 1, 11, 1, 11, 11, 11, 12 ],
+	[ 11, 12, 11, 11, 11, 1, 11, 11, 20, 1, 10, 11, 11, 11, 12, 11 ],
+	[ 10, 1, 11, 12, 1, 11, 11, 10, 11, 11, 10, 11, 11, 11, 1, 12 ],
+	[ 1, 11, 1, 12, 11, 11, 20, 12, 11, 1, 12, 11, 11, 11, 12, 11 ],
+	[ 11, 11, 12, 11, 11, 11, 11, 11, 10, 1, 11, 11, 11, 1, 1, 11 ],
+	[ 12, 11, 11, 11, 20, 1, 10, 11, 12, 11, 11, 10, 12, 12, 12, 10 ],
+	[ 1, 11, 11, 11, 12, 1, 11, 1, 11, 11, 11, 11, 11, 12, 1, 11 ],
+	[ 11, 11, 12, 12, 12, 12, 1, 11, 12, 1, 11, 11, 12, 12, 11, 11 ],
+	[ 11, 1, 11, 11, 10, 1, 11, 11, 1, 11, 12, 12, 11, 11, 11, 11 ],
+	[ 12, 1, 12, 11, 11, 11, 11, 11, 1, 11, 12, 12, 12, 11, 12, 1 ],
+	[ 1, 11, 11, 12, 11, 11, 20, 1, 11, 1, 11, 11, 11, 11, 1, 11 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2208,
+		"y": -18720,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2400,
+		"y": -18720,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2112,
+		"y": -18848,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2112,
+		"y": -18688,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2528,
+		"y": -18496,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2240,
+		"y": -18528,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2304,
+		"y": -18656,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2496,
+		"y": -18944,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2400,
+		"y": -18528,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2240,
+		"y": -18816,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2432,
+		"y": -18624,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2112,
+		"y": -18496,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2080,
+		"y": -18592,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2528,
+		"y": -18688,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2240,
+		"y": -18912,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2336,
+		"y": -18880,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2048,
+		"y": -18944,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2144,
+		"y": -18944,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2496,
+		"y": -18784,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 2048,
+		"y": -18496,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

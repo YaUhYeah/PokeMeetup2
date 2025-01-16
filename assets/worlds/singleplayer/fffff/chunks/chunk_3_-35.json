@@ -1,0 +1,76 @@
+{
+"x": 3,
+"y": -35,
+"biomeType": "HAUNTED",
+"tileData": [
+	[ 1, 5, 7, 5, 5, 5, 1, 5, 5, 7, 5, 5, 7, 1, 5, 7 ],
+	[ 24, 1, 1, 5, 5, 9, 5, 8, 7, 5, 5, 1, 7, 7, 7, 5 ],
+	[ 1, 5, 5, 9, 5, 5, 5, 8, 9, 5, 9, 8, 5, 7, 9, 5 ],
+	[ 7, 5, 1, 8, 5, 9, 7, 5, 5, 7, 7, 1, 9, 7, 5, 5 ],
+	[ 5, 10, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 7, 5, 5, 9 ],
+	[ 5, 7, 5, 7, 5, 5, 5, 10, 5, 10, 7, 5, 5, 5, 7, 5 ],
+	[ 1, 7, 8, 5, 5, 5, 1, 9, 5, 9, 5, 5, 5, 9, 7, 7 ],
+	[ 8, 5, 8, 9, 5, 7, 7, 5, 1, 7, 7, 5, 1, 5, 5, 7 ],
+	[ 5, 5, 5, 5, 10, 8, 7, 1, 7, 5, 5, 1, 5, 7, 5, 5 ],
+	[ 9, 5, 5, 7, 5, 5, 8, 5, 5, 5, 5, 7, 9, 5, 9, 5 ],
+	[ 5, 5, 5, 5, 8, 8, 5, 5, 5, 5, 9, 10, 8, 5, 5, 7 ],
+	[ 5, 9, 9, 7, 7, 5, 5, 5, 7, 5, 5, 7, 7, 5, 5, 5 ],
+	[ 5, 7, 5, 7, 7, 5, 5, 5, 5, 8, 8, 8, 5, 5, 5, 5 ],
+	[ 5, 5, 7, 5, 5, 7, 5, 5, 5, 7, 7, 5, 5, 7, 9, 5 ],
+	[ 5, 7, 8, 5, 5, 5, 9, 5, 7, 9, 5, 7, 7, 9, 7, 7 ],
+	[ 5, 5, 5, 5, 9, 7, 5, 5, 5, 5, 5, 5, 7, 7, 9, 5 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1696,
+		"y": -17696,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1568,
+		"y": -17568,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1792,
+		"y": -17792,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1568,
+		"y": -17856,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1664,
+		"y": -17888,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1632,
+		"y": -17568,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1856,
+		"y": -17568,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1600,
+		"y": -17920,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

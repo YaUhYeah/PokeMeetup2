@@ -1,0 +1,17 @@
+battlebacks-gfx-atlas.png
+size:2048,1024
+repeat:none
+battle_bg_forest
+bounds:516,422,512,288
+battle_bg_haunted
+bounds:1030,712,512,288
+battle_bg_ocean
+bounds:2,422,512,288
+battle_bg_plains
+bounds:2,712,512,288
+battle_bg_plains_night
+bounds:2,132,512,288
+battle_bg_snow
+bounds:516,712,512,288
+battle_platform
+bounds:2,2,256,128

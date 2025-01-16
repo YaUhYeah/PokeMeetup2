@@ -1,0 +1,148 @@
+{
+"x": 2,
+"y": -25,
+"biomeType": "FOREST",
+"tileData": [
+	[ 1, 12, 11, 1, 1, 11, 11, 11, 1, 11, 20, 11, 12, 11, 1, 12 ],
+	[ 11, 11, 11, 11, 12, 11, 12, 12, 20, 12, 12, 12, 11, 11, 10, 11 ],
+	[ 1, 12, 1, 12, 11, 12, 12, 11, 12, 10, 11, 11, 11, 1, 12, 11 ],
+	[ 12, 12, 11, 11, 1, 12, 11, 12, 1, 11, 11, 12, 1, 11, 12, 12 ],
+	[ 12, 11, 11, 12, 11, 11, 11, 1, 11, 12, 12, 20, 11, 12, 12, 12 ],
+	[ 11, 11, 12, 11, 10, 11, 12, 11, 11, 11, 1, 11, 11, 11, 11, 11 ],
+	[ 11, 1, 12, 1, 12, 12, 11, 12, 12, 11, 11, 11, 12, 11, 12, 11 ],
+	[ 12, 12, 11, 12, 11, 11, 11, 12, 12, 1, 1, 1, 11, 11, 12, 1 ],
+	[ 1, 12, 11, 11, 11, 11, 11, 11, 12, 20, 11, 12, 11, 12, 11, 10 ],
+	[ 11, 11, 12, 11, 11, 1, 1, 11, 11, 11, 12, 11, 1, 1, 11, 11 ],
+	[ 12, 12, 1, 11, 12, 11, 11, 11, 12, 12, 11, 11, 1, 11, 12, 1 ],
+	[ 12, 11, 11, 12, 1, 12, 11, 11, 11, 11, 1, 1, 1, 12, 10, 11 ],
+	[ 11, 11, 1, 12, 12, 12, 1, 11, 11, 11, 12, 12, 10, 10, 11, 11 ],
+	[ 11, 11, 12, 12, 1, 12, 11, 11, 11, 12, 12, 11, 12, 12, 12, 11 ],
+	[ 11, 11, 12, 11, 11, 11, 11, 12, 11, 11, 12, 12, 11, 11, 11, 1 ],
+	[ 12, 1, 1, 12, 11, 11, 1, 12, 1, 11, 1, 11, 11, 12, 12, 12 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1184,
+		"y": -12576,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1376,
+		"y": -12576,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1088,
+		"y": -12704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1088,
+		"y": -12544,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1504,
+		"y": -12352,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1216,
+		"y": -12384,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1280,
+		"y": -12512,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1472,
+		"y": -12800,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1376,
+		"y": -12384,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1216,
+		"y": -12672,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1408,
+		"y": -12480,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1088,
+		"y": -12352,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1056,
+		"y": -12448,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1504,
+		"y": -12544,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1216,
+		"y": -12768,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1312,
+		"y": -12736,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1024,
+		"y": -12800,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1120,
+		"y": -12800,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1472,
+		"y": -12640,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 1024,
+		"y": -12352,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

@@ -1,0 +1,154 @@
+{
+"x": -2,
+"y": 1,
+"biomeType": "HAUNTED",
+"tileData": [
+	[ 5, 5, 5, 5, 7, 5, 9, 7, 5, 4, 4, 51, 4, 4, 4, 4 ],
+	[ 5, 5, 5, 7, 5, 5, 5, 5, 5, 52, 4, 51, 4, 51, 4, 4 ],
+	[ 5, 5, 7, 5, 7, 7, 7, 5, 5, 8, 4, 4, 4, 4, 4, 4 ],
+	[ 7, 7, 10, 7, 7, 5, 7, 5, 5, 7, 4, 4, 4, 4, 4, 51 ],
+	[ 8, 5, 10, 5, 7, 5, 5, 7, 7, 7, 51, 4, 4, 4, 6, 4 ],
+	[ 7, 5, 5, 7, 5, 5, 7, 5, 1, 5, 7, 4, 4, 6, 4, 6 ],
+	[ 5, 5, 9, 5, 9, 5, 7, 5, 8, 5, 5, 4, 4, 4, 4, 51 ],
+	[ 7, 5, 5, 5, 7, 8, 9, 7, 5, 5, 5, 7, 4, 51, 51, 4 ],
+	[ 9, 5, 5, 5, 7, 5, 5, 7, 5, 5, 5, 5, 4, 6, 4, 52 ],
+	[ 5, 5, 8, 5, 7, 5, 7, 5, 5, 5, 7, 8, 6, 4, 4, 4 ],
+	[ 7, 5, 8, 5, 7, 7, 5, 7, 7, 5, 5, 5, 5, 4, 4, 4 ],
+	[ 7, 7, 5, 8, 7, 5, 5, 8, 7, 5, 7, 8, 5, 7, 4, 51 ],
+	[ 5, 5, 8, 9, 5, 5, 5, 7, 5, 8, 5, 5, 7, 5, 6, 4 ],
+	[ 7, 5, 5, 5, 5, 7, 5, 7, 8, 7, 9, 5, 7, 5, 9, 4 ],
+	[ 7, 5, 5, 5, 5, 7, 7, 7, 5, 5, 9, 7, 5, 7, 1, 4 ],
+	[ 5, 5, 7, 8, 5, 7, 5, 5, 5, 5, 7, 5, 7, 5, 5, 5 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -896,
+		"y": 768,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -768,
+		"y": 768,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -640,
+		"y": 608,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -576,
+		"y": 512,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -640,
+		"y": 864,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -928,
+		"y": 672,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -544,
+		"y": 640,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -544,
+		"y": 928,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -736,
+		"y": 576,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1024,
+		"y": 512,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -832,
+		"y": 512,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -544,
+		"y": 832,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -928,
+		"y": 544,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -800,
+		"y": 672,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1024,
+		"y": 640,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -672,
+		"y": 768,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -544,
+		"y": 736,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1024,
+		"y": 768,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -800,
+		"y": 864,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -672,
+		"y": 512,
+		"type": "SMALL_HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -736,
+		"y": 672,
+		"type": "VINES"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

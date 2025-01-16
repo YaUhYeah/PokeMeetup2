@@ -1,0 +1,24 @@
+{
+name: fr
+lastPlayed: 1730368307851
+config: {
+	seed: 0
+	treeSpawnRate: 0.15
+	pokemonSpawnRate: 0.05
+}
+players: {
+	Player: {
+		username: Player
+		x: 0
+		y: 0
+		direction: down
+		isMoving: false
+		wantsToRun: false
+		inventoryItems: []
+		hotbarItems: []
+		isDirty: true
+	}
+}
+entities: {}
+pluginConfigs: null
+}

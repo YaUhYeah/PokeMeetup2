@@ -1,0 +1,11 @@
+{
+username: Player
+x: 2592
+y: 2496
+inventoryItemNames: [
+	Elixir
+	Potion
+	Stick
+	Pokeball
+]
+}

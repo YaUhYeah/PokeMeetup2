@@ -1,0 +1,148 @@
+{
+"x": -23,
+"y": 3,
+"biomeType": "FOREST",
+"tileData": [
+	[ 11, 20, 1, 1, 10, 11, 11, 11, 12, 1, 11, 11, 11, 5, 5, 9 ],
+	[ 12, 11, 1, 20, 11, 11, 11, 12, 11, 11, 11, 10, 11, 11, 7, 5 ],
+	[ 20, 11, 11, 11, 12, 11, 12, 12, 1, 12, 11, 11, 11, 11, 12, 5 ],
+	[ 11, 11, 10, 11, 11, 20, 12, 11, 12, 12, 12, 11, 12, 11, 11, 1 ],
+	[ 11, 12, 11, 11, 11, 12, 12, 12, 11, 11, 11, 12, 11, 11, 12, 10 ],
+	[ 1, 11, 11, 1, 11, 1, 12, 11, 11, 12, 1, 12, 20, 1, 12, 11 ],
+	[ 11, 11, 11, 11, 12, 12, 1, 11, 11, 11, 11, 11, 11, 11, 11, 12 ],
+	[ 11, 12, 1, 11, 11, 11, 11, 11, 12, 1, 11, 11, 11, 11, 11, 11 ],
+	[ 11, 10, 11, 10, 11, 11, 11, 11, 11, 11, 1, 11, 11, 11, 11, 1 ],
+	[ 12, 20, 1, 12, 11, 11, 1, 1, 11, 10, 11, 11, 11, 12, 11, 1 ],
+	[ 11, 12, 11, 11, 11, 1, 1, 12, 11, 11, 11, 11, 11, 11, 12, 12 ],
+	[ 13, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 1, 11, 12, 12, 11 ],
+	[ 20, 14, 11, 12, 1, 12, 12, 10, 11, 12, 10, 12, 12, 12, 12, 12 ],
+	[ 13, 13, 14, 12, 11, 1, 1, 11, 11, 12, 12, 11, 1, 11, 12, 11 ],
+	[ 13, 14, 14, 14, 10, 11, 11, 11, 11, 1, 11, 12, 1, 11, 11, 11 ],
+	[ 14, 14, 140, 1, 13, 11, 11, 12, 10, 11, 12, 10, 11, 11, 1, 11 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11680,
+		"y": 2016,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11392,
+		"y": 1728,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11520,
+		"y": 1536,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11520,
+		"y": 1824,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11424,
+		"y": 1600,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11424,
+		"y": 1856,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11776,
+		"y": 1600,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11552,
+		"y": 1920,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11648,
+		"y": 1568,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11424,
+		"y": 2016,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11296,
+		"y": 1888,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11776,
+		"y": 1728,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11680,
+		"y": 1824,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11552,
+		"y": 2016,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11520,
+		"y": 1664,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11296,
+		"y": 1984,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11776,
+		"y": 1856,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11680,
+		"y": 1728,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11296,
+		"y": 1632,
+		"type": "APRICORN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -11616,
+		"y": 1856,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

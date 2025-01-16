@@ -1,0 +1,17 @@
+gfx-ui-atlas.png
+size:589,512
+repeat:none
+arrow
+bounds:114,120,32,32
+count_bubble
+bounds:2,2,32,16
+dark-overlay
+bounds:584,221,3,3
+hotbar_bg
+bounds:2,154,580,70
+slot_background
+bounds:70,111,42,41
+slot_normal
+bounds:2,20,64,64
+slot_selected
+bounds:2,86,66,66

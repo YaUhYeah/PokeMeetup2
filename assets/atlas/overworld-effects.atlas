@@ -1,0 +1,7 @@
+overworld-effects.png
+size:128,32
+repeat:none
+water_player_moving
+bounds:2,2,69,23
+water_player_standing
+bounds:73,13,24,12

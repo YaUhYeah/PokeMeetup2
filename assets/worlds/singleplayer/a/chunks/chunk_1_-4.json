@@ -1,0 +1,76 @@
+{
+"x": 1,
+"y": -4,
+"biomeType": "PLAINS",
+"tileData": [
+	[ 15, 2, 17, 15, 16, 2, 15, 2, 2, 17, 16, 15, 15, 15, 1, 24 ],
+	[ 15, 15, 2, 15, 15, 15, 15, 17, 15, 1, 17, 15, 15, 1, 10, 1 ],
+	[ 15, 15, 15, 2, 15, 2, 2, 17, 1, 15, 15, 15, 10, 1, 1, 10 ],
+	[ 15, 17, 2, 15, 2, 16, 15, 17, 15, 15, 15, 1, 10, 1, 10, 10 ],
+	[ 15, 15, 15, 2, 15, 16, 2, 15, 10, 1, 1, 24, 1, 24, 10, 1 ],
+	[ 15, 15, 15, 10, 15, 15, 15, 15, 1, 10, 24, 1, 10, 23, 10, 1 ],
+	[ 15, 15, 15, 16, 15, 15, 10, 10, 1, 10, 1, 10, 24, 1, 1, 1 ],
+	[ 15, 17, 15, 17, 22, 10, 1, 1, 10, 1, 10, 24, 10, 1, 1, 1 ],
+	[ 15, 2, 1, 10, 10, 10, 1, 1, 24, 1, 10, 1, 1, 1, 10, 10 ],
+	[ 1, 1, 24, 1, 1, 1, 1, 1, 10, 24, 1, 1, 1, 1, 10, 10 ],
+	[ 24, 10, 10, 1, 1, 10, 24, 1, 10, 1, 1, 1, 10, 10, 1, 1 ],
+	[ 1, 1, 1, 10, 22, 10, 1, 10, 1, 10, 10, 1, 1, 1, 24, 1 ],
+	[ 10, 1, 1, 1, 10, 1, 10, 1, 10, 1, 24, 1, 10, 1, 1, 1 ],
+	[ 1, 1, 10, 24, 1, 10, 1, 1, 1, 1, 10, 10, 1, 1, 1, 1 ],
+	[ 10, 1, 1, 10, 24, 1, 1, 1, 22, 1, 1, 1, 10, 10, 1, 22 ],
+	[ 10, 1, 1, 1, 1, 1, 10, 24, 1, 10, 24, 10, 1, 1, 1, 1 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 512,
+		"y": -1696,
+		"type": "CACTUS"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 608,
+		"y": -1792,
+		"type": "CACTUS"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 576,
+		"y": -2016,
+		"type": "CACTUS"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 672,
+		"y": -2048,
+		"type": "CACTUS"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 768,
+		"y": -2016,
+		"type": "CACTUS"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 512,
+		"y": -2016,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 672,
+		"y": -1888,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 960,
+		"y": -1600,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

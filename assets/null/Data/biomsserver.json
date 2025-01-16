@@ -1,0 +1,300 @@
+[
+  {
+    spawnChances: {}
+    name: {
+      class: java.lang.String
+      value: plains
+    }
+    allowedTileTypes: {
+      class: java.util.Arrays$ArrayList
+      items: [
+        {
+          class: java.lang.Integer
+          value: 1
+        }
+        {
+          class: java.lang.Integer
+          value: 2
+        }
+        {
+          class: java.lang.Integer
+          value: 3
+        }
+      ]
+    }
+    type: {
+      class: java.lang.String
+      value: PLAINS
+    }
+    spawnableObjects: []
+    tileDistribution: {
+      1: {
+        class: java.lang.Double
+        value: 70
+      }
+      2: {
+        class: java.lang.Double
+        value: 20
+      }
+      3: {
+        class: java.lang.Double
+        value: 10
+      }
+    }
+  }
+  {
+    spawnChances: {
+      TREE: {
+        class: java.lang.Double
+        value: 0.7
+      }
+    }
+    name: {
+      class: java.lang.String
+      value: forest
+    }
+    allowedTileTypes: {
+      class: java.util.Arrays$ArrayList
+      items: [
+        {
+          class: java.lang.Integer
+          value: 1
+        }
+        {
+          class: java.lang.Integer
+          value: 2
+        }
+        {
+          class: java.lang.Integer
+          value: 3
+        }
+      ]
+    }
+    type: {
+      class: java.lang.String
+      value: FOREST
+    }
+    spawnableObjects: [
+      {
+        class: java.lang.String
+        value: TREE
+      }
+    ]
+    tileDistribution: {
+      1: {
+        class: java.lang.Double
+        value: 60
+      }
+      2: {
+        class: java.lang.Double
+        value: 30
+      }
+      3: {
+        class: java.lang.Double
+        value: 10
+      }
+    }
+  }
+  {
+    spawnChances: {
+      SNOW_TREE: {
+        class: java.lang.Double
+        value: 0.5
+      }
+    }
+    name: {
+      class: java.lang.String
+      value: snow
+    }
+    allowedTileTypes: {
+      class: java.util.Arrays$ArrayList
+      items: [
+        {
+          class: java.lang.Integer
+          value: 1
+        }
+        {
+          class: java.lang.Integer
+          value: 2
+        }
+        {
+          class: java.lang.Integer
+          value: 3
+        }
+      ]
+    }
+    type: {
+      class: java.lang.String
+      value: SNOW
+    }
+    spawnableObjects: [
+      {
+        class: java.lang.String
+        value: SNOW_TREE
+      }
+    ]
+    tileDistribution: {
+      1: {
+        class: java.lang.Double
+        value: 75
+      }
+      2: {
+        class: java.lang.Double
+        value: 20
+      }
+      3: {
+        class: java.lang.Double
+        value: 5
+      }
+    }
+  }
+  {
+    spawnChances: {
+      HAUNTED_TREE: {
+        class: java.lang.Double
+        value: 0.6
+      }
+    }
+    name: {
+      class: java.lang.String
+      value: haunted
+    }
+    allowedTileTypes: {
+      class: java.util.Arrays$ArrayList
+      items: [
+        {
+          class: java.lang.Integer
+          value: 1
+        }
+        {
+          class: java.lang.Integer
+          value: 2
+        }
+        {
+          class: java.lang.Integer
+          value: 3
+        }
+      ]
+    }
+    type: {
+      class: java.lang.String
+      value: HAUNTED
+    }
+    spawnableObjects: [
+      {
+        class: java.lang.String
+        value: HAUNTED_TREE
+      }
+    ]
+    tileDistribution: {
+      1: {
+        class: java.lang.Double
+        value: 65
+      }
+      2: {
+        class: java.lang.Double
+        value: 25
+      }
+      3: {
+        class: java.lang.Double
+        value: 10
+      }
+    }
+  }
+  {
+    spawnChances: {
+      CACTUS: {
+        class: java.lang.Double
+        value: 0.4
+      }
+    }
+    name: {
+      class: java.lang.String
+      value: desert
+    }
+    allowedTileTypes: {
+      class: java.util.Arrays$ArrayList
+      items: [
+        {
+          class: java.lang.Integer
+          value: 1
+        }
+        {
+          class: java.lang.Integer
+          value: 2
+        }
+        {
+          class: java.lang.Integer
+          value: 3
+        }
+      ]
+    }
+    type: {
+      class: java.lang.String
+      value: DESERT
+    }
+    spawnableObjects: [
+      {
+        class: java.lang.String
+        value: CACTUS
+      }
+    ]
+    tileDistribution: {
+      1: {
+        class: java.lang.Double
+        value: 85
+      }
+      2: {
+        class: java.lang.Double
+        value: 10
+      }
+      3: {
+        class: java.lang.Double
+        value: 5
+      }
+    }
+  }
+  {
+    spawnChances: {}
+    name: {
+      class: java.lang.String
+      value: rain_forest
+    }
+    allowedTileTypes: {
+      class: java.util.Arrays$ArrayList
+      items: [
+        {
+          class: java.lang.Integer
+          value: 1
+        }
+        {
+          class: java.lang.Integer
+          value: 2
+        }
+        {
+          class: java.lang.Integer
+          value: 3
+        }
+      ]
+    }
+    type: {
+      class: java.lang.String
+      value: RAIN_FOREST
+    }
+    spawnableObjects: []
+    tileDistribution: {
+      1: {
+        class: java.lang.Double
+        value: 70
+      }
+      2: {
+        class: java.lang.Double
+        value: 20
+      }
+      3: {
+        class: java.lang.Double
+        value: 10
+      }
+    }
+  }
+]

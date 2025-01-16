@@ -1,0 +1,154 @@
+{
+"x": -19,
+"y": 1,
+"biomeType": "PLAINS",
+"tileData": [
+	[ 23, 10, 10, 1, 1, 24, 1, 24, 1, 10, 1, 10, 1, 1, 10, 1 ],
+	[ 10, 1, 1, 10, 1, 10, 1, 1, 1, 1, 1, 10, 1, 1, 10, 1 ],
+	[ 1, 1, 10, 1, 1, 10, 24, 1, 1, 10, 1, 10, 1, 1, 1, 1 ],
+	[ 1, 1, 10, 10, 1, 10, 1, 1, 1, 10, 1, 1, 10, 10, 1, 24 ],
+	[ 1, 10, 1, 10, 24, 1, 1, 24, 1, 10, 1, 1, 1, 1, 10, 1 ],
+	[ 1, 10, 23, 10, 1, 10, 10, 1, 1, 1, 10, 10, 1, 24, 24, 10 ],
+	[ 1, 24, 1, 1, 1, 24, 24, 1, 10, 1, 1, 10, 10, 10, 1, 1 ],
+	[ 1, 10, 1, 1, 1, 1, 1, 24, 1, 1, 1, 10, 1, 24, 22, 10 ],
+	[ 10, 1, 1, 10, 1, 24, 24, 10, 1, 1, 24, 24, 10, 10, 10, 1 ],
+	[ 1, 10, 10, 1, 1, 1, 1, 1, 10, 1, 10, 1, 10, 1, 1, 1 ],
+	[ 1, 10, 1, 10, 1, 10, 1, 1, 1, 1, 1, 24, 10, 1, 1, 1 ],
+	[ 10, 10, 10, 1, 10, 1, 1, 1, 10, 1, 10, 10, 10, 1, 1, 10 ],
+	[ 1, 10, 10, 1, 10, 10, 10, 1, 10, 1, 10, 1, 1, 10, 24, 1 ],
+	[ 1, 10, 10, 1, 10, 1, 1, 1, 1, 1, 1, 1, 10, 22, 1, 1 ],
+	[ 10, 10, 1, 10, 1, 1, 1, 1, 10, 1, 1, 1, 1, 24, 10, 1 ],
+	[ 1, 10, 1, 10, 1, 24, 24, 1, 1, 1, 10, 10, 10, 10, 10, 1 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9632,
+		"y": 832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9632,
+		"y": 544,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9408,
+		"y": 960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9696,
+		"y": 704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9504,
+		"y": 800,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9440,
+		"y": 608,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9728,
+		"y": 832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9312,
+		"y": 832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9312,
+		"y": 608,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9536,
+		"y": 672,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9312,
+		"y": 704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9248,
+		"y": 992,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9440,
+		"y": 704,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9600,
+		"y": 960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9536,
+		"y": 544,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9440,
+		"y": 800,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9344,
+		"y": 512,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9344,
+		"y": 992,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9632,
+		"y": 704,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9248,
+		"y": 704,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -9696,
+		"y": 768,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

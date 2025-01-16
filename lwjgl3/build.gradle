@@ -1,0 +1,146 @@
+// LWJGL3 build.gradle
+
+buildscript {
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()
+  }
+  dependencies {
+    if (enableGraalNative == 'true') {
+      classpath "org.graalvm.buildtools.native:org.graalvm.buildtools.native.gradle.plugin:0.9.28"
+    }
+  }
+}
+
+plugins {
+  id "io.github.fourlastor.construo" version "1.4.1"
+  id "application"
+  id 'java'
+  id 'distribution'
+  id 'org.springframework.boot' version '3.4.0'
+}
+
+sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
+
+mainClassName = 'io.github.pokemeetup.lwjgl3.Lwjgl3Launcher'
+application.setMainClass(mainClassName)
+java {
+  sourceCompatibility = JavaVersion.VERSION_11
+  targetCompatibility = JavaVersion.VERSION_11
+}
+
+
+dependencies {
+  // Client dependencies
+  implementation project(':core')
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-desktop:$gdxControllersVersion"
+  implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+  implementation "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-desktop"
+  implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+
+  implementation platform('org.springframework.boot:spring-boot-dependencies:2.7.8')
+
+  implementation 'org.springframework.boot:spring-boot-starter'
+  testImplementation('org.springframework.boot:spring-boot-starter-test') {
+    exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+  }
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+  if (enableGraalNative == 'true') {
+    implementation "io.github.berstanio:gdx-svmhelper-backend-lwjgl3:$graalHelperVersion"
+    implementation "io.github.berstanio:gdx-svmhelper-extension-box2d:$graalHelperVersion"
+  }
+}
+
+def os = System.properties['os.name'].toLowerCase()
+
+run {
+  workingDir = rootProject.file('assets').path
+  setIgnoreExitValue(true)
+
+  if (os.contains('mac')) {
+    jvmArgs += "-XstartOnFirstThread"
+  }
+}
+
+// Ensure the core project is built first
+tasks.register('buildCore', GradleBuild) {
+  group = 'build'
+  description = 'Builds the core project'
+
+  dir = project(':core').projectDir
+  tasks = ['jar']
+}
+// Ensure the server project is built first
+tasks.register('buildServer', GradleBuild) {
+  group = 'build'
+  description = 'Builds the server project'
+
+  dir = project(':ServerCore').projectDir
+  tasks = ['shadowJar'] // Change this line
+}
+
+
+// Task to deploy the server
+tasks.register('deployServer', Copy) {
+  group = 'deployment'
+  description = 'Creates a complete server deployment'
+
+  dependsOn 'buildServer'
+
+  from("${project(':ServerCore').buildDir}/libs/server.jar") // Use the JAR from ServerCore
+  into("${buildDir}/deploy")
+
+  doLast {
+    def deployDir = file("${buildDir}/deploy")
+
+    // Create start scripts
+    new File(deployDir, 'start.bat').text = '''@echo off
+java -Xms1G -Xmx4G -jar server.jar
+pause
+'''
+
+    def shFile = new File(deployDir, 'start.sh')
+    shFile.text = '''#!/bin/bash
+java -Xms1G -Xmx4G -jar server.jar
+'''
+    shFile.setExecutable(true, false)
+
+    // Create needed directories
+    file("${deployDir}/logs").mkdirs()
+    file("${deployDir}/plugins").mkdirs()
+    file("${deployDir}/worlds").mkdirs()
+    file("${deployDir}/config").mkdirs()
+
+    println """
+        Server deployed to: ${deployDir}
+        To start the server:
+        - Windows: Run start.bat
+        - Linux/Mac: Run ./start.sh
+        """
+  }
+}
+
+// Jar task for LWJGL3 (client) application
+jar {
+  archiveFileName = "${appName}-${projectVersion}.jar"
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+  from {
+    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    project(':core').tasks.named('jar').get().archiveFile
+  }
+
+  manifest {
+    attributes 'Main-Class': project.mainClassName
+  }
+
+  exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
+}
+
+tasks.register('dist') {
+  dependsOn 'jar'
+}
+
+if (enableGraalNative == 'true') {
+  apply from: file("nativeimage.gradle")
+}

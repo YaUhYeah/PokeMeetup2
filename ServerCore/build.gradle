@@ -1,0 +1,48 @@
+plugins {
+  id 'java'
+  id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+java {
+  sourceCompatibility = JavaVersion.VERSION_11
+  targetCompatibility = JavaVersion.VERSION_11
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation project(':core')
+  implementation "com.google.code.gson:gson:2.10.1"
+  implementation "com.h2database:h2:2.1.214"
+  implementation 'ch.qos.logback:logback-classic:1.4.11'
+
+
+  implementation "com.esotericsoftware:kryonet:2.22.0-RC1"
+  implementation "com.esotericsoftware.kryo:kryo:2.24.0"
+  implementation "at.favre.lib:bcrypt:0.10.2"
+}
+
+shadowJar {
+  archiveFileName = 'server.jar'
+  destinationDirectory = file("${buildDir}/libs")
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+  manifest {
+    attributes(
+      'Main-Class': 'org.discord.ServerLauncher',
+      'Implementation-Title': 'Pokemon Meetup Server',
+      'Implementation-Version': project.version
+    )
+  }
+
+  // Use the configurations property to include runtime dependencies
+  configurations = [project.configurations.runtimeClasspath]
+
+  // Exclude unnecessary files
+  exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+  exclude 'assets/**'
+  exclude '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.mp3', '**/*.wav', '**/*.ogg', '**/*.ttf'
+}
+

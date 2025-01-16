@@ -1,0 +1,97 @@
+package io.github.pokemeetup.chat.commands;
+
+import com.badlogic.gdx.math.Vector2;
+
+import io.github.pokemeetup.chat.ChatSystem;
+import io.github.pokemeetup.chat.Command;
+import io.github.pokemeetup.multiplayer.client.GameClient;
+import io.github.pokemeetup.system.Player;
+import io.github.pokemeetup.system.gameplay.overworld.World;
+import io.github.pokemeetup.utils.GameLogger;
+
+public class TeleportPositionCommand implements Command {
+    @Override
+    public String getName() {
+        return "tp";
+    }
+
+    @Override
+    public String[] getAliases() {
+        return new String[0];
+    }
+
+    @Override
+    public String getDescription() {
+        return "teleports user to specified location";
+    }
+
+    @Override
+    public String getUsage() {
+        return "tp <x> <y>";
+    }
+
+    @Override
+    public boolean isMultiplayerOnly() {
+        return false;
+    }
+
+    @Override
+    public void execute(String args, GameClient gameClient, ChatSystem chatSystem) {
+        String[] argsArray = args.split(" ");
+
+        try {
+            GameLogger.info("Executing tp command...");
+
+            Player player = gameClient.getActivePlayer();
+            if (player == null) {
+                chatSystem.addSystemMessage("Error: Player not found");
+                return;
+            }
+
+            World currentWorld = player.getWorld();
+            if (currentWorld == null) {
+                currentWorld = gameClient.getCurrentWorld();
+            }
+
+            if (currentWorld == null) {
+                chatSystem.addSystemMessage("Error: World not found");
+                return;
+            }
+
+            if (currentWorld.getWorldData() == null || currentWorld.getWorldData().getConfig() == null) {
+                chatSystem.addSystemMessage("Error: World configuration not available");
+                return;
+            }
+
+            if (argsArray.length != 2) {
+                chatSystem.addSystemMessage("Invalid arguments. Use: " + getUsage());
+                return;
+            }
+
+            int tileX = Integer.parseInt(argsArray[0]);
+            int tileY = Integer.parseInt(argsArray[1]);
+
+            float pixelX = tileX * World.TILE_SIZE;
+            float pixelY = tileY * World.TILE_SIZE;
+
+            player.getPosition().set(pixelX, pixelY);
+
+            player.setMoving(false);
+
+            player.setTileX(tileX);
+            player.setTileY(tileY);
+            player.setX(pixelX);
+            player.setY(pixelY);
+
+            player.setDirection(player.getDirection());
+            player.setRenderPosition(new Vector2(pixelX, pixelY));
+            player.setMoving(false);
+
+            player.validateResources();
+            currentWorld.setPlayer(player);
+
+        } catch (Exception e) {
+            GameLogger.error("Error executing tp command: " + e.getMessage());
+        }
+    }
+}

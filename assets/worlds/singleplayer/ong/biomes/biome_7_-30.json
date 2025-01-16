@@ -1,0 +1,17 @@
+{
+  "allowedTileTypes": [
+    11,
+    12,
+    1,
+    10,
+    20
+  ],
+  "tileDistribution": {
+    "1": 15,
+    "10": 8,
+    "11": 50,
+    "20": 2,
+    "12": 25
+  },
+  "primaryBiomeType": "FOREST"
+}

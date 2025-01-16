@@ -1,0 +1,35 @@
+{
+name: multiplayer_world
+lastPlayed: 1730537557405
+config: {
+	seed: 12345
+}
+players: {
+	etienne: {
+		username: etienne
+	}
+	allidoisgame1: {
+		username: allidoisgame1
+	}
+	yauhyeah: {
+		username: yauhyeah
+	}
+	thizzyman9977: {
+		username: thizzyman9977
+	}
+}
+pokemonData: {
+	playerParties: {
+		class: java.util.concurrent.ConcurrentHashMap
+		etienne: {
+			username: etienne
+		}
+		allidoisgame1: {
+			username: allidoisgame1
+		}
+		yauhyeah: {
+			username: yauhyeah
+		}
+	}
+}
+}

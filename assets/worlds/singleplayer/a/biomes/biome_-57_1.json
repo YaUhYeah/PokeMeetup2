@@ -1,0 +1,17 @@
+{
+  "allowedTileTypes": [
+    5,
+    7,
+    8,
+    9,
+    1
+  ],
+  "tileDistribution": {
+    "8": 8,
+    "1": 5,
+    "9": 7,
+    "5": 55,
+    "7": 25
+  },
+  "primaryBiomeType": "HAUNTED"
+}

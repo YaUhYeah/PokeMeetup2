@@ -1,0 +1,10 @@
+{
+  "serverIP": "103.6.171.157",
+  "tcpPort": 54555,
+  "udpPort": 54556,
+  "serverName": "Pokemon Meetup Server",
+  "allowRegistration": true,
+  "maxPlayers": 100,
+  "worldSeed": 1730018803665,
+  "backupInterval": 3600
+}

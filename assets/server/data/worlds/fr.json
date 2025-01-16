@@ -1,0 +1,59 @@
+{
+name: fr
+lastPlayed: 1730544097164
+config: {
+	seed: 1730542553262
+}
+playerDataMap: {
+	class: java.util.concurrent.ConcurrentHashMap
+	Player: {
+		username: Player
+		x: 3.8146973E-6
+		y: -1.9073486E-6
+		inventoryItems: [
+			{
+				itemId: Stick
+				count: 1
+				uuid: {}
+			}
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+			null
+		]
+	}
+}
+playerDataLock: {}
+pokemonData: {}
+}

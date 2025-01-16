@@ -1,0 +1,208 @@
+{
+"x": -131,
+"y": -59,
+"biomeType": "HAUNTED",
+"tileData": [
+	[ 9, 5, 1, 1, 1, 1, 10, 1, 10, 1, 1, 1, 1, 10, 1, 24 ],
+	[ 8, 7, 5, 1, 1, 24, 10, 10, 1, 1, 10, 10, 10, 1, 1, 10 ],
+	[ 7, 5, 5, 5, 10, 10, 1, 10, 1, 10, 1, 1, 1, 10, 1, 1 ],
+	[ 5, 5, 10, 7, 5, 7, 24, 1, 1, 1, 10, 1, 24, 1, 10, 1 ],
+	[ 5, 5, 5, 1, 7, 5, 5, 5, 10, 1, 1, 10, 1, 1, 1, 24 ],
+	[ 9, 7, 5, 5, 7, 5, 5, 5, 5, 5, 10, 24, 10, 1, 10, 10 ],
+	[ 1, 7, 5, 5, 5, 5, 5, 5, 5, 5, 10, 5, 9, 1, 10, 1 ],
+	[ 5, 5, 5, 5, 5, 10, 5, 5, 1, 7, 7, 5, 7, 5, 1, 7 ],
+	[ 5, 5, 5, 5, 5, 5, 9, 10, 5, 5, 5, 5, 7, 8, 8, 5 ],
+	[ 9, 7, 5, 5, 7, 7, 5, 7, 5, 5, 7, 1, 7, 5, 8, 5 ],
+	[ 5, 5, 5, 5, 5, 5, 9, 5, 5, 7, 5, 5, 9, 5, 7, 5 ],
+	[ 5, 5, 9, 7, 5, 8, 5, 5, 5, 9, 5, 7, 1, 5, 5, 7 ],
+	[ 5, 10, 5, 7, 8, 5, 5, 5, 5, 5, 5, 5, 5, 5, 1, 9 ],
+	[ 5, 5, 5, 7, 5, 5, 5, 7, 7, 7, 5, 5, 5, 7, 10, 5 ],
+	[ 7, 8, 7, 5, 5, 5, 5, 5, 7, 7, 5, 5, 7, 7, 9, 5 ],
+	[ 9, 10, 9, 5, 1, 7, 5, 5, 5, 5, 5, 7, 5, 5, 1, 8 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66656,
+		"y": -29856,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66848,
+		"y": -29824,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66784,
+		"y": -30080,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -67072,
+		"y": -29856,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66976,
+		"y": -29952,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66624,
+		"y": -29952,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -67008,
+		"y": -30176,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66656,
+		"y": -29728,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66976,
+		"y": -30048,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66784,
+		"y": -29952,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66912,
+		"y": -30208,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66880,
+		"y": -29728,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -67072,
+		"y": -30080,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66656,
+		"y": -30208,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66816,
+		"y": -30176,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66880,
+		"y": -30016,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66688,
+		"y": -30048,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -67008,
+		"y": -29760,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66592,
+		"y": -30048,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66976,
+		"y": -29856,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66752,
+		"y": -29856,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -67072,
+		"y": -29984,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66752,
+		"y": -29728,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66720,
+		"y": -29952,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66592,
+		"y": -29760,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66752,
+		"y": -30176,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66912,
+		"y": -29920,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66592,
+		"y": -30208,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66912,
+		"y": -30112,
+		"type": "DEAD_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -66848,
+		"y": -29952,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

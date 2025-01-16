@@ -1,0 +1,70 @@
+{
+"x": -33,
+"y": -1,
+"biomeType": "SNOW",
+"tileData": [
+	[ 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 1, 5, 7, 5, 9, 5 ],
+	[ 4, 5, 8, 5, 9, 7, 7, 5, 9, 5, 1, 7, 5, 5, 7, 5 ],
+	[ 4, 51, 4, 4, 5, 5, 5, 7, 10, 5, 7, 10, 5, 5, 5, 1 ],
+	[ 6, 4, 6, 4, 4, 4, 51, 7, 5, 7, 5, 5, 5, 5, 8, 5 ],
+	[ 4, 4, 4, 6, 4, 4, 6, 4, 4, 5, 5, 5, 7, 5, 5, 5 ],
+	[ 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 8, 5, 9, 9 ],
+	[ 4, 6, 4, 4, 6, 4, 4, 6, 4, 4, 6, 4, 4, 51, 51, 52 ],
+	[ 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 6, 51, 4, 4 ],
+	[ 4, 4, 4, 52, 4, 4, 4, 4, 6, 4, 4, 4, 51, 6, 4, 4 ],
+	[ 4, 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 51, 51 ],
+	[ 4, 4, 52, 6, 4, 4, 4, 6, 4, 51, 6, 51, 4, 4, 4, 6 ],
+	[ 51, 4, 4, 4, 4, 4, 51, 4, 4, 51, 4, 4, 4, 51, 4, 51 ],
+	[ 4, 4, 4, 4, 4, 51, 51, 4, 4, 4, 4, 51, 52, 4, 4, 51 ],
+	[ 4, 4, 4, 4, 4, 4, 6, 51, 4, 6, 4, 6, 6, 51, 6, 4 ],
+	[ 4, 4, 4, 4, 4, 4, 4, 51, 4, 4, 4, 4, 4, 4, 4, 4 ],
+	[ 4, 4, 6, 4, 4, 4, 4, 4, 4, 4, 51, 6, 51, 4, 51, 4 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16800,
+		"y": -192,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16864,
+		"y": -320,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16896,
+		"y": -192,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16768,
+		"y": -64,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16896,
+		"y": -480,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16896,
+		"y": -96,
+		"type": "HAUNTED_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -16800,
+		"y": -288,
+		"type": "DEAD_TREE"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

@@ -1,0 +1,148 @@
+{
+"x": -4,
+"y": -37,
+"biomeType": "RAIN_FOREST",
+"tileData": [
+	[ 20, 13, 13, 13, 1, 13, 13, 1, 13, 13, 14, 140, 20, 140, 14, 14 ],
+	[ 14, 13, 140, 13, 14, 14, 14, 13, 140, 13, 13, 13, 20, 13, 13, 13 ],
+	[ 14, 13, 140, 140, 1, 140, 14, 140, 140, 13, 1, 20, 20, 13, 140, 13 ],
+	[ 1, 140, 14, 21, 24, 13, 13, 1, 20, 14, 140, 24, 13, 13, 1, 14 ],
+	[ 1, 13, 140, 14, 13, 14, 14, 14, 140, 140, 20, 14, 140, 14, 13, 10 ],
+	[ 24, 14, 14, 14, 13, 1, 10, 13, 14, 140, 13, 140, 1, 20, 13, 14 ],
+	[ 20, 20, 14, 14, 14, 13, 13, 1, 13, 14, 14, 14, 10, 13, 14, 14 ],
+	[ 140, 14, 13, 1, 14, 14, 14, 148, 144, 141, 14, 14, 140, 14, 14, 14 ],
+	[ 14, 140, 14, 13, 13, 20, 13, 147, 140, 142, 14, 13, 1, 14, 13, 13 ],
+	[ 13, 14, 1, 14, 14, 14, 13, 146, 145, 143, 14, 13, 140, 13, 13, 14 ],
+	[ 14, 24, 140, 21, 20, 13, 140, 1, 14, 13, 14, 14, 14, 140, 14, 1 ],
+	[ 14, 20, 14, 20, 13, 13, 10, 14, 14, 14, 14, 13, 140, 1, 14, 14 ],
+	[ 140, 140, 1, 14, 140, 14, 13, 13, 1, 140, 13, 13, 20, 13, 10, 13 ],
+	[ 1, 14, 13, 13, 14, 14, 13, 13, 24, 14, 13, 13, 140, 14, 14, 1 ],
+	[ 13, 13, 14, 140, 20, 13, 1, 14, 13, 140, 14, 14, 14, 14, 20, 13 ],
+	[ 14, 14, 14, 1, 24, 14, 14, 14, 14, 14, 1, 140, 14, 14, 13, 13 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1888,
+		"y": -18720,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1696,
+		"y": -18720,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1984,
+		"y": -18848,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1984,
+		"y": -18688,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1568,
+		"y": -18496,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1856,
+		"y": -18528,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1792,
+		"y": -18656,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1600,
+		"y": -18944,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1696,
+		"y": -18528,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1856,
+		"y": -18816,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1664,
+		"y": -18624,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1984,
+		"y": -18496,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -2016,
+		"y": -18592,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1568,
+		"y": -18688,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1856,
+		"y": -18912,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1760,
+		"y": -18880,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -2048,
+		"y": -18944,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1952,
+		"y": -18944,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -1600,
+		"y": -18784,
+		"type": "RAIN_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -2048,
+		"y": -18720,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

@@ -1,0 +1,64 @@
+{
+"x": -14,
+"y": -87,
+"biomeType": "SNOW",
+"tileData": [
+	[ 1, 1, 10, 1, 10, 4, 20, 11, 11, 11, 12, 1, 12, 11, 11, 11 ],
+	[ 10, 10, 22, 10, 24, 4, 11, 11, 11, 20, 11, 11, 12, 11, 12, 11 ],
+	[ 1, 24, 1, 24, 1, 4, 4, 12, 12, 11, 11, 20, 11, 11, 12, 1 ],
+	[ 1, 22, 10, 10, 6, 6, 51, 12, 11, 12, 11, 11, 20, 1, 12, 11 ],
+	[ 23, 10, 24, 1, 4, 51, 4, 11, 11, 1, 11, 12, 12, 12, 10, 1 ],
+	[ 1, 24, 1, 4, 4, 4, 4, 4, 12, 11, 11, 10, 12, 11, 12, 10 ],
+	[ 10, 10, 1, 4, 4, 4, 4, 4, 11, 11, 12, 11, 11, 11, 12, 11 ],
+	[ 1, 1, 1, 4, 4, 51, 4, 51, 11, 11, 11, 11, 11, 11, 11, 11 ],
+	[ 1, 24, 4, 51, 4, 4, 4, 4, 4, 11, 11, 10, 12, 11, 11, 11 ],
+	[ 1, 24, 4, 51, 4, 4, 4, 6, 4, 1, 11, 1, 11, 11, 11, 12 ],
+	[ 1, 4, 4, 4, 4, 4, 4, 51, 4, 12, 11, 11, 12, 12, 12, 10 ],
+	[ 1, 4, 4, 4, 4, 6, 4, 4, 52, 11, 11, 11, 10, 11, 1, 1 ],
+	[ 4, 51, 4, 4, 4, 51, 4, 6, 51, 4, 11, 11, 11, 1, 12, 10 ],
+	[ 4, 4, 4, 4, 51, 4, 6, 4, 4, 4, 12, 11, 12, 10, 10, 11 ],
+	[ 4, 4, 51, 4, 4, 4, 4, 4, 4, 51, 12, 1, 11, 12, 11, 12 ],
+	[ 4, 4, 4, 4, 4, 51, 4, 4, 4, 6, 10, 11, 12, 11, 1, 12 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -6912,
+		"y": -44512,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -6752,
+		"y": -44096,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7040,
+		"y": -44064,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7008,
+		"y": -44512,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7104,
+		"y": -44512,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -7072,
+		"y": -44128,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

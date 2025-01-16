@@ -1,0 +1,160 @@
+{
+"x": -127,
+"y": -41,
+"biomeType": "PLAINS",
+"tileData": [
+	[ 10, 1, 10, 1, 10, 1, 1, 1, 1, 1, 10, 10, 1, 10, 1, 1 ],
+	[ 1, 24, 10, 10, 1, 1, 1, 1, 1, 1, 10, 1, 1, 1, 1, 24 ],
+	[ 10, 1, 22, 24, 1, 1, 1, 1, 10, 10, 1, 1, 1, 1, 1, 10 ],
+	[ 1, 10, 10, 10, 10, 10, 24, 24, 1, 24, 1, 10, 1, 1, 10, 1 ],
+	[ 10, 24, 1, 10, 1, 10, 10, 1, 1, 1, 1, 24, 24, 10, 10, 10 ],
+	[ 1, 10, 1, 1, 24, 10, 24, 10, 1, 1, 1, 24, 1, 10, 1, 1 ],
+	[ 10, 1, 1, 1, 10, 1, 1, 1, 1, 10, 10, 1, 10, 24, 1, 1 ],
+	[ 1, 10, 1, 10, 10, 10, 1, 1, 24, 10, 10, 1, 24, 10, 10, 1 ],
+	[ 1, 1, 10, 10, 1, 1, 1, 10, 10, 1, 23, 1, 1, 1, 1, 1 ],
+	[ 10, 1, 1, 10, 1, 1, 10, 24, 24, 22, 1, 1, 1, 1, 10, 10 ],
+	[ 1, 10, 1, 10, 10, 10, 10, 10, 10, 10, 1, 10, 10, 10, 1, 24 ],
+	[ 10, 24, 1, 10, 1, 1, 1, 10, 10, 1, 1, 1, 1, 10, 1, 10 ],
+	[ 1, 1, 1, 1, 10, 1, 10, 10, 10, 1, 1, 1, 1, 1, 10, 1 ],
+	[ 1, 1, 1, 1, 1, 1, 1, 10, 1, 1, 10, 1, 1, 10, 1, 1 ],
+	[ 1, 1, 1, 22, 1, 24, 1, 10, 10, 24, 1, 10, 10, 10, 1, 10 ],
+	[ 10, 1, 10, 10, 1, 10, 1, 1, 10, 1, 1, 10, 1, 1, 10, 1 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64608,
+		"y": -20640,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64800,
+		"y": -20608,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64736,
+		"y": -20864,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64640,
+		"y": -20960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -65024,
+		"y": -20640,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64928,
+		"y": -20736,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64576,
+		"y": -20736,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64960,
+		"y": -20960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64608,
+		"y": -20512,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64928,
+		"y": -20832,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64736,
+		"y": -20736,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64864,
+		"y": -20992,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64832,
+		"y": -20512,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -65024,
+		"y": -20864,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64768,
+		"y": -20960,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64832,
+		"y": -20800,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -65024,
+		"y": -20512,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64640,
+		"y": -20832,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -65024,
+		"y": -20736,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64960,
+		"y": -20544,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64544,
+		"y": -20608,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -64768,
+		"y": -20512,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

@@ -1,0 +1,7 @@
+{
+username: Player
+x: 800
+y: 800
+direction: 1
+inventoryItemNames: []
+}

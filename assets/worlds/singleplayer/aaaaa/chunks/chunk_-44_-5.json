@@ -1,0 +1,64 @@
+{
+"x": -44,
+"y": -5,
+"biomeType": "RUINS",
+"tileData": [
+	[ 1, 1, 1, 1, 56, 56, 56, 56, 56, 56, 53, 56, 56, 56, 55, 54 ],
+	[ 1, 10, 10, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56, 53, 54, 56 ],
+	[ 24, 1, 1, 54, 56, 56, 56, 54, 55, 56, 56, 53, 56, 56, 56, 56 ],
+	[ 10, 1, 1, 56, 56, 56, 56, 56, 56, 54, 56, 56, 56, 56, 53, 56 ],
+	[ 1, 10, 10, 1, 55, 56, 56, 56, 56, 55, 56, 56, 54, 56, 56, 56 ],
+	[ 10, 24, 10, 56, 24, 56, 56, 56, 55, 56, 56, 54, 54, 56, 54, 56 ],
+	[ 1, 1, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56 ],
+	[ 10, 1, 56, 56, 56, 56, 53, 56, 56, 55, 56, 56, 56, 56, 56, 54 ],
+	[ 24, 1, 56, 56, 55, 55, 53, 53, 54, 56, 56, 56, 56, 56, 56, 54 ],
+	[ 24, 1, 56, 56, 55, 56, 56, 56, 56, 56, 56, 53, 56, 54, 55, 56 ],
+	[ 1, 1, 56, 56, 56, 56, 54, 54, 56, 56, 55, 56, 56, 56, 56, 56 ],
+	[ 10, 10, 24, 55, 54, 54, 54, 56, 54, 53, 54, 56, 53, 56, 56, 56 ],
+	[ 1, 10, 10, 54, 55, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56, 56 ],
+	[ 22, 1, 1, 55, 55, 56, 56, 56, 53, 56, 55, 56, 56, 56, 56, 56 ],
+	[ 1, 10, 1, 10, 56, 54, 56, 56, 56, 55, 53, 56, 56, 54, 53, 56 ],
+	[ 1, 1, 10, 56, 56, 56, 56, 56, 56, 55, 56, 54, 56, 54, 56, 53 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22272,
+		"y": -2560,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22176,
+		"y": -2496,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22528,
+		"y": -2496,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22400,
+		"y": -2528,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22080,
+		"y": -2496,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -22144,
+		"y": -2560,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

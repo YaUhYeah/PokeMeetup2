@@ -1,0 +1,9 @@
+{
+  "serverIP": "0.0.0.0",
+  "tcpPort": 54555,
+  "maxPlayers": 100,
+  "dataDirectory": "assets/configs/",
+  "udpPort": 54556,
+  "serverName": "Pokemon Meetup Server",
+  "isDefault": true
+}

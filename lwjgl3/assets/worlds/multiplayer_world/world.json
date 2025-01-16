@@ -1,0 +1,21 @@
+{
+"name": "multiplayer_world",
+"lastPlayed": 1730102804781,
+"config": {
+	"seed": 1730102804781
+},
+"players": {
+	"yauhyeah": {
+		"username": "yauhyeah",
+		"direction": 1,
+		"inventoryItemNames": []
+	},
+	"etienne": {
+		"username": "etienne",
+		"x": 800,
+		"y": 800,
+		"direction": 1,
+		"inventoryItemNames": []
+	}
+}
+}

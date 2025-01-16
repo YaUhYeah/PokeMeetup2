@@ -1,0 +1,24 @@
+{
+"name": "fr",
+"lastPlayed": 1730368305992,
+"config": {
+	"seed": 1730362734346,
+	"treeSpawnRate": 0.15,
+	"pokemonSpawnRate": 0.05
+},
+"players": {
+	"Player": {
+		"class": "io.github.pokemeetup.system.PlayerData",
+		"username": "Player",
+		"x": 0,
+		"y": 0,
+		"direction": "down",
+		"isMoving": false,
+		"wantsToRun": false,
+		"inventoryItems": [],
+		"hotbarItems": [],
+		"isDirty": false
+	}
+},
+"entities": {}
+}

@@ -1,0 +1,160 @@
+{
+"x": 9,
+"y": -36,
+"biomeType": "RUINS",
+"tileData": [
+	[ 56, 56, 56, 54, 54, 56, 56, 56, 55, 55, 56, 56, 56, 56, 56, 54 ],
+	[ 56, 56, 56, 56, 56, 54, 56, 56, 56, 54, 56, 53, 56, 56, 56, 54 ],
+	[ 56, 55, 56, 54, 54, 56, 56, 56, 56, 53, 55, 53, 56, 56, 56, 54 ],
+	[ 54, 56, 56, 54, 56, 56, 56, 56, 56, 56, 54, 56, 56, 56, 56, 53 ],
+	[ 56, 54, 56, 56, 53, 56, 56, 56, 54, 54, 56, 54, 56, 56, 56, 56 ],
+	[ 55, 56, 56, 53, 56, 56, 56, 56, 56, 56, 54, 56, 53, 56, 56, 56 ],
+	[ 53, 56, 56, 56, 56, 54, 56, 56, 56, 56, 55, 55, 53, 54, 56, 56 ],
+	[ 56, 56, 56, 55, 56, 55, 54, 56, 54, 56, 56, 56, 54, 56, 56, 56 ],
+	[ 56, 56, 56, 56, 56, 54, 56, 56, 56, 54, 56, 55, 56, 56, 53, 55 ],
+	[ 56, 54, 53, 56, 56, 56, 53, 56, 55, 56, 55, 54, 56, 54, 56, 56 ],
+	[ 56, 56, 55, 53, 56, 54, 53, 56, 56, 56, 53, 56, 54, 53, 54, 56 ],
+	[ 56, 55, 56, 56, 56, 56, 56, 54, 56, 56, 56, 56, 54, 56, 56, 56 ],
+	[ 56, 53, 56, 54, 54, 56, 56, 56, 56, 56, 54, 56, 54, 56, 56, 53 ],
+	[ 56, 56, 53, 56, 56, 56, 55, 53, 56, 56, 54, 56, 56, 54, 56, 56 ],
+	[ 56, 56, 56, 56, 53, 55, 56, 56, 56, 56, 56, 54, 54, 56, 56, 54 ],
+	[ 56, 55, 54, 54, 56, 56, 56, 56, 56, 56, 54, 56, 56, 56, 53, 55 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 5088,
+		"y": -18240,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4736,
+		"y": -18272,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4864,
+		"y": -18208,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4864,
+		"y": -18048,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4864,
+		"y": -18400,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4896,
+		"y": -18304,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 5024,
+		"y": -17952,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 5024,
+		"y": -18112,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4736,
+		"y": -17952,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 5088,
+		"y": -18432,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4640,
+		"y": -18080,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4640,
+		"y": -18208,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4768,
+		"y": -18400,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4672,
+		"y": -18400,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4736,
+		"y": -18080,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 5024,
+		"y": -18336,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4992,
+		"y": -18208,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4832,
+		"y": -17952,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4768,
+		"y": -18176,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4608,
+		"y": -18304,
+		"type": "RUINS_TREE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 5088,
+		"y": -18048,
+		"type": "RUIN_POLE"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": 4928,
+		"y": -17984,
+		"type": "RUIN_POLE"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}

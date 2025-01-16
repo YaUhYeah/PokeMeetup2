@@ -1,0 +1,70 @@
+{
+"x": -8,
+"y": -87,
+"biomeType": "HAUNTED",
+"tileData": [
+	[ 1, 10, 1, 10, 1, 1, 10, 1, 10, 1, 1, 24, 10, 1, 10, 10 ],
+	[ 10, 1, 1, 24, 1, 10, 8, 1, 1, 7, 5, 1, 7, 10, 10, 1 ],
+	[ 1, 1, 5, 10, 7, 5, 10, 1, 1, 1, 1, 5, 1, 1, 1, 1 ],
+	[ 1, 1, 1, 1, 7, 10, 10, 1, 5, 5, 5, 5, 5, 5, 5, 1 ],
+	[ 7, 5, 8, 5, 5, 5, 5, 9, 7, 1, 7, 5, 7, 5, 5, 7 ],
+	[ 8, 5, 5, 5, 5, 7, 9, 5, 5, 5, 5, 5, 5, 7, 7, 5 ],
+	[ 5, 5, 5, 5, 10, 7, 7, 8, 5, 5, 5, 1, 7, 8, 5, 7 ],
+	[ 7, 5, 5, 7, 7, 5, 1, 5, 5, 5, 5, 5, 7, 9, 8, 5 ],
+	[ 5, 5, 7, 5, 7, 5, 7, 5, 5, 7, 10, 9, 5, 1, 5, 5 ],
+	[ 5, 5, 7, 7, 7, 7, 5, 5, 1, 7, 9, 5, 5, 5, 5, 9 ],
+	[ 7, 7, 5, 5, 7, 5, 5, 7, 5, 5, 8, 7, 5, 5, 5, 7 ],
+	[ 5, 5, 5, 7, 5, 5, 9, 5, 5, 5, 5, 5, 5, 7, 10, 5 ],
+	[ 8, 5, 5, 5, 5, 9, 5, 5, 5, 7, 5, 5, 9, 9, 1, 7 ],
+	[ 5, 7, 5, 5, 9, 5, 8, 5, 5, 5, 5, 7, 7, 9, 5, 8 ],
+	[ 5, 5, 5, 8, 8, 7, 7, 5, 8, 5, 7, 5, 5, 8, 7, 5 ],
+	[ 7, 5, 7, 7, 5, 5, 7, 5, 5, 7, 7, 7, 5, 5, 5, 5 ]
+],
+"objects": [
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -3872,
+		"y": -44352,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -4064,
+		"y": -44192,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -4000,
+		"y": -44384,
+		"type": "TREE_0"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -4032,
+		"y": -44096,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -4032,
+		"y": -44512,
+		"type": "TREE_1"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -4096,
+		"y": -44288,
+		"type": "SUNFLOWER"
+	},
+	{
+		"class": "io.github.pokemeetup.system.gameplay.overworld.World$WorldObjectData",
+		"x": -4032,
+		"y": -44256,
+		"type": "POKEBALL"
+	}
+],
+"blocks": [],
+"lastModified": 0,
+"isMultiplayer": false
+}
