@@ -39,9 +39,6 @@ public class FileStorage implements StorageSystem {
         GameLogger.info("Initializing multiplayer storage at: " + baseDir);
     }
 
-    public void setServerSeed(long seed) {
-        this.serverSeed = seed;
-    }
 
     private void createWorldBackup(String worldName) {
         try {
@@ -95,39 +92,28 @@ public class FileStorage implements StorageSystem {
                 }
             }
         }
-    }// In FileStorage.java, modify savePlayerData:
+    }
     @Override
     public void savePlayerData(String username, PlayerData data) throws IOException {
         try {
             if (data != null) {
-                // Validate and ensure coordinates are in tile format
+                // Always ensure clean data copy for server storage
                 PlayerData saveData = data.copy();
-
-                // Always ensure coordinates are in tile format
-                if (data.getX() > World.TILE_SIZE) { // If in pixel format
-                    saveData.setX(data.getX() / World.TILE_SIZE);
-                    saveData.setY(data.getY() / World.TILE_SIZE);
-                }
-
-                // Ensure we copy all inventory and pokemon data
-                saveData.setInventoryItems(new ArrayList<>(data.getInventoryItems()));
-                saveData.setPartyPokemon(new ArrayList<>(data.getPartyPokemon()));
-
-                // Validate before saving
                 saveData.validateAndRepairState();
 
+                // Store in server's file system
                 Path file = playersDir.resolve(username + ".json");
                 String jsonData = json.prettyPrint(saveData);
                 Files.write(file, jsonData.getBytes(),
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING);
 
+                // Update cache
                 playerCache.put(username, saveData);
-                GameLogger.info("Saved player data with inventory size: " +
-                    (saveData.getInventoryItems() != null ? saveData.getInventoryItems().size() : 0));
+                GameLogger.info("Server saved player data for: " + username);
             }
         } catch (Exception e) {
-            GameLogger.error("Failed to save player data: " + username + " - " + e.getMessage());
+            GameLogger.error("Server failed to save player data: " + username);
             throw e;
         }
     }
@@ -191,8 +177,6 @@ public class FileStorage implements StorageSystem {
                 StandardOpenOption.TRUNCATE_EXISTING);
             worldCache.put(worldName, data);
 
-            GameLogger.info("Saved multiplayer world: " + worldName +
-                " with seed: " + serverSeed);
 
         } catch (Exception e) {
             GameLogger.error("Failed to save world: " + worldName + " - " + e.getMessage());

@@ -357,7 +357,7 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
 
                 Chunk chunk = player.getWorld().getChunks().get(chunkPos);
                 if (chunk != null) {
-                    player.getWorld().saveChunkData(chunkPos, chunk, false);
+                    player.getWorld().saveChunkData(chunkPos, chunk);
                 }
             }
         }

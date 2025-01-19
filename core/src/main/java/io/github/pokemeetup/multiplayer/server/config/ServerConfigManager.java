@@ -94,7 +94,7 @@ public class ServerConfigManager {
 
     private void addDefaultServer() {
         servers.add(new ServerConnectionConfig(
-            "103.6.171.157",
+            "170.64.156.89",
             54555,
             54556,
             "Local Server",

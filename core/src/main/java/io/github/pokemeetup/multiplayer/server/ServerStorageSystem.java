@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerStorageSystem {
     private static final String SERVER_BASE_DIR = "server/";
-    private static final String SERVER_WORLD_DIR = SERVER_BASE_DIR + "worlds/";
+    public static final String SERVER_WORLD_DIR = SERVER_BASE_DIR + "worlds/";
     private final Json json;
     private final Map<String, WorldData> worldCache;
     private final GameFileSystem fs;
@@ -30,6 +30,16 @@ public class ServerStorageSystem {
         this.fs = GameFileSystem.getInstance();
         this.playerDataManager = new PlayerDataManager();
         initializeDirectories();
+    }
+
+    public boolean worldExists(String name) {
+        try {
+            String worldPath = SERVER_WORLD_DIR + name + "/world.json";
+            return fs.exists(worldPath);
+        } catch (Exception e) {
+            GameLogger.error("Error checking world existence: " + e.getMessage());
+            return false;
+        }
     }
 
     private void initializeDirectories() {
@@ -108,9 +118,14 @@ public class ServerStorageSystem {
         }
     }
 
+    public void savePlayerData(String username, PlayerData data) {
+        UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
+        playerDataManager.savePlayerData(playerUUID, data);
+    }
 
-    public void savePlayerData(UUID uuid, PlayerData playerData) {
-        playerDataManager.savePlayerData(uuid, playerData);
+    public PlayerData loadPlayerData(String username) {
+        UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
+        return playerDataManager.loadPlayerData(playerUUID);
     }
 
     public Map<String, WorldData> getAllWorlds() {
@@ -129,15 +144,12 @@ public class ServerStorageSystem {
         return worlds;
     }
 
-    public PlayerData loadPlayerData(UUID uuid) {
-        return playerDataManager.loadPlayerData(uuid);
-    }
 
     public void deletePlayerData(UUID uuid) {
         playerDataManager.deletePlayerData(uuid);
     }
 
-    private void createWorldBackup(WorldData world) {
+    public void createWorldBackup(WorldData world) {
         try {
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
             String backupDir = SERVER_WORLD_DIR + world.getName() + "/backups/";
@@ -155,7 +167,6 @@ public class ServerStorageSystem {
             GameLogger.error("Failed to create world backup: " + e.getMessage());
         }
     }
-
 
 
     public void deleteWorld(String name) {

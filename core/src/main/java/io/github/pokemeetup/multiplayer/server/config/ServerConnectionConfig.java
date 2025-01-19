@@ -63,7 +63,7 @@ public class ServerConnectionConfig {
             synchronized (ServerConnectionConfig.class) {
                 if (instance == null) {
                     instance = new ServerConnectionConfig(
-                        "103.6.171.157",
+                        "170.64.156.89",
                         54555,
                         54556,
                         "Default Server",

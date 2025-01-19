@@ -8,14 +8,16 @@ import com.badlogic.gdx.assets.loaders.TextureAtlasLoader;
 import com.badlogic.gdx.assets.loaders.resolvers.InternalFileHandleResolver;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.scenes.scene2d.Stage;
 import io.github.pokemeetup.audio.AudioManager;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.server.GameStateHandler;
-import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.pokemon.data.PokemonDatabase;
@@ -37,9 +39,6 @@ import java.util.Map;
 
 public class CreatureCaptureGame extends Game implements GameStateHandler {
     public static final String MULTIPLAYER_WORLD_NAME = "multiplayer_world";
-    public static final long MULTIPLAYER_WORLD_SEED = System.currentTimeMillis();
-    private boolean isMultiplayerMode = false;
-    private WorldManager worldManager;
     private GameClient gameClient;
     private BiomeManager biomeManager;
     private Player player;
@@ -59,11 +58,12 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     }
 
     public boolean isMultiplayerMode() {
-        return isMultiplayerMode;
+        return false;
     }
 
     @Override
     public void create() {
+
 
         assetManager = new AssetManager();
         queueAssets();
@@ -71,43 +71,44 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         assetManager.finishLoading();
         initializeManagers();
 
+
         setScreen(new ModeSelectionScreen(this));
 
         GameLogger.info("Game initialization complete");
     }
 
 
-
     public void saveAndDispose() {
         try {
             GameLogger.info("Starting game state save...");
-
-            if (currentWorld != null) {
+            if (!GameContext.get().getGameClient().isSinglePlayer()){
+                return;
+            }
+            if (GameContext.get().getWorld() != null) {
                 // Ensure all chunks are saved first
-                for (Map.Entry<Vector2, Chunk> entry : currentWorld.getChunks().entrySet()) {
+                for (Map.Entry<Vector2, Chunk> entry : GameContext.get().getWorld().getChunks().entrySet()) {
                     try {
                         Vector2 chunkPos = entry.getKey();
                         Chunk chunk = entry.getValue();
-                        currentWorld.saveChunkData(chunkPos, chunk, isMultiplayerMode);
-                        GameLogger.info("Saved chunk at " + chunkPos);
+                        GameContext.get().getWorld().saveChunkData(chunkPos, chunk);
                     } catch (Exception e) {
                         GameLogger.error("Failed to save chunk: " + e.getMessage());
                     }
                 }
 
                 // Save world data after all chunks are saved
-                World world = currentWorld;
+                World world = GameContext.get().getWorld();
                 WorldData worldData = world.getWorldData();
 
                 // Update player data if needed
-                if (player != null) {
-                    PlayerData currentState = new PlayerData(player.getUsername());
-                    currentState.updateFromPlayer(player);
-                    worldData.savePlayerData(player.getUsername(), currentState,false);
+                if (GameContext.get().getPlayer() != null) {
+                    PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
+                    currentState.updateFromPlayer(GameContext.get().getPlayer());
+                    worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
                 }
 
                 // Force one final save
-                worldManager.saveWorld(worldData);
+                GameContext.get().getWorldManager().saveWorld(worldData);
 
                 // Verify the save
                 FileHandle worldFile = Gdx.files.local("worlds/singleplayer/" + world.getName() + "/world.json");
@@ -116,29 +117,23 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 } else {
                     GameLogger.info("Final world save successful");
                 }
-
-                // Clean up
-                currentWorld.dispose();
+                GameContext.get().getWorld().dispose();
                 GameLogger.info("World disposed successfully");
             }
 
-            // Clean up resources but don't dispose asset manager
             cleanupCurrentWorld();
 
         } catch (Exception e) {
             GameLogger.error("Error during game state save: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
 
-    // Add this new method to reinitialize the world
     public void reinitializeGame() {
         try {
-            // Create fresh managers
-            this.worldManager = WorldManager.getInstance(new ServerStorageSystem(), isMultiplayerMode);
+         GameContext.get().setWorldManager(WorldManager.getInstance());
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
-            this.worldManager.init();
+            GameContext.get().getWorldManager().init();
 
             GameLogger.info("Game state reinitialized");
         } catch (Exception e) {
@@ -170,49 +165,49 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         } catch (Exception e) {
             GameLogger.error("Error during shutdown: " + e.getMessage());
         }
-    }public void cleanupCurrentWorld() {
+    }
+
+    public void cleanupCurrentWorld() {
         try {
             GameLogger.info("Cleaning up current world state...");
 
             // Save current world if exists
-            if (currentWorld != null) {
+            if (GameContext.get().getWorld() != null) {
                 // Validate world data before saving
-                if (currentWorld.getWorldData() == null) {
+                if (GameContext.get().getWorld().getWorldData() == null) {
                     GameLogger.error("World data is null - creating new");
-                    WorldData newData = new WorldData(currentWorld.getName());
-                    currentWorld.setWorldData(newData);
+                    WorldData newData = new WorldData(GameContext.get().getWorld().getName());
+                    GameContext.get().getWorld().setWorldData(newData);
                 }
 
                 // Ensure player data is saved to world
-                if (player != null) {
-                    PlayerData currentState = player.getPlayerData();
-                    currentWorld.getWorldData().savePlayerData(player.getUsername(), currentState,false);
-                    GameLogger.info("Saved player data for: " + player.getUsername());
+                if (GameContext.get().getPlayer() != null) {
+                    PlayerData currentState = GameContext.get().getPlayer().getPlayerData();
+                    GameContext.get().getWorld().getWorldData().savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
+                    GameLogger.info("Saved player data for: " + GameContext.get().getPlayer().getUsername());
                 }
 
                 // Force a final save
-                currentWorld.save();
+                GameContext.get().getWorld().save();
 
                 // Validate save was successful
                 FileHandle worldFile = Gdx.files.local("worlds/singleplayer/" +
-                    currentWorld.getName() + "/world.json");
+                    GameContext.get().getWorld().getName() + "/world.json");
                 if (!worldFile.exists()) {
                     GameLogger.error("World file not created after save");
                 }
 
                 // Clean up world resources
-                currentWorld.dispose();
-                currentWorld = null;
+                GameContext.get().getWorld().dispose();
+                GameContext.get().setWorld(null);
             }
 
             // Clean up player
-            if (player != null) {
-                player.dispose();
-                player = null;
+            if (GameContext.get().getPlayer() != null) {
+                GameContext.get().getPlayer().dispose();
+                GameContext.get().setPlayer(null);
             }
 
-            // Reset game state
-            isMultiplayerMode = false;
 
             GameLogger.info("World state cleaned up successfully");
 
@@ -249,37 +244,31 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             }
         } catch (Exception e) {
             GameLogger.error("Error during disposal: " + e.getMessage());
-            e.printStackTrace();
         }
-    }
-
-    public World getCurrentWorld() {
-        return currentWorld;
     }
 
     public void initializeWorld(String worldName, boolean isMultiplayer) throws IOException {
         GameLogger.info("Starting world initialization: " + worldName);
-        this.isMultiplayerMode = isMultiplayer;
 
         try {
-            if (gameClient == null) {
+            if (GameContext.get().getGameClient() == null) {
                 if (isMultiplayer) {
                     ServerConnectionConfig config = ServerConfigManager.getDefaultServerConfig();
-                    gameClient = GameClientSingleton.getInstance(config);
+                    GameContext.get().setGameClient(GameClientSingleton.getInstance(config));
                 } else {
-                    gameClient = GameClientSingleton.getSinglePlayerInstance();
+                    GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance());
                 }
 
-                if (gameClient == null) {
+                if (GameContext.get().getGameClient() == null) {
                     throw new IllegalStateException("Failed to initialize GameClient");
                 }
             }
-            WorldData worldData = worldManager.loadAndValidateWorld(worldName);
+            WorldData worldData = GameContext.get().getWorldManager().loadAndValidateWorld(worldName);
             if (worldData == null) {
                 GameLogger.error("Failed to load world data for: " + worldName);
                 throw new IOException("Failed to load world data");
             }
-            String username = isMultiplayer ? gameClient.getLocalUsername() : "Player";
+            String username = isMultiplayer ? GameContext.get().getGameClient().getLocalUsername() : "Player";
             PlayerData savedPlayerData = worldData.getPlayerData(username, false);
 
             if (savedPlayerData != null) {
@@ -290,27 +279,27 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             }
 
             // Initialize world
-            this.currentWorld = new World(worldName,
-                worldData.getConfig().getSeed(), gameClient, biomeManager);
-            this.currentWorld.setWorldData(worldData);
+            GameContext.get().setWorld(new World(worldName,
+                worldData.getConfig().getSeed(), biomeManager));
+            GameContext.get().getWorld().setWorldData(worldData);
 
             // Initialize player
             if (savedPlayerData != null) {
-                this.player = new Player((int) savedPlayerData.getX(),
-                    (int) savedPlayerData.getY(), currentWorld, username);
-                player.initializeResources();
-                savedPlayerData.applyToPlayer(player);
+                GameContext.get().setPlayer(new Player((int) savedPlayerData.getX(),
+                    (int) savedPlayerData.getY(), currentWorld, username));
+                GameContext.get().getPlayer().initializeResources();
+                savedPlayerData.applyToPlayer(GameContext.get().getPlayer());
                 GameLogger.info("Restored player state - Items: " +
-                    player.getInventory().getAllItems().size() +
-                    " Pokemon: " + player.getPokemonParty().getSize());
+                    GameContext.get().getPlayer().getInventory().getAllItems().size() +
+                    " Pokemon: " + GameContext.get().getPlayer().getPokemonParty().getSize());
             } else {
                 GameLogger.info("Creating new player at default position");
-                this.player = new Player(World.DEFAULT_X_POSITION,
-                    World.DEFAULT_Y_POSITION, currentWorld, username);
-                player.initializeResources();
+                GameContext.get().setPlayer(new Player(World.DEFAULT_X_POSITION,
+                    World.DEFAULT_Y_POSITION, currentWorld, username));
+                GameContext.get().getPlayer().initializeResources();
             }
 
-            currentWorld.setPlayer(player);
+            GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer());
             GameLogger.info("World initialization complete: " + worldName);
 
         } catch (Exception e) {
@@ -321,24 +310,24 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
     private void queueAssets() {
         String[] atlasFiles = {
-            "assets/atlas/ui-gfx-atlas.atlas",
-            "assets/atlas/back-gfx-atlas",
-            "assets/atlas/front-gfx-atlas",
-            "assets/atlas/boy-gfx-atlas",
-            "assets/atlas/tiles-gfx-atlas",
-            "assets/atlas/icon_gfx_atlas",
-            "assets/atlas/items-gfx-atlas",
-            "assets/atlas/overworld-gfx-atlas.atlas",
-            "assets/atlas/battlebacks-gfx-atlas",
-            "assets/atlas/move-effects-gfx",
-            "assets/atlas/haunted_biome.atlas",
-            "assets/atlas/mountain-atlas.atlas",
-            "assets/atlas/move_effects_gfx.atlas",
-            "assets/atlas/blocks.atlas",
-            "assets/atlas/characters.atlas",
-            "assets/atlas/clothing.atlas",
-            "assets/atlas/hairstyles.atlas",
-            "assets/atlas/buildings.atlas",
+            "atlas/ui-gfx-atlas.atlas",
+            "atlas/back-gfx-atlas",
+            "atlas/front-gfx-atlas",
+            "atlas/boy-gfx-atlas",
+            "atlas/tiles-gfx-atlas",
+            "atlas/icon_gfx_atlas",
+            "atlas/items-gfx-atlas",
+            "atlas/overworld-gfx-atlas.atlas",
+            "atlas/battlebacks-gfx-atlas",
+            "atlas/move-effects-gfx",
+            "atlas/haunted_biome.atlas",
+            "atlas/mountain-atlas.atlas",
+            "atlas/move_effects_gfx.atlas",
+            "atlas/blocks.atlas",
+            "atlas/characters.atlas",
+            "atlas/clothing.atlas",
+            "atlas/hairstyles.atlas",
+            "atlas/buildings.atlas",
         };
 
         for (String path : atlasFiles) {
@@ -348,9 +337,9 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
         // Verify required data files exist
         String[] dataFiles = {
-            "assets/Data/pokemon.json",
-            "assets/Data/biomes.json",
-            "assets/Data/moves.json"
+            "Data/pokemon.json",
+            "Data/biomes.json",
+            "Data/moves.json"
         };
         for (String dataFile : dataFiles) {
             verifyDataFileExists(dataFile);
@@ -419,24 +408,24 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         try {
 
             GameLogger.info("Initializing managers with loaded assets...");
-            TextureAtlas battleAtlas = assetManager.get("assets/atlas/battlebacks-gfx-atlas", TextureAtlas.class);
-            TextureAtlas uiAtlas = assetManager.get("assets/atlas/ui-gfx-atlas.atlas", TextureAtlas.class);
-            TextureAtlas backAtlas = assetManager.get("assets/atlas/back-gfx-atlas", TextureAtlas.class);
-            TextureAtlas frontAtlas = assetManager.get("assets/atlas/front-gfx-atlas", TextureAtlas.class);
-            TextureAtlas iconAtlas = assetManager.get("assets/atlas/icon_gfx_atlas", TextureAtlas.class);
-            TextureAtlas overworldAtlas = assetManager.get("assets/atlas/overworld-gfx-atlas.atlas", TextureAtlas.class);
-            TextureAtlas itemsAtlas = assetManager.get("assets/atlas/items-gfx-atlas", TextureAtlas.class);
-            TextureAtlas boyAtlas = assetManager.get("assets/atlas/boy-gfx-atlas", TextureAtlas.class);
-            TextureAtlas effects = assetManager.get("assets/atlas/move_effects_gfx.atlas", TextureAtlas.class);
-            TextureAtlas mountains = assetManager.get("assets/atlas/mountain-atlas.atlas", TextureAtlas.class);
-            TextureAtlas tilesAtlas = assetManager.get("assets/atlas/tiles-gfx-atlas", TextureAtlas.class);
-            TextureAtlas blocks = assetManager.get("assets/atlas/blocks.atlas", TextureAtlas.class);
-            TextureAtlas clothing = assetManager.get("assets/atlas/clothing.atlas", TextureAtlas.class);
-            TextureAtlas buildings = assetManager.get("assets/atlas/buildings.atlas", TextureAtlas.class);
+            TextureAtlas battleAtlas = assetManager.get("atlas/battlebacks-gfx-atlas", TextureAtlas.class);
+            TextureAtlas uiAtlas = assetManager.get("atlas/ui-gfx-atlas.atlas", TextureAtlas.class);
+            TextureAtlas backAtlas = assetManager.get("atlas/back-gfx-atlas", TextureAtlas.class);
+            TextureAtlas frontAtlas = assetManager.get("atlas/front-gfx-atlas", TextureAtlas.class);
+            TextureAtlas iconAtlas = assetManager.get("atlas/icon_gfx_atlas", TextureAtlas.class);
+            TextureAtlas overworldAtlas = assetManager.get("atlas/overworld-gfx-atlas.atlas", TextureAtlas.class);
+            TextureAtlas itemsAtlas = assetManager.get("atlas/items-gfx-atlas", TextureAtlas.class);
+            TextureAtlas boyAtlas = assetManager.get("atlas/boy-gfx-atlas", TextureAtlas.class);
+            TextureAtlas effects = assetManager.get("atlas/move_effects_gfx.atlas", TextureAtlas.class);
+            TextureAtlas mountains = assetManager.get("atlas/mountain-atlas.atlas", TextureAtlas.class);
+            TextureAtlas tilesAtlas = assetManager.get("atlas/tiles-gfx-atlas", TextureAtlas.class);
+            TextureAtlas blocks = assetManager.get("atlas/blocks.atlas", TextureAtlas.class);
+            TextureAtlas clothing = assetManager.get("atlas/clothing.atlas", TextureAtlas.class);
+            TextureAtlas buildings = assetManager.get("atlas/buildings.atlas", TextureAtlas.class);
 
-            TextureAtlas characters = assetManager.get("assets/atlas/characters.atlas", TextureAtlas.class);
+            TextureAtlas characters = assetManager.get("atlas/characters.atlas", TextureAtlas.class);
 
-            TextureAtlas hairstyles = assetManager.get("assets/atlas/hairstyles.atlas", TextureAtlas.class);
+            TextureAtlas hairstyles = assetManager.get("atlas/hairstyles.atlas", TextureAtlas.class);
 
             TextureManager.debugAtlasState("Boy", boyAtlas);
 
@@ -455,7 +444,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 boyAtlas,
                 tilesAtlas,
                 effects,
-                mountains, blocks, characters, clothing, hairstyles,buildings
+                mountains, blocks, characters, clothing, hairstyles, buildings
 
             );
 
@@ -464,11 +453,14 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             ItemManager.initialize(TextureManager.items);
             AudioManager.getInstance();
 
-            ServerStorageSystem serverStorageSystem = new ServerStorageSystem();
+            SpriteBatch mainBatch = new SpriteBatch();
+            SpriteBatch uiBatch = new SpriteBatch();
+            Stage uiStage = new Stage();
+            Stage battleStage = new Stage();
+            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null,WorldManager.getInstance(), null);
 
-            this.worldManager = WorldManager.getInstance(serverStorageSystem, isMultiplayerMode);
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
-            this.worldManager.init();
+            GameContext.get().getWorldManager().init();
 
             GameLogger.info("Managers initialized successfully");
 
@@ -504,15 +496,12 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     }
 
     public Player getPlayer() {
-        return player;
+        return GameContext.get().getPlayer();
     }
 
-    public void setPlayer(Player player) {
-        this.player = player;
-    }
 
     public WorldManager getWorldManager() {
-        return worldManager;
+        return GameContext.get().getWorldManager();
     }
 }
 

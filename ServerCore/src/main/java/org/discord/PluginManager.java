@@ -23,11 +23,9 @@ public class PluginManager {
     private final Map<String, ServerPlugin> loadedPlugins = new ConcurrentHashMap<>();
     private final Map<String, PluginConfig> pluginConfigs = new ConcurrentHashMap<>();
     private final Path pluginsDir;
-    private final GameServer server;
     private final WorldData gameWorld;
 
-    public PluginManager(GameServer server, WorldData gameWorld) {
-        this.server = server;
+    public PluginManager(WorldData gameWorld) {
         this.gameWorld = gameWorld;
         this.pluginsDir = Paths.get("plugins");
         createPluginDirectory();

@@ -15,12 +15,10 @@ import io.github.pokemeetup.multiplayer.PlayerManager;
 import io.github.pokemeetup.multiplayer.ServerPlayer;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
+import io.github.pokemeetup.multiplayer.server.storage.FileStorage;
 import io.github.pokemeetup.system.data.BlockSaveData;
-import org.discord.handlers.PlayerDataHandler;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.multiplayer.server.events.EventManager;
-import io.github.pokemeetup.multiplayer.server.storage.FileStorage;
-import io.github.pokemeetup.multiplayer.server.storage.StorageSystem;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.PokemonData;
@@ -34,6 +32,7 @@ import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PasswordUtils;
 import io.github.pokemeetup.utils.textures.TextureManager;
+import org.discord.context.ServerGameContext;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -52,10 +51,10 @@ public class GameServer {
     private static final int SYNC_BATCH_SIZE = 10;
     private static final float SYNC_INTERVAL = 1 / 20f;
     private static final long SAVE_INTERVAL = 300000;
+    private static final long RECONNECT_COOLDOWN = 0; // 2 second cooldown
     private final ServerWorldObjectManager worldObjectManager;
     private final Server networkServer;
     private final ServerConnectionConfig config;
-    private final WorldManager worldManager;
     private final BiomeManager biomeManager;
     private final ServerStorageSystem storageSystem;
     private final EventManager eventManager;
@@ -66,14 +65,15 @@ public class GameServer {
     private final Queue<NetworkProtocol.PlayerUpdate> pendingUpdates = new ConcurrentLinkedQueue<>();
     private final Map<String, Integer> activeUserConnections = new ConcurrentHashMap<>();
     private final Map<String, ServerPlayer> activePlayers = new ConcurrentHashMap<>();
-    private PlayerDataHandler playerDataHandler;
+    private final Map<String, ConnectionInfo> activeConnections = new ConcurrentHashMap<>();
+    private final Map<String, Long> recentDisconnects = new ConcurrentHashMap<>();
     private PluginManager pluginManager = null;
     private WorldData worldData;
-
+    private FileStorage fileStorage;
     private ServerBlockManager blockManager;
-
     private volatile boolean running;
     private NetworkProtocol.ServerInfo serverInfo;
+
 
     public GameServer(ServerConnectionConfig config) {
         this.scheduler = Executors.newScheduledThreadPool(SCHEDULER_POOL_SIZE, r -> {
@@ -96,16 +96,13 @@ public class GameServer {
         this.eventManager = new EventManager();
         this.connectedPlayers = new ConcurrentHashMap<>();
         this.playerManager = new PlayerManager(storageSystem, eventManager);
-        this.worldManager =
-            WorldManager.getInstance(storageSystem, true);
 
 
         try {
             this.worldData = initializeMultiplayerWorld();
-            this.playerDataHandler = new PlayerDataHandler(storageSystem.getPlayerDataManager());
             this.blockManager = new ServerBlockManager();
             setupNetworkListener();
-            this.pluginManager = new PluginManager(this, worldData);
+            this.pluginManager = new PluginManager( worldData);
             this.biomeManager = new BiomeManager(worldData.getConfig().getSeed());
         } catch (Exception e) {
             GameLogger.error("Failed to initialize game world: " + e.getMessage());
@@ -116,16 +113,16 @@ public class GameServer {
     private WorldData initializeMultiplayerWorld() {
         try {
             // Load or create WorldData
-            WorldData worldData = worldManager.getWorld(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
+            WorldData worldData = ServerGameContext.get().getWorldManager().getWorld(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
             if (worldData == null) {
                 // Create new WorldData
-                worldData = worldManager.createWorld(
+                worldData = ServerGameContext.get().getWorldManager().createWorld(
                     CreatureCaptureGame.MULTIPLAYER_WORLD_NAME,
                     System.currentTimeMillis(),
                     0.15f,
                     0.05f
                 );
-                worldManager.saveWorld(worldData);
+                ServerGameContext.get().getWorldManager().saveWorld(worldData);
             }
 
             return worldData;
@@ -161,6 +158,86 @@ public class GameServer {
         }, 0, (long) (SYNC_INTERVAL * 1000), TimeUnit.MILLISECONDS);
     }
 
+    private void handleDisconnect(Connection connection) {
+        String username = connectedPlayers.get(connection.getID());
+        if (username != null) {
+            GameLogger.info("Handling disconnect for user: " + username);
+
+            synchronized (activeConnections) {
+                // Track disconnect time
+                recentDisconnects.put(username, System.currentTimeMillis());
+
+                // Clean up connection tracking
+                activeConnections.remove(username);
+                cleanupPlayerSession(connection.getID(), username);
+
+                // Schedule disconnect broadcast with delay
+                scheduler.schedule(() -> {
+                    try {
+                        NetworkProtocol.PlayerLeft leftMessage = new NetworkProtocol.PlayerLeft();
+                        leftMessage.username = username;
+                        leftMessage.timestamp = System.currentTimeMillis();
+                        networkServer.sendToAllTCP(leftMessage);
+                        GameLogger.info("Broadcast disconnect for: " + username);
+                    } catch (Exception e) {
+                        GameLogger.error("Failed to broadcast disconnect: " + e.getMessage());
+                    }
+                }, 500, TimeUnit.MILLISECONDS);
+
+                GameLogger.info("Player disconnected: " + username);
+            }
+        }
+    }
+
+    // Clean up old disconnects periodically
+    private void scheduleCleanup() {
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                long now = System.currentTimeMillis();
+                recentDisconnects.entrySet().removeIf(entry ->
+                    now - entry.getValue() > RECONNECT_COOLDOWN);
+            } catch (Exception e) {
+                GameLogger.error("Cleanup error: " + e.getMessage());
+            }
+        }, 0, 5, TimeUnit.SECONDS);
+    }
+
+    public void shutdown() {
+        try {
+            NetworkProtocol.ServerShutdown shutdownMsg = new NetworkProtocol.ServerShutdown();
+            shutdownMsg.reason = "Server is shutting down";
+            networkServer.sendToAllTCP(shutdownMsg);
+
+            // Wait briefly for messages to be sent
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            // Proceed with shutdown
+            stop();
+            // Shut down network server
+            networkServer.stop();
+
+            // Shut down scheduler
+            if (scheduler != null) {
+                scheduler.shutdown();
+                try {
+                    if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                        scheduler.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    scheduler.shutdownNow();
+                }
+            }
+
+            GameLogger.info("Server shutdown complete");
+        } catch (Exception e) {
+            GameLogger.error("Error during shutdown: " + e.getMessage());
+        }
+    }
+
     private void handleServerInfoRequest(Connection connection, NetworkProtocol.ServerInfoRequest request) {
         try {
             NetworkProtocol.ServerInfoResponse response = new NetworkProtocol.ServerInfoResponse();
@@ -174,95 +251,6 @@ public class GameServer {
         }
     }
 
-    private void handleLoginRequest(Connection connection, NetworkProtocol.LoginRequest request) {
-        try {
-            GameLogger.info("Processing login request for: " + request.username);
-
-            // Validate credentials
-            if (!authenticateUser(request.username, request.password)) {
-                sendLoginFailure(connection, "Invalid credentials");
-                return;
-            }
-
-            synchronized (activeUserConnections) {
-                Integer existingConnectionId = activeUserConnections.get(request.username);
-                if (existingConnectionId != null) {
-                    Connection existingConnection = findConnection(existingConnectionId);
-                    if (existingConnection != null && existingConnection.isConnected()) {
-                        // Notify existing connection of disconnection
-                        NetworkProtocol.ForceDisconnect forceDisconnect = new NetworkProtocol.ForceDisconnect();
-                        forceDisconnect.reason = "Logged in from another location";
-                        existingConnection.sendTCP(forceDisconnect);
-
-                        // Allow time for the message to be sent
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-
-                        // Close the existing connection
-                        existingConnection.close();
-
-                        // Clean up existing session
-                        cleanupPlayerSession(existingConnectionId, request.username);
-
-                        // Delay to prevent rapid reconnections
-                        try {
-                            Thread.sleep(500);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                    }
-                }
-
-                // Create new session
-                ServerPlayer player = playerManager.createOrLoadPlayer(request.username);
-                if (player == null) {
-                    sendLoginFailure(connection, "Failed to initialize player data");
-                    return;
-                }
-
-                // Register new connection
-                activeUserConnections.put(request.username, connection.getID());
-                activePlayers.put(request.username, player);
-                connectedPlayers.put(connection.getID(), request.username);
-
-                // Send successful login response
-                sendSuccessfulLoginResponse(connection, player);
-
-                // Broadcast join to other players
-                broadcastPlayerJoin(connection, player);
-
-                GameLogger.info("Login successful for: " + request.username);
-            }
-
-        } catch (Exception e) {
-            GameLogger.error("Login error: " + e.getMessage());
-            sendLoginFailure(connection, "Server error occurred");
-        }
-    }
-
-
-    private void handleDisconnect(Connection connection) {
-        String username = connectedPlayers.get(connection.getID());
-        if (username != null) {
-            GameLogger.info("Handling disconnect for user: " + username);
-            cleanupPlayerSession(connection.getID(), username);
-
-            // Broadcast disconnect to other players
-            NetworkProtocol.PlayerLeft leftMessage = new NetworkProtocol.PlayerLeft();
-            leftMessage.username = username;
-            leftMessage.timestamp = System.currentTimeMillis();
-            networkServer.sendToAllTCP(leftMessage);
-
-            GameLogger.info("Player disconnected: " + username);
-        } else {
-            GameLogger.error("Disconnected Connection " + connection.getID() + " had no associated user.");
-        }
-    }
-
-
     private void cleanupPlayerSession(int connectionId, String username) {
         synchronized (activeUserConnections) {
             activeUserConnections.remove(username);
@@ -273,14 +261,13 @@ public class GameServer {
                 try {
                     // Save player state before cleanup
                     PlayerData finalState = player.getData();
-                    storageSystem.savePlayerData(player.getUUID(), finalState);
+                    storageSystem.savePlayerData(finalState.getUsername(),finalState);
                 } catch (Exception e) {
                     GameLogger.error("Error saving player state during cleanup: " + e.getMessage());
                 }
             }
         }
     }
-
 
     private void sendSuccessfulLoginResponse(Connection connection, ServerPlayer player) {
         NetworkProtocol.LoginResponse response = new NetworkProtocol.LoginResponse();
@@ -349,7 +336,7 @@ public class GameServer {
                 ServerPlayer player = playerManager.getPlayer(username);
                 if (player != null) {
                     try {
-                        storageSystem.savePlayerData(player.getUUID(), player.getData());
+                        storageSystem.savePlayerData(player.getUsername(), player.getData());
                         GameLogger.info("Saved player data for " + username + " on disconnect");
                     } catch (Exception e) {
                         GameLogger.error("Error saving player data for " + username + ": " + e.getMessage());
@@ -373,7 +360,6 @@ public class GameServer {
             }
         }
     }
-
 
     private void handlePlayerUpdate(Connection connection, NetworkProtocol.PlayerUpdate update) {
         try {
@@ -402,7 +388,7 @@ public class GameServer {
             }
 
             // Save using storageSystem
-            storageSystem.savePlayerData(player.getUUID(), playerData);
+            storageSystem.savePlayerData(player.getUsername(), playerData);
 
             // Broadcast update with running state
             networkServer.sendToAllTCP(update);
@@ -412,10 +398,9 @@ public class GameServer {
         }
     }
 
-
     private void handlePokemonSpawn(Connection connection, NetworkProtocol.WildPokemonSpawn spawnRequest) {
         try {
-            WorldData world = worldManager.getCurrentWorld();
+            WorldData world = ServerGameContext.get().getWorldManager().getWorld(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
             if (world == null) {
                 GameLogger.error("Cannot spawn Pokemon: World is null");
                 return;
@@ -459,7 +444,7 @@ public class GameServer {
             return false;
         }
 
-        WorldData world = worldManager.getCurrentWorld();
+        WorldData world = ServerGameContext.get().getWorldManager().getWorld(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
         if (world == null) return false;
 
         return true;
@@ -529,9 +514,77 @@ public class GameServer {
         return PasswordUtils.verifyPassword(password, storedHash);
     }
 
+    private void handleLoginRequest(Connection connection, NetworkProtocol.LoginRequest request) {
+        try {
+            GameLogger.info("Processing login request for: " + request.username);
 
-    public PlayerManager getPlayerManager() {
-        return playerManager;
+            // Check for recent disconnect cooldown
+            Long lastDisconnect = recentDisconnects.get(request.username);
+            if (lastDisconnect != null &&
+                System.currentTimeMillis() - lastDisconnect < RECONNECT_COOLDOWN) {
+                sendLoginFailure(connection, "Please wait before reconnecting");
+                return;
+            }
+
+            // Validate credentials
+            if (!authenticateUser(request.username, request.password)) {
+                sendLoginFailure(connection, "Invalid credentials");
+                return;
+            }
+
+            synchronized (activeConnections) {
+                // Check for existing connection
+                ConnectionInfo existingConnection = activeConnections.get(request.username);
+                if (existingConnection != null) {
+                    // Handle existing connection
+                    Connection oldConnection = findConnection(existingConnection.connectionId);
+                    if (oldConnection != null && oldConnection.isConnected()) {
+                        // Force disconnect old connection
+                        NetworkProtocol.ForceDisconnect forceDisconnect = new NetworkProtocol.ForceDisconnect();
+                        forceDisconnect.reason = "Logged in from another location";
+                        oldConnection.sendTCP(forceDisconnect);
+
+                        // Wait for disconnect to process
+                        Thread.sleep(100);
+                        oldConnection.close();
+
+                        // Clean up old session
+                        cleanupPlayerSession(existingConnection.connectionId, request.username);
+                        Thread.sleep(500); // Delay to prevent race conditions
+                    }
+                }
+
+                // Create new session
+                ConnectionInfo newConnection = new ConnectionInfo(connection.getID());
+                activeConnections.put(request.username, newConnection);
+
+                ServerPlayer player = playerManager.createOrLoadPlayer(request.username);
+                if (player == null) {
+                    sendLoginFailure(connection, "Failed to initialize player data");
+                    return;
+                }
+
+                // Register new connection
+                activePlayers.put(request.username, player);
+                connectedPlayers.put(connection.getID(), request.username);
+                newConnection.isAuthenticated = true;
+
+                // Send successful login response
+                sendSuccessfulLoginResponse(connection, player);
+
+                // Broadcast join only if not recently reconnected
+                if (lastDisconnect == null ||
+                    System.currentTimeMillis() - lastDisconnect > RECONNECT_COOLDOWN) {
+                    broadcastPlayerJoin(connection, player);
+                }
+
+                GameLogger.info("Login successful for: " + request.username);
+            }
+
+        } catch (Exception e) {
+            GameLogger.error("Login error: " + e.getMessage());
+            sendLoginFailure(connection, "Server error occurred");
+        }
     }
 
     private void setupNetworkListener() {
@@ -572,11 +625,18 @@ public class GameServer {
 
             @Override
             public void received(Connection connection, Object object) {
-                GameLogger.error("Received message from Connection " + connection.getID() + ": " + object.getClass().getSimpleName());
                 try {
                     if (object instanceof FrameworkMessage) {
                         // Ignore KryoNet's internal messages
                         return;
+                    }
+                    if (object instanceof NetworkProtocol.WorldObjectUpdate) {
+                        NetworkProtocol.WorldObjectUpdate update = (NetworkProtocol.WorldObjectUpdate) object;
+                        // Validate object data
+                        if (update.data == null || update.data.isEmpty()) {
+                            GameLogger.error("Invalid WorldObjectUpdate received - empty data");
+                            return;
+                        }
                     }
 
                     if (object instanceof NetworkProtocol.LoginRequest) {
@@ -617,13 +677,12 @@ public class GameServer {
         });
     }
 
-
     private void initializePeriodicTasks() {
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 // Save world data periodically
                 if (worldData != null) {
-                    worldManager.saveWorld(worldData);
+                    ServerGameContext.get().getWorldManager().saveWorld(worldData);
                     GameLogger.info("World data saved periodically.");
                 }
             } catch (Exception e) {
@@ -640,10 +699,10 @@ public class GameServer {
                 ServerPlayer player = playerManager.getPlayer(username);
                 if (player != null) {
                     PlayerData finalState = player.getData();
-                    WorldData worldData = worldManager.getCurrentWorld();
+                    WorldData worldData = ServerGameContext.get().getWorldManager().getWorld(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
                     if (worldData != null) {
                         worldData.savePlayerData(username, finalState, true);
-                        worldManager.saveWorld(worldData);
+                        ServerGameContext.get().getWorldManager().saveWorld(worldData);
                     }
                 }
 
@@ -765,7 +824,6 @@ public class GameServer {
 
             GameLogger.info("Storage system initialized");
 
-            worldManager.init();
             GameLogger.info("World manager initialized");
             initializePeriodicTasks();
             // Load plugins
@@ -795,7 +853,6 @@ public class GameServer {
         }
     }
 
-
     private boolean isPortAvailable(int port) {
         try (ServerSocket ss = new ServerSocket(port)) {
             ss.setReuseAddress(true);
@@ -811,7 +868,7 @@ public class GameServer {
 
         GameLogger.info("Shutting down server...");
         if (worldData != null) {
-            worldManager.saveWorld(worldData);
+            ServerGameContext.get().getWorldManager().saveWorld(worldData);
         }
 
         playerManager.getOnlinePlayers().forEach(player -> {
@@ -843,7 +900,6 @@ public class GameServer {
 
         GameLogger.info("Server shutdown complete.");
     }
-
 
     // In GameServer.java, modify handleChunkRequest:
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
@@ -911,7 +967,7 @@ public class GameServer {
             }
 
             GameLogger.info("Sending chunk data for " + chunkPos + " with " +
-                    response.worldObjects.size() + " objects and " +
+                response.worldObjects.size() + " objects and " +
                 (response.blocks != null ? response.blocks.size() : 0) + " blocks");
 
             connection.sendTCP(response);
@@ -948,7 +1004,6 @@ public class GameServer {
         }
     }
 
-
     private void processAuthenticatedMessage(Connection connection, Object message) {
         String username = connectedPlayers.get(connection.getID());
         ServerPlayer player = playerManager.getPlayer(username);
@@ -980,6 +1035,7 @@ public class GameServer {
             GameLogger.error("Unauthorized player action attempt by " + action.playerId);
             return;
         }
+
         switch (action.actionType) {
             case CHOP_START:
                 handleChopStart(action);
@@ -990,8 +1046,18 @@ public class GameServer {
                 networkServer.sendToAllExceptTCP(connection.getID(), action);
                 break;
 
+            // *** NEW: PUNCH START / STOP ***
+            case PUNCH_START:
+                // No server "tree removal" logic for punch, just broadcast
+                networkServer.sendToAllExceptTCP(connection.getID(), action);
+                GameLogger.info("Player " + action.playerId + " started punching");
+                break;
+            case PUNCH_STOP:
+                networkServer.sendToAllExceptTCP(connection.getID(), action);
+                GameLogger.info("Player " + action.playerId + " stopped punching");
+                break;
         }
-    }// Handle initial tree chopping action
+    }
 
     private void handleChopStart(NetworkProtocol.PlayerAction action) {
         if (action == null || action.playerId == null || action.targetPosition == null) {
@@ -1215,7 +1281,6 @@ public class GameServer {
         }
     }
 
-
     private Chunk generateNewChunk(int chunkX, int chunkY) {
         try {
             // Calculate world coordinates
@@ -1331,14 +1396,10 @@ public class GameServer {
         return distribution.keySet().iterator().next();
     }
 
-
-    public void shutdown() {
-        stop();
-    }
-
     public ServerConnectionConfig getConfig() {
         return config;
     }
+
 
     public enum ObjectType {
         TREE,
@@ -1355,6 +1416,18 @@ public class GameServer {
         SMALL_HAUNTED_TREE,
         POKEBALL,
         VINES;
+    }
+
+    private static class ConnectionInfo {
+        final int connectionId;
+        final long connectionTime;
+        volatile boolean isAuthenticated;
+
+        ConnectionInfo(int connectionId) {
+            this.connectionId = connectionId;
+            this.connectionTime = System.currentTimeMillis();
+            this.isAuthenticated = false;
+        }
     }
 
 }

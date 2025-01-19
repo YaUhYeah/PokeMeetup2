@@ -116,15 +116,10 @@ public class Inventory implements ItemContainer {
                     }
                 }
 
-                slot.setItemData(itemData); // Set the actual itemData without copying
+                slot.setItemData(itemData);
                 itemTracker.put(itemData.getUuid(), itemData);
-
-                GameLogger.info("Set item at slot " + index + ": " +
-                    itemData.getItemId() + " x" + itemData.getCount() +
-                    " UUID: " + itemData.getUuid());
             } else {
                 slot.setItemData(null);
-                GameLogger.info("Cleared slot " + index);
             }
             notifyObservers();
         }
@@ -155,21 +150,17 @@ public class Inventory implements ItemContainer {
                     items.add(copy);
                     nonNullCount++;
 
-                    GameLogger.info("Found item: " + item.getItemId() + " x" +
-                        item.getCount() + " UUID: " + item.getUuid());
                 } else {
                     items.add(null);
                 }
             }
 
-            GameLogger.info("Found " + nonNullCount + " items total");
             return items;
         }
     }
 
     public void setAllItems(List<ItemData> items) {
         if (items == null) {
-            GameLogger.error("setAllItems called with null items list! Operation aborted to prevent data loss.");
             return;
         }
         synchronized (inventoryLock) {
@@ -195,14 +186,10 @@ public class Inventory implements ItemContainer {
 
         synchronized (inventoryLock) {
             try {
-                GameLogger.info("=== Adding item: " + itemData.getItemId() + " x" + itemData.getCount() + " ===");
                 Item itemTemplate = ItemManager.getItemTemplate(itemData.getItemId());
                 if (itemTemplate == null) {
-                    GameLogger.error("Item template not found: " + itemData.getItemId());
                     return false;
                 }
-
-                // For stackable items, first try to merge with existing stacks
                 if (itemTemplate.isStackable()) {
                     int remainingCount = itemData.getCount();
                     GameLogger.info("Processing stackable item, count=" + remainingCount);
@@ -357,8 +344,6 @@ public class Inventory implements ItemContainer {
                         }
                     }
                 }
-
-                GameLogger.info("Validation complete - Found " + itemCount + " valid items");
 
             } catch (Exception e) {
                 GameLogger.error("Error during inventory validation: " + e.getMessage());

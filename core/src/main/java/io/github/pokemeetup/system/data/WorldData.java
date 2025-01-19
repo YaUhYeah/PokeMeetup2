@@ -143,8 +143,6 @@ public class WorldData {
                 }
             }
 
-            GameLogger.info("Created copy of world '" + this.name +
-                "' - Commands enabled: " + copy.commandsAllowed);
 
             return copy;
         }
@@ -154,9 +152,6 @@ public class WorldData {
         return chunks;
     }
 
-    public void setChunks(Map<Vector2, Chunk> chunks) {
-        this.chunks = chunks;
-    }
 
     public Map<Vector2, List<WorldObject>> getChunkObjects() {
         return chunkObjects;
@@ -219,10 +214,9 @@ public class WorldData {
 
     public void validateAndRepair() {
         synchronized (timeLock) {
-            // Validate time values
             if (worldTimeInMinutes < 0 || worldTimeInMinutes >= 24 * 60) {
                 GameLogger.error("Repairing invalid world time: " + worldTimeInMinutes);
-                worldTimeInMinutes = 480.0; // 8:00 AM
+                worldTimeInMinutes = 480.0;
             }
 
             if (dayLength <= 0) {
@@ -238,8 +232,6 @@ public class WorldData {
 
         if (blockData == null) {
             GameLogger.error("blockData is null during validation. Blocks may not be loaded correctly.");
-            // Decide whether to initialize a new BlockSaveData or handle it differently
-            // blockData = new BlockSaveData(); // Commented out to prevent overwriting valid data
         }
 
         // Validate players data
@@ -270,7 +262,7 @@ public class WorldData {
                     " Day Length: " + dayLength);
 
                 setDirty(true);
-                WorldManager worldManager = WorldManager.getInstance(null, true);
+                WorldManager worldManager = WorldManager.getInstance();
                 worldManager.saveWorld(this);
 
                 GameLogger.info("Successfully saved world: " + name);
@@ -298,7 +290,7 @@ public class WorldData {
                     backup.setPlayers(new HashMap<>(this.players));
                     backup.setBlockData(this.blockData);
                     // Save backup
-                    WorldManager.getInstance(null, true).saveWorld(backup);
+                    WorldManager.getInstance().saveWorld(backup);
                     GameLogger.info("Created backup of world: " + name);
                 }
                 save();
@@ -338,7 +330,7 @@ public class WorldData {
                     backup.setPlayers(new HashMap<>(this.players));
                     backup.setBlockData(this.blockData);
 
-                    WorldManager.getInstance(storage, true).saveWorld(backup);
+                    WorldManager.getInstance().saveWorld(backup);
                     GameLogger.info("Created backup of world: " + name);
                 }
                 save();
@@ -355,21 +347,6 @@ public class WorldData {
 
     public Object getTimeLock() {
         return timeLock;
-    }
-
-    public void setSpawnX(int x) {
-    }
-
-    public void setSpawnY(int y) {
-    }
-
-
-    public Map<Vector2, List<WorldObject>> getDynamicObjects() {
-        return dynamicObjects;
-    }
-
-    public void setDynamicObjects(Map<Vector2, List<WorldObject>> dynamicObjects) {
-        this.dynamicObjects = dynamicObjects;
     }
 
 
@@ -412,69 +389,6 @@ public class WorldData {
     }
 
 
-    public void addPlayer(UUID uuid) {
-        synchronized (saveLock) {
-            if (uuid == null) {
-                GameLogger.error("Cannot add null UUID");
-                return;
-            }
-
-            playerUUIDs.add(uuid);
-            isDirty = true;
-            GameLogger.info("Added player UUID to world: " + uuid);
-        }
-    }
-
-    public void removePlayer(UUID uuid) {
-        synchronized (saveLock) {
-            if (uuid == null) {
-                GameLogger.error("Cannot remove null UUID");
-                return;
-            }
-
-            if (playerUUIDs.remove(uuid)) {
-                isDirty = true;
-                GameLogger.info("Removed player UUID from world: " + uuid);
-            }
-        }
-    }
-
-    public Set<UUID> getPlayerUUIDs() {
-        return new HashSet<>(playerUUIDs);
-    }
-
-    public void setPlayerUUIDs(Set<UUID> uuids) {
-        synchronized (saveLock) {
-            this.playerUUIDs = new HashSet<>(uuids);
-            isDirty = true;
-        }
-    }
-
-    public Map<String, PlayerData> getLegacyPlayers() {
-        return players;
-    }
-
-    public void setLegacyPlayers(Map<String, PlayerData> players) {
-        this.players = players != null ? new HashMap<>(players) : new HashMap<>();
-    }
-
-    public void saveLegacyPlayerData(String username, PlayerData data) {
-        synchronized (saveLock) {
-            if (username == null || data == null) {
-                GameLogger.error("Cannot save null username or data");
-                return;
-            }
-
-            try {
-                PlayerData copy = data.copy();
-                players.put(username, copy);
-                isDirty = true;
-                GameLogger.info("Saved legacy player data for: " + username);
-            } catch (Exception e) {
-                GameLogger.error("Failed to save legacy player data: " + e.getMessage());
-            }
-        }
-    }
 
     public PlayerData getLegacyPlayerData(String username) {
         synchronized (saveLock) {

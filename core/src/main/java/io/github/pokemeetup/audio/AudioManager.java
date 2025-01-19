@@ -19,7 +19,6 @@ public class AudioManager {
 
     private final Map<String, Sound> customSounds;
     private final float MUSIC_FADE_DURATION = 2.0f;
-    private final float FADE_OUT_DURATION = 2f;
     private final Map<AmbientSoundType, Sound> ambientSounds;
     private final Map<AmbientSoundType, Long> activeAmbientLoops;
     private final Map<WeatherSoundEffect, Long> loopingStartTimes = new EnumMap<>(WeatherSoundEffect.class);
@@ -28,17 +27,12 @@ public class AudioManager {
 
     private Music currentMusic;
     private BiomeType currentBiome;
-    private float masterVolume = 1.0f;
+    private final float masterVolume = 1.0f;
     private float musicVolume = 0.7f;
     private float soundVolume = 1.0f;
     private boolean musicEnabled = true;
-    private float fadeOutTimer = 0f;
     private boolean soundEnabled = true;
-    private float musicFadeTimer = 0;
-    private Music nextMusic;
-    private boolean isFadingOut = false;
-    private BiomeType pendingBiome; // New field to track the latest biome
-    private float ambientVolume = 0.5f;
+    private BiomeType pendingBiome;
     private boolean isFadingOutMusic = false;
     private float fadeOutMusicTimer = 0f;
     private boolean isFadingInMusic = false;
@@ -227,20 +221,20 @@ public class AudioManager {
         }
         menuMusicList = new ArrayList<>();
         loadMenuMusic(Arrays.asList(
-            "assets/music/Menu-Music-1.mp3",
-            "assets/music/Menu-Music-2.mp3",
-            "assets/music/Menu-Music-0.mp3",
-            "assets/music/Menu-Music-3.mp3",
-            "assets/music/Menu-Music-4.mp3"
+            "music/Menu-Music-1.mp3",
+            "music/Menu-Music-2.mp3",
+            "music/Menu-Music-0.mp3",
+            "music/Menu-Music-3.mp3",
+            "music/Menu-Music-4.mp3"
         ));
-        loadBiomeMusic(BiomeType.RUINS, (Arrays.asList("assets/music/Ruins-Biome-0.mp3", "assets/music/Ruins-Biome-1.mp3")));
-        loadBiomeMusic(BiomeType.FOREST, (Arrays.asList("assets/music/Forest-Biome-0.mp3", "assets/music/Forest-Biome-1.mp3", "assets/music/Forest-Biome-2.mp3", "assets/music/Forest-Biome-3.mp3")));
-        loadBiomeMusic(BiomeType.SNOW, (Arrays.asList("assets/music/Snow-Biome-0.mp3", "assets/music/Snow-Biome-1.mp3", "assets/music/Snow-Biome-2.mp3")));
-        loadBiomeMusic(BiomeType.HAUNTED, (Arrays.asList("assets/music/Haunted-Biome-0.mp3", "assets/music/Haunted-Biome-1.mp3")));
-        loadBiomeMusic(BiomeType.PLAINS, (Arrays.asList("assets/music/Plains-Biome-0.mp3", "assets/music/Plains-Biome-1.mp3", "assets/music/Plains-Biome-2.mp3", "assets/music/Plains-Biome-3.mp3", "assets/music/Plains-Biome-4.mp3")));
-        loadBiomeMusic(BiomeType.BIG_MOUNTAINS, (Arrays.asList("assets/music/Mountain-Biome-1.mp3", "assets/music/Mountain-Biome-0.mp3")));
-        loadBiomeMusic(BiomeType.RAIN_FOREST, (Arrays.asList("assets/music/RainForest-Biome-0.mp3", "assets/music/RainForest-Biome-1.mp3", "assets/music/RainForest-Biome-2.mp3", "assets/music/RainForest-Biome-3.mp3")));
-        loadBiomeMusic(BiomeType.DESERT, (Arrays.asList("assets/music/Desert-Biome-0.mp3", "assets/music/Desert-Biome-1.mp3", "assets/music/Desert-Biome-2.mp3", "assets/music/Desert-Biome-3.mp3", "assets/music/Desert-Biome-4.mp3")));
+        loadBiomeMusic(BiomeType.RUINS, (Arrays.asList("music/Ruins-Biome-0.mp3", "music/Ruins-Biome-1.mp3")));
+        loadBiomeMusic(BiomeType.FOREST, (Arrays.asList("music/Forest-Biome-0.mp3", "music/Forest-Biome-1.mp3", "music/Forest-Biome-2.mp3", "music/Forest-Biome-3.mp3")));
+        loadBiomeMusic(BiomeType.SNOW, (Arrays.asList("music/Snow-Biome-0.mp3", "music/Snow-Biome-1.mp3", "music/Snow-Biome-2.mp3")));
+        loadBiomeMusic(BiomeType.HAUNTED, (Arrays.asList("music/Haunted-Biome-0.mp3", "music/Haunted-Biome-1.mp3")));
+        loadBiomeMusic(BiomeType.PLAINS, (Arrays.asList("music/Plains-Biome-0.mp3", "music/Plains-Biome-1.mp3", "music/Plains-Biome-2.mp3", "music/Plains-Biome-3.mp3", "music/Plains-Biome-4.mp3")));
+        loadBiomeMusic(BiomeType.BIG_MOUNTAINS, (Arrays.asList("music/Mountain-Biome-1.mp3", "music/Mountain-Biome-0.mp3")));
+        loadBiomeMusic(BiomeType.RAIN_FOREST, (Arrays.asList("music/RainForest-Biome-0.mp3", "music/RainForest-Biome-1.mp3", "music/RainForest-Biome-2.mp3", "music/RainForest-Biome-3.mp3")));
+        loadBiomeMusic(BiomeType.DESERT, (Arrays.asList("music/Desert-Biome-0.mp3", "music/Desert-Biome-1.mp3", "music/Desert-Biome-2.mp3", "music/Desert-Biome-3.mp3", "music/Desert-Biome-4.mp3")));
 
     }
 
@@ -353,8 +347,6 @@ public class AudioManager {
     }
 
     public void fadeOutMenuMusic() {
-        isFadingOut = true;
-        fadeOutTimer = FADE_OUT_DURATION;
     }
 
     public void updateBiomeMusic(BiomeType newBiome) {
@@ -502,10 +494,10 @@ public class AudioManager {
 
 
     public enum WeatherSoundEffect {
-        LIGHT_RAIN("assets/sounds/weather/rain.ogg"),
-        THUNDER("assets/sounds/weather/thunder.ogg"),
-        WIND("assets/sounds/weather/wind.ogg"),
-        SAND_WIND("assets/sounds/weather/sandwind.ogg");
+        LIGHT_RAIN("sounds/weather/rain.ogg"),
+        THUNDER("sounds/weather/thunder.ogg"),
+        WIND("sounds/weather/wind.ogg"),
+        SAND_WIND("sounds/weather/sandwind.ogg");
 
         private final String path;
 
@@ -519,28 +511,28 @@ public class AudioManager {
     }
 
     public enum SoundEffect {
-        ITEM_PICKUP("assets/sounds/pickup.ogg"),
-        MENU_SELECT("assets/sounds/select.ogg"),
-        MENU_BACK("assets/sounds/back.ogg"),
-        BATTLE_WIN("assets/sounds/battle_win.ogg"),
-        CRITICAL_HIT("assets/sounds/critical_hit.ogg"),
-        CURSOR_MOVE("assets/sounds/cursor_move.ogg"),
-        DAMAGE("assets/sounds/damage.ogg"),
-        COLLIDE("assets/sounds/player-bump.ogg"),
-        MOVE_SELECT("assets/sounds/move_select.ogg"),
-        NOT_EFFECTIVE("assets/sounds/not_effective.ogg"),
-        SUPER_EFFECTIVE("assets/sounds/super_effective.ogg"),
-        CRAFT("assets/sounds/crafting.ogg"),
-        BLOCK_PLACE_0("assets/sounds/block_place_0.ogg"),
-        BLOCK_PLACE_1("assets/sounds/block_place_1.ogg"),
-        BLOCK_PLACE_2("assets/sounds/block_place_2.ogg"),
-        BLOCK_BREAK_WOOD("assets/sounds/break_wood.ogg"),
-        TOOL_BREAK("assets/sounds/tool_break.ogg"),
-        BLOCK_BREAK_WOOD_HAND("assets/sounds/break_wood_hand.ogg"),
-        PUDDLE("assets/sounds/puddle.ogg"),
-        CHEST_OPEN("assets/sounds/chest-open.ogg"),
-        CHEST_CLOSE("assets/sounds/chest-close.ogg"),
-        HOUSE_BUILD("assets/sounds/house_build.ogg");
+        ITEM_PICKUP("sounds/pickup.ogg"),
+        MENU_SELECT("sounds/select.ogg"),
+        MENU_BACK("sounds/back.ogg"),
+        BATTLE_WIN("sounds/battle_win.ogg"),
+        CRITICAL_HIT("sounds/critical_hit.ogg"),
+        CURSOR_MOVE("sounds/cursor_move.ogg"),
+        DAMAGE("sounds/damage.ogg"),
+        COLLIDE("sounds/player-bump.ogg"),
+        MOVE_SELECT("sounds/move_select.ogg"),
+        NOT_EFFECTIVE("sounds/not_effective.ogg"),
+        SUPER_EFFECTIVE("sounds/super_effective.ogg"),
+        CRAFT("sounds/crafting.ogg"),
+        BLOCK_PLACE_0("sounds/block_place_0.ogg"),
+        BLOCK_PLACE_1("sounds/block_place_1.ogg"),
+        BLOCK_PLACE_2("sounds/block_place_2.ogg"),
+        BLOCK_BREAK_WOOD("sounds/break_wood.ogg"),
+        TOOL_BREAK("sounds/tool_break.ogg"),
+        BLOCK_BREAK_WOOD_HAND("sounds/break_wood_hand.ogg"),
+        PUDDLE("sounds/puddle.ogg"),
+        CHEST_OPEN("sounds/chest-open.ogg"),
+        CHEST_CLOSE("sounds/chest-close.ogg"),
+        HOUSE_BUILD("sounds/house_build.ogg");
 
         private final String path;
 

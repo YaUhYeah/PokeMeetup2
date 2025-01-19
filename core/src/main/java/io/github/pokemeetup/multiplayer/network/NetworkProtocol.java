@@ -179,7 +179,8 @@ public class NetworkProtocol {
         CHOP_STOP,
         CHEST_OPEN,
         CHEST_CLOSE,
-        // Other actions
+        PUNCH_START,
+        PUNCH_STOP
     }
 
     public enum BlockAction {
@@ -388,7 +389,7 @@ public class NetworkProtocol {
     }
 
     public static class ServerShutdown {
-        public String message;
+        public String reason;
     }
 
     public static class PlayerJoined {

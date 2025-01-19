@@ -804,9 +804,6 @@ public class BiomeManager {
                     Biome biome = createBiomeFromData(data);
                     biomes.put(biome.getType(), biome);
 
-                    GameLogger.info("Loaded biome: " + biome.getName());
-                    GameLogger.info("- Spawnable objects: " + biome.getSpawnableObjects());
-                    GameLogger.info("- Spawn chances: " + biome.getSpawnChances());
                 } else {
                     GameLogger.error("Invalid biome data for: " + data.getName());
                 }
@@ -849,7 +846,6 @@ public class BiomeManager {
                 spawnableObjects.add(element.getAsString());
             }
             data.setSpawnableObjects(spawnableObjects);
-            GameLogger.info("Parsed spawnable objects for " + data.getName() + ": " + spawnableObjects);
         }
 
         // Parse spawn chances
@@ -860,7 +856,6 @@ public class BiomeManager {
                 chances.put(entry.getKey(), entry.getValue().getAsDouble());
             }
             data.setSpawnChances(chances);
-            GameLogger.info("Parsed spawn chances for " + data.getName() + ": " + chances);
         }
         if (Math.abs(total - 100.0) > 0.01) {
             GameLogger.error("Tile distribution does not sum to 100% for biome: " + data.getName());

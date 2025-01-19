@@ -166,9 +166,6 @@ public class WorldObject {
             copy.attachedTo = this.attachedTo.copy();
         }
 
-        GameLogger.info("Created copy of WorldObject: " + this.type + " at (" +
-            this.tileX + "," + this.tileY + ")");
-
         return copy;
     }
 
@@ -439,8 +436,6 @@ public class WorldObject {
                 if (gameClient != null && !gameClient.isSinglePlayer()) {
                     sendChunkObjectSync(safeObjects);
                 }
-
-                GameLogger.info("Updated chunk " + chunkPos + " with " + safeObjects.size() + " objects");
 
             } catch (Exception e) {
                 GameLogger.error("Error setting chunk objects: " + e.getMessage());
@@ -934,8 +929,7 @@ public class WorldObject {
                                     Chunk chunk = gameClient.getCurrentWorld().getChunkAtPosition(
                                         removeOp.chunkPos.x, removeOp.chunkPos.y);
                                     if (chunk != null) {
-                                        gameClient.getCurrentWorld().saveChunkData(removeOp.chunkPos, chunk,
-                                            !gameClient.isSinglePlayer());
+                                        gameClient.getCurrentWorld().saveChunkData(removeOp.chunkPos, chunk);
                                     }
                                 }
                             }

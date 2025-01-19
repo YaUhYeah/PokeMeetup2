@@ -1,10 +1,7 @@
 package io.github.pokemeetup.system.gameplay.overworld.multiworld;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.Json;
-import io.github.pokemeetup.CreatureCaptureGame;
-import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
@@ -14,42 +11,33 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class WorldManager {
-    private static final long AUTO_SAVE_INTERVAL = 100000;
     private static final String WORLDS_BASE_DIR = "worlds/";
     private static final String SINGLE_PLAYER_DIR = WORLDS_BASE_DIR + "singleplayer/";
-    private static final String MULTI_PLAYER_DIR = WORLDS_BASE_DIR + "multiplayer/";
     private static WorldManager instance;
     private final Map<String, WorldData> worlds;
-    private final ServerStorageSystem storage;
     private final Object worldLock = new Object();
     private final String baseDirectory;
     private final GameFileSystem fs;
-    private final boolean isMultiplayerMode;
     private final Map<String, WorldData> worldCache = new ConcurrentHashMap<>();
     private final Object saveLock = new Object();
     private boolean isInitialized = false;
-    private WorldData currentWorld;
-    private long lastAutoSave = 0;
 
-    private WorldManager(ServerStorageSystem storage, boolean isMultiplayerMode) {
-        this.storage = storage;
-        this.isMultiplayerMode = isMultiplayerMode;
+    private WorldManager() {
         this.worlds = new ConcurrentHashMap<>();
-        this.baseDirectory = isMultiplayerMode ? MULTI_PLAYER_DIR : SINGLE_PLAYER_DIR;
+        this.baseDirectory = SINGLE_PLAYER_DIR;
         this.fs = GameFileSystem.getInstance();
         createDirectoryStructure();
     }
 
-    public static synchronized WorldManager getInstance(ServerStorageSystem storage, boolean isMultiplayerMode) {
+    public static synchronized WorldManager getInstance() {
         if (instance == null) {
-            instance = new WorldManager(storage, isMultiplayerMode);
+            instance = new WorldManager();
         }
         return instance;
     }
 
     public synchronized void init() {
         if (isInitialized) {
-            GameLogger.info("WorldManager already initialized");
             return;
         }
 
@@ -57,72 +45,15 @@ public class WorldManager {
             try {
                 worlds.clear();
 
-                if (isMultiplayerMode) {
-                    initializeMultiplayerMode();
-                } else {
-                    initializeSingleplayerMode();
-                }
+                initializeSingleplayerMode();
+
 
                 isInitialized = true;
-                GameLogger.info("WorldManager initialized in " +
-                    (isMultiplayerMode ? "multiplayer" : "singleplayer") +
-                    " mode with " + worlds.size() + " worlds");
 
             } catch (Exception e) {
                 GameLogger.error("Failed to initialize WorldManager: " + e.getMessage());
                 throw new RuntimeException("WorldManager initialization failed", e);
             }
-        }
-    }
-
-
-    private void initializeMultiplayerMode() {
-        try {
-            if (storage != null) {
-                // Server-side initialization
-                Map<String, WorldData> serverWorlds = storage.getAllWorlds();
-                if (serverWorlds != null && !serverWorlds.isEmpty()) {
-                    worlds.putAll(serverWorlds);
-                    GameLogger.info("Loaded " + serverWorlds.size() + " worlds from server");
-                }
-
-                WorldData multiplayerWorld = worlds.get(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
-                if (multiplayerWorld == null) {
-                    createDefaultMultiplayerWorld();
-                } else {
-                    currentWorld = multiplayerWorld;
-                }
-            } else {
-                // Client-side: Do NOT create local storage
-                GameLogger.info("Client-side multiplayer initialization - deferring to server");
-                // Clear any local world data to ensure we only use server data
-                worlds.clear();
-                worldCache.clear();
-            }
-        } catch (Exception e) {
-            GameLogger.error("Error initializing multiplayer mode: " + e.getMessage());
-            throw new RuntimeException("Multiplayer initialization failed", e);
-        }
-    }
-
-    private void createDefaultMultiplayerWorld() {
-        try {
-            WorldData defaultWorld = createWorld(
-                CreatureCaptureGame.MULTIPLAYER_WORLD_NAME,
-                CreatureCaptureGame.MULTIPLAYER_WORLD_SEED,
-                0.15f,
-                0.05f
-            );
-
-            storage.saveWorld(defaultWorld);
-            worlds.put(defaultWorld.getName(), defaultWorld);
-            currentWorld = defaultWorld;
-
-            GameLogger.info("Created and saved default multiplayer world");
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to create default multiplayer world: " + e.getMessage());
-            throw new RuntimeException("Failed to create multiplayer world", e);
         }
     }
 
@@ -136,25 +67,6 @@ public class WorldManager {
         }
     }
 
-    public void checkAutoSave() {
-        if (isMultiplayerMode && storage == null) {
-            // Client should not auto-save
-            return;
-        }
-
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastAutoSave >= AUTO_SAVE_INTERVAL) {
-            synchronized (worldLock) {
-                for (WorldData world : worlds.values()) {
-                    if (world.isDirty()) {
-                        saveWorld(world);
-                    }
-                }
-            }
-            lastAutoSave = currentTime;
-            GameLogger.info("Auto-saved dirty worlds.");
-        }
-    }
     public WorldData createWorld(String name, long seed, float treeSpawnRate, float pokemonSpawnRate) {
         synchronized (worldLock) {
             try {
@@ -181,8 +93,6 @@ public class WorldManager {
                 world.setPlayers(new HashMap<>());
                 world.setPokemonData(new PokemonData());
 
-                // Don't set commands flag here - let caller handle it
-
                 worlds.put(name, world);
                 GameLogger.info("Created world data object");
 
@@ -194,8 +104,9 @@ public class WorldManager {
             }
         }
     }
+
     public void saveWorld(WorldData worldData) {
-        if (worldData == null) return;
+        GameLogger.info("Saving world: " + worldData.getName());
 
         synchronized (saveLock) {
             try {
@@ -211,16 +122,9 @@ public class WorldManager {
                     GameLogger.error("Command state mismatch in copy! Fixing...");
                     saveData.setCommandsAllowed(worldData.commandsAllowed());
                 }
-
-                // Convert to JSON
                 Json json = JsonConfig.getInstance();
                 String jsonStr = json.toJson(saveData);
 
-                if (isMultiplayerMode && storage != null) {
-                    // Multiplayer server mode - use ServerStorageSystem
-                    storage.saveWorld(saveData);
-                    GameLogger.info("World saved using ServerStorageSystem: " + worldData.getName());
-                } else {
                     // Singleplayer mode - save to local file system
                     String worldDirPath = baseDirectory + worldData.getName();
                     if (!fs.exists(worldDirPath)) {
@@ -251,7 +155,7 @@ public class WorldManager {
 
                     GameLogger.info("Successfully saved world with commands state: " +
                         worldData.commandsAllowed());
-                }
+
 
             } catch (Exception e) {
                 GameLogger.error("Failed to save world: " + worldData.getName() +
@@ -264,12 +168,9 @@ public class WorldManager {
     public WorldData getWorld(String name) {
         synchronized (worldLock) {
             try {
-                if (isMultiplayerMode && storage == null) {
-                    return worlds.get(name);
-                }
 
                 WorldData world = worlds.get(name);
-                if (world == null && !isMultiplayerMode) {
+                if (world == null && GameContext.get().getGameClient().isSinglePlayer()) {
                     world = JsonConfig.loadWorldData(name);
                     if (world != null) {
                         applyWorldData(world);
@@ -286,12 +187,11 @@ public class WorldManager {
     private void createDirectoryStructure() {
         try {
             // Only create directories for singleplayer mode
-            if (!isMultiplayerMode) {
-                fs.createDirectory(WORLDS_BASE_DIR);
-                fs.createDirectory(baseDirectory);
-                fs.createDirectory(baseDirectory + "backups/");
-                GameLogger.info("Directory structure initialized: " + baseDirectory);
-            }
+            fs.createDirectory(WORLDS_BASE_DIR);
+            fs.createDirectory(baseDirectory);
+            fs.createDirectory(baseDirectory + "backups/");
+            GameLogger.info("Directory structure initialized: " + baseDirectory);
+
         } catch (Exception e) {
             GameLogger.error("Failed to create directory structure: " + e.getMessage());
             throw new RuntimeException("Failed to initialize directory structure", e);
@@ -302,11 +202,8 @@ public class WorldManager {
         synchronized (worldLock) {
             WorldData removed = worlds.remove(name);
             if (removed != null) {
-                if (isMultiplayerMode) {
-                    storage.deleteWorld(name);
-                } else {
-                    deleteSingleplayerWorld(name);
-                }
+                deleteSingleplayerWorld(name);
+
                 GameLogger.info("Deleted world: " + name);
             } else {
                 GameLogger.info("Attempted to delete non-existent world: " + name);
@@ -328,12 +225,7 @@ public class WorldManager {
     }
 
     public Map<String, WorldData> getWorlds() {
-        return Collections.unmodifiableMap(worlds);
-    }
-
-    public WorldData getCurrentWorld() {
-        return currentWorld;
-    }
+        return Collections.unmodifiableMap(worlds);}
 
     private void cleanupCorruptedWorlds() {
         if (!fs.exists("worlds/singleplayer/")) return;
@@ -341,7 +233,7 @@ public class WorldManager {
         String[] directories = fs.list("worlds/singleplayer/");
         for (String dirName : directories) {
             String dirPath = "worlds/singleplayer/" + dirName;
-            if (!fs.isDirectory(dirPath)) continue;
+            if (fs.isDirectory(dirPath)) continue;
 
             String worldFilePath = dirPath + "/world.json";
             if (fs.exists(worldFilePath)) {
@@ -382,7 +274,7 @@ public class WorldManager {
 
             for (String dirName : worldFolders) {
                 String dirPath = "worlds/singleplayer/" + dirName;
-                if (!fs.isDirectory(dirPath)) continue;
+                if (fs.isDirectory(dirPath)) continue;
 
                 String worldFilePath = dirPath + "/world.json";
                 if (!fs.exists(worldFilePath)) {
@@ -408,8 +300,6 @@ public class WorldManager {
             GameLogger.error("Error loading singleplayer worlds: " + e.getMessage());
         }
     }
-
-
 
 
     public WorldData loadAndValidateWorld(String worldName) {
@@ -465,8 +355,6 @@ public class WorldManager {
             }
         }
     }
-
-
 
 
     private void deleteSingleplayerWorld(String name) {

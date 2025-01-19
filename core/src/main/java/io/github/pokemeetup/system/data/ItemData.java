@@ -143,8 +143,6 @@ public class ItemData {
             if (this.maxDurability > 0 && this.durability > this.maxDurability) {
                 this.durability = this.maxDurability;
             }
-        } else {
-            GameLogger.error("Item template not found for itemId: " + this.itemId);
         }
     }
 

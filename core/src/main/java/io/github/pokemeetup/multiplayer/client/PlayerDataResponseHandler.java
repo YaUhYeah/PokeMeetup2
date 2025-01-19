@@ -41,7 +41,7 @@ public class PlayerDataResponseHandler {
             return t;
         });
 
-        executor.scheduleAtFixedRate(() -> {
+        executor.scheduleWithFixedDelay(() -> {
             try {
                 cleanupCache();
             } catch (Exception e) {
@@ -52,7 +52,7 @@ public class PlayerDataResponseHandler {
 
     private void cleanupCache() {
         dataCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
-        
+
         // If still too many entries, remove oldest ones
         if (dataCache.size() > MAX_CACHE_SIZE) {
             dataCache.entrySet().stream()

@@ -2,6 +2,7 @@ package io.github.pokemeetup.chat.commands;
 
 import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.chat.Command;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
@@ -59,7 +60,7 @@ public class GiveCommand implements Command {
             }
 
             item.setCount(count);
-            boolean added = gameClient.getActivePlayer().getInventory().addItem(item);
+            boolean added = GameContext.get().getPlayer().getInventory().addItem(item);
 
             if (added) {
                 chatSystem.addSystemMessage("You got " + count + "x " + itemId);

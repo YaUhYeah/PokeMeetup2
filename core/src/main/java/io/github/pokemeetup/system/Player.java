@@ -13,7 +13,6 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonParty;
-import io.github.pokemeetup.screens.otherui.BuildModeUI;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.PlayerAnimations;
@@ -32,12 +31,12 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 public class Player {
     public static final int FRAME_WIDTH = 32;
     public static final int FRAME_HEIGHT = 48;
-    private static final float COLLISION_BOX_WIDTH_RATIO = 0.6f; // Make hitbox 60% of frame width
-    private static final float COLLISION_BOX_HEIGHT_RATIO = 0.4f; // Make hitbox 40% of frame height
-    private static final float TILE_TRANSITION_TIME = 0.2f; // Time to move one tile
-    private static final float RUN_SPEED_MULTIPLIER = 1.75f; // More noticeable run
-    private static final float COLLISION_BUFFER = 4f; // Increased for better collision detection
-    private static final long VALIDATION_INTERVAL = 1000; // ms
+    private static final float COLLISION_BOX_WIDTH_RATIO = 0.6f;
+    private static final float COLLISION_BOX_HEIGHT_RATIO = 0.4f;
+    private static final float TILE_TRANSITION_TIME = 0.2f;
+    private static final float RUN_SPEED_MULTIPLIER = 1.5f;
+    private static final float COLLISION_BUFFER = 4f;
+    private static final long VALIDATION_INTERVAL = 1000;
     private static final float INPUT_BUFFER_TIME = 0.1f;
     private final Object movementLock = new Object();
     private final Object resourceLock = new Object();
@@ -61,11 +60,6 @@ public class Player {
     private boolean isMoving = false;
     private boolean isRunning = false;
     private boolean buildMode = false;
-
-    public void setBuildMode(boolean buildMode) {
-        this.buildMode = buildMode;
-    }
-
     private TextureRegion currentFrame;
     private Inventory inventory = new Inventory();
     private float stateTime = 0f;
@@ -91,7 +85,7 @@ public class Player {
     }
 
     public Player(String username, World world) {
-        this(0, 0, world, username); // Pass the world object correctly
+        this(0, 0, world, username);
         GameLogger.info("Creating new player: " + username);
         this.animations = new PlayerAnimations();
         this.world = world;
@@ -123,9 +117,6 @@ public class Player {
     public Player(int startTileX, int startTileY, World world, String username) {
         this.world = world;
         this.username = username != null ? username : "Player";
-        this.animations = new PlayerAnimations();
-        this.stage = new Stage(new ScreenViewport());
-        this.skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
 
 
         float boxWidth = FRAME_WIDTH * COLLISION_BOX_WIDTH_RATIO;
@@ -148,9 +139,27 @@ public class Player {
         initializeFromSavedState();
         this.renderPosition = new Vector2(x, y);
         this.lastPosition = new Vector2(x, y);
+        Gdx.app.postRunnable(this::initializeGLResources);
 
     }
 
+    private void initializeGLResources() {
+        try {
+            // Only create OpenGL resources here
+            this.stage = new Stage(new ScreenViewport());
+            this.skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
+            this.font = new BitmapFont(Gdx.files.internal("Skins/default.fnt"));
+            font.getData().setScale(0.8f);
+            font.setColor(Color.WHITE);
+            this.animations = new PlayerAnimations();
+            this.initialized = true;
+
+            GameLogger.info("Player GL resources initialized: " + username);
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to initialize GL resources: " + e.getMessage());
+        }
+    }
     public PlayerAnimations getAnimations() {
         return animations;
     }
@@ -294,10 +303,9 @@ public class Player {
         return (int) Math.floor(pixelY / World.TILE_SIZE);
     }
 
-
     private void initializeFromSavedState() {
         if (world != null && world.getWorldData() != null) {
-            PlayerData savedData = world.getWorldData().getPlayerData(username,false);
+            PlayerData savedData = world.getWorldData().getPlayerData(username, false);
             if (savedData != null) {
                 savedData.applyToPlayer(this);
                 GameLogger.info("Loaded saved state for player: " + username);
@@ -424,7 +432,6 @@ public class Player {
             }
 
             if (world != null && world.isPassable(newTileX, newTileY)) {
-                // Start movement
                 targetTileX = newTileX;
                 targetTileY = newTileY;
                 targetPosition.set(tileToPixelX(newTileX), tileToPixelY(newTileY));
@@ -446,16 +453,19 @@ public class Player {
 
         isMoving = false;
         movementProgress = 0f;
-
-        // Handle buffered input
         if (bufferedDirection != null) {
             String nextDirection = bufferedDirection;
             bufferedDirection = null;
             move(nextDirection);
         }
     }
+
+    public volatile boolean initialized = false;
     public void render(SpriteBatch batch) {
         synchronized (resourceLock) {
+            if (!initialized) {
+                return;
+            }
             if (!fontInitialized) {
                 initializeGraphics();
                 return;
@@ -464,7 +474,6 @@ public class Player {
                 initializeResources();
             }
             if (currentFrame != null) {
-                // Save original batch color
                 Color originalColor = batch.getColor().cpy();
 
                 if (world != null) {
@@ -524,6 +533,10 @@ public class Player {
         return pixelToTileX(x);
     }
 
+    public void setTileX(int tileX) {
+        this.tileX = tileX;
+    }
+
     public int getTileY() {
         return pixelToTileY(y);
     }
@@ -531,12 +544,6 @@ public class Player {
     public void setTileY(int tileY) {
         this.tileY = tileY;
     }
-
-    public void setTileX(int tileX) {
-        this.tileX = tileX;
-    }
-
-
 
     public void selectBlockItem(int slot) {
         if (!buildMode) return;
@@ -755,6 +762,9 @@ public class Player {
         return buildMode;
     }
 
+    public void setBuildMode(boolean buildMode) {
+        this.buildMode = buildMode;
+    }
 
     public Inventory getInventory() {
         synchronized (inventoryLock) {
@@ -830,4 +840,19 @@ public class Player {
     }
 
 
+    public Stage getStage() {
+        return stage;
+    }
+
+    public void setStage(Stage stage) {
+        this.stage = stage;
+    }
+
+    public Skin getSkin() {
+        return skin;
+    }
+
+    public void setSkin(Skin skin) {
+        this.skin = skin;
+    }
 }

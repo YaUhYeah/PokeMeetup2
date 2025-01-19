@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.pokemon.WildPokemon;
@@ -30,20 +31,11 @@ public class PokemonSpawnManager {
     private final Random random;
     private final Map<Vector2, List<WildPokemon>> pokemonByChunk;
     private final Map<UUID, WildPokemon> pokemonById;
-    private final long worldSeed;
     private final Map<UUID, NetworkSyncData> syncedPokemon = new ConcurrentHashMap<>();
-    private final GameClient gameClient;
-    private World world;
     private float spawnTimer = 0;
 
-    public PokemonSpawnManager(World world, TextureAtlas atlas, GameClient client) {
-        if (world == null) {
-            throw new IllegalArgumentException("World cannot be null when initializing PokemonSpawnManager.");
-        }
-        this.world = world;
-        this.gameClient = client;
+    public PokemonSpawnManager(TextureAtlas atlas) {
         this.atlas = atlas;
-        this.worldSeed = world.getWorldSeed();
         this.random = new Random();
         this.pokemonByChunk = new ConcurrentHashMap<>();
         this.pokemonById = new ConcurrentHashMap<>();
@@ -52,7 +44,7 @@ public class PokemonSpawnManager {
     }
 
     public GameClient getGameClient() {
-        return gameClient;
+        return GameContext.get().getGameClient();
     }
 
     private void checkSpawns(Vector2 playerPos) {
@@ -114,13 +106,13 @@ public class PokemonSpawnManager {
         int tileX = (int)(pixelX / TILE_SIZE);
         int tileY = (int)(pixelY / TILE_SIZE);
 
-        if (world == null) {
+        if (GameContext.get().getWorld() == null) {
             GameLogger.error("World reference is null in spawn validation");
             return false;
         }
 
         // Check if tile is passable
-        if (!world.isPassable(tileX, tileY)) {
+        if (!GameContext.get().getWorld().isPassable(tileX, tileY)) {
             return false;
         }
 
@@ -132,11 +124,7 @@ public class PokemonSpawnManager {
 
         // Check chunk loaded
         Vector2 chunkPos = getChunkPosition(pixelX, pixelY);
-        if (!world.getChunks().containsKey(chunkPos)) {
-            return false;
-        }
-
-        return true;
+        return GameContext.get().getWorld().getChunks().containsKey(chunkPos);
     }
 
 
@@ -189,7 +177,7 @@ public class PokemonSpawnManager {
             int tileX = (int)(pixelX / World.TILE_SIZE);
             int tileY = (int)(pixelY / World.TILE_SIZE);
 
-            Biome biome = world.getBiomeAt(tileX, tileY);
+            Biome biome = GameContext.get().getWorld().getBiomeAt(tileX, tileY);
             String pokemonName = selectPokemonForBiome(biome);
             if (pokemonName == null) return;
 
@@ -212,7 +200,7 @@ public class PokemonSpawnManager {
             );
 
             // Initialize world reference and AI
-            pokemon.setWorld(world);
+            pokemon.setWorld(GameContext.get().getWorld());
             pokemon.getAi().enterIdleState(); // Start in idle state
 
             // Add to collections
@@ -239,7 +227,7 @@ public class PokemonSpawnManager {
         // Update existing Pokemon
         for (WildPokemon pokemon : pokemonById.values()) {
             try {
-                pokemon.update(delta, world);
+                pokemon.update(delta, GameContext.get().getWorld());
             } catch (Exception e) {
                 GameLogger.error("Error updating " + pokemon.getName() + ": " + e.getMessage());
                 e.printStackTrace();
@@ -260,8 +248,8 @@ public class PokemonSpawnManager {
             syncedPokemon.remove(pokemonId);
 
             // Network update if multiplayer
-            if (!gameClient.isSinglePlayer()) {
-                gameClient.sendPokemonDespawn(pokemonId);
+            if (!GameContext.get().getGameClient().isSinglePlayer()) {
+                GameContext.get().getGameClient().sendPokemonDespawn(pokemonId);
             }
         }
     }
@@ -276,12 +264,12 @@ public class PokemonSpawnManager {
 
 
         // Debug world state
-        if (world == null) {
+        if (GameContext.get().getWorld() == null) {
             GameLogger.error("World reference is null!");
             return loadedChunks;
         }
 
-        Map<Vector2, Chunk> worldChunks = world.getChunks();
+        Map<Vector2, Chunk> worldChunks = GameContext.get().getWorld().getChunks();
         // Log some nearby chunk positions that should be loaded
         GameLogger.info("Checking chunks in radius 1:");
         int radius = 1;
@@ -343,13 +331,13 @@ public class PokemonSpawnManager {
         update.direction = pokemon.getDirection();
         update.isMoving = pokemon.isMoving();
 
-        gameClient.sendPokemonUpdate(update);
+        GameContext.get().getGameClient().sendPokemonUpdate(update);
     }
 
     private String selectPokemonForBiome(Biome biome) {
         GameLogger.info("Selecting Pokemon for biome: " + biome.getType());
 
-        double worldTimeInMinutes = world.getWorldData().getWorldTimeInMinutes();
+        double worldTimeInMinutes = GameContext.get().getWorld().getWorldData().getWorldTimeInMinutes();
         float hourOfDay = DayNightCycle.getHourOfDay(worldTimeInMinutes);
         TimeOfDay timeOfDay = (hourOfDay >= 6 && hourOfDay < 18) ? TimeOfDay.DAY : TimeOfDay.NIGHT;
 
@@ -508,9 +496,6 @@ public class PokemonSpawnManager {
     }
 
 
-    public void setWorld(World world) {
-        this.world = world;
-    }
 
     private void removeExpiredPokemon() {
         List<UUID> toRemove = new ArrayList<>();
@@ -569,8 +554,8 @@ public class PokemonSpawnManager {
 
             // Send despawn update in multiplayer immediately
             // so other clients can show the animation too
-            if (!world.getGameClient().isSinglePlayer()) {
-                world.getGameClient().sendPokemonDespawn(pokemonId);
+            if (!GameContext.get().getGameClient().isSinglePlayer()) {
+                GameContext.get().getGameClient().sendPokemonDespawn(pokemonId);
             }
 
             // The pokemon will be removed from collections when animation completes
@@ -587,7 +572,7 @@ public class PokemonSpawnManager {
             int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE) + localX;
             int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE) + localY;
 
-            if (world.isPassable(worldTileX, worldTileY)) {
+            if (GameContext.get().getWorld().isPassable(worldTileX, worldTileY)) {
                 // Select Pokemon based on biome
                 String pokemonName = selectPokemonForBiome(biome);
                 if (pokemonName != null) {
@@ -632,13 +617,13 @@ public class PokemonSpawnManager {
         spawnUpdate.x = pokemon.getX();
         spawnUpdate.y = pokemon.getY();
         spawnUpdate.timestamp = System.currentTimeMillis();
-        gameClient.sendPokemonSpawn(spawnUpdate);
+        GameContext.get().getGameClient().sendPokemonSpawn(spawnUpdate);
     }
 
     private void sendDespawnUpdate(UUID pokemonId) {
         NetworkProtocol.PokemonDespawn despawnUpdate = new NetworkProtocol.PokemonDespawn();
         despawnUpdate.uuid = pokemonId;
-        gameClient.sendPokemonDespawn(despawnUpdate.uuid);
+        GameContext.get().getGameClient().sendPokemonDespawn(despawnUpdate.uuid);
     }
 
     public Map<UUID, WildPokemon> getPokemonById() {

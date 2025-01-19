@@ -15,7 +15,6 @@ public class ItemManager {
 
     public static void initialize(TextureAtlas atlas) {
         if (initialized) {
-            GameLogger.info("ItemManager already initialized");
             return;
         }
 

@@ -26,7 +26,7 @@ public class PlayerManager {
     public ServerPlayer createOrLoadPlayer(String username) {
         try {
             UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-            
+
             // Load player data from storage
             PlayerData playerData = storage.getPlayerDataManager().loadPlayerData(playerUUID);
             if (playerData == null) {
@@ -50,7 +50,7 @@ public class PlayerManager {
             // Add player to online players and UUID mapping
             onlinePlayers.put(username, player);
             uuidToUsername.put(playerUUID, username);
-            
+
             GameLogger.info("Player loaded/created successfully: " + username +
                 " (UUID: " + playerUUID + ") at position (" + playerData.getX() + "," + playerData.getY() + ")");
 

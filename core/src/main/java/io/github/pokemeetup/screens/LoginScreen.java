@@ -9,36 +9,28 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
-import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.Timer;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
-import com.esotericsoftware.kryonet.Client;
-import com.esotericsoftware.kryonet.Connection;
-import com.esotericsoftware.kryonet.Listener;
 import io.github.pokemeetup.CreatureCaptureGame;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
-import io.github.pokemeetup.screens.otherui.ServerListEntry;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
-import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LoginScreen implements Screen {
@@ -47,42 +39,28 @@ public class LoginScreen implements Screen {
     public static final float MAX_WIDTH = 500f;
     private static final String DEFAULT_SERVER_ICON = "ui/default-server-icon.png";
     private static final int MIN_HEIGHT = 600;
-    private static final float LOGIN_TIMEOUT = 15f; // 15 seconds for total login process
     private static final float CONNECTION_TIMEOUT = 30f;
     private static final int MAX_CONNECTION_ATTEMPTS = 3;
     public final Stage stage;
     public final Skin skin;
     public final CreatureCaptureGame game;
     private final Preferences prefs;
-    private final AtomicBoolean isProcessingLoginResponse = new AtomicBoolean(false);
     public Array<ServerConnectionConfig> servers; // Adding the servers variable
     public TextField usernameField;
     public TextField passwordField;
     public CheckBox rememberMeBox;
     public Label feedbackLabel;
-    public SelectBox<ServerConnectionConfig> serverSelect;
     public ServerConnectionConfig selectedServer;
-    private float fadeAlpha = 0f;
-    private boolean isTransitioning = false;
-    private Screen nextScreen = null;
-    private Action fadeAction = null;
-    private volatile GameClient gameClient;
-    private boolean isDisposed = false;
-    private ScrollPane serverListPane;
     private Table serverListTable;
-    private Array<ServerListEntry> serverEntries;
     private Table mainTable;
     private TextButton loginButton;
     private TextButton registerButton;
     private TextButton backButton;
     private ProgressBar connectionProgress;
     private Label statusLabel;
-    // State management
     private float connectionTimer;
     private boolean isConnecting = false;
-    private float connectionTimeout = 10f;
     private int connectionAttempts = 0;
-    private Label selectedServerInfoLabel;
     private ScrollPane serverListScrollPane;
 
     public LoginScreen(CreatureCaptureGame game) {
@@ -92,83 +70,32 @@ public class LoginScreen implements Screen {
         this.prefs = Gdx.app.getPreferences("LoginPrefs");
         loadServers();
 
-        // Create all UI components
         createUIComponents();
 
-        // Setup listeners after components are created
         setupListeners();
 
-        // Initialize UI layout
         initializeUI();
 
-        // Load saved credentials
         loadSavedCredentials();
 
         Gdx.input.setInputProcessor(stage);
     }
 
-    private void handleLoginButtonPressed(ServerConnectionConfig serverConfig) {
-        String username = usernameField.getText();
-        String password = passwordField.getText();
-
-        // Show loading indicator
-        statusLabel.setText("Loading world...");
-        statusLabel.setVisible(true);
-
-        // Disable UI during login
-        setUIEnabled(false);
-
-        // Instantiate GameClient
-        gameClient = new GameClient(serverConfig, false, serverConfig.getServerIP(), serverConfig.getTcpPort(), serverConfig.getUdpPort(), null);
-
-        // Set the pending credentials
-        gameClient.setPendingCredentials(username, password);
-
-        // Set login response listener before connecting
-        gameClient.setLoginResponseListener(response -> {
-            if (response.success) {
-                Gdx.app.postRunnable(() -> {
-                    statusLabel.setText("Initializing world...");
-
-                    // Create LoadingScreen first
-                    LoadingScreen loadingScreen = new LoadingScreen(game, null);
-
-                    // Switch to loading screen while world initializes
-                    game.setScreen(loadingScreen);
-
-                    try {
-                        // Create GameScreen with proper initialization tracking
-                        GameScreen gameScreen = new GameScreen(game, username, gameClient, gameClient.getCurrentWorld());
-
-                        // Update loading screen target
-                        loadingScreen.setNextScreen(gameScreen);
-
-                        // Dispose login screen
-                        dispose();
-
-                        GameLogger.info("Successfully created game screen, waiting for initialization");
-
-                    } catch (Exception e) {
-                        GameLogger.error("Failed to create game screen: " + e.getMessage());
-                        showError("Failed to initialize game: " + e.getMessage());
-                        setUIEnabled(true);
-                    }
-                });
-            } else {
-                Gdx.app.postRunnable(() -> {
-                    showError(response.message);
-                    setUIEnabled(true);
-                });
-            }
-        });
-
-        // Connect to server
-        gameClient.connect();
-        GameLogger.info("Started connection attempt for: " + username);
+    private static ServerConnectionConfig getServerConnectionConfig(ServerEntry entry) {
+        ServerConnectionConfig config = new ServerConnectionConfig(
+            entry.ip,
+            entry.tcpPort,
+            entry.udpPort,
+            entry.name,
+            entry.isDefault,
+            entry.maxPlayers
+        );
+        config.setMotd(entry.motd);
+        config.setIconPath(entry.iconPath != null ? entry.iconPath : DEFAULT_SERVER_ICON);
+        return config;
     }
 
     private void createUIComponents() {
-        // Create main container
         mainTable = new Table();
         mainTable.setFillParent(true);
 
@@ -431,7 +358,9 @@ public class LoginScreen implements Screen {
             selectedServer = servers.first();
             updateServerSelection((Table) serverListTable.getCells().first().getActor());
         }
-    }private void attemptLogin() {
+    }
+
+    private void attemptLogin() {
         if (isConnecting) {
             return;
         }
@@ -463,23 +392,22 @@ public class LoginScreen implements Screen {
 
         try {
             // Cleanup existing client
-            if (gameClient != null) {
-                gameClient.dispose();
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
                 GameClientSingleton.resetInstance();
             }
 
             // Create new client
-            gameClient = new GameClient(
+            GameContext.get().setGameClient(new GameClient(
                 selectedServer,
                 false,
                 selectedServer.getServerIP(),
                 selectedServer.getTcpPort(),
-                selectedServer.getUdpPort(),
-                null
-            );
+                selectedServer.getUdpPort()
+            ));
 
             // Set up response handlers
-            gameClient.setLoginResponseListener(response -> {
+            GameContext.get().getGameClient().setLoginResponseListener(response -> {
                 if (loginCompleted.get()) {
                     return; // Prevent duplicate processing
                 }
@@ -495,7 +423,7 @@ public class LoginScreen implements Screen {
             });
 
             // Set initialization listener
-            gameClient.setInitializationListener(success -> {
+            GameContext.get().getGameClient().setInitializationListener(success -> {
                 if (transitionStarted.get()) {
                     return; // Prevent duplicate transitions
                 }
@@ -512,6 +440,7 @@ public class LoginScreen implements Screen {
             // Start progress animation
             Timer.schedule(new Timer.Task() {
                 float progress = 0;
+
                 @Override
                 public void run() {
                     if (!isConnecting) {
@@ -524,14 +453,13 @@ public class LoginScreen implements Screen {
             }, 0, 0.05f);
 
             // Set credentials and connect
-            gameClient.setPendingCredentials(username, password);
-            gameClient.connect();
+            GameContext.get().getGameClient().setPendingCredentials(username, password);
+            GameContext.get().getGameClient().connect();
 
         } catch (Exception e) {
             handleLoginError(e);
         }
     }
-
 
     private void showRetryDialog() {
         Dialog dialog = new Dialog("Connection Failed", skin) {
@@ -551,8 +479,6 @@ public class LoginScreen implements Screen {
         dialog.show(stage);
     }
 
-
-
     private void handleSuccessfulLogin(NetworkProtocol.LoginResponse response, AtomicBoolean transitionStarted) {
         if (transitionStarted.get()) {
             return;
@@ -568,20 +494,18 @@ public class LoginScreen implements Screen {
             LoadingScreen loadingScreen = new LoadingScreen(game, null);
             game.setScreen(loadingScreen);
 
-            // Create game screen
-            GameScreen gameScreen = new GameScreen(
+            GameContext.get().setGameScreen(new GameScreen(
                 game,
                 response.username,
-                gameClient,
-                gameClient.getCurrentWorld()
-            );
+                GameContext.get().getGameClient()
+            ));
 
             // Update loading screen target
-            loadingScreen.setNextScreen(gameScreen);
+            loadingScreen.setNextScreen(GameContext.get().getGameScreen());
 
             // Save credentials if needed
             if (rememberMeBox.isChecked()) {
-                saveCredentials(usernameField.getText(), passwordField.getText(), true);
+                saveCredentials(usernameField.getText(), passwordField.getText());
             }
 
             // Clean up
@@ -593,28 +517,44 @@ public class LoginScreen implements Screen {
         }
     }
 
+    // In LoginScreen.java - Update handleLoginResponse
     private void handleLoginResponse(NetworkProtocol.LoginResponse response) {
-        if (isDisposed) {
-            GameLogger.error("Login screen disposed, ignoring response");
-            return;
-        }
+        isConnecting = false;
 
-        Gdx.app.postRunnable(() -> {
+        if (response.success) {
+            GameLogger.info("Login successful, transitioning to loading screen");
             try {
-                if (response.success) {
-                    GameLogger.info("Processing successful login for: " + response.username);
-                    handleSuccessfulLoginAttempt(response);
-                } else if (response.message != null && response.message.contains("already logged in")) {
-                    // Special handling for already logged in case
-                    handleAlreadyLoggedIn();
-                } else {
-                    handleLoginFailure(response.message);
+                // Create loading screen
+                LoadingScreen loadingScreen = new LoadingScreen(game, null);
+                GameContext.get().setGameScreen(new GameScreen(game, response.username,
+                    GameContext.get().getGameClient()));
+
+                // Verify game screen creation
+                if (!GameContext.get().getGameScreen().isInitialized()) {
+                    showError("Failed to initialize game screen");
+                    return;
                 }
+
+                // Set next screen and transition
+                loadingScreen.setNextScreen(GameContext.get().getGameScreen());
+                game.setScreen(loadingScreen);
+
+                // Save credentials if needed
+                if (rememberMeBox.isChecked()) {
+                    saveCredentials(usernameField.getText(), passwordField.getText());
+                }
+
+                dispose(); // Clean up login screen
+
             } catch (Exception e) {
-                GameLogger.error("Error handling login response: " + e.getMessage());
-                handleLoginFailure("Internal error occurred");
+                GameLogger.error("Failed to transition to game: " + e.getMessage());
+                showError("Failed to start game: " + e.getMessage());
+                setUIEnabled(true);
             }
-        });
+        } else {
+            showError(response.message != null ? response.message : "Login failed");
+            setUIEnabled(true);
+        }
     }
 
     private void handleAlreadyLoggedIn() {
@@ -644,8 +584,8 @@ public class LoginScreen implements Screen {
     }
 
     private void forceRelogin() {
-        if (gameClient != null) {
-            gameClient.dispose();
+        if (GameContext.get().getGameClient() != null) {
+            GameContext.get().getGameClient().dispose();
         }
 
         String username = usernameField.getText().trim();
@@ -659,18 +599,17 @@ public class LoginScreen implements Screen {
 
         // Create new client with force login flag
         try {
-            gameClient = new GameClient(selectedServer, false,
+            GameContext.get().setGameClient(new GameClient(selectedServer, false,
                 selectedServer.getServerIP(),
                 selectedServer.getTcpPort(),
-                selectedServer.getUdpPort(),
-                null);
+                selectedServer.getUdpPort()));
 
             // Set login response listener
-            gameClient.setLoginResponseListener(this::handleForceLoginResponse);
+            GameContext.get().getGameClient().setLoginResponseListener(this::handleForceLoginResponse);
 
             // Set force login flag and credentials
-            gameClient.setPendingCredentials(username, password);
-            gameClient.connect();
+            GameContext.get().getGameClient().setPendingCredentials(username, password);
+            GameContext.get().getGameClient().connect();
 
         } catch (Exception e) {
             GameLogger.error("Force relogin failed: " + e.getMessage());
@@ -698,7 +637,7 @@ public class LoginScreen implements Screen {
 
         try {
             // Validate game client state
-            if (gameClient == null || !gameClient.isConnected()) {
+            if (GameContext.get().getGameClient() == null || !GameContext.get().getGameClient().isConnected()) {
                 throw new IllegalStateException("Invalid game client state");
             }
 
@@ -710,8 +649,7 @@ public class LoginScreen implements Screen {
             GameScreen gameScreen = new GameScreen(
                 game,
                 response.username,
-                gameClient,
-                gameClient.getCurrentWorld()
+                GameContext.get().getGameClient()
             );
 
             // Update loading screen target
@@ -719,7 +657,7 @@ public class LoginScreen implements Screen {
 
             // Save credentials if needed
             if (rememberMeBox.isChecked()) {
-                saveCredentials(usernameField.getText(), passwordField.getText(), true);
+                saveCredentials(usernameField.getText(), passwordField.getText());
             }
 
             // Clean up login screen
@@ -734,9 +672,9 @@ public class LoginScreen implements Screen {
     private void handleGameCreationError(Exception e) {
         Gdx.app.postRunnable(() -> {
             // Clean up any partial state
-            if (gameClient != null) {
-                gameClient.dispose();
-                gameClient = null;
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
+                GameContext.get().setGameClient(null);
             }
 
             // Reset UI state
@@ -751,6 +689,7 @@ public class LoginScreen implements Screen {
             dialog.show(stage);
         });
     }
+
     @Override
     public void render(float delta) {
         // Update connection timeout if connecting
@@ -772,8 +711,8 @@ public class LoginScreen implements Screen {
         stage.draw();
 
         // Update game client if exists
-        if (gameClient != null) {
-            gameClient.tick(delta);
+        if (GameContext.get().getGameClient() != null) {
+            GameContext.get().getGameClient().tick(delta);
         }
     }
 
@@ -788,7 +727,7 @@ public class LoginScreen implements Screen {
             showError("Connection failed after multiple attempts. Please try again later.");
             setUIEnabled(true);
 
-    }
+        }
 
 
     }
@@ -821,37 +760,36 @@ public class LoginScreen implements Screen {
                 server.getTcpPort() + "/" + server.getUdpPort());
 
             // Reset existing client
-            if (gameClient != null) {
-                gameClient.dispose();
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
             }
             GameClientSingleton.resetInstance();
 
             // Create new client instance
-            gameClient = GameClientSingleton.getInstance(server);
-            if (gameClient == null) {
+            GameContext.get().setGameClient(GameClientSingleton.getInstance(server));
+            if (GameContext.get().getGameClient() == null) {
                 GameLogger.error("Failed to initialize GameClient.");
                 handleConnectionError(new Exception("Failed to initialize GameClient."));
                 return;
             }
 
             // Set up login response listener BEFORE connecting
-            gameClient.setLoginResponseListener(this::handleLoginResponse);
+            GameContext.get().getGameClient().setLoginResponseListener(this::handleLoginResponse);
 
             // Set up initialization listener
-            gameClient.setInitializationListener(success -> {
+            GameContext.get().getGameClient().setInitializationListener(success -> {
                 if (success) {
                     GameLogger.info("Game client initialization successful");
 
                     // CRITICAL: Create and switch to game screen immediately
                     Gdx.app.postRunnable(() -> {
                         try {
-                            GameScreen gameScreen = new GameScreen(
+                            GameContext.get().setGameScreen(new GameScreen(
                                 game,
                                 username,
-                                gameClient,
-                                game.getCurrentWorld()
-                            );
-                            game.setScreen(gameScreen);
+                                GameContext.get().getGameClient()
+                            )  );
+                            game.setScreen(GameContext.get().getGameScreen());
                             dispose(); // Clean up login screen
                         } catch (Exception e) {
                             GameLogger.error("Failed to create game screen: " + e.getMessage());
@@ -869,8 +807,8 @@ public class LoginScreen implements Screen {
             });
 
             // Set credentials and connect
-            gameClient.setPendingCredentials(username, password);
-            gameClient.connect();
+            GameContext.get().getGameClient().setPendingCredentials(username, password);
+            GameContext.get().getGameClient().connect();
 
             GameLogger.info("Connection attempt started for user: " + username);
 
@@ -879,9 +817,6 @@ public class LoginScreen implements Screen {
             handleConnectionError(e);
         }
     }
-
-
-
 
     private void setupListeners() {
         if (loginButton != null) {
@@ -935,7 +870,6 @@ public class LoginScreen implements Screen {
 
     @Override
     public void dispose() {
-        isDisposed = true;
         stage.dispose();
     }
 
@@ -971,17 +905,15 @@ public class LoginScreen implements Screen {
         statusLabel.setColor(color);
     }
 
-
-
     private void handleLoginError(Exception e) {
         Gdx.app.postRunnable(() -> {
             isConnecting = false;
             connectionProgress.setVisible(false);
 
             // Clean up any partial client state
-            if (gameClient != null) {
-                gameClient.dispose();
-                gameClient = null;
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
+                GameContext.get().setGameClient(null);
             }
 
             // Show error to user
@@ -996,15 +928,16 @@ public class LoginScreen implements Screen {
             e.printStackTrace();
         });
     }
+
     private void handleInitializationFailure() {
         Gdx.app.postRunnable(() -> {
             isConnecting = false;
             connectionProgress.setVisible(false);
 
             // Clean up resources
-            if (gameClient != null) {
-                gameClient.dispose();
-                gameClient = null;
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
+                GameContext.get().setGameClient(null);
             }
 
             // Show error dialog with retry option
@@ -1031,7 +964,6 @@ public class LoginScreen implements Screen {
         });
     }
 
-
     private void proceedToGame(AtomicBoolean transitionStarted) {
         if (transitionStarted.get()) {
             return;
@@ -1049,7 +981,7 @@ public class LoginScreen implements Screen {
 
                 // Save credentials if needed
                 if (rememberMeBox.isChecked()) {
-                    saveCredentials(usernameField.getText(), passwordField.getText(), true);
+                    saveCredentials(usernameField.getText(), passwordField.getText());
                 }
 
                 // Clean up
@@ -1060,60 +992,45 @@ public class LoginScreen implements Screen {
             handleGameTransitionError(e);
         }
     }
+
     private GameScreen createGameScreen() {
         try {
             String username = usernameField.getText().trim();
-            World currentWorld = gameClient.getCurrentWorld();
+            World currentWorld = GameContext.get().getGameClient().getCurrentWorld();
 
             if (currentWorld == null) {
                 throw new IllegalStateException("World not initialized");
             }
 
-            GameScreen gameScreen = new GameScreen(
+            GameContext.get().setGameScreen(new GameScreen(
                 game,
                 username,
-                gameClient,
-                currentWorld
-            );
+                GameContext.get().getGameClient()
+            ));
 
             // Verify initialization
-            if (!gameScreen.isInitialized()) {
+            if (!GameContext.get().getGameScreen().isInitialized()) {
                 throw new IllegalStateException("Game screen failed to initialize");
             }
 
-            return gameScreen;
+            return GameContext.get().getGameScreen();
 
         } catch (Exception e) {
             GameLogger.error("Failed to create game screen: " + e.getMessage());
             return null;
         }
     }
-    private void handleGameScreenCreationError() {
-        Gdx.app.postRunnable(() -> {
-            // Return to login screen state
-            game.setScreen(new LoginScreen(game));
 
-            // Show error dialog
-            Dialog dialog = new Dialog("Error", skin);
-            dialog.text("Failed to create game screen. Please try again.");
-            dialog.button("OK", true);
-            dialog.show(stage);
-        });
-    } void handleGameTransitionError(Exception e) {
+    void handleGameTransitionError(Exception e) {
         Gdx.app.postRunnable(() -> {
-            // Clean up any partial state
-            if (gameClient != null) {
-                gameClient.dispose();
-                gameClient = null;
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
+                GameContext.get().setGameClient(null);
             }
-
-            // Show error dialog
             Dialog dialog = new Dialog("Error", skin);
             dialog.text("Failed to start game: " + e.getMessage() + "\nPlease try again.");
             dialog.button("OK", true);
             dialog.show(stage);
-
-            // Reset UI state
             setUIEnabled(true);
             statusLabel.setText("");
             connectionProgress.setVisible(false);
@@ -1122,15 +1039,15 @@ public class LoginScreen implements Screen {
     }
 
     private void validateGameClient() {
-        if (gameClient == null) {
+        if (GameContext.get().getGameClient() == null) {
             throw new IllegalStateException("GameClient is null");
         }
 
-        if (!gameClient.isInitialized()) {
+        if (!GameContext.get().getGameClient().isInitialized()) {
             throw new IllegalStateException("GameClient not fully initialized");
         }
 
-        if (gameClient.getCurrentWorld() == null) {
+        if (GameContext.get().getGameClient().getCurrentWorld() == null) {
             throw new IllegalStateException("World not initialized");
         }
     }
@@ -1185,7 +1102,7 @@ public class LoginScreen implements Screen {
         }
     }
 
-    public Array<ServerConnectionConfig> loadServers() {
+    public void loadServers() {
         try {
             if (servers == null) {
                 servers = new Array<>();
@@ -1208,16 +1125,7 @@ public class LoginScreen implements Screen {
                         if (!serverString.trim().isEmpty()) {
                             ServerEntry entry = json.fromJson(ServerEntry.class, serverString);
                             if (entry != null && !isDefaultServer(entry)) {
-                                ServerConnectionConfig config = new ServerConnectionConfig(
-                                    entry.ip,
-                                    entry.tcpPort,
-                                    entry.udpPort,
-                                    entry.name,
-                                    entry.isDefault,
-                                    entry.maxPlayers
-                                );
-                                config.setMotd(entry.motd);
-                                config.setIconPath(entry.iconPath != null ? entry.iconPath : DEFAULT_SERVER_ICON);
+                                ServerConnectionConfig config = getServerConnectionConfig(entry);
                                 servers.add(config);
                                 GameLogger.info("Loaded server: " + config.getServerName());
                             }
@@ -1238,17 +1146,16 @@ public class LoginScreen implements Screen {
                 servers.add(defaultServer);
             }
         }
-        return servers;
     }
 
     private boolean isDefaultServer(ServerEntry entry) {
         return entry.isDefault && "localhost".equals(entry.ip) && entry.tcpPort == 54555;
     }
 
-    private void saveCredentials(String username, String password, boolean remember) {
-        GameLogger.info("Saving credentials for: " + username + ", remember: " + remember);
-        prefs.putBoolean("rememberMe", remember);
-        if (remember) {
+    private void saveCredentials(String username, String password) {
+        GameLogger.info("Saving credentials for: " + username + ", remember: " + true);
+        prefs.putBoolean("rememberMe", true);
+        if (true) {
             prefs.putString("username", username);
             prefs.putString("password", password);
             GameLogger.info("Credentials saved to preferences");
@@ -1302,39 +1209,34 @@ public class LoginScreen implements Screen {
         connectionProgress.setValue(0);
         feedbackLabel.setText("");
 
-        // Create connection with timeout
         CompletableFuture.runAsync(() -> {
             try {
-                // Cleanup existing client
-                if (gameClient != null) {
-                    gameClient.dispose();
+                if (GameContext.get().getGameClient() != null) {
+                    GameContext.get().getGameClient().dispose();
                     GameClientSingleton.resetInstance();
                 }
 
-                // Create new client
-                gameClient = new GameClient(
+                GameContext.get().setGameClient(new GameClient(
                     selectedServer,
                     false,
                     selectedServer.getServerIP(),
                     selectedServer.getTcpPort(),
-                    selectedServer.getUdpPort(),
-                    null
-                );
+                    selectedServer.getUdpPort()
+                ));
 
-                // Set registration response handler
-                gameClient.setRegistrationResponseListener(response -> {
+                GameContext.get().getGameClient().setRegistrationResponseListener(response -> {
                     Gdx.app.postRunnable(() -> {
                         handleRegistrationResponse(response);
                     });
                 });
 
                 // Connect and send registration
-                gameClient.connect();
+                GameContext.get().getGameClient().connect();
 
                 // Small delay to ensure connection is ready
                 Thread.sleep(100);
 
-                gameClient.sendRegisterRequest(username, password);
+                GameContext.get().getGameClient().sendRegisterRequest(username, password);
 
             } catch (Exception e) {
                 Gdx.app.postRunnable(() -> handleRegistrationError(e));
@@ -1344,6 +1246,7 @@ public class LoginScreen implements Screen {
         // Start progress animation
         Timer.schedule(new Timer.Task() {
             float progress = 0;
+
             @Override
             public void run() {
                 if (!isConnecting) {
@@ -1400,11 +1303,12 @@ public class LoginScreen implements Screen {
         }
 
         // Cleanup
-        if (gameClient != null) {
-            gameClient.dispose();
-            gameClient = null;
+        if (GameContext.get().getGameClient() != null) {
+            GameContext.get().getGameClient().dispose();
+            GameContext.get().setGameClient(null);
         }
     }
+
     private void handleLoginFailure(String message) {
         Gdx.app.postRunnable(() -> {
             isConnecting = false;
@@ -1412,12 +1316,13 @@ public class LoginScreen implements Screen {
             setUIEnabled(true);
             showError(message);
 
-            if (gameClient != null) {
-                gameClient.dispose();
-                gameClient = null;
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
+                GameContext.get().setGameClient(null);
             }
         });
     }
+
     private void handleTransitionError(Exception e) {
         Gdx.app.postRunnable(() -> {
             isConnecting = false;
@@ -1483,9 +1388,9 @@ public class LoginScreen implements Screen {
             isConnecting = false;
             connectionProgress.setVisible(false);
 
-            if (gameClient != null) {
-                gameClient.dispose();
-                gameClient = null;
+            if (GameContext.get().getGameClient() != null) {
+                GameContext.get().getGameClient().dispose();
+                GameContext.get().setGameClient(null);
             }
         });
     }

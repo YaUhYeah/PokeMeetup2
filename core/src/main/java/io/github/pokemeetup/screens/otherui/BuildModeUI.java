@@ -21,6 +21,7 @@ import io.github.pokemeetup.blocks.BuildingData;
 import io.github.pokemeetup.blocks.BuildingTemplate;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.blocks.SmartBuildingManager;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.UITransitionManager;
 import io.github.pokemeetup.system.data.BlockSaveData;
@@ -45,14 +46,12 @@ public class BuildModeUI extends Group {
     private static final Color VALID_PREVIEW_COLOR = new Color(0, 1, 0, 0.3f);
     private static final Color INVALID_PREVIEW_COLOR = new Color(1, 0, 0, 0.3f);
     private final Skin skin;
-    private final Player player;
-    private BuildingHotbar buildingHotbar;
+    private final BuildingHotbar buildingHotbar;
     private boolean inBuildingMode = false;
 
     private final Table mainTable;
     private final Table hotbarTable;
     private final SmartBuildingManager smartBuildingManager;
-    private String currentSmartBlockGroup = null;
     private final ShapeRenderer shapeRenderer;
     private final BlockTextureManager blockTextureManager;
     private final boolean disposed = false;
@@ -63,7 +62,7 @@ public class BuildModeUI extends Group {
     private float stateTime = 0;
     private final BitmapFont font;
 
-    public BuildModeUI(Skin skin, Player player) {
+    public BuildModeUI(Skin skin) {
         this.skin = skin;
         this.font = new BitmapFont(Gdx.files.internal("Skins/default.fnt"));
 
@@ -74,7 +73,6 @@ public class BuildModeUI extends Group {
         buildingHotbar.setPosition(PADDING, hotbarY);
         this.addActor(buildingHotbar);
 
-        this.player = player;
         this.blockTextureManager = new BlockTextureManager();
         this.shapeRenderer = new ShapeRenderer();
         this.previewPosition = new Vector2();
@@ -90,7 +88,7 @@ public class BuildModeUI extends Group {
         // Initialize and populate the build inventory with all placeable blocks.
         refreshBuildInventory();
 
-        this.smartBuildingManager = new SmartBuildingManager(player.getWorld());
+        this.smartBuildingManager = new SmartBuildingManager(GameContext.get().getWorld());
         this.mainTable.add(hotbarTable).expandX().center().bottom();
 
         this.mainTable.setTouchable(Touchable.disabled);
@@ -100,10 +98,8 @@ public class BuildModeUI extends Group {
         setSize(Gdx.graphics.getWidth(), hotbarHeight);
         setPosition(0, PARTY_UI_HEIGHT + PADDING);
 
-        player.getInventory().addObserver(() -> {
-            // On any inventory change, fully refresh the build inventory
+        GameContext.get().getPlayer().getInventory().addObserver(() -> {
             refreshBuildInventory();
-            GameLogger.info("Build UI updated due to inventory change");
         });
     }
 
@@ -123,12 +119,12 @@ public class BuildModeUI extends Group {
     }
 
     public void renderPlacementPreview(SpriteBatch batch, OrthographicCamera camera) {
-        if (!player.isBuildMode() || !this.isVisible()) return;
+        if (!GameContext.get().getPlayer().isBuildMode() || !this.isVisible()) return;
 
-        int targetX = player.getTileX();
-        int targetY = player.getTileY();
+        int targetX = GameContext.get().getPlayer().getTileX();
+        int targetY = GameContext.get().getPlayer().getTileY();
 
-        switch (player.getDirection()) {
+        switch (GameContext.get().getPlayer().getDirection()) {
             case "up": targetY++; break;
             case "down": targetY--; break;
             case "left": targetX--; break;
@@ -163,7 +159,7 @@ public class BuildModeUI extends Group {
     }
 
     private void renderBlockPreview(SpriteBatch batch, int targetX, int targetY) {
-        ItemData selectedItem = player.getBuildInventory().getItemAt(selectedSlot);
+        ItemData selectedItem = GameContext.get().getPlayer().getBuildInventory().getItemAt(selectedSlot);
         if (selectedItem == null) return;
 
         PlaceableBlock.BlockType baseType = PlaceableBlock.BlockType.fromItemId(selectedItem.getItemId());
@@ -242,7 +238,7 @@ public class BuildModeUI extends Group {
             return false;
         }
 
-        boolean placed = template.placeBuilding(player.getWorld(), tileX, tileY);
+        boolean placed = template.placeBuilding(GameContext.get().getWorld(), tileX, tileY);
         if (placed) {
             consumeMaterials(building.getRequirements());
             GameLogger.info("Successfully placed building: " + building.getName());
@@ -255,8 +251,8 @@ public class BuildModeUI extends Group {
 
     private boolean hasEnoughMaterials(String itemId, int required) {
         int count = 0;
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            ItemData item = player.getInventory().getItemAt(i);
+        for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize(); i++) {
+            ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null && item.getItemId().equals(itemId)) {
                 count += item.getCount();
             }
@@ -267,12 +263,12 @@ public class BuildModeUI extends Group {
     private void consumeMaterials(Map<String, Integer> requirements) {
         for (Map.Entry<String, Integer> req : requirements.entrySet()) {
             int remaining = req.getValue();
-            for (int i = 0; i < player.getInventory().getSize() && remaining > 0; i++) {
-                ItemData item = player.getInventory().getItemAt(i);
+            for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize() && remaining > 0; i++) {
+                ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
                 if (item != null && item.getItemId().equals(req.getKey())) {
                     if (item.getCount() <= remaining) {
                         remaining -= item.getCount();
-                        player.getInventory().removeItemAt(i);
+                        GameContext.get().getPlayer().getInventory().removeItemAt(i);
                         i--;
                     } else {
                         item.setCount(item.getCount() - remaining);
@@ -345,7 +341,7 @@ public class BuildModeUI extends Group {
             TextureManager.ui.findRegion(index == selectedSlot ? "slot_selected" : "slot_normal")
         ));
 
-        ItemData item = player.getBuildInventory().getItemAt(index);
+        ItemData item = GameContext.get().getPlayer().getBuildInventory().getItemAt(index);
         if (item != null) {
             TextureRegion itemIcon = blockTextureManager.getItemIcon(item.getItemId());
             if (itemIcon != null) {
@@ -377,10 +373,10 @@ public class BuildModeUI extends Group {
     public void selectSlot(int index) {
         if (index >= 0 && index < HOTBAR_SLOTS) {
             selectedSlot = index;
-            ItemData selectedItem = player.getBuildInventory().getItemAt(index);
+            ItemData selectedItem = GameContext.get().getPlayer().getBuildInventory().getItemAt(index);
 
             if (selectedItem != null) {
-                player.selectBlockItem(index);
+                GameContext.get().getPlayer().selectBlockItem(index);
                 PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromItemId(selectedItem.getItemId());
                 if (blockType != null) {
                     GameLogger.info("Selected block: " + blockType.id);
@@ -393,7 +389,7 @@ public class BuildModeUI extends Group {
 
     public void update(float deltaTime) {
         stateTime += deltaTime;
-        ItemData selectedItem = player.getBuildInventory().getItemAt(selectedSlot);
+        ItemData selectedItem = GameContext.get().getPlayer().getBuildInventory().getItemAt(selectedSlot);
         if (selectedItem != null) {
             GameLogger.info("Selected: " + selectedItem.getItemId() +
                 " at pos: " + previewPosition +
@@ -404,7 +400,7 @@ public class BuildModeUI extends Group {
     public void render(SpriteBatch batch, OrthographicCamera camera) {
         GameLogger.info("BuildModeUI rendering - BuildingMode: " + inBuildingMode +
             ", Hotbar visible: " + buildingHotbar.isVisible());
-        if (!this.isVisible() || !player.isBuildMode() || !mainTable.isVisible()) return;
+        if (!this.isVisible() || !GameContext.get().getPlayer().isBuildMode() || !mainTable.isVisible()) return;
 
         stateTime += Gdx.graphics.getDeltaTime();
 
@@ -416,12 +412,12 @@ public class BuildModeUI extends Group {
     }
 
     private void renderBuildingPreview(SpriteBatch batch, OrthographicCamera camera) {
-        if (!player.isBuildMode() || !this.isVisible()) return;
+        if (!GameContext.get().getPlayer().isBuildMode() || !this.isVisible()) return;
 
-        int targetX = player.getTileX();
-        int targetY = player.getTileY();
+        int targetX = GameContext.get().getPlayer().getTileX();
+        int targetY = GameContext.get().getPlayer().getTileY();
 
-        switch (player.getDirection()) {
+        switch (GameContext.get().getPlayer().getDirection()) {
             case "up": targetY++; break;
             case "down": targetY--; break;
             case "left": targetX--; break;
@@ -454,11 +450,11 @@ public class BuildModeUI extends Group {
                     int worldX = startX + x;
                     int worldY = startY + y;
 
-                    if (!player.getWorld().isPassable(worldX, worldY)) {
+                    if (!GameContext.get().getWorld().isPassable(worldX, worldY)) {
                         return false;
                     }
 
-                    if (player.getWorld().getBlockManager().getBlockAt(worldX, worldY) != null) {
+                    if (GameContext.get().getWorld().getBlockManager().getBlockAt(worldX, worldY) != null) {
                         return false;
                     }
 
@@ -473,7 +469,7 @@ public class BuildModeUI extends Group {
     }
 
     private boolean isSpaceClear(int x, int y) {
-        List<WorldObject> objects = player.getWorld().getObjectManager()
+        List<WorldObject> objects = GameContext.get().getWorld().getObjectManager()
             .getObjectsNearPosition(x * World.TILE_SIZE, y * World.TILE_SIZE);
 
         for (WorldObject obj : objects) {
@@ -491,7 +487,7 @@ public class BuildModeUI extends Group {
             }
         }
 
-        Chunk chunk = player.getWorld().getChunkAtPosition(x, y);
+        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(x, y);
         if (chunk != null) {
             int localX = Math.floorMod(x, Chunk.CHUNK_SIZE);
             int localY = Math.floorMod(y, Chunk.CHUNK_SIZE);
@@ -611,8 +607,8 @@ public class BuildModeUI extends Group {
 
     private int countPlayerItems(String itemId) {
         int count = 0;
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            ItemData item = player.getInventory().getItemAt(i);
+        for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize(); i++) {
+            ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null && item.getItemId().equals(itemId)) {
                 count += item.getCount();
             }
@@ -626,11 +622,11 @@ public class BuildModeUI extends Group {
     }
 
     private boolean canPlaceBlockAt(int tileX, int tileY) {
-        int playerTileX = player.getTileX();
-        int playerTileY = player.getTileY();
+        int playerTileX = GameContext.get().getPlayer().getTileX();
+        int playerTileY = GameContext.get().getPlayer().getTileY();
 
         boolean isAdjacent = false;
-        switch (player.getDirection()) {
+        switch (GameContext.get().getPlayer().getDirection()) {
             case "up":
                 isAdjacent = (tileX == playerTileX && tileY == playerTileY + 1);
                 break;
@@ -650,24 +646,24 @@ public class BuildModeUI extends Group {
             return false;
         }
 
-        PlaceableBlock existingBlock = player.getWorld().getBlockManager().getBlockAt(tileX, tileY);
+        PlaceableBlock existingBlock = GameContext.get().getWorld().getBlockManager().getBlockAt(tileX, tileY);
         if (existingBlock != null) {
             GameLogger.info("Block already exists at target position");
             return false;
         }
 
-        return player.getWorld().isPassable(tileX, tileY);
+        return GameContext.get().getWorld().isPassable(tileX, tileY);
     }
 
     public boolean tryPlaceBlock(int tileX, int tileY) {
-        if (!player.isBuildMode()) return false;
+        if (!GameContext.get().getPlayer().isBuildMode()) return false;
         if (!canPlaceBlockAt(tileX, tileY)) return false;
         if (inBuildingMode) {
             return tryPlaceBuilding(tileX, tileY);
         }
 
-        synchronized (player.getInventory().getInventoryLock()) {
-            ItemData selectedItem = player.getBuildInventory().getItemAt(selectedSlot);
+        synchronized (GameContext.get().getPlayer().getInventory().getInventoryLock()) {
+            ItemData selectedItem = GameContext.get().getPlayer().getBuildInventory().getItemAt(selectedSlot);
             if (selectedItem == null) {
                 GameLogger.info("No item selected in build inventory");
                 return false;
@@ -696,8 +692,8 @@ public class BuildModeUI extends Group {
                     }
                 }
 
-                boolean placed = player.getWorld().getBlockManager()
-                    .placeBlockFromPlayer(blockType, player, player.getWorld());
+                boolean placed = GameContext.get().getWorld().getBlockManager()
+                    .placeBlockFromPlayer(blockType, GameContext.get().getPlayer(), GameContext.get().getWorld());
 
                 if (placed) {
                     if (inventoryItem.getCount() > 1) {
@@ -731,25 +727,24 @@ public class BuildModeUI extends Group {
     public void refreshBuildInventory() {
         // First, clear all build inventory slots
         for (int i = 0; i < HOTBAR_SLOTS; i++) {
-            player.getBuildInventory().removeItemAt(i);
+            GameContext.get().getPlayer().getBuildInventory().removeItemAt(i);
         }
 
         int buildSlot = 0;
         // Fill slots with placeable blocks from player's main inventory
-        for (int i = 0; i < player.getInventory().getSize() && buildSlot < HOTBAR_SLOTS; i++) {
-            ItemData item = player.getInventory().getItemAt(i);
+        for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize() && buildSlot < HOTBAR_SLOTS; i++) {
+            ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null && isBlockItem(item.getItemId())) {
-                player.getBuildInventory().setItemAt(buildSlot++, item);
+                GameContext.get().getPlayer().getBuildInventory().setItemAt(buildSlot++, item);
             }
         }
 
         updateHotbarContent();
-        GameLogger.info("Build inventory refreshed with available placeable blocks.");
     }
 
     private ItemData findInventoryItem(UUID itemUUID) {
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            ItemData item = player.getInventory().getItemAt(i);
+        for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize(); i++) {
+            ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null && item.getUuid().equals(itemUUID)) {
                 return item;
             }
@@ -758,28 +753,28 @@ public class BuildModeUI extends Group {
     }
 
     private void removeInventoryItem(UUID itemUUID) {
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            ItemData item = player.getInventory().getItemAt(i);
+        for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize(); i++) {
+            ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null && item.getUuid().equals(itemUUID)) {
-                player.getInventory().removeItemAt(i);
+                GameContext.get().getPlayer().getInventory().removeItemAt(i);
                 break;
             }
         }
     }
 
     private void saveBlockData(PlaceableBlock.BlockType blockType, int tileX, int tileY) {
-        if (player.getWorld().getWorldData() != null) {
-            BlockSaveData blockData = player.getWorld().getWorldData().getBlockData();
+        if (GameContext.get().getWorld().getWorldData() != null) {
+            BlockSaveData blockData = GameContext.get().getWorld().getWorldData().getBlockData();
             if (blockData == null) {
                 blockData = new BlockSaveData();
-                player.getWorld().getWorldData().setBlockData(blockData);
+                GameContext.get().getWorld().getWorldData().setBlockData(blockData);
             }
 
             String chunkKey = getChunkKeyForPosition(tileX, tileY);
             BlockSaveData.BlockData data = new BlockSaveData.BlockData(blockType.getId(), tileX, tileY);
             blockData.addBlock(chunkKey, data);
-            player.getWorld().getWorldData().setDirty(true);
-            player.getWorld().save();
+            GameContext.get().getWorld().getWorldData().setDirty(true);
+            GameContext.get().getWorld().save();
         }
     }
 

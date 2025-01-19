@@ -235,7 +235,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         } catch (Exception e) {
             GameLogger.error("Error during chest validation: " + e.getMessage());
             e.printStackTrace();
-            
+
             // Try to recover to a safe state
             initializeSlots();
         }

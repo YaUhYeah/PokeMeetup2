@@ -3,6 +3,7 @@ package io.github.pokemeetup.system;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.InputMultiplexer;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.screens.ChestScreen;
 import io.github.pokemeetup.screens.CraftingTableScreen;
 import io.github.pokemeetup.screens.GameScreen;
@@ -12,22 +13,10 @@ import io.github.pokemeetup.screens.otherui.GameMenu;
 import io.github.pokemeetup.utils.GameLogger;
 
 public class InputManager {
-    public enum UIState {
-        NORMAL,
-        INVENTORY,
-        BUILD_MODE,
-        CRAFTING,
-        MENU,
-        STARTER_SELECTION,
-        CHEST_SCREEN,
-        BATTLE
-    }
-
     private final GlobalInputProcessor globalInputProcessor;
     private final GameScreen gameScreen;
     private final InputMultiplexer inputMultiplexer;
     private UIState currentState;
-
     public InputManager(GameScreen gameScreen) {
         this.gameScreen = gameScreen;
         this.inputMultiplexer = new InputMultiplexer();
@@ -102,25 +91,21 @@ public class InputManager {
 
     private void showInventoryScreen() {
         if (gameScreen.getInventoryScreen() == null) {
-            gameScreen.setInventoryScreen(new InventoryScreen(
-                gameScreen.getPlayer(),
-                gameScreen.getSkin(),
-                gameScreen.getPlayer().getInventory(),this
-            ));
+            GameContext.get().setInventoryScreen(new InventoryScreen(GameContext.get().getPlayer(), gameScreen.getSkin(), GameContext.get().getPlayer().getInventory(), gameScreen.getInputManager()));
         }
         gameScreen.getInventoryScreen().show();
     }
 
     private void showBuildModeUI() {
-        if (gameScreen.getBuildModeUI() == null) {
-            gameScreen.setBuildModeUI(new BuildModeUI(gameScreen.getSkin(), gameScreen.getPlayer()));
+        if (GameContext.get().getBuildModeUI() == null) {
+            GameContext.get().setBuildModeUI(new BuildModeUI(gameScreen.getSkin()));
         }
-        gameScreen.getBuildModeUI().show();
+        GameContext.get().getBuildModeUI().show();
     }
 
     private void showCraftingScreen() {
         if (gameScreen.getCraftingScreen() == null) {
-            gameScreen.setCraftingScreen(new CraftingTableScreen(gameScreen.getPlayer(), gameScreen.getSkin(), gameScreen.getWorld(), gameScreen.getGameClient(), gameScreen, this));
+            gameScreen.setCraftingScreen(new CraftingTableScreen(GameContext.get().getPlayer(), gameScreen.getSkin(), GameContext.get().getWorld(), GameContext.get().getGameClient(), gameScreen, this));
         }
         gameScreen.getCraftingScreen().show();
     }
@@ -130,9 +115,7 @@ public class InputManager {
             gameScreen.setGameMenu(new GameMenu(
                 gameScreen.getGame(),
                 gameScreen.getSkin(),
-                gameScreen.getPlayer(),
-                gameScreen.getGameClient(),
-                this // Pass InputManager reference
+                this
             ));
         }
         gameScreen.getGameMenu().show();
@@ -140,7 +123,7 @@ public class InputManager {
 
     private void showChestScreen() {
         if (gameScreen.getChestScreen() == null) {
-            gameScreen.setChestScreen(new ChestScreen(gameScreen.getPlayer(), gameScreen.getSkin(), null, null, gameScreen));
+            gameScreen.setChestScreen(new ChestScreen(GameContext.get().getPlayer(), gameScreen.getSkin(), null, null, gameScreen));
         }
         gameScreen.getChestScreen().show();
     }
@@ -148,72 +131,61 @@ public class InputManager {
     public void updateInputProcessors() {
         inputMultiplexer.clear();
 
-        // Add UI-stage first for any state that uses it
-        if (gameScreen.getUiStage() != null) {
-            inputMultiplexer.addProcessor(gameScreen.getUiStage());
-            GameLogger.info("Added UI stage");
+        if (GameContext.get().getUiStage() != null) {
+            inputMultiplexer.addProcessor(GameContext.get().getUiStage());
         }
 
         switch (currentState) {
             case STARTER_SELECTION:
-                // For starter selection, we only add the uiStage here.
-                // Do NOT add InputHandler or GlobalInputProcessor here.
-                GameLogger.info("UI State: STARTER_SELECTION - UI stage added first");
                 break;
             case INVENTORY:
-                if (gameScreen.getInventoryScreen() != null) {
-                    inputMultiplexer.addProcessor(gameScreen.getInventoryScreen().getStage());
-                    GameLogger.info("Added InventoryScreen stage");
+                if (GameContext.get().getInventoryScreen() != null) {
+                    inputMultiplexer.addProcessor(GameContext.get().getInventoryScreen().getStage());
                 }
                 break;
             case CRAFTING:
-                if (gameScreen.getCraftingScreen() != null && gameScreen.getCraftingScreen().getStage() != null) {
-                    inputMultiplexer.addProcessor(gameScreen.getCraftingScreen().getStage());
-                    GameLogger.info("Added CraftingScreen stage");
+                if (GameContext.get().getCraftingScreen() != null && GameContext.get().getCraftingScreen().getStage() != null) {
+                    inputMultiplexer.addProcessor(GameContext.get().getCraftingScreen().getStage());
                 }
                 break;
             case MENU:
-                if (gameScreen.getGameMenu() != null && gameScreen.getGameMenu().getStage() != null) {
-                    inputMultiplexer.addProcessor(gameScreen.getGameMenu().getStage());
-                    GameLogger.info("Added GameMenu stage");
+                if (GameContext.get().getGameMenu() != null && GameContext.get().getGameMenu().getStage() != null) {
+                    inputMultiplexer.addProcessor(GameContext.get().getGameMenu().getStage());
                 }
                 break;
             case CHEST_SCREEN:
                 if (gameScreen.getChestScreen() != null && gameScreen.getChestScreen().getStage() != null) {
                     inputMultiplexer.addProcessor(gameScreen.getChestScreen().getStage());
-                    GameLogger.info("Added ChestScreen stage");
                 }
                 break;
             case BATTLE:
                 if (gameScreen.getBattleStage() != null) {
                     inputMultiplexer.addProcessor(gameScreen.getBattleStage());
-                    GameLogger.info("Added BattleStage");
                 }
                 break;
             case NORMAL:
             case BUILD_MODE:
-                // No extra UI processors, just uiStage if needed
                 break;
         }
 
         if (gameScreen.getInputHandler() != null) {
             inputMultiplexer.addProcessor(gameScreen.getInputHandler());
-            GameLogger.info("Added InputHandler");
         }
 
         inputMultiplexer.addProcessor(globalInputProcessor);
-        GameLogger.info("Added GlobalInputProcessor");
 
         Gdx.input.setInputProcessor(inputMultiplexer);
-        debugInputProcessors();
     }
 
 
-    private void debugInputProcessors() {
-        GameLogger.info("Current InputProcessors:");
-        for (int i = 0; i < inputMultiplexer.getProcessors().size; i++) {
-            InputProcessor processor = inputMultiplexer.getProcessors().get(i);
-            GameLogger.info(" - Processor " + i + ": " + processor.getClass().getSimpleName());
-        }
+    public enum UIState {
+        NORMAL,
+        INVENTORY,
+        BUILD_MODE,
+        CRAFTING,
+        MENU,
+        STARTER_SELECTION,
+        CHEST_SCREEN,
+        BATTLE
     }
 }

@@ -1,5 +1,6 @@
 package io.github.pokemeetup.screens.otherui;
 
+import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.scenes.scene2d.*;
@@ -9,15 +10,18 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.audio.AudioManager;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
+import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.screens.ModeSelectionScreen;
 import io.github.pokemeetup.system.InputManager;
-import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.utils.GameLogger;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class GameMenu extends Actor {
     private static final float BUTTON_WIDTH = 200f;
@@ -25,9 +29,7 @@ public class GameMenu extends Actor {
     private static final float MENU_PADDING = 20f;
 
     private final CreatureCaptureGame game;
-    private final Player player;
-    private final GameClient gameClient;
-
+    private final InputManager inputManager;
     private Stage stage;
     private Skin skin;
     private Window menuWindow;
@@ -40,13 +42,10 @@ public class GameMenu extends Actor {
     private CheckBox soundEnabled;
     private volatile boolean disposalRequested = false;
     private volatile boolean isDisposing = false;
-    private final InputManager inputManager;
 
-    public GameMenu(CreatureCaptureGame game, Skin skin, Player player, GameClient gameClient, InputManager inputManager) {
+    public GameMenu(CreatureCaptureGame game, Skin skin, InputManager inputManager) {
         this.game = game;
         this.skin = skin;
-        this.player = player;
-        this.gameClient = gameClient;
         this.inputManager = inputManager;
         this.stage = new Stage(new ScreenViewport());
         createMenu();
@@ -55,7 +54,7 @@ public class GameMenu extends Actor {
     }
 
     private void handleExit() {
-        if (gameClient != null && !gameClient.isSinglePlayer()) {
+        if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
             Dialog confirmDialog = new Dialog("Confirm Exit", skin) {
                 @Override
                 protected void result(Object object) {
@@ -80,23 +79,23 @@ public class GameMenu extends Actor {
 
         new Thread(() -> {
             try {
-                if (gameClient != null) {
-                    // Send logout first
-                    NetworkProtocol.Logout logoutMsg = new NetworkProtocol.Logout();
-                    logoutMsg.username = player.getUsername();
-                    logoutMsg.timestamp = System.currentTimeMillis();
-                    gameClient.getClient().sendTCP(logoutMsg);
+                GameClient oldClient = GameContext.get().getGameClient();
 
-                    // Wait for server acknowledgment
-                    Thread.sleep(500);
-
-                    // Save final state
-                    gameClient.saveState(player.getPlayerData());
-
-                    gameClient.clearCredentials();
+                // 2) Dispose the old client
+                if (oldClient != null) {
+                    oldClient.dispose();
                 }
 
-                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog));
+                // 3) Reset the singleton
+                GameClientSingleton.resetInstance();
+                GameContext.get().setGameClient(null);
+                GameContext.get().setInventoryScreen(null);
+                GameContext.get().setBuildModeUI(null);
+                GameContext.get().setCraftingScreen(null);
+
+
+                // 4) Now schedule UI thread action
+                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, false));
 
             } catch (Exception e) {
                 GameLogger.error("Exit failed: " + e.getMessage());
@@ -108,18 +107,9 @@ public class GameMenu extends Actor {
         }).start();
     }
 
-    private void safeDisposeAndTransition(Dialog loadingDialog) {
+    private void safeDisposeAndTransition(Dialog loadingDialog, boolean isSinglePlayer) {
         try {
             isDisposing = true;
-            if (gameClient != null && player != null) {
-                PlayerData finalState = player.getPlayerData();
-                if (!gameClient.isSinglePlayer()) {
-                    gameClient.clearCredentials();
-                    if (finalState != null) {
-                        gameClient.saveState(finalState);
-                    }
-                }
-            }
 
             // Clean up menu resources
             if (menuWindow != null) menuWindow.setVisible(false);
@@ -132,14 +122,15 @@ public class GameMenu extends Actor {
             if (loadingDialog != null) {
                 loadingDialog.hide();
             }
+            if (isSinglePlayer) {
+                game.saveAndDispose();
+                game.reinitializeGame();
+            }
 
-            // Cleanup current state and reinitialize
-            game.saveAndDispose();
-            game.reinitializeGame();
 
             // Create new screen
             game.setScreen(new ModeSelectionScreen(game));
-
+            isDisposing = false;
         } catch (Exception e) {
             GameLogger.error("Cleanup error: " + e.getMessage());
             isDisposing = false;
@@ -178,7 +169,7 @@ public class GameMenu extends Actor {
         saveButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                if (gameClient.isSinglePlayer()) {
+                if (GameContext.get().getGameClient().isSinglePlayer()) {
                     saveGame();
                 }
             }
@@ -236,16 +227,21 @@ public class GameMenu extends Actor {
         new Thread(() -> {
             try {
                 // Save game state
-                if (game.isMultiplayerMode()) {
-                    if (gameClient != null) {
-                        gameClient.saveState(player.getPlayerData());
+                if (GameContext.get().getGameClient() != null) {
+                    if (!GameContext.get().getGameClient().isSinglePlayer()) {
+                        if (GameContext.get().getPlayer().getWorld() != null) {
+                            GameContext.get().getGameClient().saveState(GameContext.get().getPlayer().getPlayerData());
+                        }
+                    } else {
+                        GameContext.get().setInventoryScreen(null);
+                        GameContext.get().setCraftingScreen(null);
+                        GameContext.get().setBuildModeUI(null);
+                        game.saveAndDispose();
                     }
-                } else {
-                    game.saveAndDispose();
                 }
 
                 // Schedule GL disposal on main thread
-                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog));
+                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog,true));
 
             } catch (Exception e) {
                 GameLogger.error("Save failed: " + e.getMessage());
@@ -279,8 +275,8 @@ public class GameMenu extends Actor {
         if (isVisible) return;
         isVisible = true;
         menuWindow.setVisible(true);
-        stage.setKeyboardFocus(menuWindow); // Set focus to menuWindow
-        inputManager.setUIState(InputManager.UIState.MENU); // Update UI state
+        stage.setKeyboardFocus(menuWindow);
+        inputManager.setUIState(InputManager.UIState.MENU);
     }
 
     public void hide() {
@@ -299,24 +295,24 @@ public class GameMenu extends Actor {
         GameLogger.info("Attempting to save game");
 
         try {
-            if (gameClient != null && player.getWorld() != null) {
-                World currentWorld = player.getWorld();
+            if (GameContext.get().getGameClient() != null && GameContext.get().getPlayer().getWorld() != null) {
+                World currentWorld = GameContext.get().getPlayer().getWorld();
 
-                if (player.getUsername() == null) {
+                if (GameContext.get().getPlayer().getUsername() == null) {
                     throw new Exception("Invalid player state");
                 }
 
-                PlayerData playerData = new PlayerData(player.getUsername());
-                playerData.updateFromPlayer(player);
+                PlayerData playerData = new PlayerData(GameContext.get().getPlayer().getUsername());
+                playerData.updateFromPlayer(GameContext.get().getPlayer());
 
-                if (gameClient.isSinglePlayer()) {
+                if (GameContext.get().getGameClient().isSinglePlayer()) {
                     WorldData worldData = currentWorld.getWorldData();
-                    worldData.savePlayerData(player.getUsername(), playerData, false);
+                    worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), playerData, false);
                     game.getWorldManager().saveWorld(worldData);
                     GameLogger.info("Game saved successfully");
 
                 } else {
-                    gameClient.savePlayerState(playerData);
+                    GameContext.get().getGameClient().savePlayerState(playerData);
                 }
 
                 showSaveSuccessDialog();

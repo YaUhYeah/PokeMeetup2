@@ -4,13 +4,10 @@ import io.github.pokemeetup.FileSystemDelegate;
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
 
 public class GameFileSystem {
     private static GameFileSystem instance;
     private FileSystemDelegate delegate;
-    private final Map<String, String> cachedPaths = new HashMap<>();
 
     public FileSystemDelegate getDelegate() {
         checkDelegate();
@@ -102,7 +99,7 @@ public class GameFileSystem {
 
     public boolean isDirectory(String path) {
         checkDelegate();
-        return delegate.isDirectory(path);
+        return !delegate.isDirectory(path);
     }
 
     public String[] list(String path) {
@@ -110,26 +107,6 @@ public class GameFileSystem {
         return delegate.list(path);
     }
 
-    public void copyFile(String sourcePath, String destinationPath) throws IOException {
-        checkDelegate();
-        try {
-            delegate.copyFile(sourcePath, destinationPath);
-            GameLogger.info("Copied file from " + sourcePath + " to " + destinationPath);
-        } catch (IOException e) {
-            GameLogger.error("Failed to copy file from " + sourcePath + " to " + destinationPath);
-            throw e;
-        }
-    }
-
-    public InputStream openInputStream(String path) throws IOException {
-        checkDelegate();
-        return delegate.openInputStream(path);
-    }
-
-    public OutputStream openOutputStream(String path) throws IOException {
-        checkDelegate();
-        return delegate.openOutputStream(path);
-    }
 
     private void checkDelegate() {
         if (delegate == null) {

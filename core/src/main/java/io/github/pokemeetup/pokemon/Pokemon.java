@@ -376,7 +376,6 @@ public class Pokemon {
 
     private void loadFront(TextureAtlas atlas) {
         String baseName = name.toUpperCase();
-        GameLogger.info("Loading sprites for: " + baseName);
         // Load battle and icon sprites
         frontSprite = atlas.findRegion(baseName + "_front");
         frontShinySprite = atlas.findRegion(baseName + "_front_shiny");
@@ -386,7 +385,6 @@ public class Pokemon {
 
     private void loadBack(TextureAtlas atlas) {
         String baseName = name.toUpperCase();
-        GameLogger.info("Loading sprites for: " + baseName);
         // Load battle and icon sprites
         backSprite = atlas.findRegion(baseName + "_back");
         backShinySprite = atlas.findRegion(baseName + "_back_shiny");

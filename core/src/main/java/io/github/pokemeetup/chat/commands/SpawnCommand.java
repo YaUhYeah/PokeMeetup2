@@ -3,6 +3,7 @@ package io.github.pokemeetup.chat.commands;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.chat.Command;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
@@ -30,16 +31,13 @@ public class SpawnCommand implements Command {
         try {
             GameLogger.info("Executing spawn command...");
 
-            Player player = gameClient.getActivePlayer();
+            Player player = GameContext.get().getPlayer();
             if (player == null) {
                 chatSystem.addSystemMessage("Error: Player not found");
                 return;
             }
 
-            World currentWorld = player.getWorld();
-            if (currentWorld == null) {
-                currentWorld = gameClient.getCurrentWorld();
-            }
+            World currentWorld = GameContext.get().getWorld();
 
             if (currentWorld == null) {
                 chatSystem.addSystemMessage("Error: World not found");

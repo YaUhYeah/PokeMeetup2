@@ -43,12 +43,22 @@ public class OtherPlayer {
     }
 
     public void updateAction(NetworkProtocol.PlayerAction action) {
-        if (action.actionType == NetworkProtocol.ActionType.CHOP_START) {
-            animations.startChopping();
-        } else if (action.actionType == NetworkProtocol.ActionType.CHOP_STOP) {
-            animations.stopChopping();
+        switch (action.actionType) {
+            case CHOP_START:
+                animations.startChopping();
+                break;
+            case CHOP_STOP:
+                animations.stopChopping();
+                break;
+            case PUNCH_START:
+                animations.startPunching();
+                break;
+            case PUNCH_STOP:
+                animations.stopPunching();
+                break;
         }
     }
+
 
     public void updateFromNetwork(NetworkProtocol.PlayerUpdate update) {
         synchronized (this) {

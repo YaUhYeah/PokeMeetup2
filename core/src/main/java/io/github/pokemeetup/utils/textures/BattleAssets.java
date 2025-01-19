@@ -208,9 +208,9 @@ public class BattleAssets {
         }
 
         try {
-            FileHandle atlasFile = Gdx.files.internal("assets/atlas/ui-gfx-atlas.atlas");
+            FileHandle atlasFile = Gdx.files.internal("atlas/ui-gfx-atlas.atlas");
             if (!atlasFile.exists()) {
-                GameLogger.error("UI atlas file not found at: assets/atlas/ui-gfx-atlas.atlas");
+                GameLogger.error("UI atlas file not found at: atlas/ui-gfx-atlas.atlas");
                 throw new RuntimeException("UI atlas file not found");
             }
 

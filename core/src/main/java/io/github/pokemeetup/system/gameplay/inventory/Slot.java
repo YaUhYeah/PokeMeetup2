@@ -25,11 +25,6 @@ public class Slot {
         synchronized (slotLock) {
             this.itemData = newItemData;
             validateItemData();
-            if (itemData != null) {
-                GameLogger.info("Set slot item: " + itemData.getItemId() + " x" + itemData.getCount());
-            } else {
-                GameLogger.info("Cleared slot");
-            }
         }
     }
 

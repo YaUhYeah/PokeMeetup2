@@ -6,6 +6,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.JsonWriter;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
@@ -18,6 +19,13 @@ public class JsonConfig {
     private static Json instance;
 
     public static WorldData loadWorldData(String worldName) {
+        // Add check for multiplayer mode
+        if (GameContext.get().getGameClient() != null &&
+            !GameContext.get().getGameClient().isSinglePlayer()) {
+            GameLogger.info("Skipping local world load in multiplayer mode");
+            return null;
+        }
+
         try {
             FileHandle worldDir = Gdx.files.local(SINGLE_PLAYER_DIR + worldName);
             FileHandle worldFile = worldDir.child("world.json");
@@ -28,7 +36,6 @@ public class JsonConfig {
             }
             String jsonContent = worldFile.readString();
             Json json = getInstance();
-
 
             return json.fromJson(WorldData.class, jsonContent);
 

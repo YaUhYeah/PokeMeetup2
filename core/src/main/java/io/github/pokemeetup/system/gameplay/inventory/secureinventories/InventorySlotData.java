@@ -56,7 +56,6 @@ public class InventorySlotData implements ItemDataObserver {
 
 
     public void clear() {
-        GameLogger.info("Clearing slot " + slotIndex);
         ItemData currentItem = getItemData();
         if (currentItem != null) {
             currentItem.removeObserver(this);

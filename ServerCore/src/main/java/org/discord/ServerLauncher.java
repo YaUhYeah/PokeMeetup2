@@ -4,10 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
-import io.github.pokemeetup.system.data.WorldData;
-import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
+import org.discord.context.ServerGameContext;
 import org.discord.files.ServerFileDelegate;
+import org.discord.utils.ServerWorldManager;
 import org.h2.tools.Server;
 
 import java.io.IOException;
@@ -45,11 +45,10 @@ public class ServerLauncher {
 
             // Initialize storage and world management
             storage = new ServerStorageSystem();
-            WorldManager worldManager = WorldManager.getInstance(storage, true);
-            worldManager.init();
             logger.info("World management system initialized");
 
             // Create and start game server
+            ServerGameContext.init(ServerWorldManager.getInstance(storage));
             GameServer server = new GameServer(config);
             server.start();
             logger.info("Game server started successfully");

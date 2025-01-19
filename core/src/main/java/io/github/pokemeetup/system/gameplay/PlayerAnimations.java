@@ -8,15 +8,25 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class PlayerAnimations {
-    public static final float PUNCH_FRAME_DURATION = 0.2f; // Slightly slower than chop
     public static final float BASE_MOVE_TIME = 0.45f;
     public static final float RUN_SPEED_MULTIPLIER = 1.5f;
-    public static final float CHOP_FRAME_DURATION = 0.15f;
-    public static final float WALK_FRAME_DURATION = BASE_MOVE_TIME / 4;
-    public static final float RUN_FRAME_DURATION = (BASE_MOVE_TIME / RUN_SPEED_MULTIPLIER) / 4;
-    private Animation<TextureRegion>[] chopAnimations;
-    private boolean isChopping = false;
+
+    public static final float WALK_FRAME_DURATION = BASE_MOVE_TIME / 3f;
+    public static final float RUN_FRAME_DURATION  = (BASE_MOVE_TIME / RUN_SPEED_MULTIPLIER) / 3f;
+
+    // Punch and Chop keep 4 frames:
+    public static final float PUNCH_ANIMATION_DURATION = 0.8f; // total cycle ~0.8
+    public static final float PUNCH_FRAME_DURATION     = PUNCH_ANIMATION_DURATION / 4f; // => 0.2
+    public static final float CHOP_ANIMATION_DURATION  = 0.6f; // total cycle ~0.6
+    public static final float CHOP_FRAME_DURATION      = CHOP_ANIMATION_DURATION / 4f; // => 0.15
+
+    private volatile boolean isInitialized = false;
+    private volatile boolean isDisposed    = false;
+
+    // Standing frames [up=0, down=1, left=2, right=3]
     private TextureRegion[] standingFrames;
+
+    // Movement animations
     private Animation<TextureRegion> walkUpAnimation;
     private Animation<TextureRegion> walkDownAnimation;
     private Animation<TextureRegion> walkLeftAnimation;
@@ -25,8 +35,15 @@ public class PlayerAnimations {
     private Animation<TextureRegion> runDownAnimation;
     private Animation<TextureRegion> runLeftAnimation;
     private Animation<TextureRegion> runRightAnimation;
-    private volatile boolean isInitialized = false;
-    private volatile boolean isDisposed = false;
+
+    // Punch/Chop animations [up=0, down=1, left=2, right=3]
+    private Animation<TextureRegion>[] punchAnimations;
+    private Animation<TextureRegion>[] chopAnimations;
+
+    private boolean isPunching  = false;
+    private boolean isChopping  = false;
+    private float   punchAnimationTime = 0f;
+    private float   chopAnimationTime  = 0f;
 
     public PlayerAnimations() {
         loadAnimations();
@@ -37,15 +54,10 @@ public class PlayerAnimations {
         punchAnimationTime = 0f;
         GameLogger.info("Started punching animation");
     }
-    private boolean isPunching = false;
-    private float punchAnimationTime = 0f;
-    private float chopAnimationTime = 0f;
-    private static final float PUNCH_ANIMATION_DURATION = 0.8f; // Full punch cycle
 
     public void stopPunching() {
         isPunching = false;
         punchAnimationTime = 0f;
-
         if (punchAnimations != null) {
             for (Animation<TextureRegion> anim : punchAnimations) {
                 if (anim != null) {
@@ -55,25 +67,52 @@ public class PlayerAnimations {
         }
         GameLogger.info("Punching animation stopped");
     }
+
+    public void startChopping() {
+        isChopping = true;
+        chopAnimationTime = 0f;
+        GameLogger.info("Started chopping animation");
+    }
+
+    public void stopChopping() {
+        isChopping = false;
+        chopAnimationTime = 0f;
+        if (chopAnimations != null) {
+            for (Animation<TextureRegion> anim : chopAnimations) {
+                if (anim != null) {
+                    anim.setPlayMode(Animation.PlayMode.NORMAL);
+                }
+            }
+        }
+        GameLogger.info("Chopping animation stopped");
+    }
+
+    /**
+     * Returns the current frame (TextureRegion) based on direction, movement state, punching, chopping, etc.
+     */
     public TextureRegion getCurrentFrame(String direction, boolean isMoving, boolean isRunning, float stateTime) {
         if (!isInitialized || isDisposed) {
             loadAnimations();
         }
 
+        // 1) Chop animation has priority if active
         if (isChopping) {
             int dirIndex = getDirectionIndex(direction);
             if (chopAnimations != null && dirIndex >= 0 && dirIndex < chopAnimations.length) {
                 chopAnimationTime += Gdx.graphics.getDeltaTime();
                 TextureRegion frame = chopAnimations[dirIndex].getKeyFrame(chopAnimationTime, true);
 
+                // If you want a one-loop chop, you can check isAnimationFinished here,
+                // but currently it loops:
                 if (chopAnimationTime >= CHOP_ANIMATION_DURATION) {
                     chopAnimationTime = 0f;
                 }
 
-                return frame != null ? frame : getStandingFrame(direction);
+                return (frame != null) ? frame : getStandingFrame(direction);
             }
         }
 
+        // 2) Punch animation if active
         if (isPunching) {
             int dirIndex = getDirectionIndex(direction);
             if (punchAnimations != null && dirIndex >= 0 && dirIndex < punchAnimations.length) {
@@ -84,39 +123,19 @@ public class PlayerAnimations {
                     punchAnimationTime = 0f;
                 }
 
-                return frame != null ? frame : getStandingFrame(direction);
+                return (frame != null) ? frame : getStandingFrame(direction);
             }
         }
 
-        // Regular movement handling
+        // 3) Normal walk/run
         if (!isMoving) {
             return getStandingFrame(direction);
         }
-
         Animation<TextureRegion> currentAnimation = getAnimation(direction, isRunning);
         return currentAnimation.getKeyFrame(stateTime, true);
     }
 
-    private Animation<TextureRegion>[] punchAnimations;
-    private static final float CHOP_ANIMATION_DURATION = 0.6f; // Full animation cycle duration
-
-    public void startChopping() {
-        isChopping = true;
-        chopAnimationTime = 0f;
-        GameLogger.info("Started chopping animation");
-    } public void stopChopping() {
-        isChopping = false;
-        chopAnimationTime = 0f;
-
-        if (chopAnimations != null) {
-            for (Animation<TextureRegion> anim : chopAnimations) {
-                if (anim != null) {
-                    anim.setPlayMode(Animation.PlayMode.NORMAL); // Reset play mode
-                }
-            }
-        }
-        GameLogger.info("Chopping animation stopped");
-    }@SuppressWarnings("unchecked")
+    @SuppressWarnings("unchecked")
     private synchronized void loadAnimations() {
         try {
             TextureAtlas atlas = TextureManager.getBoy();
@@ -124,58 +143,108 @@ public class PlayerAnimations {
                 throw new RuntimeException("TextureAtlas is null");
             }
 
-            chopAnimations = new Animation[4];
+            // Prepare arrays
+            chopAnimations  = new Animation[4];
             punchAnimations = new Animation[4];
+            standingFrames  = new TextureRegion[4];
 
+            // -- 1) Load Chop (4 frames each)
+            // The index order below matches your atlas listing for each direction.
+            // Adjust if your actual order is different in the final atlas.
+            int[][] chopIndices = {
+                /* up=0    */ {1, 3, 0, 2},
+                /* down=1  */ {2, 0, 1, 3},
+                /* left=2  */ {1, 3, 0, 2},
+                /* right=3 */ {1, 3, 0, 2},
+            };
             String[] directions = {"up", "down", "left", "right"};
-            String[] punchDirections = {"up", "down", "left", "right"};
-
             for (int i = 0; i < directions.length; i++) {
-                // Load chop frames (unchanged)
-                TextureRegion[] chopFrames = new TextureRegion[4];
-                for (int frame = 0; frame < 4; frame++) {
-                    String regionName = "boy_axe_chop_" + directions[i];
-                    chopFrames[frame] = atlas.findRegion(regionName, frame);
-                    if (chopFrames[frame] == null) {
-                        GameLogger.error("Missing chop frame: " + regionName + " " + frame);
-                        throw new RuntimeException("Missing chop animation frame");
+                TextureRegion[] frames = new TextureRegion[4];
+                for (int f = 0; f < 4; f++) {
+                    // e.g. "boy_axe_up", index= chopIndices[0][f]
+                    TextureRegion reg = atlas.findRegion("boy_axe_" + directions[i], chopIndices[i][f]);
+                    if (reg == null) {
+                        throw new RuntimeException("Missing chop frame: boy_axe_" + directions[i] + " idx=" + chopIndices[i][f]);
                     }
+                    frames[f] = reg;
                 }
-                chopAnimations[i] = new Animation<>(CHOP_FRAME_DURATION, chopFrames);
+                chopAnimations[i] = new Animation<>(CHOP_FRAME_DURATION, frames);
                 chopAnimations[i].setPlayMode(Animation.PlayMode.NORMAL);
+            }
 
-                // Load punch frames with correct indices per direction
-                TextureRegion[] punchFrames = new TextureRegion[4];
-                String punchDirection = punchDirections[i];
-
-                // Choose the right index sequence based on the punch direction
-                int[] directionIndices;
-                if (punchDirection.equals("down")) {
-                    directionIndices = new int[]{0, 1, 3, 4}; // Special sequence for down
-                } else {
-                    directionIndices = new int[]{0, 1, 2, 3}; // Standard sequence for others
-                }
-
-                for (int frame = 0; frame < 4; frame++) {
-                    String regionName = "punch_" + punchDirection;
-                    TextureRegion region = atlas.findRegion(regionName, directionIndices[frame]);
-                    if (region == null) {
-                        GameLogger.error("Missing punch frame: " + regionName + " index: " + directionIndices[frame]);
-                        throw new RuntimeException("Missing punch animation frame");
+            // -- 2) Load Punch (4 frames each)
+            int[][] punchIndices = {
+                /* up=0    */ {1, 3, 2, 0},
+                /* down=1  */ {1, 3, 0, 2},
+                /* left=2  */ {0, 1, 3, 2},
+                /* right=3 */ {1, 3, 0, 2},
+            };
+            for (int i = 0; i < directions.length; i++) {
+                TextureRegion[] frames = new TextureRegion[4];
+                for (int f = 0; f < 4; f++) {
+                    TextureRegion reg = atlas.findRegion("boy_punch_" + directions[i], punchIndices[i][f]);
+                    if (reg == null) {
+                        throw new RuntimeException("Missing punch frame: boy_punch_" + directions[i] + " idx=" + punchIndices[i][f]);
                     }
-                    punchFrames[frame] = region;
+                    frames[f] = reg;
                 }
-                punchAnimations[i] = new Animation<>(PUNCH_FRAME_DURATION, punchFrames);
+                punchAnimations[i] = new Animation<>(PUNCH_FRAME_DURATION, frames);
                 punchAnimations[i].setPlayMode(Animation.PlayMode.NORMAL);
             }
 
-            // Load other animations (unchanged)
-            standingFrames = new TextureRegion[4];
-            loadDirectionalFrames("boy_walk", atlas, true);
-            loadDirectionalFrames("boy_run", atlas, false);
+            // -- 3) Load Walk (3 frames each)
+            // According to your listing, e.g. boy_walk_down index: 1,0,2, etc.
+            int[][] walkIndices = {
+                /* up=0    */ {1, 0, 2},  // boy_walk_up:    index 1,0,2
+                /* down=1  */ {1, 0, 2},  // boy_walk_down:  index 1,0,2
+                /* left=2  */ {0, 2, 1},  // boy_walk_left:  index 0,2,1
+                /* right=3 */ {0, 1, 2},  // boy_walk_right: index 0,1,2
+            };
+            for (int i = 0; i < directions.length; i++) {
+                TextureRegion[] frames = new TextureRegion[3];
+                for (int f = 0; f < 3; f++) {
+                    TextureRegion reg = atlas.findRegion("boy_walk_" + directions[i], walkIndices[i][f]);
+                    if (reg == null) {
+                        throw new RuntimeException("Missing walk frame: boy_walk_" + directions[i] + " idx=" + walkIndices[i][f]);
+                    }
+                    frames[f] = reg;
+                }
+                Animation<TextureRegion> walkAnim = new Animation<>(WALK_FRAME_DURATION, frames);
+                walkAnim.setPlayMode(Animation.PlayMode.LOOP);
+
+                assignWalkAnimation(i, walkAnim);
+
+                // Pick one as the standing frame (often the “middle” or “first”):
+                if (standingFrames[i] == null) {
+                    standingFrames[i] = frames[0];
+                }
+            }
+
+            // -- 4) Load Run (3 frames each)
+            // According to your listing, e.g. boy_run_down index:2,0,1, etc.
+            int[][] runIndices = {
+                /* up=0    */ {0, 2, 1}, // boy_run_up:    index 0,2,1
+                /* down=1  */ {2, 0, 1}, // boy_run_down:  index 2,0,1
+                /* left=2  */ {2, 1, 0}, // boy_run_left:  index 2,1,0
+                /* right=3 */ {2, 0, 1}, // boy_run_right: index 2,0,1
+            };
+            for (int i = 0; i < directions.length; i++) {
+                TextureRegion[] frames = new TextureRegion[3];
+                for (int f = 0; f < 3; f++) {
+                    TextureRegion reg = atlas.findRegion("boy_run_" + directions[i], runIndices[i][f]);
+                    if (reg == null) {
+                        throw new RuntimeException("Missing run frame: boy_run_" + directions[i] + " idx=" + runIndices[i][f]);
+                    }
+                    frames[f] = reg;
+                }
+                Animation<TextureRegion> runAnim = new Animation<>(RUN_FRAME_DURATION, frames);
+                runAnim.setPlayMode(Animation.PlayMode.LOOP);
+
+                assignRunAnimation(i, runAnim);
+            }
 
             isInitialized = true;
-            isDisposed = false;
+            isDisposed    = false;
 
         } catch (Exception e) {
             GameLogger.error("Failed to load animations: " + e.getMessage());
@@ -184,134 +253,58 @@ public class PlayerAnimations {
         }
     }
 
-
-    private void loadDirectionalFrames(String prefix, TextureAtlas atlas, boolean isWalk) {
-        String[] directions = {"up", "down", "left", "right"};
-
-        for (String direction : directions) {
-            TextureRegion[] frames = new TextureRegion[4];
-            String baseRegionName = prefix + "_" + direction;
-
-            // Load all frames for this direction
-            for (int i = 0; i < 4; i++) {
-                TextureAtlas.AtlasRegion region = atlas.findRegion(baseRegionName, i + 1);
-                if (region == null) {
-                    GameLogger.error("Missing frame: " + baseRegionName + " index: " + (i + 1));
-                    throw new RuntimeException("Missing animation frame");
-                }
-                frames[i] = new TextureRegion(region);
-            }
-
-            // Create animation for this direction
-            float frameDuration = isWalk ? WALK_FRAME_DURATION : RUN_FRAME_DURATION;
-            Animation<TextureRegion> animation = new Animation<>(frameDuration, frames);
-            animation.setPlayMode(Animation.PlayMode.LOOP);
-            int dirIndex = getDirectionIndex(direction);
-            if (isWalk) {
-                assignWalkAnimation(dirIndex, animation);
-                if (standingFrames[dirIndex] == null) {
-                    standingFrames[dirIndex] = new TextureRegion(frames[0]);
-                }
-            } else {
-                assignRunAnimation(dirIndex, animation);
-            }
-        }
-    }
-
-    private int getDirectionIndex(String direction) {
-        switch (direction.toLowerCase()) {
-            case "up":
-                return 0;
-            case "down":
-                return 1;
-            case "left":
-                return 2;
-            case "right":
-                return 3;
-            default:
-                return 1;
-        }
-    }
-
     private void assignWalkAnimation(int index, Animation<TextureRegion> animation) {
         switch (index) {
-            case 0:
-                walkUpAnimation = animation;
-                break;
-            case 1:
-                walkDownAnimation = animation;
-                break;
-            case 2:
-                walkLeftAnimation = animation;
-                break;
-            case 3:
-                walkRightAnimation = animation;
-                break;
+            case 0: walkUpAnimation    = animation; break;
+            case 1: walkDownAnimation  = animation; break;
+            case 2: walkLeftAnimation  = animation; break;
+            case 3: walkRightAnimation = animation; break;
         }
     }
 
     private void assignRunAnimation(int index, Animation<TextureRegion> animation) {
         switch (index) {
-            case 0:
-                runUpAnimation = animation;
-                break;
-            case 1:
-                runDownAnimation = animation;
-                break;
-            case 2:
-                runLeftAnimation = animation;
-                break;
-            case 3:
-                runRightAnimation = animation;
-                break;
+            case 0: runUpAnimation    = animation; break;
+            case 1: runDownAnimation  = animation; break;
+            case 2: runLeftAnimation  = animation; break;
+            case 3: runRightAnimation = animation; break;
         }
     }
 
+    /**
+     * Returns the index 0..3 for up/down/left/right.
+     */
+    private int getDirectionIndex(String dir) {
+        if (dir == null) return 1; // default 'down'
+        switch (dir.toLowerCase()) {
+            case "up":    return 0;
+            case "down":  return 1;
+            case "left":  return 2;
+            case "right": return 3;
+            default:      return 1; // fallback 'down'
+        }
+    }
 
     private Animation<TextureRegion> getAnimation(String direction, boolean isRunning) {
-        if (direction == null) {
-            return walkDownAnimation;
+        int dirIndex = getDirectionIndex(direction);
+        switch (dirIndex) {
+            case 0: return isRunning ? runUpAnimation    : walkUpAnimation;
+            case 1: return isRunning ? runDownAnimation  : walkDownAnimation;
+            case 2: return isRunning ? runLeftAnimation  : walkLeftAnimation;
+            case 3: return isRunning ? runRightAnimation : walkRightAnimation;
         }
-
-        switch (direction.toLowerCase()) {
-            case "up":
-                return isRunning ? runUpAnimation : walkUpAnimation;
-            case "down":
-                return isRunning ? runDownAnimation : walkDownAnimation;
-            case "left":
-                return isRunning ? runLeftAnimation : walkLeftAnimation;
-            case "right":
-                return isRunning ? runRightAnimation : walkRightAnimation;
-            default:
-                return walkDownAnimation;
-        }
+        return walkDownAnimation; // fallback
     }
 
     public TextureRegion getStandingFrame(String direction) {
         if (!isInitialized || isDisposed) {
             loadAnimations();
         }
-
-        if (direction == null) {
-            return standingFrames[1]; // Default to down
-        }
-
-        switch (direction.toLowerCase()) {
-            case "up":
-                return standingFrames[0];
-            case "down":
-                return standingFrames[1];
-            case "left":
-                return standingFrames[2];
-            case "right":
-                return standingFrames[3];
-            default:
-                return standingFrames[1];
-        }
+        return standingFrames[getDirectionIndex(direction)];
     }
 
     public synchronized void dispose() {
-        isDisposed = true;
+        isDisposed    = true;
         isInitialized = false;
     }
 

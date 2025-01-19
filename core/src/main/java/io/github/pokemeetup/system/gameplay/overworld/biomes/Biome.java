@@ -37,7 +37,6 @@ public class Biome {
             try {
                 WorldObject.ObjectType type = WorldObject.ObjectType.valueOf(objStr);
                 this.spawnableObjects.add(type);
-                GameLogger.info(name + ": Added spawnable object " + type);
             } catch (IllegalArgumentException e) {
                 GameLogger.error(name + ": Invalid object type: " + objStr);
             }
@@ -49,7 +48,6 @@ public class Biome {
             try {
                 WorldObject.ObjectType type = WorldObject.ObjectType.valueOf(entry.getKey());
                 this.spawnChances.put(type, entry.getValue());
-                GameLogger.info(name + ": Added spawn chance for " + type + ": " + entry.getValue());
             } catch (IllegalArgumentException e) {
                 GameLogger.error(name + ": Invalid object type in spawn chances: " + entry.getKey());
             }

@@ -36,8 +36,7 @@ public class GameClientSingleton {
                 instance = new GameClient(config, false,
                     config.getServerIP(),
                     config.getTcpPort(),
-                    config.getUdpPort(),
-                    new CreatureCaptureGame());
+                    config.getUdpPort());
 
                 return instance;
 
@@ -72,7 +71,7 @@ public class GameClientSingleton {
                     instance = null;
                 }
                 ServerConnectionConfig singlePlayerConfig = ServerConnectionConfig.getDefault();
-                instance = new GameClient(singlePlayerConfig, true, "localhost", 0, 0, new CreatureCaptureGame());
+                instance = new GameClient(singlePlayerConfig, true, "localhost", 0, 0);
                 instance.setActivePlayer(player);
                 return instance;
             } catch (Exception e) {
@@ -92,7 +91,7 @@ public class GameClientSingleton {
                 }
 
                 ServerConnectionConfig singlePlayerConfig = ServerConnectionConfig.getDefault();
-                instance = new GameClient(singlePlayerConfig, true, "localhost", 0, 0, new CreatureCaptureGame());
+                instance = new GameClient(singlePlayerConfig, true, "localhost", 0, 0);
                 return instance;
 
             } catch (Exception e) {
