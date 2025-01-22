@@ -3,6 +3,7 @@ package io.github.pokemeetup.multiplayer;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
+import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
@@ -15,23 +16,29 @@ import java.util.UUID;
 public class ServerPlayer {
     private final String username;
     private final UUID uuid;
-    private final PlayerData playerData;
+    private PlayerData playerData;
     private final Inventory inventory;
+    private final List<PokemonData> partyPokemon;
     private final Object inventoryLock = new Object();
     private final Object positionLock = new Object();
     private WorldObject choppingObject;
 
     public ServerPlayer(String username, PlayerData playerData) {
+        List<PokemonData> partyPokemon1;
         this.username = username;
         this.uuid = UUID.nameUUIDFromBytes(username.getBytes());
         this.playerData = playerData;
 
-        // Initialize inventory from playerData
         this.inventory = new Inventory();
+        partyPokemon1 = new ArrayList<>();
         if (playerData.getInventoryItems() != null) {
             this.inventory.setAllItems(playerData.getInventoryItems());
         }
+        if (playerData.getPartyPokemon()!= null) {
+            partyPokemon1 = playerData.getPartyPokemon();
+        }
 
+        this.partyPokemon = partyPokemon1;
         GameLogger.info("Created ServerPlayer: " + username + " (UUID: " + uuid + ") " +
             "at position (" + playerData.getX() + ", " + playerData.getY() + ")");
     }
@@ -47,22 +54,8 @@ public class ServerPlayer {
     public UUID getUUID() {
         return uuid;
     }
+    private final Object dataLock = new Object();
 
-    public void updateInventory(ItemData[] inventoryItems) {
-        synchronized (inventoryLock) {
-            try {
-                if (inventoryItems != null) {
-                    List<ItemData> validatedInventoryItems = validateItems(inventoryItems);
-                    inventory.setAllItems(validatedInventoryItems);
-                    playerData.setInventoryItems(validatedInventoryItems);
-                }
-
-                GameLogger.info("Updated inventory for " + username);
-            } catch (Exception e) {
-                GameLogger.error("Failed to update inventory for " + username + ": " + e.getMessage());
-            }
-        }
-    }
 
     private List<ItemData> validateItems(ItemData[] items) {
         List<ItemData> validatedItems = new ArrayList<>();
@@ -83,22 +76,68 @@ public class ServerPlayer {
     }
 
     public PlayerData getData() {
-        synchronized (inventoryLock) {
-            playerData.setInventoryItems(inventory.getAllItems());
+        synchronized (dataLock) {
+            // Create a fresh copy with current state
+            PlayerData currentData = playerData.copy();
+
+            // Ensure inventory is synced
+            synchronized (inventoryLock) {
+                currentData.setInventoryItems(new ArrayList<>(inventory.getAllItems()));
+            }
+
+            // Ensure pokemon party is synced
+            synchronized (partyPokemon) {
+                currentData.setPartyPokemon(new ArrayList<>(partyPokemon));
+            }
+
+            return currentData;
         }
-        return playerData;
     }
 
-    public void updatePosition(float x, float y, String direction, boolean isMoving) {
-        synchronized (positionLock) {
-            playerData.setX(x);
-            playerData.setY(y);
-            playerData.setDirection(direction);
-            playerData.setMoving(isMoving);
+    public void setData(PlayerData newData) {
+        synchronized (dataLock) {
+            if (newData == null) {
+                GameLogger.error("Attempted to set null PlayerData for " + username);
+                return;
+            }
+
+            try {
+                // Create deep copy and validate
+                PlayerData validatedData = newData.copy();
+                if (validatedData.validateAndRepairState()) {
+                    GameLogger.info("Repaired player data during update for: " + username);
+                }
+
+                this.playerData = validatedData;
+
+                // Update inventory atomically
+                synchronized (inventoryLock) {
+                    if (validatedData.getInventoryItems() != null) {
+                        this.inventory.clear();
+                        for (ItemData item : validatedData.getInventoryItems()) {
+                            if (item != null) {
+                                this.inventory.addItem(item.copy());
+                            }
+                        }
+                    }
+                }
+
+                // Update party atomically
+                synchronized (partyPokemon) {
+                    this.partyPokemon.clear();
+                    if (validatedData.getPartyPokemon() != null) {
+                        for (PokemonData pokemon : validatedData.getPartyPokemon()) {
+                            if (pokemon != null) {
+                                this.partyPokemon.add(pokemon.copy());
+                            }
+                        }
+                    }
+                }
+
+            } catch (Exception e) {
+                GameLogger.error("Failed to update player data for " + username + ": " + e.getMessage());
+            }
         }
-        GameLogger.info("Player " + username + " moved to (" +
-            (x / World.TILE_SIZE) + ", " + (y / World.TILE_SIZE) +
-            ") facing " + direction);
     }
 
     public int getTileX() {

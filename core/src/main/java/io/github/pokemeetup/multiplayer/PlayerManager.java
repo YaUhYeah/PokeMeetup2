@@ -1,8 +1,6 @@
 package io.github.pokemeetup.multiplayer;
 
-import io.github.pokemeetup.multiplayer.server.PlayerEvents;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
-import io.github.pokemeetup.multiplayer.server.events.EventManager;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.utils.GameLogger;
 
@@ -15,54 +13,10 @@ public class PlayerManager {
     private final Map<String, ServerPlayer> onlinePlayers = new ConcurrentHashMap<>();
     private final Map<UUID, String> uuidToUsername = new ConcurrentHashMap<>();
     private final ServerStorageSystem storage;
-    private final EventManager eventManager;
 
-    public PlayerManager(ServerStorageSystem storage, EventManager eventManager) {
+    public PlayerManager(ServerStorageSystem storage) {
         this.storage = storage;
-        this.eventManager = eventManager;
         GameLogger.info("PlayerManager initialized with ServerStorageSystem");
-    }
-
-    public ServerPlayer createOrLoadPlayer(String username) {
-        try {
-            UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-
-            // Load player data from storage
-            PlayerData playerData = storage.getPlayerDataManager().loadPlayerData(playerUUID);
-            if (playerData == null) {
-                // Create new player data if none exists
-                playerData = new PlayerData(username);
-                // Set default starting position (e.g., x=0, y=0)
-                playerData.setX(0);
-                playerData.setY(0);
-                playerData.setDirection("down");
-                playerData.setMoving(false);
-                // Save the new player data
-                storage.getPlayerDataManager().savePlayerData(playerUUID, playerData);
-                GameLogger.info("Created new player data for " + username + " (UUID: " + playerUUID + ")");
-            } else {
-                GameLogger.info("Loaded existing player data for " + username + " (UUID: " + playerUUID + ")");
-            }
-
-            // Create a ServerPlayer instance using the loaded data
-            ServerPlayer player = new ServerPlayer(username, playerData);
-
-            // Add player to online players and UUID mapping
-            onlinePlayers.put(username, player);
-            uuidToUsername.put(playerUUID, username);
-
-            GameLogger.info("Player loaded/created successfully: " + username +
-                " (UUID: " + playerUUID + ") at position (" + playerData.getX() + "," + playerData.getY() + ")");
-
-            // Fire player login event
-            eventManager.fireEvent(new PlayerEvents.PlayerLoginEvent(player));
-
-            return player;
-
-        } catch (Exception e) {
-            GameLogger.error("Error creating/loading player: " + e.getMessage());
-            return null;
-        }
     }
 
 
@@ -70,45 +24,66 @@ public class PlayerManager {
         return onlinePlayers.get(username);
     }
 
-    public ServerPlayer getPlayerByUUID(UUID uuid) {
-        String username = uuidToUsername.get(uuid);
-        return username != null ? onlinePlayers.get(username) : null;
-    }
 
     public Collection<ServerPlayer> getOnlinePlayers() {
         return onlinePlayers.values();
     }
 
     public void removePlayer(String username) {
-        ServerPlayer player = onlinePlayers.remove(username);
+        ServerPlayer player = onlinePlayers.get(username);
         if (player != null) {
             try {
                 UUID playerUUID = player.getUUID();
+                // Get fresh copy of data
+                PlayerData finalState = player.getData();
+
                 // Save player data before removing
-                storage.getPlayerDataManager().savePlayerData(playerUUID, player.getData());
+                storage.getPlayerDataManager().savePlayerData(playerUUID, finalState);
+                storage.getPlayerDataManager().flush(); // Force immediate save
+
+                // Remove after successful save
+                onlinePlayers.remove(username);
                 uuidToUsername.remove(playerUUID);
-                GameLogger.info("Saved player data for " + username + " (UUID: " + playerUUID + ") upon removal");
+
+                GameLogger.info("Saved and removed player: " + username + " (UUID: " + playerUUID + ")");
             } catch (Exception e) {
                 GameLogger.error("Error saving player data for " + username + ": " + e.getMessage());
             }
         }
     }
 
+
+
     public void dispose() {
+        GameLogger.info("Starting PlayerManager disposal...");
+
+        // Save each player's data
         for (Map.Entry<String, ServerPlayer> entry : onlinePlayers.entrySet()) {
-            String username = entry.getKey();
-            ServerPlayer player = entry.getValue();
             try {
+                String username = entry.getKey();
+                ServerPlayer player = entry.getValue();
                 UUID playerUUID = player.getUUID();
-                // Save player data using storage
-                storage.getPlayerDataManager().savePlayerData(playerUUID, player.getData());
-                GameLogger.info("Saved player data for " + username + " (UUID: " + playerUUID + ") during dispose");
+
+                // Get fresh copy of data
+                PlayerData finalState = player.getData();
+
+                // Save with immediate flush
+                storage.getPlayerDataManager().savePlayerData(playerUUID, finalState);
+                storage.getPlayerDataManager().flush();
+
+                GameLogger.info("Saved final state for: " + username + " (UUID: " + playerUUID + ")");
             } catch (Exception e) {
-                GameLogger.error("Error saving player data for " + username + ": " + e.getMessage());
+                GameLogger.error("Error saving player during dispose: " + e.getMessage());
             }
         }
+
+        // Force final storage flush
+        storage.flushPlayerData();
+
+        // Clear collections
         onlinePlayers.clear();
         uuidToUsername.clear();
-        GameLogger.info("PlayerManager disposed");
+
+        GameLogger.info("PlayerManager disposal complete");
     }
 }

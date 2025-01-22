@@ -11,7 +11,7 @@ public class GameLogger {
             if (Gdx.app != null) {
                 Gdx.app.log("Game", message);
             } else {
-//            System.out.println(message);
+                System.out.println(message);
             }
         }
     }

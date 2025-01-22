@@ -12,9 +12,19 @@ public class ItemManager {
     private static final Map<String, Item> items = new HashMap<>();
     private static final String DEFAULT_TEXTURE = "missing_texture";
     private static boolean initialized = false;
+    private static boolean isServerMode = false;
+
+    public static void setServerMode(boolean serverMode) {
+        isServerMode = serverMode;
+        initialized = false; // Reset initialization to allow server-specific init
+    }
 
     public static void initialize(TextureAtlas atlas) {
         if (initialized) {
+            return;
+        }
+        if (isServerMode && atlas == null) {
+            initializeServerItems();
             return;
         }
 
@@ -70,6 +80,45 @@ public class ItemManager {
         logInitializationSummary();
     }
 
+    private static void initializeServerItems() {
+        GameLogger.info("Initializing ItemManager in server mode...");
+
+        // Register standard items
+        Map<String, String> standardItems = new HashMap<>();
+        standardItems.put(ItemIDs.POTION, "potion");
+        standardItems.put(ItemIDs.ELIXIR, "elixir");
+        standardItems.put(ItemIDs.POKEBALL, "pokeball");
+        standardItems.put(ItemIDs.WOODEN_AXE, "wooden_axe");
+        standardItems.put(ItemIDs.STICK, "stick");
+
+        // Register block items
+        for (PlaceableBlock.BlockType blockType : PlaceableBlock.BlockType.values()) {
+            String itemId = blockType.getId().toLowerCase();
+            standardItems.put(itemId, itemId);
+        }
+
+        for (Map.Entry<String, String> entry : standardItems.entrySet()) {
+            String itemId = entry.getKey().toLowerCase();
+            // Create items without textures in server mode
+            Item item = new Item(itemId, entry.getValue(), null);
+
+            if (itemId.equals(ItemIDs.WOODEN_AXE)) {
+                item.setStackable(false);
+                item.setMaxDurability(100);
+                item.setDurability(100);
+            } else {
+                item.setStackable(true);
+                item.setMaxDurability(-1);
+            }
+
+            items.put(itemId, item);
+            GameLogger.info("Initialized server item: " + itemId);
+        }
+
+        initialized = true;
+        GameLogger.info("Server mode ItemManager initialization complete: " + items.size() + " items");
+    }
+
     private static TextureRegion getTextureWithFallbacks(TextureAtlas atlas, String primaryKey, String itemId) {
         TextureRegion texture;
         String[] attempts = new String[]{
@@ -103,8 +152,12 @@ public class ItemManager {
 
     public static Item getItem(String itemId) {
         if (!initialized) {
-            GameLogger.error("Attempting to get item before ItemManager initialization");
-            return null;
+            if (isServerMode) {
+                initialize(null); // Auto-initialize for server
+            } else {
+                GameLogger.error("Attempting to get item before ItemManager initialization");
+                return null;
+            }
         }
 
         if (itemId == null) {
@@ -112,26 +165,33 @@ public class ItemManager {
             return null;
         }
 
-        // Normalize item ID to match our standard format
         String normalizedId = itemId.toLowerCase().replace("_item", "");
         Item baseItem = items.get(normalizedId);
 
         if (baseItem == null) {
-            GameLogger.error(String.format("No item found with ID: %s (normalized from: %s)",
-                normalizedId, itemId));
+            GameLogger.error("No item found with ID: " + normalizedId);
             return null;
         }
 
-        if (baseItem.getIcon() == null) {
-            GameLogger.error(String.format("Item found but missing texture: %s", itemId));
+        if (!isServerMode && baseItem.getIcon() == null) {
+            GameLogger.error("Item found but missing texture: " + itemId);
             return null;
         }
 
         return baseItem.copy();
     }
 
+
     public static void validateItems() {
         GameLogger.info("Validating initialized items...");
+        if (isServerMode) {
+            // Simple validation for server mode
+            GameLogger.info("Validating server items...");
+            for (Map.Entry<String, Item> entry : items.entrySet()) {
+                GameLogger.info("Validated server item: " + entry.getKey());
+            }
+            return;
+        }
         for (Map.Entry<String, Item> entry : items.entrySet()) {
             Item item = entry.getValue();
             if (item.getIcon() == null) {

@@ -2,8 +2,10 @@ package org.discord;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
+import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
 import org.discord.context.ServerGameContext;
 import org.discord.files.ServerFileDelegate;
@@ -46,9 +48,9 @@ public class ServerLauncher {
             // Initialize storage and world management
             storage = new ServerStorageSystem();
             logger.info("World management system initialized");
-
-            // Create and start game server
-            ServerGameContext.init(ServerWorldManager.getInstance(storage));
+            ServerWorldManager serverWorldManager = ServerWorldManager.getInstance(storage);
+            serverWorldManager.loadWorld("multiplayer_world");
+            ServerGameContext.init(serverWorldManager,storage);
             GameServer server = new GameServer(config);
             server.start();
             logger.info("Game server started successfully");

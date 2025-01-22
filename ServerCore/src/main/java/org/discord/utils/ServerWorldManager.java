@@ -35,22 +35,76 @@ public class ServerWorldManager {
         }
         return instance;
     }
+    public void savePlayerData(String username, PlayerData data) {
+        try {
+            UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
+            storage.getPlayerDataManager().savePlayerData(playerUUID, data);
+            playerDataCache.put(playerUUID, data.copy());
+            GameLogger.info("Saved player data for: " + username);
 
+            // Ensure data is flushed to disk
+            storage.flushPlayerData();
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to save player data: " + e.getMessage());
+        }
+    }
     private void initializeAutoSave() {
         scheduler.scheduleAtFixedRate(() -> {
             synchronized (worldLock) {
                 try {
+                    // Save worlds that are marked dirty
                     for (Map.Entry<String, WorldData> entry : activeWorlds.entrySet()) {
                         if (entry.getValue().isDirty()) {
                             saveWorld(entry.getValue());
                             GameLogger.info("Auto-saved world: " + entry.getKey());
                         }
                     }
+
+                    // Save all player data
+                    for (Map.Entry<UUID, PlayerData> entry : playerDataCache.entrySet()) {
+                        storage.getPlayerDataManager().savePlayerData(entry.getKey(), entry.getValue());
+                    }
+
+                    // Ensure data is flushed
+                    storage.flushPlayerData();
+                    GameLogger.info("Auto-saved player data");
+
                 } catch (Exception e) {
                     GameLogger.error("Error during auto-save: " + e.getMessage());
                 }
             }
         }, SAVE_INTERVAL, SAVE_INTERVAL, TimeUnit.MILLISECONDS);
+    }
+    public PlayerData loadPlayerData(String username) {
+        try {
+            UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
+
+            // Check cache first
+            PlayerData cached = playerDataCache.get(playerUUID);
+            if (cached != null) {
+                return cached.copy();
+            }
+
+            // Load from storage
+            PlayerData data = storage.getPlayerDataManager().loadPlayerData(playerUUID);
+            if (data != null) {
+                // Validate and repair if needed
+                if (data.validateAndRepairState()) {
+                    GameLogger.info("Repaired player data for: " + username);
+                    // Save the repaired data
+                    savePlayerData(username, data);
+                }
+                playerDataCache.put(playerUUID, data.copy());
+                GameLogger.info("Loaded player data for: " + username);
+            } else {
+                GameLogger.info("No existing player data found for: " + username);
+            }
+            return data;
+        } catch (Exception e) {
+            GameLogger.error("Failed to load player data: " + e.getMessage());
+            return null;
+        }
     }
 
     public WorldData loadWorld(String worldName) {
@@ -177,39 +231,6 @@ public class ServerWorldManager {
         }
     }
 
-    public void savePlayerData(String username, PlayerData data) {
-        try {
-            UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-            storage.getPlayerDataManager().savePlayerData(playerUUID, data);
-            playerDataCache.put(playerUUID, data.copy());
-            GameLogger.info("Saved player data for: " + username);
-        } catch (Exception e) {
-            GameLogger.error("Failed to save player data: " + e.getMessage());
-        }
-    }
-
-    public PlayerData loadPlayerData(String username) {
-        try {
-            UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-
-            // Check cache first
-            PlayerData cached = playerDataCache.get(playerUUID);
-            if (cached != null) {
-                return cached.copy();
-            }
-
-            // Load from storage
-            PlayerData data = storage.getPlayerDataManager().loadPlayerData(playerUUID);
-            if (data != null) {
-                playerDataCache.put(playerUUID, data.copy());
-            }
-            return data;
-        } catch (Exception e) {
-            GameLogger.error("Failed to load player data: " + e.getMessage());
-            return null;
-        }
-    }
-
     public void unloadInactiveWorlds() {
         synchronized (worldLock) {
             long now = System.currentTimeMillis();
@@ -234,16 +255,24 @@ public class ServerWorldManager {
         try {
             GameLogger.info("Shutting down ServerWorldManager...");
 
-            // Save all active worlds
+            // Save all active worlds and player data
             synchronized (worldLock) {
+                // Save worlds
                 for (WorldData world : activeWorlds.values()) {
                     if (world.isDirty()) {
                         saveWorld(world);
                     }
                 }
+
+                // Save all player data
+                for (Map.Entry<UUID, PlayerData> entry : playerDataCache.entrySet()) {
+                    storage.getPlayerDataManager().savePlayerData(entry.getKey(), entry.getValue());
+                }
+
+                // Final flush
+                storage.flushPlayerData();
             }
 
-            // Shutdown scheduler
             scheduler.shutdown();
             try {
                 if (!scheduler.awaitTermination(30, TimeUnit.SECONDS)) {

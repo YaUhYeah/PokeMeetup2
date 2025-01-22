@@ -278,7 +278,6 @@ public class WorldData {
             try {
                 validateAndRepairWorld();
                 if (createBackup) {
-                    // Create timestamp for backup
                     String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
                     String backupName = name + "_backup_" + timestamp;
 

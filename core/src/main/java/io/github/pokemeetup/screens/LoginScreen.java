@@ -400,10 +400,7 @@ public class LoginScreen implements Screen {
             // Create new client
             GameContext.get().setGameClient(new GameClient(
                 selectedServer,
-                false,
-                selectedServer.getServerIP(),
-                selectedServer.getTcpPort(),
-                selectedServer.getUdpPort()
+                false
             ));
 
             // Set up response handlers
@@ -599,10 +596,7 @@ public class LoginScreen implements Screen {
 
         // Create new client with force login flag
         try {
-            GameContext.get().setGameClient(new GameClient(selectedServer, false,
-                selectedServer.getServerIP(),
-                selectedServer.getTcpPort(),
-                selectedServer.getUdpPort()));
+            GameContext.get().setGameClient(new GameClient(selectedServer, false));
 
             // Set login response listener
             GameContext.get().getGameClient().setLoginResponseListener(this::handleForceLoginResponse);
@@ -1109,12 +1103,10 @@ public class LoginScreen implements Screen {
             }
             servers.clear();
 
-            // Always add default server first
             ServerConnectionConfig defaultServer = ServerConnectionConfig.getInstance();
             defaultServer.setIconPath(DEFAULT_SERVER_ICON);
             servers.add(defaultServer);
 
-            // Load saved servers from preferences
             Preferences serverPrefs = Gdx.app.getPreferences(SERVERS_PREFS);
             String savedServers = serverPrefs.getString("servers", "");
 
@@ -1218,10 +1210,7 @@ public class LoginScreen implements Screen {
 
                 GameContext.get().setGameClient(new GameClient(
                     selectedServer,
-                    false,
-                    selectedServer.getServerIP(),
-                    selectedServer.getTcpPort(),
-                    selectedServer.getUdpPort()
+                    false
                 ));
 
                 GameContext.get().getGameClient().setRegistrationResponseListener(response -> {
@@ -1230,10 +1219,8 @@ public class LoginScreen implements Screen {
                     });
                 });
 
-                // Connect and send registration
                 GameContext.get().getGameClient().connect();
 
-                // Small delay to ensure connection is ready
                 Thread.sleep(100);
 
                 GameContext.get().getGameClient().sendRegisterRequest(username, password);

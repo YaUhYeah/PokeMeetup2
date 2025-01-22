@@ -6,15 +6,20 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
 import io.github.pokemeetup.utils.storage.JsonConfig;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class PlayerDataManager {
-    private static final String PLAYER_DATA_DIR = "server/playerdata/";
+    private static final String PLAYER_DATA_DIR = "players/"; // Simplified path
     private final Map<UUID, PlayerData> playerCache;
     private final GameFileSystem fs;
     private final Json json;
+    private volatile boolean isFlushInProgress = false;
 
     public PlayerDataManager() {
         this.playerCache = new ConcurrentHashMap<>();
@@ -26,79 +31,154 @@ public class PlayerDataManager {
     private void initializeDirectory() {
         try {
             fs.createDirectory(PLAYER_DATA_DIR);
-            GameLogger.info("Player data directory initialized");
+            GameLogger.info("Player data directory initialized at: " + PLAYER_DATA_DIR);
         } catch (Exception e) {
             GameLogger.error("Failed to create player data directory: " + e.getMessage());
             throw new RuntimeException("Player data storage initialization failed", e);
         }
     }
 
-    public PlayerData loadPlayerData(UUID uuid) {
-        if (playerCache.containsKey(uuid)) {
-            return playerCache.get(uuid);
+    public synchronized PlayerData loadPlayerData(UUID uuid) {
+        // Check cache first
+        PlayerData cached = playerCache.get(uuid);
+        if (cached != null) {
+            return cached.copy(); // Return copy to prevent direct cache modification
         }
 
         try {
-            String path = getPlayerFilePath(uuid);
+            String path = getPlayerDataPath(uuid);
             if (!fs.exists(path)) {
+                GameLogger.info("No existing data found for UUID: " + uuid);
                 return null;
             }
 
             String jsonData = fs.readString(path);
             PlayerData playerData = json.fromJson(PlayerData.class, jsonData);
+
             if (playerData != null) {
-                playerCache.put(uuid, playerData);
-                GameLogger.info("Loaded player data for UUID: " + uuid);
+                // Validate and repair if needed
+                if (playerData.validateAndRepairState()) {
+                    GameLogger.info("Repaired loaded player data for UUID: " + uuid);
+                    savePlayerData(uuid, playerData); // Save repaired data
+                }
+                playerCache.put(uuid, playerData.copy());
+                GameLogger.info("Successfully loaded player data for UUID: " + uuid);
+                return playerData.copy();
             }
-            return playerData;
+            return null;
         } catch (Exception e) {
             GameLogger.error("Failed to load player data for UUID: " + uuid + " - " + e.getMessage());
             return null;
         }
     }
 
-    public void savePlayerData(UUID uuid, PlayerData playerData) {
+    public synchronized void savePlayerData(UUID uuid, PlayerData playerData) {
         if (uuid == null || playerData == null) {
+            GameLogger.error("Invalid save attempt with null UUID or PlayerData");
             return;
         }
 
         try {
-            String tempPath = getPlayerFilePath(uuid) + ".temp";
-            String finalPath = getPlayerFilePath(uuid);
+            // Ensure directory exists first
+            fs.createDirectory(PLAYER_DATA_DIR);
 
+            // Validate data before saving
+            if (!playerData.validateAndRepairState()) {
+                GameLogger.error("Player data validation failed for UUID: " + uuid);
+                return;
+            }
+
+            String tempPath = getPlayerDataPath(uuid) + ".temp";
+            String finalPath = getPlayerDataPath(uuid);
+
+            // Write to temp file first with pretty print for readability
             String jsonData = json.prettyPrint(playerData);
             fs.writeString(tempPath, jsonData);
 
+            // Verify temp file
+            if (!fs.exists(tempPath)) {
+                throw new RuntimeException("Failed to write temporary player data file");
+            }
+
+            // Atomic move to final location
             if (fs.exists(finalPath)) {
                 fs.deleteFile(finalPath);
             }
             fs.moveFile(tempPath, finalPath);
 
-            playerCache.put(uuid, playerData);
-            GameLogger.info("Saved player data for UUID: " + uuid);
+            // Update cache with a deep copy
+            playerCache.put(uuid, playerData.copy());
+
+            // Don't call flush() here anymore
+            GameLogger.info("Successfully saved player data for UUID: " + uuid);
+
         } catch (Exception e) {
             GameLogger.error("Failed to save player data for UUID: " + uuid + " - " + e.getMessage());
             throw new RuntimeException("Player data save failed", e);
         }
     }
-
-    public void deletePlayerData(UUID uuid) {
-        String path = getPlayerFilePath(uuid);
-        if (fs.exists(path)) {
-            fs.deleteFile(path);
-            playerCache.remove(uuid);
-            GameLogger.info("Deleted player data for UUID: " + uuid);
-        }
-    }
-
-    private String getPlayerFilePath(UUID uuid) {
+    private String getPlayerDataPath(UUID uuid) {
         return PLAYER_DATA_DIR + uuid.toString() + ".json";
     }
 
-    public void shutdown() {
-        for (Map.Entry<UUID, PlayerData> entry : playerCache.entrySet()) {
-            savePlayerData(entry.getKey(), entry.getValue());
+    private void initializePeriodicFlush() {
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleWithFixedDelay(this::flush, 5, 5, TimeUnit.MINUTES);
+    }
+
+
+    public synchronized void flush() {
+        if (isFlushInProgress) {
+            return; // Prevent recursive flush
         }
-        GameLogger.info("Player data manager shutdown complete");
+
+        try {
+            isFlushInProgress = true;
+            GameLogger.info("Starting player data flush...");
+            Map<UUID, PlayerData> dataToSave = new HashMap<>(playerCache);
+
+            int successCount = 0;
+            for (Map.Entry<UUID, PlayerData> entry : dataToSave.entrySet()) {
+                try {
+                    // Call savePlayerData directly without triggering another flush
+                    savePlayerData(entry.getKey(), entry.getValue());
+                    successCount++;
+                } catch (Exception e) {
+                    GameLogger.error("Failed to flush player data for UUID " +
+                        entry.getKey() + ": " + e.getMessage());
+                }
+            }
+
+            GameLogger.info("Player data flush complete - " +
+                successCount + "/" + dataToSave.size() + " players saved successfully");
+
+        } finally {
+            isFlushInProgress = false;
+        }
+    }
+
+
+    public void deletePlayerData(UUID uuid) {
+        try {
+            String path = getPlayerDataPath(uuid);
+            if (fs.exists(path)) {
+                fs.deleteFile(path);
+                playerCache.remove(uuid);
+                GameLogger.info("Deleted player data for UUID: " + uuid);
+            }
+        } catch (Exception e) {
+            GameLogger.error("Failed to delete player data for UUID: " + uuid + " - " + e.getMessage());
+        }
+    }
+
+    public void shutdown() {
+        try {
+            GameLogger.info("Starting PlayerDataManager shutdown...");
+            flush(); // Ensure all cached data is saved
+            playerCache.clear();
+            GameLogger.info("PlayerDataManager shutdown complete");
+        } catch (Exception e) {
+            GameLogger.error("Error during PlayerDataManager shutdown: " + e.getMessage());
+        }
     }
 }

@@ -629,8 +629,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             // 4. Initialize player resources and world connection
             GameContext.get().getPlayer().initializeResources();
             GameContext.get().getPlayer().initializeInWorld(GameContext.get().getWorld());
-            GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer()); // This also initializes player data in World
-
+            GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer());
+            GameContext.get().getPlayer().setRenderPosition(GameContext.get().getPlayer().getPosition());
             // 5. Load initial chunks around player
             Vector2 playerPos = new Vector2(
                 (float) GameContext.get().getPlayer().getTileX() / World.CHUNK_SIZE,
@@ -1496,7 +1496,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
-    // Also modify setupCamera to handle null player safely:
     private void setupCamera() {
         if (camera == null) {
             camera = new OrthographicCamera();
@@ -1511,7 +1510,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         cameraViewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), false);
 
-        // Set initial camera position
         if (GameContext.get().getPlayer() != null) {
             camera.position.set(
                 GameContext.get().getPlayer().getX() + Player.FRAME_WIDTH / 2f,

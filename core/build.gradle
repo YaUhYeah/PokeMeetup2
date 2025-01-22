@@ -1,6 +1,5 @@
 plugins {
   id 'java-library'
-  id 'org.springframework.boot' version '3.4.0'
 }
 java {
   sourceCompatibility = JavaVersion.VERSION_11
@@ -21,13 +20,7 @@ dependencies {
     exclude group: 'org.mongodb', module: 'bson-record-codec'
     exclude group: 'javax.activation', module: 'activation'
   }
-  implementation platform('org.springframework.boot:spring-boot-dependencies:2.7.8')
 
-  implementation 'org.springframework.boot:spring-boot-starter'
-  testImplementation('org.springframework.boot:spring-boot-starter-test') {
-    exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
-  }
-  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
   api "com.badlogicgames.ashley:ashley:$ashleyVersion"
   api "com.badlogicgames.gdx-controllers:gdx-controllers-core:$gdxControllersVersion"
   api "com.badlogicgames.gdx:gdx-ai:$aiVersion"

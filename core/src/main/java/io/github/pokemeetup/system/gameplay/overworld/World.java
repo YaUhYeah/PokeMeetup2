@@ -90,12 +90,9 @@ public class World {
             this.worldData = worldData;
             this.name = worldData.getName();
             this.worldSeed = worldData.getConfig().getSeed();
-
-            // Initialize managers first
             this.blockManager = new BlockManager(this);
             this.biomeManager = new BiomeManager(this.worldSeed);
             this.biomeRenderer = new BiomeRenderer();
-            // Initialize collections
             this.chunks = new ConcurrentHashMap<>();
             this.loadingChunks = new ConcurrentHashMap<>();
             this.initialChunkLoadQueue = new LinkedList<>();
@@ -273,11 +270,16 @@ public class World {
             if (GameContext.get().getGameClient() != null) {
                 isMultiplayer = !GameContext.get().getGameClient().isSinglePlayer();
             }
-            worldData.savePlayerData(username, data, isMultiplayer);
 
-            if (isMultiplayer && GameContext.get().getGameClient() != null) {
-                UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-                GameContext.get().getGameClient().savePlayerData(playerUUID, data);
+            if (isMultiplayer) {
+                // Only send data to server in multiplayer
+                if (GameContext.get().getGameClient() != null) {
+                    UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
+                    GameContext.get().getGameClient().savePlayerData(playerUUID, data);
+                }
+            } else {
+                // Only save locally in singleplayer
+                worldData.savePlayerData(username, data, false);
             }
         }
     }
@@ -526,7 +528,22 @@ public class World {
 
     public void save() {
         try {
+            boolean isMultiplayer = GameContext.get().getGameClient() != null &&
+                !GameContext.get().getGameClient().isSinglePlayer();
 
+            if (isMultiplayer) {
+                // Only update player data in multiplayer
+                if (GameContext.get().getPlayer() != null) {
+                    PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
+                    currentState.updateFromPlayer(GameContext.get().getPlayer());
+                    // Send to server via GameClient
+                    GameContext.get().getGameClient().savePlayerData(
+                        UUID.nameUUIDFromBytes(currentState.getUsername().getBytes()),
+                        currentState
+                    );
+                }
+                return; // Don't save world data in multiplayer
+            }
             // Update player data first
             if (GameContext.get().getPlayer() != null) {
                 PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
@@ -627,32 +644,26 @@ public class World {
         }
 
         try {
-            // Create chunk data object
             ChunkData data = new ChunkData();
             data.x = (int) chunkPos.x;
             data.y = (int) chunkPos.y;
             data.biomeType = chunk.getBiome().getType();
             data.tileData = chunk.getTileData();
             data.blocks = chunk.getBlockDataForSave();
-
-            // Get and format objects
             List<WorldObject> objects = objectManager.getObjectsForChunk(chunkPos);
             data.objects = objects.stream()
                 .map(WorldObjectData::new)
                 .collect(Collectors.toList());
 
-            // Create json writer
             Json json = new Json();
             json.setOutputType(JsonWriter.OutputType.json);
             registerCustomSerializers(json);
 
-            // Write to file
             String baseDir =
                 "worlds/singleplayer/" + name + "/chunks/";
             String filename = String.format("chunk_%d_%d.json", (int) chunkPos.x, (int) chunkPos.y);
             FileHandle chunkFile = Gdx.files.local(baseDir + filename);
 
-            // Create directory if it doesn't exist
             chunkFile.parent().mkdirs();
 
             // Write json
@@ -749,8 +760,6 @@ public class World {
                     }
                 }
             }
-
-            // Handle objects
             if (chunkData.objects != null) {
                 List<WorldObject> objects = new ArrayList<>();
                 for (WorldObjectData objData : chunkData.objects) {
@@ -1085,7 +1094,6 @@ public class World {
             return;
         }
 
-        // Update world time and systems
         if (worldData != null) {
             worldData.updateTime(delta);
         }
@@ -1130,7 +1138,6 @@ public class World {
 
         Biome currentBiome = currentBiomeTransition.getPrimaryBiome();
 
-        // Handle audio based on current biome
         if (AudioManager.getInstance() != null) {
             AudioManager.getInstance().updateBiomeMusic(currentBiome.getType());
             AudioManager.getInstance().update(delta);

@@ -78,7 +78,16 @@ public class JsonConfig {
 
             @Override
             public WorldData read(Json json, JsonValue jsonData, Class type) {
+                if (jsonData == null) {
+                    return null;
+                }
                 WorldData world = new WorldData();
+
+                String name = jsonData.getString("name", null);
+                if (name == null || name.trim().isEmpty()) {
+                    GameLogger.error("Missing or empty world name in JSON data");
+                    return null; // Return null instead of throwing exception
+                }
                 JsonValue timeValue = jsonData.get("worldTimeInMinutes");
                 if (timeValue != null) {
                     world.setWorldTimeInMinutes(timeValue.asDouble());

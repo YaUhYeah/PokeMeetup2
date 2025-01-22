@@ -16,13 +16,20 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerStorageSystem {
-    private static final String SERVER_BASE_DIR = "server/";
+    public static final String SERVER_BASE_DIR = "";
     public static final String SERVER_WORLD_DIR = SERVER_BASE_DIR + "worlds/";
     private final Json json;
     private final Map<String, WorldData> worldCache;
     private final GameFileSystem fs;
     private final PlayerDataManager playerDataManager;
-
+    public synchronized void flushPlayerData() {
+        try {
+            GameLogger.info("Flushing player data to disk...");
+            playerDataManager.flush();
+        } catch (Exception e) {
+            GameLogger.error("Failed to flush player data: " + e.getMessage());
+        }
+    }
     public ServerStorageSystem() {
         this.json = JsonConfig.getInstance();
         this.json.setOutputType(JsonWriter.OutputType.json);
@@ -150,19 +157,29 @@ public class ServerStorageSystem {
     }
 
     public void createWorldBackup(WorldData world) {
+        if (world == null) {
+            GameLogger.error("Cannot create backup of null world");
+            return;
+        }
+
         try {
-            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-            String backupDir = SERVER_WORLD_DIR + world.getName() + "/backups/";
-            if (!fs.exists(backupDir)) {
-                fs.createDirectory(backupDir);
+            String worldName = world.getName();
+            if (worldName == null || worldName.trim().isEmpty()) {
+                GameLogger.error("Cannot backup world with null/empty name");
+                return;
             }
 
-            String backupPath = backupDir + "world_" + timestamp + ".json";
+            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+            String backupDir = SERVER_WORLD_DIR + worldName + "/backups/";
 
+            // Create backup directory if it doesn't exist
+            fs.createDirectory(backupDir);
+
+            String backupPath = backupDir + "world_" + timestamp + ".json";
             String jsonData = json.prettyPrint(world);
             fs.writeString(backupPath, jsonData);
 
-            GameLogger.info("Created backup of world: " + world.getName());
+            GameLogger.info("Created backup of world: " + worldName);
         } catch (Exception e) {
             GameLogger.error("Failed to create world backup: " + e.getMessage());
         }

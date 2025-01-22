@@ -8,16 +8,13 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryonet.Client;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
-import com.esotericsoftware.minlog.Log;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.multiplayer.OtherPlayer;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.multiplayer.server.GameStateHandler;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
-import io.github.pokemeetup.multiplayer.server.storage.FileStorage;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.ItemData;
@@ -27,26 +24,22 @@ import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
-import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
-
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 
 public class GameClient {
-    private static final long CONNECTION_TIMEOUT = 45000; // 45s connection timeout
-    private static final long RECONNECT_DELAY = 3000; // 3s base delay
+    private static final long CONNECTION_TIMEOUT = 45000;
+    private static final long RECONNECT_DELAY = 3000;
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
     private static final int MAX_CONCURRENT_CHUNK_REQUESTS = 4;
-    private static final long CHUNK_REQUEST_INTERVAL = 50; // 50ms between requests
-    private static final float SYNC_INTERVAL = 1 / 60f; // 60Hz sync rate
+    private static final long CHUNK_REQUEST_INTERVAL = 50;
+    private static final float SYNC_INTERVAL = 1 / 60f;
     private static final float INTERPOLATION_SPEED = 10f;
     private static final float UPDATE_INTERVAL = 1 / 20f;
     private static final int BUFFER_SIZE = 8192;
@@ -65,7 +58,6 @@ public class GameClient {
     private final BlockingQueue<NetworkProtocol.ChatMessage> chatMessageQueue = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<String, NetworkProtocol.PlayerUpdate> playerUpdates = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler;
-    private final FileStorage fileStorage;
     private final Queue<Object> pendingMessages = new ConcurrentLinkedQueue<>();
     private final Preferences credentials;
     private final AtomicBoolean isConnected = new AtomicBoolean(false);
@@ -103,14 +95,13 @@ public class GameClient {
     private String localUsername;
     private long worldSeed;
     private ReconnectionListener reconnectionListener;
-    public GameClient(ServerConnectionConfig config, boolean isSinglePlayer, String serverIP, int tcpPort, int udpPort) {
+    public GameClient(ServerConnectionConfig config, boolean isSinglePlayer) {
 
         this.disconnectHandler = null;
         this.serverConfig = config;
         this.isSinglePlayer = isSinglePlayer;
         this.lastKnownState = new PlayerData();
         new BiomeManager(System.currentTimeMillis());
-        this.fileStorage = isSinglePlayer ? null : new FileStorage(config.getDataDirectory());
 
         this.credentials = Gdx.app.getPreferences("game-credentials");
         this.serverConfig = config;
@@ -162,8 +153,6 @@ public class GameClient {
         if (!isAuthenticated.get() || connectionState != ConnectionState.CONNECTED) {
             return;
         }
-
-        // Handle network updates
         syncTimer += deltaTime;
         if (syncTimer >= SYNC_INTERVAL) {
             syncTimer = 0;
@@ -179,8 +168,6 @@ public class GameClient {
             if (!isSinglePlayer && GameContext.get().getPlayer() != null && isAuthenticated() && isInitialized) {
                 sendPlayerUpdate();
             }
-
-            // Process any pending chunk requests
             processChunkQueue();
         }
     }
@@ -314,8 +301,6 @@ public class GameClient {
                 cleanupExistingConnection();
 
                 client = new Client(BUFFER_SIZE, BUFFER_SIZE);
-
-                // Configure Kryo first
                 Kryo kryo = client.getKryo();
                 kryo.setReferences(false);
                 NetworkProtocol.registerClasses(kryo);
@@ -337,7 +322,7 @@ public class GameClient {
                                 public void run() {
                                     sendLoginRequest(pendingUsername, pendingPassword);
                                 }
-                            }, 0.5f); // Small delay before login attempt
+                            }, 0.5f);
                         } else {
                             GameLogger.error("No credentials available. Cannot authenticate.");
                             handleConnectionFailure(new Exception("Missing credentials"));
@@ -360,7 +345,6 @@ public class GameClient {
                     }
                 });
 
-                // Start client and connect
                 client.start();
 
                 GameLogger.info("Connecting to " + serverConfig.getServerIP() + ":" + serverConfig.getTcpPort());
@@ -385,7 +369,6 @@ public class GameClient {
         }
 
         try {
-            // Basic validation
             if (username == null || username.trim().isEmpty() ||
                 password == null || password.trim().isEmpty()) {
                 GameLogger.error("Username or password is empty");
@@ -418,8 +401,6 @@ public class GameClient {
 
             cleanupExistingConnection();
             isConnecting.set(false);
-
-            // Notify listeners
             if (loginResponseListener != null) {
                 Gdx.app.postRunnable(() -> {
                     NetworkProtocol.LoginResponse response = new NetworkProtocol.LoginResponse();
@@ -441,20 +422,6 @@ public class GameClient {
                 isSinglePlayer = false;
             } catch (Exception e) {
                 GameLogger.error("Error cleaning up connection: " + e.getMessage());
-            }
-        }
-    }
-
-    private void requestInitialChunks() {
-        if (GameContext.get().getPlayer() == null || GameContext.get().getWorld() == null) return;
-
-        int playerChunkX = (int) Math.floor(GameContext.get().getPlayer().getX() / (World.CHUNK_SIZE * World.TILE_SIZE));
-        int playerChunkY = (int) Math.floor(GameContext.get().getPlayer().getY() / (World.CHUNK_SIZE * World.TILE_SIZE));
-
-        for (int dx = -World.INITIAL_LOAD_RADIUS; dx <= World.INITIAL_LOAD_RADIUS; dx++) {
-            for (int dy = -World.INITIAL_LOAD_RADIUS; dy <= World.INITIAL_LOAD_RADIUS; dy++) {
-                Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                requestChunk(chunkPos);
             }
         }
     }
@@ -545,19 +512,16 @@ public class GameClient {
 
     public void saveState(PlayerData playerData) {
         if (isSinglePlayer) {
-            // Save only to local world file for singleplayer
             if (GameContext.get().getWorld() != null) {
                 GameContext.get().getWorld().getWorldData().savePlayerData(
                     playerData.getUsername(),
                     playerData,
                     false
                 );
-                // Save world data
                 GameContext.get().getWorldManager().saveWorld(GameContext.get().getWorld().getWorldData());
                 GameLogger.info("Saved singleplayer state for: " + playerData.getUsername());
             }
         } else {
-            // For multiplayer, only send to server and let server handle persistence
             if (isConnected() && isAuthenticated()) {
                 try {
                     NetworkProtocol.SavePlayerDataRequest request = new NetworkProtocol.SavePlayerDataRequest();
@@ -613,20 +577,6 @@ public class GameClient {
         return GameContext.get().getWorld();
     }
 
-    public void setCurrentWorld(World world) {
-        if (world == null) {
-            GameLogger.error("Cannot set null world");
-            return;
-        }
-        GameContext.get().setWorld(world);
-        this.worldData = world.getWorldData();
-        GameLogger.info("Set current world in GameClient");
-
-        if (GameContext.get().getPlayer() != null) {
-            GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer());
-            GameLogger.info("Set active player in new world: " + GameContext.get().getPlayer().getUsername());
-        }
-    }
 
     public long getWorldSeed() {
         return worldSeed;
@@ -717,7 +667,6 @@ public class GameClient {
                 Thread.currentThread().interrupt();
             }
 
-            // Clean up network
             if (client != null) {
                 try {
                     NetworkProtocol.ForceDisconnect disconnect = new NetworkProtocol.ForceDisconnect();
@@ -739,14 +688,6 @@ public class GameClient {
         isShuttingDown.set(true);
         dispose();
     }
-
-    public void clearCredentials() {
-        this.localUsername = null;
-        this.currentPassword = null;
-        credentials.clear();
-        credentials.flush();
-    }
-
     private void scheduleReconnection() {
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             GameLogger.error("Max reconnection attempts reached");
@@ -932,8 +873,6 @@ public class GameClient {
             connectionState = ConnectionState.DISCONNECTED;
             isConnected.set(false);
             isAuthenticated.set(false);
-
-            // Clean up connection
             cleanupConnection();
             if (disconnectHandler != null && !disconnectHandler.isHandlingDisconnect()) {
                 disconnectHandler.handleDisconnect(reason);
@@ -993,13 +932,9 @@ public class GameClient {
 
     public void tick(float deltaTime) {
         if (!isConnected() || isSinglePlayer) return;
-
-        // Process any pending messages
         if (isInitialized && !processingMessages) {
             processQueuedMessages();
         }
-
-        // Update game state
         if (isInitialized && GameContext.get().getPlayer() != null) {
             update(deltaTime);
         }
@@ -1188,7 +1123,7 @@ public class GameClient {
     private void handleChunkDataFragment(NetworkProtocol.ChunkDataFragment fragment) {
         Vector2 chunkPos = new Vector2(fragment.chunkX, fragment.chunkY);
         ChunkFragmentAssembler assembler = fragmentAssemblers.computeIfAbsent(chunkPos,
-            k -> new ChunkFragmentAssembler(fragment.totalFragments, fragment.fragmentSize));
+            k -> new ChunkFragmentAssembler(fragment.totalFragments));
 
         assembler.addFragment(fragment);
     }
@@ -1232,27 +1167,21 @@ public class GameClient {
     }
 
     private void handlePlayerJoined(NetworkProtocol.PlayerJoined joinMsg) {
-
-        // Add timestamp tracking to detect duplicates
         final String joinKey = joinMsg.username + "_" + joinMsg.timestamp;
 
         Gdx.app.postRunnable(() -> {
             synchronized (otherPlayers) {
-                // Check if we've already handled this join message
                 if (recentJoinEvents.contains(joinKey)) {
                     GameLogger.info("Skipping duplicate join event for: " + joinMsg.username);
                     return;
                 }
 
-                // Check if player already exists
                 if (otherPlayers.containsKey(joinMsg.username)) {
                     GameLogger.info("Player " + joinMsg.username + " already exists, updating position");
                     OtherPlayer existingPlayer = otherPlayers.get(joinMsg.username);
                     existingPlayer.setPosition(new Vector2(joinMsg.x, joinMsg.y));
                     return;
                 }
-
-                // Create new player instance
                 OtherPlayer newPlayer = new OtherPlayer(
                     joinMsg.username,
                     joinMsg.x,
@@ -1260,9 +1189,7 @@ public class GameClient {
                 );
                 otherPlayers.put(joinMsg.username, newPlayer);
 
-                // Track this join event
                 recentJoinEvents.add(joinKey);
-                // Clean up old events after 5 seconds
                 com.badlogic.gdx.utils.Timer.schedule(new com.badlogic.gdx.utils.Timer.Task() {
                     @Override
                     public void run() {
@@ -1270,7 +1197,6 @@ public class GameClient {
                     }
                 }, 5);
 
-                // Only send system message for new players
                 if (chatMessageHandler != null) {
                     NetworkProtocol.ChatMessage joinNotification = new NetworkProtocol.ChatMessage();
                     joinNotification.sender = "System";
@@ -1363,17 +1289,15 @@ public class GameClient {
                 syncedPokemonData.remove(despawnData.uuid);
 
                 if (pokemon != null && GameContext.get().getWorld() != null) {
-                    // Start despawn animation
                     pokemon.startDespawnAnimation();
 
-                    // Remove from world after animation completes
                     com.badlogic.gdx.utils.Timer.schedule(new com.badlogic.gdx.utils.Timer.Task() {
                         @Override
                         public void run() {
                             GameContext.get().getWorld().getPokemonSpawnManager()
                                 .removePokemon(despawnData.uuid);
                         }
-                    }, 1.0f); // Animation duration
+                    }, 1.0f);
                 }
 
                 GameLogger.info("Handled Pokemon despawn for UUID: " + despawnData.uuid);
@@ -1446,10 +1370,8 @@ public class GameClient {
         }
 
         try {
-            // Check object type from data
             if (update.data != null && update.data.containsKey("type")) {
                 String objectType = (String) update.data.get("type");
-                // Skip static decorative objects
                 if (objectType.equals("SUNFLOWER") ||
                     objectType.equals("BUSH") ||
                     objectType.equals("DEAD_TREE") ||
@@ -1475,38 +1397,6 @@ public class GameClient {
         }
     }
 
-    private WorldObject createWorldObjectFromData(Map<String, Object> data) {
-        try {
-            String typeStr = (String) data.get("type");
-            if (typeStr == null) {
-                GameLogger.error("Missing type in world object data");
-                return null;
-            }
-
-            WorldObject.ObjectType type = WorldObject.ObjectType.valueOf(typeStr);
-            int tileX = ((Number) data.get("tileX")).intValue();
-            int tileY = ((Number) data.get("tileY")).intValue();
-
-            WorldObject obj = new WorldObject(
-                tileX,
-                tileY,
-                null, // Client will handle textures
-                type
-            );
-
-            // Set ID if present
-            if (data.containsKey("id")) {
-                obj.setId((String) data.get("id"));
-            } else {
-                obj.setId(UUID.randomUUID().toString());
-            }
-
-            return obj;
-        } catch (Exception e) {
-            GameLogger.error("Error creating WorldObject from data: " + e.getMessage());
-            return null;
-        }
-    }
 
     private void handleChunkData(NetworkProtocol.ChunkData chunkData) {
         if (chunkData == null) return;
@@ -1626,7 +1516,9 @@ public class GameClient {
 
                 Gdx.app.postRunnable(() -> {
                     if (GameContext.get().getPlayer() == null) {
-                        GameContext.get().setPlayer(new Player(response.username, GameContext.get().getWorld()));
+                        Player player = new Player(response.username, GameContext.get().getWorld());
+                        player.setPlayerData(response.playerData);
+                        GameContext.get().setPlayer(player);
                     }
                     GameContext.get().getPlayer().setX(response.x);
                     GameContext.get().getPlayer().setY(response.y);
@@ -1652,7 +1544,6 @@ public class GameClient {
         loginRequestSent = false;
         GameLogger.error("Login failed: " + message);
 
-        // Don't disconnect immediately
         if (loginResponseListener != null) {
             NetworkProtocol.LoginResponse failResponse = new NetworkProtocol.LoginResponse();
             failResponse.success = false;
@@ -1670,8 +1561,6 @@ public class GameClient {
         GameLogger.info("Setting pending credentials for: " + username);
         this.pendingUsername = username.trim();
         this.pendingPassword = password.trim();
-
-        // If connected but not authenticated, try login
         if (isConnected() && !isAuthenticated.get() && !loginRequestSent) {
             sendLoginRequest(username, password);
         }
@@ -1680,8 +1569,6 @@ public class GameClient {
     private void initializeWorldBasic(long seed, double worldTimeInMinutes, float dayLength) {
         try {
             GameLogger.info("Initializing basic world with seed: " + seed);
-
-            // Create new WorldData if it doesn't exist
             if (worldData == null) {
                 worldData = new WorldData("multiplayer");
                 GameLogger.info("Created new WorldData instance");
@@ -1754,7 +1641,7 @@ public class GameClient {
         private BiomeType biomeType;
         private int fragmentsReceived = 0;
 
-        ChunkFragmentAssembler(int totalFragments, int fragmentSize) {
+        ChunkFragmentAssembler(int totalFragments) {
             this.totalFragments = totalFragments;
             this.receivedFragments = new BitSet(totalFragments);
         }

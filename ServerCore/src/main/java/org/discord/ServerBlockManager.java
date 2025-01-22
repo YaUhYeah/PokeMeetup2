@@ -17,7 +17,9 @@ public class ServerBlockManager {
         PlaceableBlock block = new PlaceableBlock(type, pos);
         placedBlocks.put(pos, block);
         return true;
-    }   public void removeBlock(int tileX, int tileY) {
+    }
+
+    public void removeBlock(int tileX, int tileY) {
         Vector2 pos = new Vector2(tileX, tileY);
         if (placedBlocks.containsKey(pos)) {
             return;

@@ -1,6 +1,5 @@
 package io.github.pokemeetup.multiplayer.client;
 
-import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.system.Player;
@@ -20,7 +19,6 @@ public class GameClientSingleton {
 
     public static GameClient getInstance(ServerConnectionConfig config) {
         if (config == null) {
-            // Try to get default config instead of throwing exception
             config = ServerConfigManager.getDefaultServerConfig();
         }
 
@@ -33,10 +31,7 @@ public class GameClientSingleton {
                     instance = null;
                 }
 
-                instance = new GameClient(config, false,
-                    config.getServerIP(),
-                    config.getTcpPort(),
-                    config.getUdpPort());
+                instance = new GameClient(config, false);
 
                 return instance;
 
@@ -71,7 +66,7 @@ public class GameClientSingleton {
                     instance = null;
                 }
                 ServerConnectionConfig singlePlayerConfig = ServerConnectionConfig.getDefault();
-                instance = new GameClient(singlePlayerConfig, true, "localhost", 0, 0);
+                instance = new GameClient(singlePlayerConfig, true);
                 instance.setActivePlayer(player);
                 return instance;
             } catch (Exception e) {
@@ -91,7 +86,7 @@ public class GameClientSingleton {
                 }
 
                 ServerConnectionConfig singlePlayerConfig = ServerConnectionConfig.getDefault();
-                instance = new GameClient(singlePlayerConfig, true, "localhost", 0, 0);
+                instance = new GameClient(singlePlayerConfig, true);
                 return instance;
 
             } catch (Exception e) {

@@ -18,7 +18,6 @@ public class GameFileSystem {
         checkDelegate();
         try {
             delegate.moveFile(sourcePath, destinationPath);
-            GameLogger.info("Moved file from " + sourcePath + " to " + destinationPath);
         } catch (IOException e) {
             GameLogger.error("Failed to move file from " + sourcePath + " to " + destinationPath + ": " + e.getMessage());
             throw e;
@@ -40,7 +39,6 @@ public class GameFileSystem {
         checkDelegate();
         try {
             delegate.writeString(path, content);
-            GameLogger.info("Successfully wrote to file: " + path);
         } catch (IOException e) {
             GameLogger.error("Failed to write to file: " + path);
             throw e;
@@ -50,9 +48,7 @@ public class GameFileSystem {
     public String readString(String path) throws IOException {
         checkDelegate();
         try {
-            String content = delegate.readString(path);
-            GameLogger.info("Successfully read from file: " + path);
-            return content;
+            return delegate.readString(path);
         } catch (IOException e) {
             GameLogger.error("Failed to read from file: " + path);
             throw e;
@@ -68,7 +64,6 @@ public class GameFileSystem {
         checkDelegate();
         try {
             delegate.createDirectory(path);
-            GameLogger.info("Created directory: " + path);
         } catch (Exception e) {
             GameLogger.error("Failed to create directory: " + path);
             throw e;
@@ -79,7 +74,6 @@ public class GameFileSystem {
         checkDelegate();
         try {
             delegate.deleteFile(path);
-            GameLogger.info("Deleted file: " + path);
         } catch (Exception e) {
             GameLogger.error("Failed to delete file: " + path);
             throw e;
@@ -90,7 +84,6 @@ public class GameFileSystem {
         checkDelegate();
         try {
             delegate.deleteDirectory(path);
-            GameLogger.info("Deleted directory: " + path);
         } catch (Exception e) {
             GameLogger.error("Failed to delete directory: " + path);
             throw e;
