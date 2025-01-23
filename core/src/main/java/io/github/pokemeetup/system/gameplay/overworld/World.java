@@ -675,7 +675,7 @@ public class World {
             worldData.getChunks().put(chunkPos, chunk);
             worldData.addChunkObjects(chunkPos, objects);
             worldData.setDirty(true);
-
+//TODO: fix ensure chunks stored multiplayer mode
 
         } catch (Exception e) {
             GameLogger.error("Failed to save chunk at " + chunkPos + ": " + e.getMessage());

@@ -199,12 +199,13 @@ public class ServerStorageSystem {
         return playerDataManager;
     }
 
-    public void shutdown() {
+    public void shutdown() throws InterruptedException {
         // Save all cached data
         for (WorldData world : worldCache.values()) {
             saveWorld(world);
         }
         playerDataManager.shutdown();
+        Thread.sleep(1000);
         GameLogger.info("Storage system shutdown complete");
     }
 }

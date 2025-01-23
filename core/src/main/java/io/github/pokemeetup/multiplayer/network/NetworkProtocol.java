@@ -422,7 +422,6 @@ public class NetworkProtocol {
         public long timestamp;
     }
 
-    // Update existing classes with timestamps
     public static class PlayerUpdate {
         public String username;
         public float x;

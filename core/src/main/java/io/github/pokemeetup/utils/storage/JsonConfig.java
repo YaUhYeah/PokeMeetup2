@@ -43,7 +43,9 @@ public class JsonConfig {
             GameLogger.error("Error loading world data: " + e.getMessage());
             return null;
         }
-    }public static synchronized Json getInstance() {
+    }
+
+    public static synchronized Json getInstance() {
         if (instance == null) {
             instance = new Json();
             instance.setOutputType(JsonWriter.OutputType.json);
@@ -76,18 +78,10 @@ public class JsonConfig {
                 json.writeObjectEnd();
             }
 
+
             @Override
             public WorldData read(Json json, JsonValue jsonData, Class type) {
-                if (jsonData == null) {
-                    return null;
-                }
                 WorldData world = new WorldData();
-
-                String name = jsonData.getString("name", null);
-                if (name == null || name.trim().isEmpty()) {
-                    GameLogger.error("Missing or empty world name in JSON data");
-                    return null; // Return null instead of throwing exception
-                }
                 JsonValue timeValue = jsonData.get("worldTimeInMinutes");
                 if (timeValue != null) {
                     world.setWorldTimeInMinutes(timeValue.asDouble());
@@ -139,7 +133,8 @@ public class JsonConfig {
             }
         });
 
-        json.setSerializer(WorldData.WorldConfig.class, new Json.Serializer<WorldData.WorldConfig>() {
+
+        json.setSerializer(WorldData.WorldConfig.class, new Json.Serializer<>() {
             @Override
             public void write(Json json, WorldData.WorldConfig config, Class knownType) {
                 json.writeObjectStart();
@@ -163,7 +158,7 @@ public class JsonConfig {
             }
         });
 
-        json.setSerializer(PlayerData.class, new Json.Serializer<PlayerData>() {
+        json.setSerializer(PlayerData.class, new Json.Serializer<>() {
             @Override
             public void write(Json json, PlayerData playerData, Class knownType) {
                 json.writeObjectStart();
@@ -451,6 +446,7 @@ public class JsonConfig {
 
                 json.writeObjectEnd();
             }
+
             @Override
             public PokemonData.Stats read(Json json, JsonValue jsonData, Class type) {
                 if (jsonData == null || jsonData.isNull()) {
@@ -512,6 +508,7 @@ public class JsonConfig {
                 json.writeValue("effect", moveData.effect);
                 json.writeObjectEnd();
             }
+
             @Override
             public PokemonData.MoveData read(Json json, JsonValue jsonData, Class type) {
                 if (jsonData == null || jsonData.isNull()) {
@@ -571,6 +568,7 @@ public class JsonConfig {
                 json.writeValue("duration", effectData.getDuration());
                 json.writeObjectEnd();
             }
+
             @Override
             public PokemonData.MoveData.MoveEffectData read(Json json, JsonValue jsonData, Class type) {
                 if (jsonData == null || jsonData.isNull()) {

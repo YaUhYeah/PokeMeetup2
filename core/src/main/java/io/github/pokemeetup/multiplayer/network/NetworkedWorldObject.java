@@ -1,7 +1,5 @@
 package io.github.pokemeetup.multiplayer.network;
 
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.math.Vector2;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;

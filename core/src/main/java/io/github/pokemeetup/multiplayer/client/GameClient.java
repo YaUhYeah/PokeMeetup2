@@ -24,6 +24,7 @@ import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
+import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import java.util.*;
@@ -415,6 +416,9 @@ public class GameClient {
     private void cleanupExistingConnection() {
         if (client != null) {
             try {
+                if (GameContext.get().getPlayer() != null) {
+                    saveState(GameContext.get().getPlayer().getPlayerData());
+                }
                 if (client.isConnected()) {
                     client.close();
                 }
@@ -438,6 +442,7 @@ public class GameClient {
         update.y = playerY;
         update.direction = GameContext.get().getPlayer().getDirection();
         update.isMoving = GameContext.get().getPlayer().isMoving();
+        update.inventoryItems = GameContext.get().getPlayer().getInventory().getAllItems().toArray(new ItemData[0]);
         update.timestamp = System.currentTimeMillis();
         client.sendTCP(update);
     }
@@ -455,52 +460,31 @@ public class GameClient {
     public void savePlayerState(PlayerData playerData) {
         if (isSinglePlayer) {
             if (GameContext.get().getWorld() != null) {
-                GameContext.get().getWorld().getWorldData().savePlayerData(playerData.getUsername(), playerData, false);
-                GameContext.get().getWorldManager().saveWorld(GameContext.get().getWorld().getWorldData());
+                GameContext.get().getWorld().getWorldData().savePlayerData(
+                    playerData.getUsername(),
+                    playerData,
+                    false
+                );
+                WorldManager.getInstance().saveWorld(GameContext.get().getWorld().getWorldData());
                 GameLogger.info("Saved singleplayer state for: " + playerData.getUsername());
             }
             return;
         }
 
         if (isAuthenticated.get()) {
-            PlayerData saveData = playerData.copy();
-            saveData.setX(playerData.getX() / World.TILE_SIZE);
-            saveData.setY(playerData.getY() / World.TILE_SIZE);
-            saveData.setInventoryItems(playerData.getInventoryItems());
-            saveData.setPartyPokemon(playerData.getPartyPokemon());
+            try {
+                // Create save request
+                NetworkProtocol.SavePlayerDataRequest request = new NetworkProtocol.SavePlayerDataRequest();
+                request.playerData = playerData;
+                request.timestamp = System.currentTimeMillis();
 
-            sendPlayerUpdateToServer(saveData);
-        }
-    }
+                // Send to server
+                client.sendTCP(request);
+                GameLogger.info("Sent player state update to server for: " + playerData.getUsername());
 
-    public void sendPlayerUpdateToServer(PlayerData playerData) {
-        if (isSinglePlayer || !isConnected() || !isAuthenticated()) {
-            return;
-        }
-
-        try {
-            NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
-            update.username = playerData.getUsername();
-            update.x = playerData.getX();
-            update.y = playerData.getY();
-            update.direction = playerData.getDirection();
-            update.isMoving = playerData.isMoving();
-            update.wantsToRun = playerData.isWantsToRun();
-            update.timestamp = System.currentTimeMillis();
-            if (playerData.getInventoryItems() != null) {
-                update.inventoryItems = playerData.getInventoryItems().toArray(new ItemData[0]);
+            } catch (Exception e) {
+                GameLogger.error("Failed to send state to server: " + e.getMessage());
             }
-            if (playerData.getPartyPokemon() != null) {
-                update.partyPokemon = playerData.getPartyPokemon();
-            }
-
-            client.sendTCP(update);
-            GameLogger.info("Sent player update to server for: " + playerData.getUsername() +
-                " at (" + update.x + "," + update.y + ")");
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to send player update: " + e.getMessage());
-            handleConnectionFailure(e);
         }
     }
 
@@ -1522,8 +1506,9 @@ public class GameClient {
                     }
                     GameContext.get().getPlayer().setX(response.x);
                     GameContext.get().getPlayer().setY(response.y);
+                    GameContext.get().getPlayer().setPlayerData(response.playerData);
+                    GameContext.get().getPlayer().updateFromPlayerData(response.playerData);
 
-                    // Process any messages that were queued during authentication
                     processQueuedMessages();
 
                     if (loginResponseListener != null) {
@@ -1570,7 +1555,7 @@ public class GameClient {
         try {
             GameLogger.info("Initializing basic world with seed: " + seed);
             if (worldData == null) {
-                worldData = new WorldData("multiplayer");
+                worldData = new WorldData("multiplayer_world");
                 GameLogger.info("Created new WorldData instance");
             }
 

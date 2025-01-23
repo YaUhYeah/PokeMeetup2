@@ -141,11 +141,11 @@ public class ServerPlayer {
     }
 
     public int getTileX() {
-        return (int) (playerData.getX() / World.TILE_SIZE);
+        return (int) (playerData.getX());
     }
 
     public int getTileY() {
-        return (int) (playerData.getY() / World.TILE_SIZE);
+        return (int) (playerData.getY() );
     }
 
     public Vector2 getPosition() {

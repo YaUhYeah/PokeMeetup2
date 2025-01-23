@@ -187,6 +187,17 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             initializeBasicResources();
 
             initializeWorldAndPlayer();
+            if (!isMultiplayer) {
+                // In singleplayer, load from local save (if exists)
+                PlayerData loadedData = GameContext.get().getWorld().getWorldData()
+                    .getPlayerData(username, false);
+                if (loadedData != null) {
+                    GameLogger.info("Found existing singleplayer data for: " + username);
+                    GameContext.get().getPlayer().updateFromPlayerData(loadedData);
+                } else {
+                    GameLogger.info("No existing data. This is a new singleplayer user: " + username);
+                }
+            }
             this.inputManager = new InputManager(this);
             Player player = GameContext.get().getPlayer();
             // Check if new player needs starter
@@ -588,7 +599,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameLogger.info("Initializing world and player");
 
         try {
-            // 1. Initialize or obtain world
             if (GameContext.get().getWorld() == null) {
                 if (isMultiplayer) {
                     GameContext.get().setWorld(GameContext.get().getGameClient().getCurrentWorld());
@@ -793,10 +803,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         });
     }
 
-    public ChatSystem getChatSystem() {
-        return chatSystem;
-    }
-
     public void toggleInventory() {
         if (inputManager.getCurrentState() == InputManager.UIState.INVENTORY) {
             inputManager.setUIState(InputManager.UIState.NORMAL);
@@ -955,29 +961,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         });
     }
 
-    private void handleInitializationError() {
-        GameLogger.error("Game initialization failed");
-
-        Gdx.app.postRunnable(() -> {
-            Dialog dialog = new Dialog("Error", skin) {
-                @Override
-                protected void result(Object obj) {
-                    if ((Boolean) obj) {
-                        // Retry initialization
-                        retryInitialization();
-                    } else {
-                        // Return to login screen
-                        game.setScreen(new LoginScreen(game));
-                    }
-                }
-            };
-
-            dialog.text("Failed to initialize game. Would you like to retry?");
-            dialog.button("Retry", true);
-            dialog.button("Cancel", false);
-            dialog.show(stage);
-        });
-    }
 
     private void createPartyDisplay() {
         partyDisplay = new Table();
@@ -1573,10 +1556,12 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         if (GameContext.get().getWorld() == null) {
             return;
         }
-        if (!GameContext.get().getWorld().areInitialChunksLoaded()) {
-            GameContext.get().getWorld().requestInitialChunks(new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()));
-            renderLoadingScreen();
-            return;
+        if (GameContext.get().getPlayer() != null) {
+            if (!GameContext.get().getWorld().areInitialChunksLoaded()) {
+                GameContext.get().getWorld().requestInitialChunks(new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()));
+                renderLoadingScreen();
+                return;
+            }
         }
 
         // Clear screen
@@ -2076,58 +2061,67 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         return null;
     }
 
+    private NetworkProtocol.ChatMessage createPickupMessage(ItemData itemData) {
+        NetworkProtocol.ChatMessage pickupMessage = new NetworkProtocol.ChatMessage();
+        pickupMessage.sender = "System";
+        pickupMessage.content = "You found: " + itemData.getItemId() + " (×" + itemData.getCount() + ")";
+        pickupMessage.timestamp = System.currentTimeMillis();
+        pickupMessage.type = NetworkProtocol.ChatType.SYSTEM;
+
+        return pickupMessage;
+    }
 
     public void handlePickupAction() {
         WorldObject nearestPokeball = GameContext.get().getWorld().getNearestPokeball();
         if (nearestPokeball == null) {
-            GameLogger.info("No pokeball found nearby");
             return;
         }
-        GameLogger.info("Player position: " + GameContext.get().getPlayer().getX() + "," + GameContext.get().getPlayer().getY());
-        GameLogger.info("Pokeball position: " + nearestPokeball.getPixelX() + "," + nearestPokeball.getPixelY());
 
         if (GameContext.get().getPlayer().canPickupItem(nearestPokeball.getPixelX(), nearestPokeball.getPixelY())) {
+            // Remove pokeball from world
             GameContext.get().getWorld().removeWorldObject(nearestPokeball);
 
             ItemData randomItemData = generateRandomItemData();
             if (randomItemData == null) {
-                GameLogger.error("Failed to generate random item data.");
                 return;
             }
 
-            boolean added = false;
+            boolean added;
             try {
                 added = InventoryConverter.addItemToInventory(GameContext.get().getPlayer().getInventory(), randomItemData);
+
+                if (added) {
+                    // Play pickup sound
+                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP);
+
+                    // Show pickup message
+                    NetworkProtocol.ChatMessage pickupMessage = createPickupMessage(randomItemData);
+                    if (chatSystem != null) {
+                        chatSystem.handleIncomingMessage(pickupMessage);
+                    }
+
+                    // Sync with server if in multiplayer
+                    if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
+                        // Update player data
+                        PlayerData currentState = GameContext.get().getPlayer().getPlayerData();
+                        currentState.updateFromPlayer(GameContext.get().getPlayer());
+
+                        // Send to server
+                        GameContext.get().getGameClient().savePlayerState(currentState);
+                    }
+
+                } else {
+                    // Handle inventory full case
+                    if (chatSystem != null) {
+                        NetworkProtocol.ChatMessage message = createSystemMessage(
+                            "Inventory full! Couldn't pick up: " + randomItemData.getItemId());
+                        chatSystem.handleIncomingMessage(message);
+                    }
+                }
+
             } catch (Exception e) {
-                GameLogger.error("Error adding item to inventory: " + e.getMessage());
+                GameLogger.error("Error handling item pickup: " + e.getMessage());
             }
-
-            NetworkProtocol.ChatMessage pickupMessage = new NetworkProtocol.ChatMessage();
-            pickupMessage.sender = "System";
-            pickupMessage.timestamp = System.currentTimeMillis();
-
-            if (added) {
-                pickupMessage.content = "You found: " + randomItemData.getItemId() + " (×" + randomItemData.getCount() + ")";
-                pickupMessage.type = NetworkProtocol.ChatType.SYSTEM;
-                GameLogger.info("Item added to inventory: " + randomItemData.getItemId());
-
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP);
-
-                GameContext.get().getPlayer().updatePlayerData();
-
-                logInventoryState("Post-pickup inventory state:");
-            } else {
-                pickupMessage.content = "Inventory full! Couldn't pick up: " + randomItemData.getItemId();
-                pickupMessage.type = NetworkProtocol.ChatType.SYSTEM;
-                GameLogger.info("Inventory full. Cannot add: " + randomItemData.getItemId());
-            }
-
-            // Send message to chat
-            if (chatSystem != null) {
-                chatSystem.handleIncomingMessage(pickupMessage);
-            }
-        } else {
-            GameLogger.info("Cannot pick up pokeball - too far or wrong direction");
         }
     }
 
@@ -2149,14 +2143,15 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         isDisposing = true;
 
         try {
-            if (GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
+            if (!isMultiplayer && GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
+                // Convert Player to data
                 PlayerData finalState = getCurrentPlayerState();
-                GameContext.get().getWorld().getWorldData().savePlayerData(GameContext.get().getPlayer().getUsername(), finalState, false);
-
+                // Save into the world
+                GameContext.get().getWorld().getWorldData()
+                    .savePlayerData(GameContext.get().getPlayer().getUsername(), finalState, false);
+                // Then save the entire world
                 GameContext.get().getWorld().save();
-
-                GameLogger.info("Final save complete for player: " + GameContext.get().getPlayer().getUsername() +
-                    " in world: " + GameContext.get().getWorld().getName());
+                GameLogger.info("Singleplayer final save complete for " + username);
             }
 
             Gdx.app.postRunnable(() -> {

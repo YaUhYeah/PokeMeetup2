@@ -16,11 +16,9 @@ public class BattleSystemHandler {
     }
     private WildPokemon lockedPokemon = null;
 
-    // Check if player can battle (should only be called for battle initiation)
     public boolean canStartBattle(PokemonParty playerParty) {
         if (playerParty == null) return false;
 
-        // Only check for valid battle Pokemon when actually trying to battle
         if (isInBattle) {
             for (Pokemon pokemon : playerParty.getParty()) {
                 if (pokemon != null && pokemon.getCurrentHp() > 0) {
@@ -56,7 +54,6 @@ public class BattleSystemHandler {
         }
     }
 
-    // Battle state management
     public void startBattle() {
         isInBattle = true;
     }

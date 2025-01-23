@@ -5,7 +5,6 @@ import com.esotericsoftware.kryonet.FrameworkMessage;
 import com.esotericsoftware.kryonet.Server;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
-import com.esotericsoftware.minlog.Log;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.managers.BiomeManager;
@@ -14,9 +13,6 @@ import io.github.pokemeetup.managers.DatabaseManager;
 import io.github.pokemeetup.multiplayer.PlayerManager;
 import io.github.pokemeetup.multiplayer.ServerPlayer;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.multiplayer.server.PlayerDataManager;
-import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
-import io.github.pokemeetup.multiplayer.server.storage.FileStorage;
 import io.github.pokemeetup.system.data.BlockSaveData;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.multiplayer.server.events.EventManager;
@@ -263,6 +259,7 @@ public class GameServer {
             }
         }
     }
+
     private void handleServerInfoRequest(Connection connection, NetworkProtocol.ServerInfoRequest request) {
         try {
             NetworkProtocol.ServerInfoResponse response = new NetworkProtocol.ServerInfoResponse();
@@ -548,12 +545,16 @@ public class GameServer {
         try {
             GameLogger.info("Processing login request for: " + request.username);
 
+            // Generate consistent UUID based on username
             UUID playerUUID = UUID.nameUUIDFromBytes(request.username.getBytes());
-            GameLogger.info("Checking player data for UUID: " + playerUUID);
+            GameLogger.info("Generated UUID for player: " + playerUUID);
 
-            // Load or create player data FIRST
-            PlayerData playerData = ServerGameContext.get().getStorageSystem().getPlayerDataManager().loadPlayerData(playerUUID);
+            // Try to load existing player data first
+            PlayerData playerData = ServerGameContext.get().getStorageSystem()
+                .getPlayerDataManager().loadPlayerData(playerUUID);
+
             if (playerData == null) {
+                // Only create new data if none exists
                 GameLogger.info("Creating new player data for: " + request.username);
                 playerData = new PlayerData(request.username);
                 playerData.setX(0);
@@ -563,13 +564,14 @@ public class GameServer {
                 playerData.setInventoryItems(new ArrayList<>());
                 playerData.setPartyPokemon(new ArrayList<>());
 
-                // Save immediately
-                ServerGameContext.get().getStorageSystem().getPlayerDataManager().savePlayerData(playerUUID, playerData);
-                ServerGameContext.get().getStorageSystem().getPlayerDataManager().flush(); // Ensure it's written to disk
-                GameLogger.info("Created and saved new player data for: " + request.username);
+                // Save immediately and verify
+                ServerGameContext.get().getStorageSystem()
+                    .getPlayerDataManager().savePlayerData(playerUUID, playerData);
+                ServerGameContext.get().getStorageSystem()
+                    .getPlayerDataManager().flush(); // Force write to disk
             }
 
-            // Continue with authentication
+            // Validate authentication
             if (!authenticateUser(request.username, request.password)) {
                 sendLoginFailure(connection, "Invalid credentials");
                 return;
@@ -583,7 +585,7 @@ public class GameServer {
                 ConnectionInfo newConnection = new ConnectionInfo(connection.getID());
                 activeConnections.put(request.username, newConnection);
 
-                // Create server player with the loaded/created data
+                // Create server player with loaded/created data
                 ServerPlayer player = new ServerPlayer(request.username, playerData);
 
                 // Register the player
@@ -593,11 +595,6 @@ public class GameServer {
 
                 // Send successful response
                 sendSuccessfulLoginResponse(connection, player);
-
-                // Broadcast join
-                if (!recentDisconnects.containsKey(request.username)) {
-                    broadcastPlayerJoin(connection, player);
-                }
 
                 GameLogger.info("Login successful for: " + request.username);
             }
@@ -715,6 +712,24 @@ public class GameServer {
                     }
                     if (object instanceof NetworkProtocol.BlockPlacement) {
                         handleBlockPlacement(connection, (NetworkProtocol.BlockPlacement) object);
+                    }
+                    if (object instanceof NetworkProtocol.SavePlayerDataRequest) {
+                        NetworkProtocol.SavePlayerDataRequest saveRequest =
+                            (NetworkProtocol.SavePlayerDataRequest) object;
+
+                        try {
+                            // Save to storage system
+                            ServerGameContext.get().getStorageSystem()
+                                .savePlayerData(saveRequest.playerData.getUsername(), saveRequest.playerData);
+
+                            // Force immediate flush
+                            ServerGameContext.get().getStorageSystem().getPlayerDataManager().flush();
+
+                            GameLogger.info("Saved player data for: " + saveRequest.playerData.getUsername());
+
+                        } catch (Exception e) {
+                            GameLogger.error("Failed to save player data: " + e.getMessage());
+                        }
                     }
 
                     // Handle other message types based on authentication
@@ -961,7 +976,6 @@ public class GameServer {
         GameLogger.info("Server shutdown complete.");
     }
 
-    // In GameServer.java, modify handleChunkRequest:
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
         try {
             int chunkX = request.chunkX;

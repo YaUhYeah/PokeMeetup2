@@ -478,7 +478,6 @@ public class WorldData {
         }
     }
 
-    // Now, update the Ga
     public boolean isDirty() {
         return isDirty;
     }

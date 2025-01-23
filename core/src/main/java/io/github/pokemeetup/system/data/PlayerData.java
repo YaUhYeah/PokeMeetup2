@@ -1,5 +1,6 @@
 package io.github.pokemeetup.system.data;
 
+import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonParty;
 import io.github.pokemeetup.system.Player;
@@ -89,15 +90,17 @@ public class PlayerData {
             .count();
     }
 
+
     public boolean validateAndRepairState() {
         boolean wasRepaired = false;
 
         // Validate username
         if (username == null || username.trim().isEmpty()) {
-            return false; // Critical failure - can't repair without username
+            GameLogger.error("Critical: PlayerData has null/empty username");
+            return false;
         }
 
-        // Initialize collections if null
+        // Initialize/repair collections
         if (inventoryItems == null) {
             inventoryItems = new ArrayList<>();
             wasRepaired = true;
@@ -105,12 +108,6 @@ public class PlayerData {
 
         if (partyPokemon == null) {
             partyPokemon = new ArrayList<>();
-            wasRepaired = true;
-        }
-
-        // Ensure direction has valid value
-        if (direction == null) {
-            direction = "down";
             wasRepaired = true;
         }
 
@@ -124,10 +121,18 @@ public class PlayerData {
             wasRepaired = true;
         }
 
+        // Validate direction
+        if (direction == null) {
+            direction = "down";
+            wasRepaired = true;
+        }
 
-        return true; // Return true if validation passed, even if repairs were made
+        if (wasRepaired) {
+            GameLogger.info("Repaired PlayerData for: " + username);
+        }
+
+        return true;
     }
-
     public int getValidPokemonCount() {
         if (partyPokemon == null) return 0;
         return (int) partyPokemon.stream()
@@ -151,6 +156,7 @@ public class PlayerData {
 
             player.setX(x * World.TILE_SIZE);
             player.setY(y * World.TILE_SIZE);
+            player.setRenderPosition(new Vector2(x * World.TILE_SIZE, y * World.TILE_SIZE));
             player.setDirection(direction);
             player.setMoving(isMoving);
             player.setRunning(wantsToRun);

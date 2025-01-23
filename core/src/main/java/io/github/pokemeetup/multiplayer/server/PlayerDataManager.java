@@ -71,7 +71,6 @@ public class PlayerDataManager {
             return null;
         }
     }
-
     public synchronized void savePlayerData(UUID uuid, PlayerData playerData) {
         if (uuid == null || playerData == null) {
             GameLogger.error("Invalid save attempt with null UUID or PlayerData");
@@ -79,9 +78,6 @@ public class PlayerDataManager {
         }
 
         try {
-            // Ensure directory exists first
-            fs.createDirectory(PLAYER_DATA_DIR);
-
             // Validate data before saving
             if (!playerData.validateAndRepairState()) {
                 GameLogger.error("Player data validation failed for UUID: " + uuid);
@@ -90,26 +86,21 @@ public class PlayerDataManager {
 
             String tempPath = getPlayerDataPath(uuid) + ".temp";
             String finalPath = getPlayerDataPath(uuid);
-
-            // Write to temp file first with pretty print for readability
+            // Write to temp file first
             String jsonData = json.prettyPrint(playerData);
             fs.writeString(tempPath, jsonData);
 
-            // Verify temp file
+            // Verify temp file exists and is valid
             if (!fs.exists(tempPath)) {
                 throw new RuntimeException("Failed to write temporary player data file");
             }
 
             // Atomic move to final location
-            if (fs.exists(finalPath)) {
-                fs.deleteFile(finalPath);
-            }
             fs.moveFile(tempPath, finalPath);
 
             // Update cache with a deep copy
             playerCache.put(uuid, playerData.copy());
 
-            // Don't call flush() here anymore
             GameLogger.info("Successfully saved player data for UUID: " + uuid);
 
         } catch (Exception e) {

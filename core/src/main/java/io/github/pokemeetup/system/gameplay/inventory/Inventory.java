@@ -135,7 +135,6 @@ public class Inventory implements ItemContainer {
             List<ItemData> items = new ArrayList<>(INVENTORY_SIZE);
 
             GameLogger.info("Getting all items...");
-            int nonNullCount = 0;
 
             for (Slot slot : slots) {
                 if (slot == null) {
@@ -148,7 +147,6 @@ public class Inventory implements ItemContainer {
                     // Create defensive copy
                     ItemData copy = item.copy();
                     items.add(copy);
-                    nonNullCount++;
 
                 } else {
                     items.add(null);

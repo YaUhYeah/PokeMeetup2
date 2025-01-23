@@ -125,36 +125,36 @@ public class WorldManager {
                 Json json = JsonConfig.getInstance();
                 String jsonStr = json.toJson(saveData);
 
-                    // Singleplayer mode - save to local file system
-                    String worldDirPath = baseDirectory + worldData.getName();
-                    if (!fs.exists(worldDirPath)) {
-                        fs.createDirectory(worldDirPath);
+                // Singleplayer mode - save to local file system
+                String worldDirPath = baseDirectory + worldData.getName();
+                if (!fs.exists(worldDirPath)) {
+                    fs.createDirectory(worldDirPath);
+                }
+
+                String tempFilePath = worldDirPath + "/world.json.temp";
+                fs.writeString(tempFilePath, jsonStr);
+
+                // Verify saved data
+                WorldData verification = json.fromJson(WorldData.class, fs.readString(tempFilePath));
+                if (verification != null) {
+                    if (verification.commandsAllowed() != worldData.commandsAllowed()) {
+                        GameLogger.error("Command state lost in save! Original: " +
+                            worldData.commandsAllowed() + ", Saved: " + verification.commandsAllowed());
+                        // Try to fix
+                        verification.setCommandsAllowed(worldData.commandsAllowed());
+                        fs.writeString(tempFilePath, json.toJson(verification));
                     }
+                }
 
-                    String tempFilePath = worldDirPath + "/world.json.temp";
-                    fs.writeString(tempFilePath, jsonStr);
+                // Move temp file to final location
+                String worldFilePath = worldDirPath + "/world.json";
+                if (fs.exists(worldFilePath)) {
+                    fs.deleteFile(worldFilePath);
+                }
+                fs.moveFile(tempFilePath, worldFilePath);
 
-                    // Verify saved data
-                    WorldData verification = json.fromJson(WorldData.class, fs.readString(tempFilePath));
-                    if (verification != null) {
-                        if (verification.commandsAllowed() != worldData.commandsAllowed()) {
-                            GameLogger.error("Command state lost in save! Original: " +
-                                worldData.commandsAllowed() + ", Saved: " + verification.commandsAllowed());
-                            // Try to fix
-                            verification.setCommandsAllowed(worldData.commandsAllowed());
-                            fs.writeString(tempFilePath, json.toJson(verification));
-                        }
-                    }
-
-                    // Move temp file to final location
-                    String worldFilePath = worldDirPath + "/world.json";
-                    if (fs.exists(worldFilePath)) {
-                        fs.deleteFile(worldFilePath);
-                    }
-                    fs.moveFile(tempFilePath, worldFilePath);
-
-                    GameLogger.info("Successfully saved world with commands state: " +
-                        worldData.commandsAllowed());
+                GameLogger.info("Successfully saved world with commands state: " +
+                    worldData.commandsAllowed());
 
 
             } catch (Exception e) {

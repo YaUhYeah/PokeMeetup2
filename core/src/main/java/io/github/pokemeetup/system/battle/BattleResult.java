@@ -18,7 +18,6 @@ public class BattleResult {
 
     private int calculateExperience() {
         if (!victory) return 0;
-        // Basic experience formula based on defeated Pokemon's level
         return (wildPokemon.getLevel() * 3) + 20;
     }
 

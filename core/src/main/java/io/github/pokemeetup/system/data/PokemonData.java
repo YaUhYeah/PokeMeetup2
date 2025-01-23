@@ -23,12 +23,10 @@ public class PokemonData {
     public Stats stats;
     // Moves
     public List<MoveData> moves;
-    // Base Stats
     private int baseHp;
     private int currentExperience = 0;
     private int experienceToNextLevel = 0;
 
-    // Add getters and setters
     public int getCurrentExperience() {
         return currentExperience;
     }
@@ -47,22 +45,18 @@ public class PokemonData {
     private int baseAttack;
     private int baseDefense;
     private int baseSpAtk;
-    private Map<UUID, WildPokemonData> wildPokemonMap = new HashMap<>();
     private int baseSpDef;
     private int baseSpeed;
-    // Physical Dimensions
     private float width;
     private float height;
     private List<LearnableMove> learnableMoves;
     private List<String> tmMoves;
-    private HashMap<String, Move> moveDatabase;
     private HashMap<UUID, WildPokemonData> wildPokemon;
     public PokemonData() {
         this.uuid = UUID.randomUUID();
         this.learnableMoves = new ArrayList<>();
         this.moves = new ArrayList<>();
         this.tmMoves = new ArrayList<>();
-        this.moveDatabase = new HashMap<>();
         wildPokemon = new HashMap<>();
         this.stats = new Stats();
         this.currentHp = stats.getHp();
@@ -192,7 +186,6 @@ public class PokemonData {
     }
 
     public void setStats(Stats stats) {
-        // Never allow null stats
         this.stats = stats != null ? stats.copy() : new Stats();
     }
 

@@ -393,16 +393,13 @@ public class WorldSelectionScreen implements Screen {
         entry.setName("worldEntry");
         entry.setBackground(skin.newDrawable("default-pane", new Color(0.2f, 0.2f, 0.2f, 0.8f)));
 
-        // Entry contents
         Table contentTable = new Table();
         float padding = 10f;
         contentTable.pad(padding);
 
-        // Thumbnail container
         Table thumbnailContainer = new Table();
         thumbnailContainer.setBackground(skin.newDrawable("default-pane", new Color(0.15f, 0.15f, 0.15f, 1f)));
 
-        // Load thumbnail image
         Image thumbnailImage;
         FileHandle thumbnailFile = Gdx.files.local("thumbnails/" + world.getName() + ".png");
         if (thumbnailFile.exists()) {
@@ -411,7 +408,6 @@ public class WorldSelectionScreen implements Screen {
             thumbnailImage = new Image(new TextureRegionDrawable(new TextureRegion(thumbnailTexture)));
             thumbnailImage.setScaling(Scaling.fit);
         } else {
-            // Use placeholder image
             thumbnailImage = new Image(placeholderRegion);
             thumbnailImage.setScaling(Scaling.fit);
         }
@@ -420,28 +416,22 @@ public class WorldSelectionScreen implements Screen {
         float thumbnailSize = 180f;
         thumbnailContainer.add(thumbnailImage).size(thumbnailSize).pad(2f);
 
-        // Set up the infoTable
         Table infoTable = new Table();
         infoTable.defaults().left().pad(5f);
 
-        // World name label
         Label nameLabel = new Label(world.getName(), skin);
         nameLabel.setFontScale(1.2f);
 
-        // Last played date
         Label timeLabel = new Label("Last played: " + formatDate(world.getLastPlayed()), skin);
         timeLabel.setFontScale(0.9f);
 
-        // Seed
         Label seedLabel = new Label("Seed: " + getSeedFromWorld(world), skin);
         seedLabel.setFontScale(0.9f);
 
-        // Played time (optional)
         String playedTimeStr = formatPlayedTime(world.getPlayedTime());
         Label playedTimeLabel = new Label("Played time: " + playedTimeStr, skin);
         playedTimeLabel.setFontScale(0.9f);
 
-        // Add labels to infoTable
         infoTable.add(nameLabel).expandX().fillX().padBottom(5f);
         infoTable.row();
         infoTable.add(timeLabel).expandX().fillX().padBottom(5f);
@@ -450,14 +440,10 @@ public class WorldSelectionScreen implements Screen {
         infoTable.row();
         infoTable.add(playedTimeLabel).expandX().fillX();
 
-        // Add thumbnail and infoTable to contentTable
         contentTable.add(thumbnailContainer).size(thumbnailSize + padding * 2).padRight(padding * 2);
         contentTable.add(infoTable).expand().fill();
-
-        // Add content table to main entry
         entry.add(contentTable).expand().fill();
 
-        // Selection listener
         entry.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -485,7 +471,6 @@ public class WorldSelectionScreen implements Screen {
         List<WorldData> worldList = new ArrayList<>(GameContext.get().getWorldManager().getWorlds().values());
         worldList.removeIf(world -> !shouldShowWorld(world));
 
-        // Sort
         if (currentSort.equals("Name")) {
             worldList.sort(Comparator.comparing(WorldData::getName));
         } else if (currentSort.equals("Date")) {
