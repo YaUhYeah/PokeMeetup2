@@ -44,7 +44,6 @@ public class DeploymentHelper {
 
         // Create configurations
         createDefaultConfig(deploymentDir);
-        createBiomesConfig(deploymentDir);
 
         // Create start scripts
         createStartScripts(deploymentDir);
@@ -82,89 +81,6 @@ public class DeploymentHelper {
         }
     }
 
-    private static void createBiomesConfig(Path deploymentDir) throws IOException {
-        // Create biomes configuration
-        List<Map<String, Object>> biomes = new ArrayList<>();
-
-        // Define each biome
-        for (BiomeType type : BiomeType.values()) {
-            Map<String, Object> biome = new HashMap<>();
-            biome.put("name", type.name().toLowerCase());
-            biome.put("type", type.name());
-            biome.put("allowedTileTypes", Arrays.asList(1, 2, 3));
-
-            // Create tile distribution
-            Map<String, Double> distribution = new HashMap<>();
-            switch (type) {
-                case DESERT:
-                    distribution.put("1", 85.0);
-                    distribution.put("2", 10.0);
-                    distribution.put("3", 5.0);
-                    break;
-                case FOREST:
-                    distribution.put("1", 60.0);
-                    distribution.put("2", 30.0);
-                    distribution.put("3", 10.0);
-                    break;
-                case SNOW:
-                    distribution.put("1", 75.0);
-                    distribution.put("2", 20.0);
-                    distribution.put("3", 5.0);
-                    break;
-                case HAUNTED:
-                    distribution.put("1", 65.0);
-                    distribution.put("2", 25.0);
-                    distribution.put("3", 10.0);
-                    break;
-                default:
-                    distribution.put("1", 70.0);
-                    distribution.put("2", 20.0);
-                    distribution.put("3", 10.0);
-                    break;
-            }
-            biome.put("tileDistribution", distribution);
-
-            // Add spawn configuration
-            List<String> spawnableObjects = new ArrayList<>();
-            Map<String, Double> spawnChances = new HashMap<>();
-
-            switch (type) {
-                case FOREST:
-                    spawnableObjects.add("TREE");
-                    spawnChances.put("TREE", 0.7);
-                    break;
-                case DESERT:
-                    spawnableObjects.add("CACTUS");
-                    spawnChances.put("CACTUS", 0.4);
-                    break;
-                case SNOW:
-                    spawnableObjects.add("SNOW_TREE");
-                    spawnChances.put("SNOW_TREE", 0.5);
-                    break;
-                case HAUNTED:
-                    spawnableObjects.add("HAUNTED_TREE");
-                    spawnChances.put("HAUNTED_TREE", 0.6);
-                    break;
-            }
-
-            biome.put("spawnableObjects", spawnableObjects);
-            biome.put("spawnChances", spawnChances);
-
-            biomes.add(biome);
-        }
-        // Write biomes configuration to both server data and config directories
-        Json json = new Json();
-        String biomesJson = json.prettyPrint(biomes);
-
-        // Save to server/data directory
-        Path serverDataPath = Paths.get(deploymentDir.toString(), "config/biomes.json");
-        Files.write(serverDataPath, biomesJson.getBytes(StandardCharsets.UTF_8));
-
-        // Also save to config directory for reference
-        Path configPath = Paths.get(deploymentDir.toString(), "config/biomes.json");
-        Files.write(configPath, biomesJson.getBytes(StandardCharsets.UTF_8));
-
-    }
 
 
 

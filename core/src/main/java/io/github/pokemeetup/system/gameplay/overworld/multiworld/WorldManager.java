@@ -345,7 +345,6 @@ public class WorldManager {
                     }
                 }
 
-                // Cache valid world
                 worldCache.put(worldName, worldData);
                 return worldData;
 

@@ -15,8 +15,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class PlayerDataManager {
-    private static final String PLAYER_DATA_DIR = "players/"; // Simplified path
-    private final Map<UUID, PlayerData> playerCache;
+    private static final String PLAYER_DATA_DIR = "players/";
+    public final Map<UUID, PlayerData> playerCache;
     private final GameFileSystem fs;
     private final Json json;
     private volatile boolean isFlushInProgress = false;
@@ -86,9 +86,7 @@ public class PlayerDataManager {
 
             String tempPath = getPlayerDataPath(uuid) + ".temp";
             String finalPath = getPlayerDataPath(uuid);
-            // Write to temp file first
-            String jsonData = json.prettyPrint(playerData);
-            fs.writeString(tempPath, jsonData);
+            fs.writeString(tempPath, json.toJson(playerData));
 
             // Verify temp file exists and is valid
             if (!fs.exists(tempPath)) {
@@ -100,8 +98,6 @@ public class PlayerDataManager {
 
             // Update cache with a deep copy
             playerCache.put(uuid, playerData.copy());
-
-            GameLogger.info("Successfully saved player data for UUID: " + uuid);
 
         } catch (Exception e) {
             GameLogger.error("Failed to save player data for UUID: " + uuid + " - " + e.getMessage());

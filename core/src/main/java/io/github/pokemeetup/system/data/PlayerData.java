@@ -42,8 +42,8 @@ public class PlayerData {
         }
 
         try {
-            this.x = player.getTileX();
-            this.y = player.getTileY();
+            this.x = player.getX();
+            this.y = player.getY();
             this.direction = player.getDirection();
             this.isMoving = player.isMoving();
             this.wantsToRun = player.isRunning();
@@ -154,8 +154,8 @@ public class PlayerData {
                 GameLogger.info("Data was repaired during validation");
             }
 
-            player.setX(x * World.TILE_SIZE);
-            player.setY(y * World.TILE_SIZE);
+            player.setX(this.x);
+            player.setY(this.y);
             player.setRenderPosition(new Vector2(x * World.TILE_SIZE, y * World.TILE_SIZE));
             player.setDirection(direction);
             player.setMoving(isMoving);
@@ -171,16 +171,20 @@ public class PlayerData {
                 }
             }
 
-            // Only clear if we're actually going to add Pokemon
-            if (validPokemon > 0) {
+
+            int currentPartySize = player.getPokemonParty().getSize();
+            if (validPokemon > 0 && currentPartySize == 0) {
                 player.getPokemonParty().clearParty();
                 for (PokemonData pokemonData : partyPokemon) {
                     if (pokemonData != null && pokemonData.verifyIntegrity()) {
                         Pokemon pokemon = pokemonData.toPokemon();
                         player.getPokemonParty().addPokemon(pokemon);
-                        GameLogger.info("Restored Pokemon: " + pokemon.getName());
+                        GameLogger.info("Added Pokemon: " + pokemon.getName());
                     }
                 }
+            } else {
+                GameLogger.info("Skipping re-adding Pokemon to player, " +
+                    "because party is already non-empty or no valid Pokemon data found.");
             }
 
             // Log final valid counts

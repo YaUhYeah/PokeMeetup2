@@ -45,11 +45,6 @@ public class PokemonAI {
         // Log current state
         if (decisionTimer >= DECISION_INTERVAL) {
             decisionTimer = 0;
-            GameLogger.error(String.format(
-                "Pokemon %s at (%.1f,%.1f) - State: %s, Timer: %.1f, Duration: %.1f",
-                pokemon.getName(), pokemon.getX(), pokemon.getY(),
-                currentState, stateTimer, idleDuration
-            ));
 
             if (currentState == AIState.IDLE && stateTimer >= idleDuration) {
                 if (MathUtils.random() < MOVEMENT_CHANCE) {
@@ -70,9 +65,6 @@ public class PokemonAI {
                 player.getX() * World.TILE_SIZE, player.getY() * World.TILE_SIZE
             );
             if (dist < FLEE_RANGE) {
-                GameLogger.error(String.format(
-                    "Player detected at distance %.1f - initiating flee", dist
-                ));
                 enterFleeingState(world);
             }
         }
@@ -86,12 +78,6 @@ public class PokemonAI {
 
         int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
         int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
-
-        GameLogger.info(String.format(
-            "Current position: Tile(%d,%d) Pixel(%.1f,%.1f)",
-            currentTileX, currentTileY, pokemon.getX(), pokemon.getY()
-        ));
-
         // Try all directions systematically
         int[] dx = {0, 0, -1, 1};
         int[] dy = {1, -1, 0, 0};
@@ -101,18 +87,10 @@ public class PokemonAI {
             int targetTileX = currentTileX + dx[i];
             int targetTileY = currentTileY + dy[i];
 
-            GameLogger.info(String.format(
-                "Checking move to (%d,%d) direction: %s",
-                targetTileX, targetTileY, dirs[i]
-            ));
 
             if (isValidMove(targetTileX, targetTileY, world)) {
                 pokemon.moveToTile(targetTileX, targetTileY, dirs[i]);
                 currentState = AIState.MOVING;
-                GameLogger.info(String.format(
-                    "Move validated - moving %s to (%d,%d)",
-                    dirs[i], targetTileX, targetTileY
-                ));
                 return;
             }
         }

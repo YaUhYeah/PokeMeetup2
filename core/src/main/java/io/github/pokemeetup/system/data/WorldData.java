@@ -2,7 +2,6 @@ package io.github.pokemeetup.system.data;
 
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Json;
-import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
@@ -35,7 +34,7 @@ public class WorldData {
     private HashMap<String, PlayerData> players;
     private String username;
     private Map<Vector2, List<WorldObject>> dynamicObjects;
-    private boolean commandsAllowed = false;
+    private boolean commandsAllowed;
 
     public WorldData(String name) {
         this();
@@ -84,7 +83,6 @@ public class WorldData {
     public WorldData copy() {
         WorldData copy = new WorldData(this.name);
         synchronized (saveLock) {
-            // Copy core settings
             copy.commandsAllowed = this.commandsAllowed;
             copy.worldTimeInMinutes = this.worldTimeInMinutes;
             copy.playedTime = this.playedTime;
@@ -313,32 +311,6 @@ public class WorldData {
         }
     }
 
-    public void save(boolean createBackup, ServerStorageSystem storage) {
-        synchronized (saveLock) {
-            try {
-                validateAndRepairWorld();
-                if (createBackup) {
-                    String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-                    String backupName = name + "_backup_" + timestamp;
-
-                    WorldData backup = new WorldData(backupName);
-                    backup.setConfig(this.config);
-                    backup.setWorldTimeInMinutes(this.worldTimeInMinutes);
-                    backup.setPlayedTime(this.playedTime);
-                    backup.setDayLength(this.dayLength);
-                    backup.setPlayers(new HashMap<>(this.players));
-                    backup.setBlockData(this.blockData);
-
-                    WorldManager.getInstance().saveWorld(backup);
-                    GameLogger.info("Created backup of world: " + name);
-                }
-                save();
-
-            } catch (Exception e) {
-                GameLogger.error("Failed to save world with backup: " + name + " - " + e.getMessage());
-            }
-        }
-    }
 
     public void addChunkObjects(Vector2 position, List<WorldObject> objects) {
         chunkObjects.put(position, new ArrayList<>(objects));

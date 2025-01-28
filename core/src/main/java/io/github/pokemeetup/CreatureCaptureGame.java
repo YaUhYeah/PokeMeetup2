@@ -285,8 +285,11 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             // Initialize player
             if (savedPlayerData != null) {
-                GameContext.get().setPlayer(new Player((int) savedPlayerData.getX(),
-                    (int) savedPlayerData.getY(), currentWorld, username));
+                GameContext.get().setPlayer(new Player(
+                    0, 0,
+                    currentWorld,
+                    username
+                ));
                 GameContext.get().getPlayer().initializeResources();
                 savedPlayerData.applyToPlayer(GameContext.get().getPlayer());
                 GameLogger.info("Restored player state - Items: " +

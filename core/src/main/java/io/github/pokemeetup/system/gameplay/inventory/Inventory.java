@@ -144,7 +144,6 @@ public class Inventory implements ItemContainer {
 
                 ItemData item = slot.getItemData();
                 if (item != null) {
-                    // Create defensive copy
                     ItemData copy = item.copy();
                     items.add(copy);
 

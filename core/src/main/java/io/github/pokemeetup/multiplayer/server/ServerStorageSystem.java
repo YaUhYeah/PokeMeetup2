@@ -39,6 +39,10 @@ public class ServerStorageSystem {
         initializeDirectories();
     }
 
+    public GameFileSystem getFileSystem() {
+        return fs;
+    }
+
     public boolean worldExists(String name) {
         try {
             String worldPath = SERVER_WORLD_DIR + name + "/world.json";
@@ -51,7 +55,6 @@ public class ServerStorageSystem {
 
     private void initializeDirectories() {
         try {
-            // Create all required directories
             fs.createDirectory(SERVER_BASE_DIR);
             fs.createDirectory(SERVER_WORLD_DIR);
             fs.createDirectory(SERVER_WORLD_DIR + "backups/");
@@ -99,8 +102,6 @@ public class ServerStorageSystem {
             String worldPath = SERVER_WORLD_DIR + world.getName() + "/";
             fs.createDirectory(worldPath);
 
-            // Create backup first
-            createWorldBackup(world);
 
             // Save using temporary file
             String tempPath = worldPath + "world.json.temp";
@@ -130,10 +131,6 @@ public class ServerStorageSystem {
         playerDataManager.savePlayerData(playerUUID, data);
     }
 
-    public PlayerData loadPlayerData(String username) {
-        UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-        return playerDataManager.loadPlayerData(playerUUID);
-    }
 
     public Map<String, WorldData> getAllWorlds() {
         String[] worldDirs = fs.list(SERVER_WORLD_DIR);
@@ -156,34 +153,6 @@ public class ServerStorageSystem {
         playerDataManager.deletePlayerData(uuid);
     }
 
-    public void createWorldBackup(WorldData world) {
-        if (world == null) {
-            GameLogger.error("Cannot create backup of null world");
-            return;
-        }
-
-        try {
-            String worldName = world.getName();
-            if (worldName == null || worldName.trim().isEmpty()) {
-                GameLogger.error("Cannot backup world with null/empty name");
-                return;
-            }
-
-            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-            String backupDir = SERVER_WORLD_DIR + worldName + "/backups/";
-
-            // Create backup directory if it doesn't exist
-            fs.createDirectory(backupDir);
-
-            String backupPath = backupDir + "world_" + timestamp + ".json";
-            String jsonData = json.prettyPrint(world);
-            fs.writeString(backupPath, jsonData);
-
-            GameLogger.info("Created backup of world: " + worldName);
-        } catch (Exception e) {
-            GameLogger.error("Failed to create world backup: " + e.getMessage());
-        }
-    }
 
 
     public void deleteWorld(String name) {
@@ -204,7 +173,6 @@ public class ServerStorageSystem {
         for (WorldData world : worldCache.values()) {
             saveWorld(world);
         }
-        playerDataManager.shutdown();
         Thread.sleep(1000);
         GameLogger.info("Storage system shutdown complete");
     }

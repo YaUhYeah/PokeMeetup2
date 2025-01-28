@@ -15,10 +15,6 @@ public class AutoTileSystem {
     private static final int NE = 32;
     private static final int SW = 64;
     private static final int SE = 128;
-
-    // Predefined pond shapes:
-    // Example: A simple 3x3 pond
-    // You can define more shapes if desired.
     private static final boolean[][] POND_3X3 = {
         {true, true, true},
         {true, true, true},

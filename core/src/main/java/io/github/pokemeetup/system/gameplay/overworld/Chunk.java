@@ -28,6 +28,16 @@ public class Chunk {
     private int[][] tileData;
     private int[][] elevationBands;
 
+    private long generationSeed;
+
+    public long getGenerationSeed() {
+        return generationSeed;
+    }
+
+    public void setGenerationSeed(long seed) {
+        this.generationSeed = seed;
+    }
+
     public Chunk() {
         this.chunkX = 0;
         this.chunkY = 0;
@@ -40,6 +50,7 @@ public class Chunk {
         this.chunkY = chunkY;
         this.biome = biome;
         this.worldSeed = worldSeed;
+        this.generationSeed =worldSeed;
         this.biomeManager = biomeManager;
         this.tileData = new int[CHUNK_SIZE][CHUNK_SIZE];
         generateChunkData();
@@ -1087,6 +1098,7 @@ public class Chunk {
         int tType = tileData[localX][localY];
         return TileType.isPassableTile(tType);
     }
+
 
     private static class Point {
         int x, y;

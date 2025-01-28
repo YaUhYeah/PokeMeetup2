@@ -208,59 +208,46 @@ public class Player {
     }
 
     public void updateFromPlayerData(PlayerData data) {
-        if (data == null) {
-            GameLogger.error("Attempted to update from null PlayerData");
-            return;
-        }
+        if (data == null) return;
 
-        try {
-            this.playerData = data;
+        this.playerData = data;
 
-            // Initialize pokemon party
-            if (this.pokemonParty == null) {
-                this.pokemonParty = new PokemonParty();
-            }
-
-            // Safely process Pokemon data
-            if (data.getPartyPokemon() != null) {
-                for (PokemonData pokemonData : data.getPartyPokemon()) {
-                    if (pokemonData != null) {
-                        try {
-                            Pokemon pokemon = pokemonData.toPokemon();
-                            if (pokemon != null) {
-                                this.pokemonParty.addPokemon(pokemon);
-                            }
-                        } catch (Exception e) {
-                            GameLogger.error("Error converting Pokemon data: " + e.getMessage());
-                        }
+        // 1) Reset / Overwrite Pokemon Party
+        this.pokemonParty = new PokemonParty();
+        if (data.getPartyPokemon() != null) {
+            for (PokemonData pData : data.getPartyPokemon()) {
+                if (pData != null) {
+                    Pokemon p = pData.toPokemon();
+                    if (p != null) {
+                        this.pokemonParty.addPokemon(p);
                     }
                 }
             }
+        }
 
-            // Initialize inventory
-            if (this.inventory == null) {
-                this.inventory = new Inventory();
-            }
-
-            if (data.getInventoryItems() != null) {
-                this.inventory.clear();
-                for (ItemData item : data.getInventoryItems()) {
-                    if (item != null) {
-                        this.inventory.addItem(item);
-                    }
+        // 2) Reset / Overwrite Inventory
+        this.inventory = new Inventory();
+        if (data.getInventoryItems() != null) {
+            for (ItemData item : data.getInventoryItems()) {
+                if (item != null) {
+                    this.inventory.addItem(item);
                 }
             }
-            if (data.getX() != 0 || data.getY() != 0) {
-                this.setX(data.getX());
-                this.setY(data.getY());
-            }
-
-            GameLogger.info("Updated player data for: " + this.getUsername());
-
-        } catch (Exception e) {
-            GameLogger.error("Error updating player data: " + e.getMessage());
         }
+
+        // 3) Apply position, direction, etc.
+        this.setX(data.getX());
+        this.setY(data.getY());
+        this.setDirection(data.getDirection());
+        this.setMoving(data.isMoving());
+        this.setRunning(data.isWantsToRun());
+
+        // Log or debug
+        GameLogger.info("Updated player '" + username + "' from PlayerData. Items: "
+            + this.inventory.getAllItems().size()
+            + ", Party Pokemon: " + this.pokemonParty.getSize());
     }
+
 
     private void initializeBuildInventory() {
         // Add default blocks to build inventory

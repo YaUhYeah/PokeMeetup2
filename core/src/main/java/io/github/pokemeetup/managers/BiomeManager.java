@@ -682,7 +682,6 @@ public class BiomeManager {
         }
     }
 
-    // Helper method to get noise value with octaves
     private double getNoiseValue(float x, float y, long seed, float scale) {
         double value = 0;
         double amplitude = 1.0;
@@ -1085,7 +1084,6 @@ public class BiomeManager {
                 out.endArray();
             }
 
-            // Write distribution
             if (value.getTileDistribution() != null && !value.getTileDistribution().isEmpty()) {
                 out.name("tileDistribution");
                 out.beginObject();
@@ -1097,7 +1095,6 @@ public class BiomeManager {
                 out.endObject();
             }
 
-            // Write optional properties
             if (value.getPrimaryBiomeType() != null) {
                 out.name("primaryBiomeType").value(value.getPrimaryBiomeType().name());
             }

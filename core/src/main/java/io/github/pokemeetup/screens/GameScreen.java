@@ -187,19 +187,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             initializeBasicResources();
 
             initializeWorldAndPlayer();
-            if (!isMultiplayer) {
-                // In singleplayer, load from local save (if exists)
-                PlayerData loadedData = GameContext.get().getWorld().getWorldData()
-                    .getPlayerData(username, false);
-                if (loadedData != null) {
-                    GameLogger.info("Found existing singleplayer data for: " + username);
-                    GameContext.get().getPlayer().updateFromPlayerData(loadedData);
-                } else {
-                    GameLogger.info("No existing data. This is a new singleplayer user: " + username);
-                }
-            }
             this.inputManager = new InputManager(this);
             Player player = GameContext.get().getPlayer();
+
             // Check if new player needs starter
             if (player != null && player.getPokemonParty().getSize() == 0) {
                 GameLogger.info("New player detected - handling starter selection");
@@ -640,7 +630,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameContext.get().getPlayer().initializeResources();
             GameContext.get().getPlayer().initializeInWorld(GameContext.get().getWorld());
             GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer());
-            GameContext.get().getPlayer().setRenderPosition(GameContext.get().getPlayer().getPosition());
+            GameContext.get().getPlayer().setRenderPosition(new Vector2(GameContext.get().getPlayer().getX(), GameContext.get().getPlayer().getY()));
             // 5. Load initial chunks around player
             Vector2 playerPos = new Vector2(
                 (float) GameContext.get().getPlayer().getTileX() / World.CHUNK_SIZE,
@@ -1558,7 +1548,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         if (GameContext.get().getPlayer() != null) {
             if (!GameContext.get().getWorld().areInitialChunksLoaded()) {
-                GameContext.get().getWorld().requestInitialChunks(new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()));
+                GameContext.get().getWorld().requestInitialChunks(new Vector2(GameContext.get().getPlayer().getX(), GameContext.get().getPlayer().getY()));
                 renderLoadingScreen();
                 return;
             }
@@ -1627,7 +1617,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 GameContext.get().getBuildModeUI().render(GameContext.get().getBatch(), camera);
             }
         }
-        // Handle world initialization
         if (GameContext.get().getWorld() != null && !initializedworld) {
             if (!GameContext.get().getWorld().areAllChunksLoaded()) {
                 initializationTimer += (int) delta;
@@ -1727,10 +1716,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             if (isMultiplayer) {
                 // Other systems updates
                 updateOtherPlayers(delta);
-
-                if (GameContext.get().getGameClient() != null) {
-                    GameContext.get().getGameClient().tick(delta);
-                }
                 if (GameContext.get().getWorld() != null) {
                     GameContext.get().getWorld().update(delta, new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()),
                         Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), this);
@@ -1765,6 +1750,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 update.direction = GameContext.get().getPlayer().getDirection();
                 update.isMoving = GameContext.get().getPlayer().isMoving();
                 update.wantsToRun = GameContext.get().getPlayer().isRunning();
+                update.inventoryItems = GameContext.get().getPlayer().getInventory().getAllItems().toArray(new ItemData[0]);
                 update.timestamp = System.currentTimeMillis();
                 if (GameContext.get().getGameClient() == null) {
                     return;
@@ -2194,8 +2180,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                     for (OtherPlayer op : GameContext.get().getGameClient().getOtherPlayers().values()) {
                         if (op != null) op.dispose();
                     }
-                    GameContext.get().getGameClient().dispose();
-
+                    if (GameContext.get().getGame().isMultiplayerMode()) {
+                        GameContext.get().getGameClient().dispose();
+                    }
                     if (!screenInitScheduler.isShutdown()) {
                         screenInitScheduler.shutdown();
                         try {

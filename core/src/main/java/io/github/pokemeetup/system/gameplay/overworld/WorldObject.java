@@ -65,8 +65,8 @@ public class WorldObject {
             if (textureCache.isEmpty()) {
                 TextureAtlas atlas = TextureManager.tiles;
                 if (atlas != null) {
-                    textureCache.put(ObjectType.TREE_0, atlas.findRegion("tree_0"));
-                    textureCache.put(ObjectType.TREE_1, atlas.findRegion("tree_1"));
+                    textureCache.put(ObjectType.TREE_0, atlas.findRegion("treeONE"));
+                    textureCache.put(ObjectType.TREE_1, atlas.findRegion("treeTWO"));
                     textureCache.put(ObjectType.SNOW_TREE, atlas.findRegion("snow_tree"));
                     textureCache.put(ObjectType.HAUNTED_TREE, atlas.findRegion("haunted_tree"));
                     textureCache.put(ObjectType.POKEBALL, atlas.findRegion("pokeball"));
@@ -85,8 +85,6 @@ public class WorldObject {
             GameLogger.error("Failed to initialize textures: " + e.getMessage());
         }
     }
-
-// In WorldObject class, update the updateFromData method with proper null checks and defaults:
 
     public void updateFromData(Map<String, Object> data) {
         if (data == null) return;
@@ -409,39 +407,6 @@ public class WorldObject {
 
         }
 
-
-        public void setObjectsForChunk(Vector2 chunkPos, List<WorldObject> objects) {
-            try {
-                if (objects == null) {
-                    objectsByChunk.remove(chunkPos);
-                    return;
-                }
-
-                // Create a defensive copy of the list
-                List<WorldObject> safeObjects = new CopyOnWriteArrayList<>();
-                for (WorldObject obj : objects) {
-                    if (obj != null) {
-                        // Ensure each object has an ID
-                        if (obj.getId() == null || obj.getId().isEmpty()) {
-                            obj.setId(UUID.randomUUID().toString());
-                        }
-                        safeObjects.add(obj);
-                    }
-                }
-
-                // Update the chunk's objects
-                objectsByChunk.put(chunkPos, safeObjects);
-
-                // Sync to server if in multiplayer
-                if (gameClient != null && !gameClient.isSinglePlayer()) {
-                    sendChunkObjectSync(safeObjects);
-                }
-
-            } catch (Exception e) {
-                GameLogger.error("Error setting chunk objects: " + e.getMessage());
-            }
-        }
-
         private void sendChunkObjectSync(List<WorldObject> objects) {
             try {
                 for (WorldObject obj : objects) {
@@ -636,12 +601,6 @@ public class WorldObject {
 
 
 
-        private boolean isNearChunkEdge(int localX, int localY, ObjectType type) {
-            // Either return false entirely or reduce buffer drastically
-            // For example:
-            int buffer = 0; // allow placing near edges
-            return false;
-        }
 
 
         private boolean isTreeType(ObjectType type) {
@@ -673,7 +632,20 @@ public class WorldObject {
 
 
         public void renderTreeBase(SpriteBatch batch, WorldObject tree, World world) {
+            // Get texture and handle null case
             TextureRegion treeRegion = tree.getTexture();
+            if (treeRegion == null) {
+                // Try to re-initialize texture
+                tree.ensureTexture();
+                treeRegion = tree.getTexture();
+
+                // If still null, skip rendering
+                if (treeRegion == null) {
+                    GameLogger.error("Failed to load texture for tree: " + tree.getId());
+                    return;
+                }
+            }
+
             boolean flipY = treeRegion.isFlipY();
 
             int totalWidth = treeRegion.getRegionWidth();   // For apricorn: should be 96
@@ -682,34 +654,50 @@ public class WorldObject {
 
             float renderX = tree.getPixelX() - World.TILE_SIZE;
             float renderY = tree.getPixelY();
+
             Vector2 tilePos = new Vector2(tree.getTileX(), tree.getTileY());
             Float lightLevel = world.getLightLevelAtTile(tilePos);
 
             Color originalColor = batch.getColor().cpy();
-            if (lightLevel != null && lightLevel > 0) {
-                Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
-                Color baseColor = world.getCurrentWorldColor().cpy();
-                baseColor.lerp(lightColor, lightLevel * 0.7f);
-                batch.setColor(baseColor);
+            try {
+                if (lightLevel != null && lightLevel > 0) {
+                    Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                    Color baseColor = world.getCurrentWorldColor().cpy();
+                    baseColor.lerp(lightColor, lightLevel * 0.7f);
+                    batch.setColor(baseColor);
+                }
+
+                int baseY = flipY ? 0 : totalHeight - baseHeight;
+                TextureRegion baseRegion = new TextureRegion(treeRegion, 0, baseY, totalWidth, baseHeight);
+                if (flipY != baseRegion.isFlipY()) {
+                    baseRegion.flip(false, true);
+                }
+
+                float drawWidth = tree.getType() == ObjectType.APRICORN_TREE ?
+                    World.TILE_SIZE * 3 : World.TILE_SIZE * 2;
+                float drawHeight = World.TILE_SIZE;
+
+                batch.draw(baseRegion, renderX, renderY, drawWidth, drawHeight);
+            } finally {
+                batch.setColor(originalColor);
             }
-
-            int baseY = flipY ? 0 : totalHeight - baseHeight;
-            TextureRegion baseRegion = new TextureRegion(treeRegion, 0, baseY, totalWidth, baseHeight);
-            if (flipY != baseRegion.isFlipY()) {
-                baseRegion.flip(false, true);
-            }
-
-            // If it's an apricorn tree, draw full width (96px) and base height (32px)
-            // Otherwise, normal trees are drawn as before.
-            float drawWidth = tree.getType() == ObjectType.APRICORN_TREE ? World.TILE_SIZE * 3 : World.TILE_SIZE * 2;
-            float drawHeight = World.TILE_SIZE; // base is always one tile high visually
-
-            batch.draw(baseRegion, renderX, renderY, drawWidth, drawHeight);
-            batch.setColor(originalColor);
         }
-
         public void renderTreeTop(SpriteBatch batch, WorldObject tree, World world) {
+            // Get texture and handle null case
             TextureRegion treeRegion = tree.getTexture();
+            if (treeRegion == null) {
+                // Try to re-initialize texture
+                tree.ensureTexture();
+                treeRegion = tree.getTexture();
+
+                // If still null, skip rendering
+                if (treeRegion == null) {
+                    GameLogger.error("Failed to load texture for tree: " + tree.getId());
+                    return;
+                }
+            }
+
+            // Now we can safely use the texture
             boolean flipY = treeRegion.isFlipY();
 
             int totalWidth = treeRegion.getRegionWidth();
@@ -722,39 +710,40 @@ public class WorldObject {
             Float lightLevel = world.getLightLevelAtTile(tilePos);
 
             Color originalColor = batch.getColor().cpy();
-            if (lightLevel != null && lightLevel > 0) {
-                Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
-                Color baseColor = world.getCurrentWorldColor().cpy();
-                baseColor.lerp(lightColor, lightLevel * 0.7f);
-                batch.setColor(baseColor);
+            try {
+                if (lightLevel != null && lightLevel > 0) {
+                    Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                    Color baseColor = world.getCurrentWorldColor().cpy();
+                    baseColor.lerp(lightColor, lightLevel * 0.7f);
+                    batch.setColor(baseColor);
+                }
+
+                int topY = flipY ? totalHeight - topHeight : 0;
+                TextureRegion topRegion = new TextureRegion(treeRegion, 0, topY, totalWidth, topHeight);
+                if (flipY != topRegion.isFlipY()) {
+                    topRegion.flip(false, true);
+                }
+
+                float drawWidth = tree.getType() == WorldObject.ObjectType.APRICORN_TREE ?
+                    World.TILE_SIZE * 3 : World.TILE_SIZE * 2;
+                float drawHeight = World.TILE_SIZE * 2;
+
+                batch.draw(topRegion, renderX, renderY, drawWidth, drawHeight);
+            } finally {
+                batch.setColor(originalColor);
             }
-
-            int topY = flipY ? totalHeight - topHeight : 0;
-            TextureRegion topRegion = new TextureRegion(treeRegion, 0, topY, totalWidth, topHeight);
-            if (flipY != topRegion.isFlipY()) {
-                topRegion.flip(false, true);
-            }
-
-            // For apricorn tree: draw full 96px width, 64px height
-            float drawWidth = tree.getType() == ObjectType.APRICORN_TREE ? World.TILE_SIZE * 3 : World.TILE_SIZE * 2;
-            float drawHeight = World.TILE_SIZE * 2; // top portion covers two tiles high normally
-
-            // For apricorn:
-            // totalHeight = 96, baseHeight=32, topHeight=64
-            // so top portion is indeed 64px high, which matches World.TILE_SIZE*2.
-
-            batch.draw(topRegion, renderX, renderY, drawWidth, drawHeight);
-
-            batch.setColor(originalColor);
         }
-
         public void renderObject(SpriteBatch batch, WorldObject object, World world) {
-            // Layered objects are rendered separately; skip them here
+            // Skip layered objects as they're rendered separately
             if (object.getType().renderLayer == WorldObject.ObjectType.RenderLayer.LAYERED) {
                 return;
             }
 
             TextureRegion objectTexture = object.getTexture();
+            if (objectTexture == null) {
+                return; // Skip if texture isn't available
+            }
+
             float renderX = object.getPixelX();
             float renderY = object.getPixelY();
 
@@ -769,22 +758,67 @@ public class WorldObject {
             // Save the original batch color
             Color originalColor = batch.getColor().cpy();
 
-            // Apply lighting if available
-            if (lightLevel != null && lightLevel > 0) {
-                Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
-                Color baseColor = world.getCurrentWorldColor().cpy();
-                baseColor.lerp(lightColor, lightLevel * 0.7f);
-                batch.setColor(baseColor);
-            } else {
-                // Ensure the current world color is applied
-                batch.setColor(world.getCurrentWorldColor());
+            try {
+                // Apply lighting if available
+                if (lightLevel != null && lightLevel > 0) {
+                    Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                    Color baseColor = world.getCurrentWorldColor().cpy();
+                    baseColor.lerp(lightColor, lightLevel * 0.7f);
+                    batch.setColor(baseColor);
+                } else {
+                    // Ensure the current world color is applied
+                    batch.setColor(world.getCurrentWorldColor());
+                }
+
+                // Render the object
+                batch.draw(objectTexture, renderX, renderY, width, height);
+            } finally {
+                // Restore the original batch color
+                batch.setColor(originalColor);
             }
+        }
 
-            // Render the object
-            batch.draw(objectTexture, renderX, renderY, width, height);
+        public void setObjectsForChunk(Vector2 chunkPos, List<WorldObject> objects) {
+            try {
+                if (objects == null) {
+                    objectsByChunk.remove(chunkPos);
+                    return;
+                }
 
-            // Restore the original batch color
-            batch.setColor(originalColor);
+                // Create defensive copy using CopyOnWriteArrayList
+                List<WorldObject> safeObjects = new CopyOnWriteArrayList<>();
+                for (WorldObject obj : objects) {
+                    if (obj != null) {
+                        if (obj.getId() == null || obj.getId().isEmpty()) {
+                            obj.setId(UUID.randomUUID().toString());
+                        }
+                        safeObjects.add(obj);
+                    }
+                }
+
+                objectsByChunk.put(chunkPos, safeObjects);
+
+                // Break into smaller chunks for network transmission
+                if (gameClient != null && !gameClient.isSinglePlayer()) {
+                    int chunkSize = 20; // Send objects in smaller batches
+                    for (int i = 0; i < safeObjects.size(); i += chunkSize) {
+                        int end = Math.min(i + chunkSize, safeObjects.size());
+                        List<WorldObject> batch = safeObjects.subList(i, end);
+
+                        NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
+                        update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
+                        for (WorldObject obj : batch) {
+                            update.objectId = obj.getId();
+                            update.data = obj.getSerializableData();
+                            gameClient.sendWorldObjectUpdate(update);
+                            Thread.sleep(50); // Small delay between sends
+                        }
+                    }
+                }
+
+            } catch (Exception e) {
+                GameLogger.error("Error setting chunk objects: " + e.getMessage());
+            }
         }
 
 
@@ -1100,20 +1134,6 @@ public class WorldObject {
             return new WorldObject(tileX, tileY, texture, type);
         }
 
-        private void tryPlaceObject(int x, int y, List<WorldObject> objects,
-                                    ObjectType type, Vector2 chunkPos) {
-            int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + x);
-            int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + y);
-
-            TextureRegion texture = objectTextures.get(type);
-            if (texture != null) {
-                WorldObject object = new WorldObject(worldTileX, worldTileY, texture, type);
-                objects.add(object);
-                GameLogger.error("Placed " + type + " at " + worldTileX + "," + worldTileY);
-            } else {
-                GameLogger.error("Missing texture for " + type);
-            }
-        }
 
 
     }

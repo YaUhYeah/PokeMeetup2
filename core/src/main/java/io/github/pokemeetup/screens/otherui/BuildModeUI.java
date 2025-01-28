@@ -709,7 +709,6 @@ public class BuildModeUI extends Group {
                     saveBlockData(blockType, tileX, tileY);
                     updateHotbarContent();
 
-                    GameLogger.info("Successfully placed block: " + blockType.getId());
                     return true;
                 }
             } catch (Exception e) {

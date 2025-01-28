@@ -22,11 +22,10 @@ import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 public class InputHandler extends InputAdapter {
-    private static final float SWING_INTERVAL = 0.5f;          // Time between each 'swing' for durability
+    private static final float SWING_INTERVAL = 0.5f;
     private static final int DURABILITY_LOSS_PER_SWING = 1;
     private static final float TREE_CHOP_WITH_AXE_TIME = 2.0f;
     private static final float TREE_CHOP_WITHOUT_AXE_TIME = 5.0f;
