@@ -15,6 +15,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.BiomeManager;
+import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.server.GameStateHandler;
@@ -460,7 +461,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             SpriteBatch uiBatch = new SpriteBatch();
             Stage uiStage = new Stage();
             Stage battleStage = new Stage();
-            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null,WorldManager.getInstance(), null);
+            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null,WorldManager.getInstance(), null, new DisconnectionManager(this));
 
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
             GameContext.get().getWorldManager().init();

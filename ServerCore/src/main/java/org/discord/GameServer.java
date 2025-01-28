@@ -18,12 +18,9 @@ import io.github.pokemeetup.managers.DatabaseManager;
 import io.github.pokemeetup.multiplayer.PlayerManager;
 import io.github.pokemeetup.multiplayer.ServerPlayer;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.system.data.BlockSaveData;
+import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.pokemon.WildPokemon;
-import io.github.pokemeetup.system.data.PlayerData;
-import io.github.pokemeetup.system.data.PokemonData;
-import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
@@ -1175,6 +1172,81 @@ public class GameServer {
                 networkServer.sendToAllExceptTCP(connection.getID(), action);
                 GameLogger.info("Player " + action.playerId + " stopped punching");
                 break;
+                case PICKUP_ITEM:
+                handleItemPickup(action, connection);
+                break;
+
+        }
+    }
+    private void handleItemPickup(NetworkProtocol.PlayerAction action, Connection connection) {
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null) {
+            GameLogger.error("Unauthorized pickup attempt");
+            return;
+        }
+
+        // Suppose action.targetPosition is the tile/pixel coords of the item
+        Vector2 itemPos = action.targetPosition;
+        if (itemPos == null) {
+            GameLogger.error("No item position specified");
+            return;
+        }
+
+        // Convert to chunk coords
+        Vector2 chunkPos = new Vector2(
+            (int)Math.floor(itemPos.x / (World.CHUNK_SIZE * World.TILE_SIZE)),
+            (int)Math.floor(itemPos.y / (World.CHUNK_SIZE * World.TILE_SIZE))
+        );
+
+        // Look up chunk’s object list
+        List<WorldObject> objects = worldData.getChunkObjects().get(chunkPos);
+        if (objects == null) return;
+
+        // Find the nearest item object
+        WorldObject itemObject = null;
+        float minDist = Float.MAX_VALUE;
+        for (WorldObject obj : objects) {
+            if (obj.getType() == WorldObject.ObjectType.POKEBALL /* or ITEM, ETC. */) {
+                float dist = Vector2.dst(obj.getPixelX(), obj.getPixelY(), itemPos.x, itemPos.y);
+                if (dist < minDist && dist < 48) {
+                    minDist = dist;
+                    itemObject = obj;
+                }
+            }
+        }
+        if (itemObject == null) {
+            GameLogger.info("No item found at pickup location");
+            return;
+        }
+
+        // Remove from chunk
+        if (objects.remove(itemObject)) {
+            worldData.getChunkObjects().put(chunkPos, objects);
+
+            // Broadcast removal
+            NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
+            update.objectId = itemObject.getId();
+            update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
+            networkServer.sendToAllTCP(update);
+
+            // Example: add to player’s inventory
+            // e.g. "wooden_plank" or "pokeball" item
+            // This will vary by your inventory logic
+            PlayerData playerData = /* load or get from your manager */
+                ServerGameContext.get().getStorageSystem().getPlayerDataManager()
+                    .loadPlayerData(UUID.nameUUIDFromBytes(username.getBytes()));
+            if (playerData != null) {
+                // e.g. add 1 "pokeball" to inventory
+                playerData.getInventoryItems().add(new ItemData("pokeball", 1, UUID.randomUUID()));
+                // Then save
+                ServerGameContext.get().getStorageSystem()
+                    .getPlayerDataManager().savePlayerData(UUID.nameUUIDFromBytes(username.getBytes()), playerData);
+            }
+
+            // Save chunk or entire world
+            ServerGameContext.get().getWorldManager().saveWorld(worldData);
+            GameLogger.info(username + " picked up item " + itemObject.getId()
+                + " at " + itemObject.getPixelX() + "," + itemObject.getPixelY());
         }
     }
 
@@ -1240,47 +1312,56 @@ public class GameServer {
             GameLogger.error("Error handling chop start: " + e.getMessage());
         }
     }
-
     private void handleChopProgress(NetworkProtocol.PlayerAction action) {
         if (action == null || action.playerId == null) {
             return;
         }
 
         try {
-            ServerPlayer player = playerManager.getPlayer(action.playerId);
+            // Look up the ServerPlayer by username
+            ServerPlayer player = new ServerPlayer(action.playerId,ServerGameContext.get().getStorageSystem().getPlayerDataManager().loadPlayerData(UUID.nameUUIDFromBytes(action.playerId.getBytes())));
             if (player == null) return;
 
+            // Grab the tree the player was chopping
             WorldObject choppedTree = player.getChoppingObject();
-            if (choppedTree == null) return;
+            if (choppedTree == null) return;  // Player wasn't actually chopping anything?
 
-            // Clear the chopping state
+            // Once we finish, clear the chopping state
             player.setChoppingObject(null);
 
-            // Calculate chunk position
+            // Convert the chopped object’s pixel coords to chunk coords
             Vector2 chunkPos = new Vector2(
                 (int) Math.floor(choppedTree.getPixelX() / (World.CHUNK_SIZE * World.TILE_SIZE)),
                 (int) Math.floor(choppedTree.getPixelY() / (World.CHUNK_SIZE * World.TILE_SIZE))
             );
 
-            // Remove the tree
+            // Remove from the chunk’s list
             List<WorldObject> chunkObjects = worldData.getChunkObjects().get(chunkPos);
             if (chunkObjects != null) {
-                chunkObjects.remove(choppedTree);
-                worldData.getChunkObjects().put(chunkPos, chunkObjects);
+                boolean removed = chunkObjects.remove(choppedTree);
+                if (removed) {
+                    // Update the chunk objects map
+                    worldData.getChunkObjects().put(chunkPos, chunkObjects);
 
-                // Create and broadcast tree removal update
-                NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
-                update.objectId = choppedTree.getId();
-                update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
+                    // Create a removal update
+                    NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
+                    update.objectId = choppedTree.getId();
+                    update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
+                    // (optionally) update.data = choppedTree.getSerializableData();
 
-                // Broadcast to all players except the chopper
-                networkServer.sendToAllExceptTCP(
-                    activeUserConnections.get(action.playerId),
-                    update
-                );
+                    // Broadcast to all clients that the object is removed
+                    networkServer.sendToAllTCP(update);
 
-                GameLogger.info("Player " + action.playerId + " finished chopping tree at " +
-                    choppedTree.getPixelX() + "," + choppedTree.getPixelY());
+                    // Example: give the player some items for chopping the tree
+                    // (e.g. wood planks or logs). This part is purely game logic:
+                    // player.getData().inventoryItems.add("wood_plank"); // or however you add items
+
+                    // Save updated world chunk or entire world
+                    ServerGameContext.get().getWorldManager().saveWorld(worldData);
+
+                    GameLogger.info("Player " + action.playerId + " finished chopping tree ("
+                        + choppedTree.getPixelX() + "," + choppedTree.getPixelY() + ")");
+                }
             }
         } catch (Exception e) {
             GameLogger.error("Error handling chop progress: " + e.getMessage());

@@ -105,12 +105,11 @@ public class GameClient {
     private String localUsername;
     private long worldSeed;
     private ReconnectionListener reconnectionListener;
-    private byte[][] fragments;
     private BitSet receivedFragments;
     private int totalFragments;
     public GameClient(ServerConnectionConfig config, boolean isSinglePlayer) {
 
-        this.disconnectHandler = null;
+        this.disconnectHandler = GameContext.get().getDisconnectionManager();
         this.serverConfig = config;
         this.isSinglePlayer = isSinglePlayer;
         this.lastKnownState = new PlayerData();
@@ -863,11 +862,6 @@ public class GameClient {
             this.chunkPos = chunkPos;
         }
     }
-    private final Queue<ChunkProcessTask> chunkProcessQueue = new ConcurrentLinkedQueue<>();
-    private volatile boolean isProcessingChunks = false;
-    private static final long CHUNK_PROCESS_INTERVAL = 100; // ms between chunks
-
-
 
     private void handleReceivedMessage(Object object) {if (object instanceof NetworkProtocol.CompressedChunkData) {
             handleCompressedChunkData((NetworkProtocol.CompressedChunkData) object);
@@ -1011,18 +1005,21 @@ public class GameClient {
             isConnected.set(false);
             isAuthenticated.set(false);
 
-            // Save last known state
+            // Save any last known state, if needed:
             if (GameContext.get().getPlayer() != null) {
                 lastKnownState = GameContext.get().getPlayer().getPlayerData();
             }
 
+            // Actual cleanup of the network client:
             cleanupConnection();
 
-            if (!isDisposing.get() && shouldReconnect.get()) {
-                scheduleReconnection();
+            // Show the DisconnectionScreen (via DisconnectionManager) UNLESS we are already disposing:
+            if (!isDisposing.get() && disconnectHandler != null) {
+                disconnectHandler.handleDisconnect(reason);
             }
         }
     }
+
 
     private void reAuthenticateAfterReconnect() {
         if (pendingUsername != null && pendingPassword != null) {

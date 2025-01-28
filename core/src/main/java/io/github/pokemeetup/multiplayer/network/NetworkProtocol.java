@@ -181,7 +181,8 @@ public class NetworkProtocol {
         CHEST_OPEN,
         CHEST_CLOSE,
         PUNCH_START,
-        PUNCH_STOP
+        PUNCH_STOP,
+        PICKUP_ITEM
     }
 
     public enum BlockAction {

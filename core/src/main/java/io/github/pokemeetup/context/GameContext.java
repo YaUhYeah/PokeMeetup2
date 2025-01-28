@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 
 import io.github.pokemeetup.CreatureCaptureGame;
+import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.screens.ChestScreen;
 import io.github.pokemeetup.screens.CraftingTableScreen;
@@ -38,6 +39,7 @@ public final class GameContext {
     private GameMenu gameMenu;
     private WorldManager worldManager;
     private GameScreen gameScreen;
+    private DisconnectionManager disconnectionManager;
 
     /**
      * Private constructor to enforce singleton usage.
@@ -58,7 +60,7 @@ public final class GameContext {
         CraftingTableScreen craftingScreen,
         GameMenu gameMenu,
         ChestScreen chestScreen, WorldManager worldManager,
-        GameScreen gameScreen
+        GameScreen gameScreen, DisconnectionManager disconnectionManager
     ) {
         this.game = game;
         this.gameClient = gameClient;
@@ -77,6 +79,7 @@ public final class GameContext {
         this.chestScreen = chestScreen;
         this.worldManager = worldManager;
         this.gameScreen = gameScreen;
+        this.disconnectionManager=disconnectionManager;
     }
 
     public static void init(
@@ -95,7 +98,7 @@ public final class GameContext {
         CraftingTableScreen craftingScreen,
         GameMenu gameMenu,
         ChestScreen chestScreen,WorldManager worldManager,
-        GameScreen gameScreen
+        GameScreen gameScreen, DisconnectionManager disconnectionManager
     ) {
         if (instance != null) {
             throw new IllegalStateException("GameContext already initialized!");
@@ -115,7 +118,7 @@ public final class GameContext {
             buildModeUI,
             craftingScreen,
             gameMenu,
-            chestScreen,worldManager,gameScreen
+            chestScreen,worldManager,gameScreen,disconnectionManager
         );
     }
 
@@ -132,6 +135,14 @@ public final class GameContext {
 
     public CraftingTableScreen getCraftingScreen() {
         return craftingScreen;
+    }
+
+    public DisconnectionManager getDisconnectionManager() {
+        return disconnectionManager;
+    }
+
+    public void setDisconnectionManager(DisconnectionManager disconnectionManager) {
+        this.disconnectionManager = disconnectionManager;
     }
 
     public void setCraftingScreen(CraftingTableScreen craftingScreen) {
