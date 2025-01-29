@@ -4,10 +4,9 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import io.github.pokemeetup.multiplayer.client.GameClient;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.utils.GameLogger;
@@ -90,7 +89,6 @@ public class WorldObject {
         if (data == null) return;
 
         try {
-            // Handle required fields with proper null checks and defaults
             Object tileXObj = data.get("tileX");
             Object tileYObj = data.get("tileY");
             if (tileXObj instanceof Number && tileYObj instanceof Number) {
@@ -156,7 +154,6 @@ public class WorldObject {
         copy.isCollidable = this.isCollidable;
         copy.spawnTime = this.spawnTime;
 
-        // The texture is shared and doesn't need deep copying
         copy.texture = this.texture;
 
         // If there's an attached object, copy that too
@@ -239,7 +236,7 @@ public class WorldObject {
                 World.TILE_SIZE * 3   // 3 tiles high
             );
         }
-      if (type == ObjectType.TREE_0 ||type==ObjectType.RUINS_TREE|| type == ObjectType.TREE_1 || type == ObjectType.SNOW_TREE || type == ObjectType.HAUNTED_TREE || type == ObjectType.RAIN_TREE) {
+        if (type == ObjectType.TREE_0 || type == ObjectType.RUINS_TREE || type == ObjectType.TREE_1 || type == ObjectType.SNOW_TREE || type == ObjectType.HAUNTED_TREE || type == ObjectType.RAIN_TREE) {
             // Tree collision box: 2x2 tiles at the base only
             float treeBaseX = pixelX - World.TILE_SIZE; // Center the 2-tile width base
             float treeBaseY = pixelY; // Bottom of tree
@@ -298,7 +295,7 @@ public class WorldObject {
             );
         } else if (type == ObjectType.RUINS_TREE) {
             // 2x2 collision as before
-            float treeBaseX = pixelX;
+            float treeBaseX = pixelX - World.TILE_SIZE;
             float treeBaseY = pixelY;
             return new Rectangle(treeBaseX, treeBaseY, World.TILE_SIZE * 2, World.TILE_SIZE * 2);
         } else if (isTreeType(type)) {
@@ -377,15 +374,13 @@ public class WorldObject {
     public static class WorldObjectManager {
         public static final float POKEBALL_SPAWN_CHANCE = 0.025f;
         public static final int MAX_POKEBALLS_PER_CHUNK = 1;
-        private final GameClient gameClient;
         private final Map<Vector2, List<WorldObject>> objectsByChunk = new ConcurrentHashMap<>();
-        private final Map<WorldObject.ObjectType, TextureRegion> objectTextures;
+        private final Map<ObjectType, TextureRegion> objectTextures;
         private final long worldSeed;
         private final ConcurrentLinkedQueue<WorldObjectOperation> operationQueue = new ConcurrentLinkedQueue<>();
 
-        public WorldObjectManager(long seed, GameClient gameClient) {
+        public WorldObjectManager(long seed) {
             this.worldSeed = seed;
-            this.gameClient = gameClient;
             TextureAtlas atlas = TextureManager.tiles;
             this.objectTextures = new HashMap<>();
             objectTextures.put(ObjectType.TREE_0, atlas.findRegion("treeONE"));
@@ -415,7 +410,7 @@ public class WorldObject {
                     update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
                     update.data = obj.getSerializableData();
 
-                    gameClient.getClient().sendTCP(update);
+                    GameContext.get().getGameClient().getClient().sendTCP(update);
                 }
             } catch (Exception e) {
                 GameLogger.error("Failed to send chunk object sync: " + e.getMessage());
@@ -433,11 +428,20 @@ public class WorldObject {
                         objectsByChunk.put(chunkPos, new CopyOnWriteArrayList<>(objects));
 
                         // Notify server in multiplayer
-                        if (gameClient != null && !gameClient.isSinglePlayer()) {
+                        if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
                             NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
                             update.objectId = objectId;
+                            WorldObject o = null;
+                            for (WorldObject obj : objects) {
+                                if (Objects.equals(obj.id, update.objectId)) {
+                                    o = obj;
+                                }
+                            }
+                            if (o != null) {
+                                update.data = o.getSerializableData();
+                            }
                             update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-                            gameClient.getClient().sendTCP(update);
+                            GameContext.get().getGameClient().getClient().sendTCP(update);
                         }
 
                         GameLogger.info("Removed object " + objectId + " from chunk " + chunkPos);
@@ -460,7 +464,7 @@ public class WorldObject {
             try {
                 Random random = new Random((long) (worldSeed + chunkPos.x * 31 + chunkPos.y * 17));
 
-                for (WorldObject.ObjectType objectType : biome.getSpawnableObjects()) {
+                for (ObjectType objectType : biome.getSpawnableObjects()) {
                     double spawnChance = biome.getSpawnChanceForObject(objectType);
                     int attempts = (int) (Chunk.CHUNK_SIZE * Chunk.CHUNK_SIZE * spawnChance);
 
@@ -484,7 +488,9 @@ public class WorldObject {
                 objectsByChunk.put(chunkPos, objects);
 
                 // Sync to server in multiplayer
-                if (gameClient != null && !gameClient.isSinglePlayer()) {
+                if (
+                    GameContext.get().getGameClient() != null && !
+                        GameContext.get().getGameClient().isSinglePlayer()) {
                     sendChunkObjectSync(objects);
                 }
 
@@ -600,9 +606,6 @@ public class WorldObject {
         }
 
 
-
-
-
         private boolean isTreeType(ObjectType type) {
             return type == ObjectType.TREE_0 ||
                 type == ObjectType.TREE_1 ||
@@ -628,7 +631,6 @@ public class WorldObject {
                     return 1; // Smaller objects remain at spacing 1
             }
         }
-
 
 
         public void renderTreeBase(SpriteBatch batch, WorldObject tree, World world) {
@@ -682,6 +684,7 @@ public class WorldObject {
                 batch.setColor(originalColor);
             }
         }
+
         public void renderTreeTop(SpriteBatch batch, WorldObject tree, World world) {
             // Get texture and handle null case
             TextureRegion treeRegion = tree.getTexture();
@@ -724,7 +727,7 @@ public class WorldObject {
                     topRegion.flip(false, true);
                 }
 
-                float drawWidth = tree.getType() == WorldObject.ObjectType.APRICORN_TREE ?
+                float drawWidth = tree.getType() == ObjectType.APRICORN_TREE ?
                     World.TILE_SIZE * 3 : World.TILE_SIZE * 2;
                 float drawHeight = World.TILE_SIZE * 2;
 
@@ -733,9 +736,10 @@ public class WorldObject {
                 batch.setColor(originalColor);
             }
         }
+
         public void renderObject(SpriteBatch batch, WorldObject object, World world) {
             // Skip layered objects as they're rendered separately
-            if (object.getType().renderLayer == WorldObject.ObjectType.RenderLayer.LAYERED) {
+            if (object.getType().renderLayer == ObjectType.RenderLayer.LAYERED) {
                 return;
             }
 
@@ -799,7 +803,9 @@ public class WorldObject {
                 objectsByChunk.put(chunkPos, safeObjects);
 
                 // Break into smaller chunks for network transmission
-                if (gameClient != null && !gameClient.isSinglePlayer()) {
+                if (
+                    GameContext.get().getGameClient() != null && !
+                        GameContext.get().getGameClient().isSinglePlayer()) {
                     int chunkSize = 20; // Send objects in smaller batches
                     for (int i = 0; i < safeObjects.size(); i += chunkSize) {
                         int end = Math.min(i + chunkSize, safeObjects.size());
@@ -810,7 +816,8 @@ public class WorldObject {
                         for (WorldObject obj : batch) {
                             update.objectId = obj.getId();
                             update.data = obj.getSerializableData();
-                            gameClient.sendWorldObjectUpdate(update);
+
+                            GameContext.get().getGameClient().sendWorldObjectUpdate(update);
                             Thread.sleep(50); // Small delay between sends
                         }
                     }
@@ -862,10 +869,16 @@ public class WorldObject {
         }
 
         public void removeObjectById(String objectId) {
-            for (List<WorldObject> objects : objectsByChunk.values()) {
-                objects.removeIf(obj -> obj.getId().equals(objectId));
+            for (Map.Entry<Vector2, List<WorldObject>> entry : objectsByChunk.entrySet()) {
+                List<WorldObject> list = entry.getValue();
+                boolean changed = list.removeIf(obj -> obj.getId().equals(objectId));
+                if (changed) {
+                    GameLogger.info("Removed object '" + objectId +
+                        "' from chunk at " + entry.getKey());
+                }
             }
         }
+
 
         public List<WorldObject> getObjectsForChunk(Vector2 chunkPos) {
             List<WorldObject> objects = objectsByChunk.get(chunkPos);
@@ -893,7 +906,7 @@ public class WorldObject {
                 .count();
 
             // Check if we can spawn a pokeball
-            if (pokeballCount < MAX_POKEBALLS_PER_CHUNK && MathUtils.random() < POKEBALL_SPAWN_CHANCE) {
+            if (pokeballCount < MAX_POKEBALLS_PER_CHUNK && random() < POKEBALL_SPAWN_CHANCE) {
                 int attempts = 10;
                 while (attempts > 0) {
                     // Get random position within chunk
@@ -901,8 +914,8 @@ public class WorldObject {
                     int localY = random.nextInt(Chunk.CHUNK_SIZE);
 
                     // Convert to world coordinates
-                    int worldTileX = (int)(chunkPos.x * Chunk.CHUNK_SIZE + localX);
-                    int worldTileY = (int)(chunkPos.y * Chunk.CHUNK_SIZE + localY);
+                    int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + localX);
+                    int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + localY);
 
                     // Check if location is valid (grass or sand tiles)
                     int tileType = chunk.getTileType(localX, localY);
@@ -928,13 +941,16 @@ public class WorldObject {
                                 objects.add(pokeball);
 
                                 // Send network update in multiplayer
-                                if (gameClient != null && !gameClient.isSinglePlayer()) {
+                                if (
+                                    GameContext.get().getGameClient() != null && !
+                                        GameContext.get().getGameClient().isSinglePlayer()) {
                                     NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
                                     update.objectId = pokeball.getId();
                                     update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
                                     update.data = pokeball.getSerializableData();
 
-                                    gameClient.sendWorldObjectUpdate(update);
+
+                                    GameContext.get().getGameClient().sendWorldObjectUpdate(update);
                                 }
 
                                 GameLogger.info("Spawned pokeball at " + worldTileX + "," + worldTileY);
@@ -946,6 +962,7 @@ public class WorldObject {
                 }
             }
         }
+
         public void update(Map<Vector2, Chunk> loadedChunks) {
             WorldObjectOperation operation;
             while ((operation = operationQueue.poll()) != null) {
@@ -958,12 +975,17 @@ public class WorldObject {
                                 removeList.removeIf(obj -> obj.getId().equals(removeOp.objectId));
                                 objectsByChunk.put(removeOp.chunkPos, new CopyOnWriteArrayList<>(removeList));
 
-                                // Save chunk after removal
-                                if (gameClient != null && gameClient.getCurrentWorld() != null) {
-                                    Chunk chunk = gameClient.getCurrentWorld().getChunkAtPosition(
-                                        removeOp.chunkPos.x, removeOp.chunkPos.y);
-                                    if (chunk != null) {
-                                        gameClient.getCurrentWorld().saveChunkData(removeOp.chunkPos, chunk);
+                                if (!GameContext.get().getGameClient().isSinglePlayer()) {
+                                    if (
+                                        GameContext.get().getGameClient() != null &&
+                                            GameContext.get().getGameClient().getCurrentWorld() != null) {
+                                        Chunk chunk =
+                                            GameContext.get().getGameClient().getCurrentWorld().getChunkAtPosition(
+                                                removeOp.chunkPos.x, removeOp.chunkPos.y);
+                                        if (chunk != null) {
+
+                                            GameContext.get().getGameClient().getCurrentWorld().saveChunkData(removeOp.chunkPos, chunk);
+                                        }
                                     }
                                 }
                             }
@@ -1084,13 +1106,15 @@ public class WorldObject {
                     }
                     if (shouldSpawnPokeball(objects)) {
                         if (locationClear) {
-                            TextureRegion pokeballTexture = objectTextures.get(WorldObject.ObjectType.POKEBALL);
+                            TextureRegion pokeballTexture = objectTextures.get(ObjectType.POKEBALL);
                             if (pokeballTexture != null) {
                                 WorldObject pokeball = new WorldObject(worldTileX, worldTileY,
-                                    pokeballTexture, WorldObject.ObjectType.POKEBALL);
+                                    pokeballTexture, ObjectType.POKEBALL);
                                 objects.add(pokeball);
 
-                                if (gameClient != null && !gameClient.isSinglePlayer()) {
+                                if (
+                                    GameContext.get().getGameClient() != null && !
+                                        GameContext.get().getGameClient().isSinglePlayer()) {
                                     sendObjectSpawn(pokeball);
                                 }
                             }
@@ -1101,28 +1125,20 @@ public class WorldObject {
         }
 
         private void sendObjectSpawn(WorldObject object) {
-            if (gameClient == null || gameClient.isSinglePlayer()) return;
+            if (
+                GameContext.get().getGameClient() == null ||
+                    GameContext.get().getGameClient().isSinglePlayer()) return;
 
             NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
             update.objectId = object.getId();
             update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
             update.data = object.getSerializableData();
 
-            gameClient.sendWorldObjectUpdate(update);
+
+            GameContext.get().getGameClient().sendWorldObjectUpdate(update);
         }
 
-        private void sendObjectRemove(String objectId) {
-            if (gameClient == null || gameClient.isSinglePlayer()) return;
-
-            NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
-            update.objectId = objectId;  // Use objectId directly
-            update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-
-            gameClient.sendWorldObjectUpdate(update);
-        }
-
-
-        public WorldObject createObject(WorldObject.ObjectType type, float x, float y) {
+        public WorldObject createObject(ObjectType type, float x, float y) {
             TextureRegion texture = objectTextures.get(type);
             if (texture == null) {
                 throw new IllegalStateException("No texture found for object type: " + type);
@@ -1133,7 +1149,6 @@ public class WorldObject {
 
             return new WorldObject(tileX, tileY, texture, type);
         }
-
 
 
     }

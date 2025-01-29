@@ -53,6 +53,8 @@ public class World {
     private final Map<Vector2, Long> lastChunkAccess = new ConcurrentHashMap<>();
     private final Set<Vector2> dirtyChunks = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final BiomeRenderer biomeRenderer;
+    private final WeatherSystem weatherSystem;
+    private final WeatherAudioSystem weatherAudioSystem;
     private Color currentWorldColor = new Color(1, 1, 1, 1);
     private Color previousWorldColor = null;
     private float colorTransitionProgress = 1.0f;
@@ -71,8 +73,6 @@ public class World {
     private PokemonSpawnManager pokemonSpawnManager;
     private long worldSeed;
     private WorldObject.WorldObjectManager objectManager;
-    private final WeatherSystem weatherSystem;
-    private final WeatherAudioSystem weatherAudioSystem;
     private BiomeTransitionResult currentBiomeTransition;
     private Map<Vector2, Float> lightLevelMap = new HashMap<>();
     private boolean isDisposed = false;
@@ -98,7 +98,7 @@ public class World {
                 migrateBlocksToChunks();
             }
 
-            this.objectManager = new WorldObject.WorldObjectManager(worldSeed, GameContext.get().getGameClient());
+            this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
             this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
             this.weatherSystem = new WeatherSystem();
             this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
@@ -143,7 +143,7 @@ public class World {
 
             this.weatherSystem = new WeatherSystem();
             this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
-            this.objectManager = new WorldObject.WorldObjectManager(worldSeed, GameContext.get().getGameClient());
+            this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
             this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
 
             // Generate initial chunks if needed
@@ -243,21 +243,31 @@ public class World {
             }
 
             if (isMultiplayer) {
-                // Only send data to server in multiplayer
                 if (GameContext.get().getGameClient() != null) {
                     UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
                     GameContext.get().getGameClient().savePlayerData(playerUUID, data);
                 }
             } else {
-                // Only save locally in singleplayer
                 worldData.savePlayerData(username, data, false);
             }
         }
     }
+
+    private boolean isMultiplayerOperation() {
+        GameClient client = GameContext.get().getGameClient();
+        return client != null && !client.isSinglePlayer();
+    }
+
+    private void validateChunkOperation(String operation) {
+        if (isMultiplayerOperation()) {
+            throw new IllegalStateException("Cannot perform " + operation + " in multiplayer mode");
+        }
+    }
+
     public void processChunkData(NetworkProtocol.ChunkData chunkData) {
         Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
 
-        // 1. Create or load chunk
+        // Only store in memory, don't save to disk in multiplayer
         Biome biome = biomeManager.getBiome(chunkData.biomeType);
         if (biome == null) biome = biomeManager.getBiome(BiomeType.PLAINS);
 
@@ -265,42 +275,49 @@ public class World {
             worldData.getConfig().getSeed(),
             biomeManager);
 
-        // 2. Overwrite the tile data with the server’s authoritative data
         chunk.setTileData(chunkData.tileData);
 
-        // 3. Clear old blocks and re-add from chunkData.blockData
+        // Process blocks
         if (chunkData.blockData != null) {
             for (BlockSaveData.BlockData bd : chunkData.blockData) {
-                PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromId(bd.type);
-                if (blockType != null) {
-                    Vector2 pos = new Vector2(bd.x, bd.y);
-                    PlaceableBlock block = new PlaceableBlock(blockType, pos, null, bd.isFlipped);
-                    block.setChestOpen(bd.isChestOpen);
-                    block.setChestData(bd.chestData);
-                    chunk.addBlock(block);
-                }
+                processBlockData(chunk, bd);
             }
         }
 
-        // 4. Overwrite the chunk in our local map
+        // Store in memory only
         chunks.put(chunkPos, chunk);
 
-        // 5. Clear old WorldObjects from objectManager, re-add from chunkData
-        List<WorldObject> newObjects = new ArrayList<>();
+        // Process world objects
         if (chunkData.worldObjects != null) {
-            for (Map<String, Object> objData : chunkData.worldObjects) {
-                WorldObject obj = new WorldObject();
-                obj.updateFromData(objData);
-                newObjects.add(obj);
-            }
+            processWorldObjects(chunkPos, chunkData.worldObjects);
         }
-        // Replace that chunk’s objects in the objectManager
-        objectManager.setObjectsForChunk(chunkPos, newObjects);
 
-        // Mark chunk as loaded
-        GameLogger.info("World chunk (" + chunkPos.x + "," + chunkPos.y + ") updated with server data.");
+        // Mark as processed but don't save to disk
+        if (!isMultiplayerOperation()) {
+            saveChunkData(chunkPos, chunk);
+        }
     }
 
+    private void processBlockData(Chunk chunk, BlockSaveData.BlockData bd) {
+        PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromId(bd.type);
+        if (blockType != null) {
+            Vector2 pos = new Vector2(bd.x, bd.y);
+            PlaceableBlock block = new PlaceableBlock(blockType, pos, null, bd.isFlipped);
+            block.setChestOpen(bd.isChestOpen);
+            block.setChestData(bd.chestData);
+            chunk.addBlock(block);
+        }
+    }
+
+    private void processWorldObjects(Vector2 chunkPos, List<Map<String, Object>> objectsData) {
+        List<WorldObject> newObjects = new ArrayList<>();
+        for (Map<String, Object> objData : objectsData) {
+            WorldObject obj = new WorldObject();
+            obj.updateFromData(objData);
+            newObjects.add(obj);
+        }
+        objectManager.setObjectsForChunk(chunkPos, newObjects);
+    }
 
     public boolean areInitialChunksLoaded() {
         if (!initialChunksRequested) {
@@ -440,46 +457,34 @@ public class World {
 
         return blockManager;
     }
-
-
     public void save() {
-        try {
-            boolean isMultiplayer = GameContext.get().getGameClient() != null &&
-                !GameContext.get().getGameClient().isSinglePlayer();
+        if (isMultiplayerOperation()) {
+            GameLogger.info("Skipping world save in multiplayer mode");
+            return;
+        }
 
-            if (isMultiplayer) {
-                return;
-            }
-            // Update player data first
+        try {
             if (GameContext.get().getPlayer() != null) {
                 PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
                 currentState.updateFromPlayer(GameContext.get().getPlayer());
                 worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
-                GameLogger.info("Updated player data for: " + GameContext.get().getPlayer().getUsername());
             }
 
-            for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
-                if (entry.getValue().isDirty()) {
-                    saveChunkData(entry.getKey(), entry.getValue());
+            // Only save dirty chunks in singleplayer
+            if (!isMultiplayerOperation()) {
+                for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
+                    if (entry.getValue().isDirty()) {
+                        saveChunkData(entry.getKey(), entry.getValue());
+                    }
                 }
             }
 
-            // Set last played time
             worldData.setLastPlayed(System.currentTimeMillis());
             worldData.setDirty(true);
 
-            // Save through WorldManager
-            WorldManager.getInstance()
-                .saveWorld(worldData);
-
-            // Verify save
-            FileHandle worldFile = Gdx.files.local("worlds/singleplayer/" + name + "/world.json");
-            if (!worldFile.exists()) {
-                GameLogger.error("Save failed - world file not created!");
-                return;
+            if (!isMultiplayerOperation()) {
+                WorldManager.getInstance().saveWorld(worldData);
             }
-
-            GameLogger.info("World saved successfully: " + name);
 
         } catch (Exception e) {
             GameLogger.error("Failed to save world: " + name + " - " + e.getMessage());
@@ -581,7 +586,6 @@ public class World {
             worldData.getChunks().put(chunkPos, chunk);
             worldData.addChunkObjects(chunkPos, objects);
             worldData.setDirty(true);
-//TODO: fix ensure chunks stored multiplayer mode
 
         } catch (Exception e) {
             GameLogger.error("Failed to save chunk at " + chunkPos + ": " + e.getMessage());
@@ -708,7 +712,6 @@ public class World {
             }
         });
 
-        // Serializer for Vector2
         json.setSerializer(Vector2.class, new Json.Serializer<>() {
             @Override
             public void write(Json json, Vector2 object, Class knownType) {
@@ -855,10 +858,8 @@ public class World {
 
     public Chunk loadOrGenerateChunk(Vector2 chunkPos) {
         try {
-            boolean isMultiplayer = false;
-            if (GameContext.get().getGameClient() != null){
-                isMultiplayer= !GameContext.get().getGameClient().isSinglePlayer();
-            }
+            boolean isMultiplayer = !GameContext.get().getGameClient().isSinglePlayer();
+
             // First try to load saved biome type
             BiomeType savedBiomeType = biomeManager.loadChunkBiomeData(chunkPos, name, isMultiplayer);
 
@@ -895,7 +896,6 @@ public class World {
 
                 // Now save the biome data
                 if (savedBiomeType == null) {
-                    // Since we didn't have saved biome data, save it now
                     biomeManager.saveChunkBiomeData(chunkPos, chunk, name, isMultiplayer);
                 }
 
@@ -1054,6 +1054,7 @@ public class World {
         objectManager.update(chunks);
         checkPlayerInteractions(playerPosition);
     }
+
     private void manageChunks(int playerChunkX, int playerChunkY) {
         // Increase load radius slightly
         int loadRadius = INITIAL_LOAD_RADIUS + 1;
@@ -1063,7 +1064,8 @@ public class World {
         ));
 
         for (int dx = -loadRadius; dx <= loadRadius; dx++) {
-            for (int dy = -loadRadius; dy <= loadRadius; dy++) {Vector2 chunkPos =new Vector2(playerChunkX + dx, playerChunkY + dy);
+            for (int dy = -loadRadius; dy <= loadRadius; dy++) {
+                Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
                 chunkQueue.add(chunkPos);
 
             }
@@ -1695,51 +1697,43 @@ public class World {
             }
         }
     }
-
     public void initializeFromServer(long seed, double worldTimeInMinutes, float dayLength) {
         try {
-            GameLogger.info("Initializing world from server with seed: " + seed);
+            GameLogger.info("Initializing multiplayer world with seed: " + seed);
 
-            // Create new WorldData if it doesn't exist
+            // Create/update WorldData
             if (worldData == null) {
                 worldData = new WorldData(name);
-                GameLogger.info("Created new WorldData instance");
             }
 
-            // Set config and time values first
+            // Configure world settings
             WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
             worldData.setConfig(config);
             worldData.setWorldTimeInMinutes(worldTimeInMinutes);
             worldData.setDayLength(dayLength);
 
-            // Initialize other world components
+            // Update core properties
             this.worldSeed = seed;
             this.biomeManager = new BiomeManager(seed);
-            if (blockManager == null) {
-                blockManager = new BlockManager(this);
-            }
 
+            // Initialize managers if needed
+            if (blockManager == null) blockManager = new BlockManager(this);
+            if (objectManager == null) objectManager = new WorldObject.WorldObjectManager(worldSeed);
+            if (pokemonSpawnManager == null) pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
 
-            // Initialize managers
-            if (objectManager == null) {
-                objectManager = new WorldObject.WorldObjectManager(worldSeed, GameContext.get().getGameClient());
-            }
+            // Clear any existing chunks to prevent singleplayer data persistence
+            chunks.clear();
 
-            if (pokemonSpawnManager == null) {
-                pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
-            }
-
-            GameLogger.info("World initialization complete - " +
+            GameLogger.info("Multiplayer world initialization complete - " +
                 "Time: " + worldTimeInMinutes +
                 " Day Length: " + dayLength +
                 " Seed: " + seed);
 
         } catch (Exception e) {
-            GameLogger.error("Failed to initialize world from server: " + e.getMessage());
-            throw new RuntimeException("World initialization failed", e);
+            GameLogger.error("Failed to initialize multiplayer world: " + e.getMessage());
+            throw new RuntimeException("Multiplayer world initialization failed", e);
         }
     }
-
     private void renderWildPokemon(SpriteBatch batch) {
         Collection<WildPokemon> allPokemon = pokemonSpawnManager.getAllWildPokemon();
 

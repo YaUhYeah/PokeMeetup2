@@ -227,7 +227,6 @@ public class NetworkProtocol {
     public static class ChunkRequest {
         public int chunkX;
         public int chunkY;
-        public int fragmentSize = 8; // Size of each fragment
         public long timestamp;
     }
 
@@ -672,6 +671,10 @@ public class NetworkProtocol {
         public String playerId;
         public ActionType actionType;
         public Vector2 targetPosition;
+        public String objectId;
+        public int tileX;
+        public int tileY;
+        public String direction;
     }
 
     public static class BlockPlacement {

@@ -22,6 +22,7 @@ import io.github.pokemeetup.system.data.BlockSaveData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.ClientChunkManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
@@ -76,6 +77,7 @@ public class GameClient {
     private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
     private final Set<String> recentJoinEvents = Collections.synchronizedSet(new HashSet<>());
     private final Map<Vector2, ChunkAssembler> chunkAssemblers = new ConcurrentHashMap<>();
+    private final ClientChunkManager clientChunkManager = new ClientChunkManager();
     public AtomicBoolean shouldReconnect = new AtomicBoolean(true);
     private boolean isSinglePlayer;
     private int reconnectAttempts = 0;
@@ -105,8 +107,7 @@ public class GameClient {
     private String localUsername;
     private long worldSeed;
     private ReconnectionListener reconnectionListener;
-    private BitSet receivedFragments;
-    private int totalFragments;
+
     public GameClient(ServerConnectionConfig config, boolean isSinglePlayer) {
 
         this.disconnectHandler = GameContext.get().getDisconnectionManager();
@@ -149,21 +150,6 @@ public class GameClient {
             return null;
         }
     }
-
-
-
-    private boolean isComplete() {
-        return receivedFragments.cardinality() == totalFragments;
-    }
-
-    public void setShouldReconnect(AtomicBoolean shouldReconnect) {
-        this.shouldReconnect = shouldReconnect;
-    }
-
-    public void setReconnectionListener(ReconnectionListener listener) {
-        this.reconnectionListener = listener;
-    }
-
     public void savePlayerData(UUID uuid, PlayerData data) {
         if (isSinglePlayer || !isConnected() || !isAuthenticated()) {
             GameLogger.error("Cannot save player data - not in multiplayer mode or not connected");
@@ -206,23 +192,6 @@ public class GameClient {
         }
     }
 
-    private void completeInitialization() {
-        if (isInitialized) return;
-
-        isInitialized = true;
-        fullyInitialized = true;
-        GameLogger.info("Game client initialization complete");
-
-        if (initializationListener != null) {
-            Gdx.app.postRunnable(() -> {
-                try {
-                    initializationListener.onInitializationComplete(true);
-                } catch (Exception e) {
-                    GameLogger.error("Error notifying initialization completion: " + e.getMessage());
-                }
-            });
-        }
-    }
 
     public void sendPokemonSpawn(NetworkProtocol.WildPokemonSpawn spawnData) {
         if (!isConnected() || !isAuthenticated() || isSinglePlayer) {
@@ -236,7 +205,6 @@ public class GameClient {
                 return;
             }
 
-            // Set timestamp if not already set
             if (spawnData.timestamp == 0) {
                 spawnData.timestamp = System.currentTimeMillis();
             }
@@ -584,7 +552,6 @@ public class GameClient {
         return GameContext.get().getWorld();
     }
 
-
     public long getWorldSeed() {
         return worldSeed;
     }
@@ -725,65 +692,11 @@ public class GameClient {
         }
     }
 
+// In your GameClient.java (where you handle CompressedChunkData or ChunkData)
 
-    private void processChunkDataWithThrottling(NetworkProtocol.ChunkData chunkData, Vector2 chunkPos) {
-        try {
-            if (!chunks.containsKey(chunkPos)) {
-                // Create new chunk using server data
-                Chunk chunk = createChunkFromServerData(chunkData);
-
-                // Add the chunk to the world
-                chunks.put(chunkPos, chunk);
-
-                // Process blocks
-                if (chunkData.blockData != null) {
-                    for (BlockSaveData.BlockData blockData : chunkData.blockData) {
-                        Vector2 blockPos = new Vector2(blockData.x, blockData.y);
-                        PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromId(blockData.type);
-
-                        if (blockType != null) {
-                            PlaceableBlock block = new PlaceableBlock(blockType, blockPos, null, blockData.isFlipped);
-                            if (blockType == PlaceableBlock.BlockType.CHEST) {
-                                block.setChestOpen(blockData.isChestOpen);
-                                block.setChestData(blockData.chestData);
-                            }
-                            chunk.addBlock(block);
-                        }
-                    }
-                }
-
-                // Process objects
-                if (chunkData.worldObjects != null) {
-                    List<WorldObject> objects = new ArrayList<>();
-                    for (Map<String, Object> objData : chunkData.worldObjects) {
-                        WorldObject obj = createObjectFromData(objData);
-                        if (obj != null) {
-                            objects.add(obj);
-                        }
-                    }
-                    if (GameContext.get().getWorld().getObjectManager() != null) {
-                        GameContext.get().getWorld().getObjectManager()
-                            .setObjectsForChunk(chunkPos, objects);
-                    }
-                }
-
-                pendingChunks.remove(chunkPos);
-
-                // Check if initial chunks are loaded
-                if (GameContext.get().getWorld().areInitialChunksLoaded()) {
-                    completeInitialization();
-                }
-            }
-        } catch (Exception e) {
-            GameLogger.error("Error processing chunk data: " + e.getMessage());
-        }
-    }
-    // -------------------------------------------------------------------
-// In GameClient.java
-// -------------------------------------------------------------------
     private void handleCompressedChunkData(NetworkProtocol.CompressedChunkData compressed) {
         try {
-            // 1. Decompress via Kryo + GZIP
+            // 1) Decompress using GZIP + Kryo
             ByteArrayInputStream bais = new ByteArrayInputStream(compressed.data);
             GZIPInputStream gzip = new GZIPInputStream(bais);
             Input input = new Input(gzip);
@@ -792,78 +705,38 @@ public class GameClient {
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
 
-            // 2. Read the full chunk data
+            // This is the chunk data from the server
             NetworkProtocol.ChunkData chunkData = kryo.readObject(input, NetworkProtocol.ChunkData.class);
 
             input.close();
             gzip.close();
 
-            // 3. Use the server’s authoritative chunk data
-            Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
+            // 2) Store in ClientChunkManager
+            clientChunkManager.processChunkData(chunkData);
 
-            // If there's an existing chunk in memory, remove or replace it
-            // Or just let world.processChunkData do a full override
-            if (GameContext.get().getWorld() != null) {
-                // Merges or overwrites tile data, blocks, and objects:
+            // 3) CRUCIAL FIX: Also update the actual World
+            if (GameContext.get() != null && GameContext.get().getWorld() != null) {
                 GameContext.get().getWorld().processChunkData(chunkData);
-                pendingChunks.remove(chunkPos);
-
-                GameLogger.info("Client processed chunk ("+chunkData.chunkX+","+chunkData.chunkY+") with "+
-                    (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0)+" objects.");
             }
+
+            // Remove from any "pending" sets, logs, etc. as you were doing
+            Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
+            pendingChunks.remove(chunkPos);
+
+            GameLogger.info("Client stored and synced chunk (" +
+                chunkData.chunkX + "," + chunkData.chunkY +
+                ") with " + (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) +
+                " objects to both ClientChunkManager and World.");
 
         } catch (Exception e) {
             GameLogger.error("Error handling compressed chunk data: " + e.getMessage());
         }
     }
 
-    private Chunk createChunkFromServerData(NetworkProtocol.ChunkData chunkData) {
-        BiomeManager biomeManager = new BiomeManager(chunkData.generationSeed);
-        Chunk chunk = new Chunk(
-            chunkData.chunkX,
-            chunkData.chunkY,
-            biomeManager.getBiome(chunkData.biomeType),
-            chunkData.generationSeed,
-            biomeManager
-        );
-
-        // Use the server's tile data directly
-        chunk.setTileData(chunkData.tileData.clone());
-
-        return chunk;
-    }
-
-    private WorldObject createObjectFromData(Map<String, Object> data) {
-        try {
-            String typeStr = (String) data.get("type");
-            WorldObject.ObjectType type = WorldObject.ObjectType.valueOf(typeStr);
-
-            int tileX = ((Number) data.get("tileX")).intValue();
-            int tileY = ((Number) data.get("tileY")).intValue();
-
-            WorldObject obj = new WorldObject(tileX, tileY, null, type);
-            obj.setId((String) data.get("id"));
-            obj.updateFromData(data);
-
-            return obj;
-        } catch (Exception e) {
-            GameLogger.error("Error creating object from data: " + e.getMessage());
-            return null;
-        }
-    }
 
 
-    private static class ChunkProcessTask {
-        final NetworkProtocol.ChunkData chunkData;
-        final Vector2 chunkPos;
-
-        ChunkProcessTask(NetworkProtocol.ChunkData chunkData, Vector2 chunkPos) {
-            this.chunkData = chunkData;
-            this.chunkPos = chunkPos;
-        }
-    }
-
-    private void handleReceivedMessage(Object object) {if (object instanceof NetworkProtocol.CompressedChunkData) {
+    private void handleReceivedMessage(Object object) {
+        if (object instanceof NetworkProtocol.CompressedChunkData) {
             handleCompressedChunkData((NetworkProtocol.CompressedChunkData) object);
             return;
         }
@@ -1032,6 +905,7 @@ public class GameClient {
             }, 0.5f);
         }
     }
+
     private void cleanupConnection() {
         if (client != null) {
             try {
@@ -1218,6 +1092,7 @@ public class GameClient {
         });
     }
 
+
     public Player getActivePlayer() {
         return GameContext.get().getPlayer();
     }
@@ -1242,6 +1117,7 @@ public class GameClient {
             }
         }
     }
+
     public void processChunkQueue() {
         long now = System.currentTimeMillis();
         if (!chunkRequestQueue.isEmpty() &&
@@ -1282,25 +1158,32 @@ public class GameClient {
 
     private void handlePlayerJoined(NetworkProtocol.PlayerJoined joinMsg) {
         final String joinKey = joinMsg.username + "_" + joinMsg.timestamp;
-
         Gdx.app.postRunnable(() -> {
+            // =========== IMPORTANT FIX ===========
+            if (joinMsg.username.equals(localUsername)) {
+                // This "join" event is actually our own player.
+                // Do NOT create an OtherPlayer. Just return.
+                return;
+            }
+            // ======================================
+
             synchronized (otherPlayers) {
                 if (recentJoinEvents.contains(joinKey)) {
-                    GameLogger.info("Skipping duplicate join event for: " + joinMsg.username);
+                    // We’ve already processed this join event
                     return;
                 }
 
                 if (otherPlayers.containsKey(joinMsg.username)) {
-                    GameLogger.info("Player " + joinMsg.username + " already exists, updating position");
+                    GameLogger.info("Player " + joinMsg.username +
+                        " already exists, updating position");
                     OtherPlayer existingPlayer = otherPlayers.get(joinMsg.username);
                     existingPlayer.setPosition(new Vector2(joinMsg.x, joinMsg.y));
                     return;
                 }
-                OtherPlayer newPlayer = new OtherPlayer(
-                    joinMsg.username,
-                    joinMsg.x,
-                    joinMsg.y
-                );
+
+                // Create a new OtherPlayer only for different usernames
+                OtherPlayer newPlayer = new OtherPlayer(joinMsg.username,
+                    joinMsg.x, joinMsg.y);
                 otherPlayers.put(joinMsg.username, newPlayer);
 
                 recentJoinEvents.add(joinKey);
@@ -1343,8 +1226,20 @@ public class GameClient {
             }
 
             playerUpdates.remove(leftMsg.username);
+
+            // [B] Add a system chat message so players see "X has left the game."
+            if (chatMessageHandler != null) {
+                NetworkProtocol.ChatMessage leaveNotification = new NetworkProtocol.ChatMessage();
+                leaveNotification.sender = "System";
+                leaveNotification.content = leftMsg.username + " has left the game";
+                leaveNotification.type = NetworkProtocol.ChatType.SYSTEM;
+                leaveNotification.timestamp = System.currentTimeMillis();
+
+                chatMessageHandler.accept(leaveNotification);
+            }
         });
     }
+
 
     private void handlePokemonSpawn(NetworkProtocol.WildPokemonSpawn spawnData) {
         if (spawnData == null || spawnData.uuid == null || spawnData.data == null) {

@@ -204,7 +204,6 @@ public class InputHandler extends InputAdapter {
     @Override
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
-        GameLogger.info("InputHandler keyDown: keycode=" + keycode + ", currentState=" + currentState);
 
         // If in BUILD_MODE, handle block flipping if R is pressed
         if (currentState == InputManager.UIState.BUILD_MODE) {
@@ -229,7 +228,6 @@ public class InputHandler extends InputAdapter {
         // Movement / actions
         switch (keycode) {
             case Input.Keys.G:
-                GameLogger.info("G key pressed - toggling building mode");
                 if (GameContext.get().getBuildModeUI() != null) {
                     GameContext.get().getBuildModeUI().toggleBuildingMode();
                 }
@@ -257,7 +255,6 @@ public class InputHandler extends InputAdapter {
 
             case Input.Keys.Z: // run
                 GameContext.get().getPlayer().setRunning(true);
-                GameLogger.info("Running Started");
                 return true;
 
             case Input.Keys.Q: // Chop or punch
@@ -269,7 +266,6 @@ public class InputHandler extends InputAdapter {
                 return true;
 
             default:
-                // If in BUILD_MODE, handle numeric keys for hotbar
                 if (currentState == InputManager.UIState.BUILD_MODE &&
                     keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
                     int slot = (keycode - Input.Keys.NUM_1);
@@ -284,7 +280,6 @@ public class InputHandler extends InputAdapter {
     @Override
     public boolean keyUp(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
-        GameLogger.info("InputHandler keyUp: keycode=" + keycode + ", currentState=" + currentState);
 
         if (currentState != InputManager.UIState.NORMAL &&
             currentState != InputManager.UIState.BUILD_MODE) {
@@ -329,64 +324,69 @@ public class InputHandler extends InputAdapter {
         }
     }
 
-    /************************************************************************
-     *  Punch / Chop combined logic
-     ************************************************************************/
     public void startChopOrPunch() {
-        // If we're already chopping or breaking, do nothing
+        // If already chopping or breaking, do nothing
         if (isChopping || isBreaking || isPunching) return;
 
         checkForAxe(); // sets hasAxe = true if wooden_axe found
 
-        // Try to find a choppable object
-        targetObject = findChoppableObject();
-        if (targetObject != null) {
-            // We have a tree/WorldObject
+        // Decide if we are in singleplayer or multiplayer
+        boolean isMultiplayer = (GameContext.get().getGameClient() != null
+            && !GameContext.get().getGameClient().isSinglePlayer());
+
+        if (!isMultiplayer) {
+            // === SINGLEPLAYER LOGIC (unchanged) ===
+            targetObject = findChoppableObject();
+            if (targetObject != null) {
+                isChopping = true;
+                chopProgress = 0f;
+                swingTimer = 0f;
+                lastChopSoundTime = 0f;
+
+                if (hasAxe) {
+                    GameContext.get().getPlayer().getAnimations().startChopping();
+                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
+                } else {
+                    GameContext.get().getPlayer().getAnimations().startPunching();
+                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
+                }
+            } else {
+                // Fallback to block breaking or punching
+                PlaceableBlock block = findBreakableBlock();
+                if (block != null) {
+                    startBreaking(block);
+                } else {
+                    isPunching = true;
+                    GameContext.get().getPlayer().getAnimations().startPunching();
+                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
+                }
+            }
+        } else {
+            // === MULTIPLAYER LOGIC ===
+            // Start animation immediately for responsiveness
             isChopping = true;
             chopProgress = 0f;
             swingTimer = 0f;
             lastChopSoundTime = 0f;
+            NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
+            action.playerId = GameContext.get().getPlayer().getUsername();
 
             if (hasAxe) {
                 GameContext.get().getPlayer().getAnimations().startChopping();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
-            } else {
-                GameContext.get().getPlayer().getAnimations().startPunching();
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
-            }
-
-            // Let server know
-            if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
-                NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
-                action.playerId = GameContext.get().getPlayer().getUsername();
                 action.actionType = NetworkProtocol.ActionType.CHOP_START;
-                action.targetPosition = new Vector2(targetObject.getPixelX(), targetObject.getPixelY());
-                GameContext.get().getGameClient().sendPlayerAction(action);
-            }
-
-        } else {
-            // If no choppable object => check for breakable block
-            PlaceableBlock block = findBreakableBlock();
-            if (block != null) {
-                startBreaking(block);
             } else {
-                // Otherwise => do punching (no block, no tree)
-                isPunching = true;
                 GameContext.get().getPlayer().getAnimations().startPunching();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
-
-                // Let server know
-                if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
-                    NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
-                    action.playerId = GameContext.get().getPlayer().getUsername();
-                    action.actionType = NetworkProtocol.ActionType.PUNCH_START;
-                    action.targetPosition = null; // no target
-                    GameContext.get().getGameClient().sendPlayerAction(action);
-                }
+                action.actionType = NetworkProtocol.ActionType.PUNCH_START;
             }
+
+            action.tileX = GameContext.get().getPlayer().getTileX();
+            action.tileY = GameContext.get().getPlayer().getTileY();
+            action.direction = GameContext.get().getPlayer().getDirection();
+            GameContext.get().getGameClient().sendPlayerAction(action);
         }
     }
-
     public void stopChopOrPunch() {
         // If we were chopping, breaking, or punching => stop
         if (isChopping || isBreaking) {

@@ -134,7 +134,6 @@ public class Inventory implements ItemContainer {
         synchronized (inventoryLock) {
             List<ItemData> items = new ArrayList<>(INVENTORY_SIZE);
 
-            GameLogger.info("Getting all items...");
 
             for (Slot slot : slots) {
                 if (slot == null) {

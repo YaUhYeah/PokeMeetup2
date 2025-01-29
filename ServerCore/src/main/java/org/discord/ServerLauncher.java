@@ -46,14 +46,30 @@ public class ServerLauncher {
             logger.info("Server configuration loaded");
 
             // Initialize storage and world management
+
             storage = new ServerStorageSystem();
             logger.info("World management system initialized");
             ServerWorldManager serverWorldManager = ServerWorldManager.getInstance(storage);
             serverWorldManager.loadWorld("multiplayer_world");
-            ServerGameContext.init(serverWorldManager,storage);
+
+            // Generate initial chunks around spawn (0,0) with a radius of 2
+            int spawnChunkX = 0;
+            int spawnChunkY = 0;
+            int radius = 2; // Adjust the radius as needed
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    int chunkX = spawnChunkX + dx;
+                    int chunkY = spawnChunkY + dy;
+                    serverWorldManager.loadChunk("multiplayer_world", chunkX, chunkY);
+                    logger.info("Loaded/Generated chunk at (" + chunkX + ", " + chunkY + ")");
+                }
+            }
+
+            ServerGameContext.init(serverWorldManager, storage);
             GameServer server = new GameServer(config);
             server.start();
             logger.info("Game server started successfully");
+
 
             // Add shutdown hook
             addShutdownHook(server, h2Server);

@@ -9,7 +9,6 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
-import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.system.gameplay.overworld.mechanics.MountainTileManager;
@@ -17,7 +16,6 @@ import io.github.pokemeetup.utils.GameLogger;
 
 import io.github.pokemeetup.utils.OpenSimplex2;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
-import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.utils.textures.TileType;
 
 import java.io.IOException;
@@ -1044,9 +1042,6 @@ public class BiomeManager {
             }
         }
 
-        public double getSpawnChanceForObject(WorldObject.ObjectType objectType) {
-            return spawnChances != null ? spawnChances.getOrDefault(objectType, 0.0) : 0.0;
-        }
 
         public BiomeType getPrimaryBiomeType() {
             return primaryBiomeType;

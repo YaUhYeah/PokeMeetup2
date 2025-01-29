@@ -123,12 +123,6 @@ public class ItemData {
     public void setItemId(String itemId) {
         this.itemId = itemId.toLowerCase(); // Normalize to lowercase
 
-        // When retrieving the texture, add "_item" suffix
-        TextureRegion texture = TextureManager.items.findRegion(this.itemId + "_item");
-        if (texture == null) {
-            GameLogger.error("No texture found for item: " + this.itemId + "_item");
-        }
-
         // Retrieve item template using the consistent itemId
         Item itemTemplate = ItemManager.getItemTemplate(this.itemId);
         if (itemTemplate != null) {
