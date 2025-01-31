@@ -1,11 +1,13 @@
 package org.discord;
 
+import com.badlogic.gdx.math.Vector2;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
-import io.github.pokemeetup.system.gameplay.overworld.World;
+import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
 import org.discord.context.ServerGameContext;
 import org.discord.files.ServerFileDelegate;
@@ -17,7 +19,10 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.logging.Logger;
+
+import static io.github.pokemeetup.CreatureCaptureGame.MULTIPLAYER_WORLD_NAME;
 
 public class ServerLauncher {
     private static final String DEFAULT_ICON = "server-icon.png";
@@ -45,42 +50,111 @@ public class ServerLauncher {
             ServerConnectionConfig config = loadServerConfig();
             logger.info("Server configuration loaded");
 
-            // Initialize storage and world management
-
+            // Initialize storage
             storage = new ServerStorageSystem();
-            logger.info("World management system initialized");
-            ServerWorldManager serverWorldManager = ServerWorldManager.getInstance(storage);
-            serverWorldManager.loadWorld("multiplayer_world");
+            logger.info("Storage system initialized");
 
-            // Generate initial chunks around spawn (0,0) with a radius of 2
-            int spawnChunkX = 0;
-            int spawnChunkY = 0;
-            int radius = 2; // Adjust the radius as needed
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dy = -radius; dy <= radius; dy++) {
-                    int chunkX = spawnChunkX + dx;
-                    int chunkY = spawnChunkY + dy;
-                    serverWorldManager.loadChunk("multiplayer_world", chunkX, chunkY);
-                    logger.info("Loaded/Generated chunk at (" + chunkX + ", " + chunkY + ")");
+            // Initialize world management
+            ServerWorldManager serverWorldManager = ServerWorldManager.getInstance(storage);
+            logger.info("World manager initialized");
+
+            // Initialize ServerGameContext first!
+            ServerWorldObjectManager worldObjectManager = new ServerWorldObjectManager();
+            worldObjectManager.initializeWorld(MULTIPLAYER_WORLD_NAME);
+            ServerGameContext.init(serverWorldManager, storage, worldObjectManager);
+            logger.info("Server game context initialized");
+
+            // Now handle world initialization
+            WorldData worldData = serverWorldManager.loadWorld("multiplayer_world");
+            if (worldData == null) {
+                logger.info("Creating new multiplayer world...");
+                long seed = System.currentTimeMillis();
+                worldData = serverWorldManager.createWorld(
+                    "multiplayer_world",
+                    seed,
+                    0.15f,  // Tree rate
+                    0.05f   // Pokemon rate
+                );
+
+                if (worldData == null) {
+                    throw new RuntimeException("Failed to create multiplayer world");
                 }
+
+                // Generate initial chunks after world creation
+                generateInitialChunks(serverWorldManager, worldData);
+                logger.info("Created new multiplayer world with seed: " + seed);
+            } else {
+                logger.info("Loaded existing multiplayer world");
             }
 
-            ServerGameContext.init(serverWorldManager, storage);
+            // Start game server
             GameServer server = new GameServer(config);
             server.start();
             logger.info("Game server started successfully");
-
 
             // Add shutdown hook
             addShutdownHook(server, h2Server);
 
         } catch (Exception e) {
             logger.severe("Failed to start server: " + e.getMessage());
+            e.printStackTrace();
             if (h2Server != null) {
                 h2Server.stop();
             }
             System.exit(1);
         }
+    }
+
+
+
+    private static void generateInitialChunks(ServerWorldManager serverWorldManager, WorldData worldData) {
+        logger.info("Generating initial spawn chunks...");
+
+        // Generate a larger initial area to ensure good transitions
+        int radius = 2;  // This gives us a 5x5 area
+
+        // First pass: Generate all chunks
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                try {
+                    // Load/generate the chunk
+                    Chunk chunk = serverWorldManager.loadChunk("multiplayer_world", x, y);
+                    if (chunk != null) {
+                        // Save immediately to ensure proper object placement
+                        serverWorldManager.saveChunk("multiplayer_world", chunk);
+                        logger.info(String.format("Generated chunk at (%d, %d)", x, y));
+                    }
+                } catch (Exception e) {
+                    logger.warning(String.format("Failed to generate chunk at (%d, %d): %s", x, y, e.getMessage()));
+                }
+            }
+        }
+
+        // Second pass: Verify all chunks and objects
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                Vector2 chunkPos = new Vector2(x, y);
+                List<WorldObject> objects = worldData.getChunkObjects().get(chunkPos);
+                if (objects != null) {
+                    logger.info(String.format("Chunk (%d, %d) contains %d objects", x, y, objects.size()));
+
+                    // Log object positions for debugging
+                    for (WorldObject obj : objects) {
+                        if (obj != null) {
+                            logger.fine(String.format("- %s at (%d,%d)",
+                                obj.getType(), obj.getTileX(), obj.getTileY()));
+                        }
+                    }
+                } else {
+                    logger.warning(String.format("No objects found in chunk (%d, %d)", x, y));
+                }
+            }
+        }
+
+        logger.info("Initial spawn chunks generated");
+
+        // Final world save
+        serverWorldManager.saveWorld(worldData);
     }
 
     private static Server startH2Server() throws Exception {

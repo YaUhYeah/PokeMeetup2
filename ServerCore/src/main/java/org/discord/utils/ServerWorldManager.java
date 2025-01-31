@@ -5,22 +5,25 @@ import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonWriter;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.managers.BiomeManager;
+import io.github.pokemeetup.managers.BiomeTransitionResult;
 import io.github.pokemeetup.system.data.BlockSaveData;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
-import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.utils.OpenSimplex2;
+import io.github.pokemeetup.utils.storage.JsonConfig;
+import org.discord.context.ServerGameContext;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+
+import static io.github.pokemeetup.CreatureCaptureGame.MULTIPLAYER_WORLD_NAME;
 
 /**
  * Manages loading & saving of worlds and chunks on the server side,
@@ -48,8 +51,22 @@ public class ServerWorldManager {
     // SINGLETON INIT
     // ------------------------------------------------------------------------------------
 
+
+    public ServerBiomeManager getServerBiomeManager() {
+        return serverBiomeManager;
+    }
+
+    private final ServerBiomeManager serverBiomeManager;
+
+    // Update the constructor:
+
+    private final BiomeManager biomeManager;  // Add this field
+
+    // Update constructor:
     private ServerWorldManager(ServerStorageSystem storageSystem) {
         this.storageSystem = storageSystem;
+        this.biomeManager = new BiomeManager(System.currentTimeMillis());
+        this.serverBiomeManager = new ServerBiomeManager(this.biomeManager);
         initScheduledTasks();
     }
 
@@ -62,6 +79,17 @@ public class ServerWorldManager {
 
     // ------------------------------------------------------------------------------------
     // PERIODIC TASKS
+    // ------------------------------------------------------------------------------------
+
+    private static long hashCoordinates(long seed, int x, int y) {
+        long hash = seed;
+        hash = hash * 31 + x;
+        hash = hash * 31 + y;
+        return hash;
+    }
+
+    // ------------------------------------------------------------------------------------
+    // WORLD LOADING & SAVING
     // ------------------------------------------------------------------------------------
 
     private void initScheduledTasks() {
@@ -81,10 +109,6 @@ public class ServerWorldManager {
             }
         }, AUTO_SAVE_INTERVAL_MS, AUTO_SAVE_INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
-
-    // ------------------------------------------------------------------------------------
-    // WORLD LOADING & SAVING
-    // ------------------------------------------------------------------------------------
 
     /**
      * Loads the specified world from disk if not already in memory,
@@ -145,6 +169,10 @@ public class ServerWorldManager {
         return wd;
     }
 
+    // ------------------------------------------------------------------------------------
+    // CHUNK LOADING & GENERATION
+    // ------------------------------------------------------------------------------------
+
     private BiomeManager getBiomeManager(String worldName) {
         return worldBiomeManagers.computeIfAbsent(worldName, k -> {
             WorldData wd = activeWorlds.get(k);
@@ -156,10 +184,6 @@ public class ServerWorldManager {
         });
     }
 
-    // ------------------------------------------------------------------------------------
-    // CHUNK LOADING & GENERATION
-    // ------------------------------------------------------------------------------------
-
     /**
      * Loads a chunk from memory if cached, otherwise from disk, otherwise
      * generates a new one if not found on disk.
@@ -168,23 +192,52 @@ public class ServerWorldManager {
         WorldData wd = loadWorld(worldName);
         if (wd == null) return null;
 
+        GameLogger.info("Loading chunk (" + chunkX + "," + chunkY + ") for world: " + worldName);
         Map<Vector2, TimedChunk> worldChunkMap = chunkCache.get(worldName);
         Vector2 pos = new Vector2(chunkX, chunkY);
 
         TimedChunk timed = worldChunkMap.computeIfAbsent(pos, (p) -> {
+            // First try to load from disk
             Chunk loaded = loadChunkFromDisk(worldName, chunkX, chunkY);
             if (loaded == null) {
                 // Generate new chunk if not found on disk
                 loaded = generateNewChunk(wd, chunkX, chunkY);
-                loaded.setDirty(true); // Mark as dirty to ensure it gets saved
+                if (loaded != null) {
+                    // Check if objects were generated and stored
+                    List<WorldObject> objects = wd.getChunkObjects().get(pos);
+                    if (objects == null || objects.isEmpty()) {
+                        GameLogger.info("No objects found for new chunk, generating...");
+                        objects = spawnBiomeObjectsForNewChunk(loaded, loaded.getBiome(), loaded.getGenerationSeed());
+                        if (objects != null && !objects.isEmpty()) {
+                            GameLogger.info("Generated " + objects.size() + " objects for chunk " + pos);
+                            wd.getChunkObjects().put(pos, objects);
+                            // Mark chunk as dirty to ensure it gets saved
+                            loaded.setDirty(true);
+                        } else {
+                            GameLogger.info("No objects generated for chunk " + pos);
+                        }
+                    }
+                }
             }
             return new TimedChunk(loaded);
         });
 
-        // Save the chunk only if it's newly generated and dirty
+        // Save the chunk if it's newly generated and dirty
         if (timed.chunk.isDirty()) {
             saveChunk(worldName, timed.chunk);
             timed.chunk.setDirty(false);
+        }
+
+        // Debug log the chunk's objects
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+        List<WorldObject> objects = wd.getChunkObjects().get(chunkPos);
+        if (objects != null) {
+            GameLogger.info("Chunk (" + chunkX + "," + chunkY + ") has " + objects.size() + " objects:");
+            for (WorldObject obj : objects) {
+                GameLogger.info("- " + obj.getType() + " at (" + obj.getTileX() + "," + obj.getTileY() + ")");
+            }
+        } else {
+            GameLogger.info("Chunk (" + chunkX + "," + chunkY + ") has NO objects");
         }
 
         return timed.chunk;
@@ -193,100 +246,146 @@ public class ServerWorldManager {
         Path path = getChunkFilePath(worldName, chunkX, chunkY);
 
         try {
-            // Check if the chunk file exists
             if (!storageSystem.getFileSystem().exists(path.toString())) {
-                return null; // Not found
+                return null;
             }
-            // Read JSON
             String jsonContent = storageSystem.getFileSystem().readString(path.toString());
             if (jsonContent == null || jsonContent.isEmpty()) {
                 return null;
             }
 
-            Json json = new Json();
-            // Convert to ChunkData
+            Json json = JsonConfig.getInstance();
             ChunkData cd = json.fromJson(ChunkData.class, jsonContent);
-            // Build an actual Chunk from it
-            Chunk chunk = cd.toChunk();
 
-            // Re-inject the chunk’s WorldObjects
-            List<WorldObject> objectList = new ArrayList<>();
-            if (cd.worldObjects != null) {
-                for (Map<String, Object> objData : cd.worldObjects) {
-                    WorldObject obj = new WorldObject();
-                    obj.updateFromData(objData);
-                    objectList.add(obj);
+            // Create chunk with biome
+            Biome biome = biomeManager.getBiome(cd.biomeType);
+            if (biome == null) biome = biomeManager.getBiome(BiomeType.PLAINS);
+
+            Chunk chunk = new Chunk(chunkX, chunkY, biome, cd.generationSeed, biomeManager);
+            chunk.setTileData(cd.tileData);
+
+            // Handle blocks
+            if (cd.blockData != null) {
+                for (BlockSaveData.BlockData bd : cd.blockData) {
+                    processBlockData(chunk, bd);
                 }
             }
 
-            // Put objects in the worldData’s chunkObjects map
+            // Process and store world objects
             Vector2 chunkPos = new Vector2(chunkX, chunkY);
-            WorldData wd = activeWorlds.get(worldName);
-            wd.getChunkObjects().put(chunkPos, objectList);
+            List<WorldObject> objectList = new ArrayList<>();
+            if (cd.worldObjects != null) {
+                for (Map<String, Object> objData : cd.worldObjects) {
+                    try {
+                        WorldObject obj = new WorldObject();
+                        obj.updateFromData(objData);
+                        obj.ensureTexture();
+                        objectList.add(obj);
+                    } catch (Exception e) {
+                        GameLogger.error("Failed to load object: " + e.getMessage());
+                    }
+                }
+            }
+
+            // Store in ObjectManager
+            ServerGameContext.get().getWorldObjectManager()
+                .setObjectsForChunk(worldName, chunkPos, objectList);
 
             return chunk;
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             GameLogger.error("Error reading chunk from disk: " + e.getMessage());
             return null;
         }
     }
-
     /**
      * Generates a new chunk if it doesn’t exist on disk. Basic flow:
      * 1) Determine biome
      * 2) Generate tile data
      * 3) Place default objects
      */
+    private void processBlockData(Chunk chunk, BlockSaveData.BlockData blockData) {
+        try {
+            PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromId(blockData.type);
+            if (blockType == null) {
+                GameLogger.error("Unknown block type: " + blockData.type);
+                return;
+            }
+
+            Vector2 pos = new Vector2(blockData.x, blockData.y);
+            PlaceableBlock block = new PlaceableBlock(blockType, pos, null, blockData.isFlipped);
+
+            // Handle chest-specific data
+            if (blockType == PlaceableBlock.BlockType.CHEST) {
+                block.setChestOpen(blockData.isChestOpen);
+                if (blockData.chestData != null) {
+                    block.setChestData(blockData.chestData);
+                    GameLogger.info("Loaded chest at " + pos + " with " +
+                        blockData.chestData.items.stream().filter(Objects::nonNull).count() + " items");
+                }
+            }
+
+            chunk.addBlock(block);
+            GameLogger.info("Added block " + blockType + " at position " + pos);
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to process block data: " + e.getMessage());
+        }
+    }
+
     public Chunk generateNewChunk(WorldData wd, int chunkX, int chunkY) {
-        BiomeManager biomeManager = getBiomeManager(wd.getName());
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+        BiomeData biomeData = serverBiomeManager.getBiomeData(wd.getName(), chunkPos);
+
+        // Get core biome data
+        Biome primaryBiome = serverBiomeManager.getBiomeManager().getBiome(biomeData.getPrimaryBiomeType());
         long chunkSeed = generateChunkSeed(wd.getConfig().getSeed(), chunkX, chunkY);
 
-        // Determine biome from noise
-        float centerX = (chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE / 2f) * World.TILE_SIZE;
-        float centerY = (chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE / 2f) * World.TILE_SIZE;
-        BiomeType biomeType = getChunkBiomeType(centerX, centerY, chunkSeed);
-        Biome biome = biomeManager.getBiome(biomeType);
-
         // Construct the chunk
-        Chunk chunk = new Chunk(chunkX, chunkY, biome, chunkSeed, biomeManager);
+        Chunk chunk = new Chunk(chunkX, chunkY, primaryBiome, chunkSeed, serverBiomeManager.getBiomeManager());
 
-        // Generate tile data
-        int[][] tiles = generateDeterministicTileData(chunk, biome, chunkSeed);
+        // Generate tile data with consideration for transitions
+        int[][] tiles = generateDeterministicTileData(chunk, primaryBiome, chunkSeed);
+        if (biomeData.getSecondaryBiomeType() != null) {
+            Biome secondaryBiome = serverBiomeManager.getBiomeManager().getBiome(biomeData.getSecondaryBiomeType());
+            blendBiomeTiles(tiles, primaryBiome, secondaryBiome, biomeData.getTransitionFactor());
+        }
         chunk.setTileData(tiles);
 
-        // Spawn some initial objects
-        Vector2 chunkPos = new Vector2(chunkX, chunkY);
-        List<WorldObject> spawned = spawnBiomeObjectsForNewChunk(chunk, biome, chunkSeed);
+        // Generate and store objects
+        List<WorldObject> objects = spawnBiomeObjectsForNewChunk(chunk, primaryBiome, chunkSeed);
+        ServerGameContext.get().getWorldObjectManager()
+            .setObjectsForChunk(wd.getName(), chunkPos, objects);
 
-        // Put in WorldData’s chunk-objects
-        wd.getChunkObjects().put(chunkPos, spawned);
-
-        // Mark as dirty
         chunk.setDirty(true);
         wd.setDirty(true);
 
         return chunk;
     }
 
-    private Path getChunkFilePath(String worldName, int chunkX, int chunkY) {
-        return Paths.get("server", "data", "worlds", worldName, "chunks",
-            "chunk_" + chunkX + "_" + chunkY + ".json");
+    private void blendBiomeTiles(int[][] tiles, Biome primary, Biome secondary, float transitionFactor) {
+        Random random = new Random();
+        for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
+            for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
+                if (random.nextFloat() > transitionFactor) {
+                    // Use secondary biome tile distribution
+                    tiles[x][y] = pickTileType(random.nextLong(), secondary.getTileDistribution());
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------
     // CHUNK HELPER METHODS
     // ------------------------------------------------------------------------------------
 
-    private long generateChunkSeed(long worldSeed, int chunkX, int chunkY) {
-        return hashCoordinates(worldSeed, chunkX, chunkY);
+    private Path getChunkFilePath(String worldName, int chunkX, int chunkY) {
+        return Paths.get("server", "data", "worlds", worldName, "chunks",
+            "chunk_" + chunkX + "_" + chunkY + ".json");
     }
 
-    private static long hashCoordinates(long seed, int x, int y) {
-        long hash = seed;
-        hash = hash * 31 + x;
-        hash = hash * 31 + y;
-        return hash;
+    private long generateChunkSeed(long worldSeed, int chunkX, int chunkY) {
+        return hashCoordinates(worldSeed, chunkX, chunkY);
     }
 
     private BiomeType getChunkBiomeType(float worldX, float worldY, long chunkSeed) {
@@ -354,7 +453,7 @@ public class ServerWorldManager {
         return sorted.get(0).getKey();
     }
 
-    private List<WorldObject> spawnBiomeObjectsForNewChunk(Chunk chunk, Biome biome, long chunkSeed) {
+    public List<WorldObject> spawnBiomeObjectsForNewChunk(Chunk chunk, Biome biome, long chunkSeed) {
         List<WorldObject> objects = new ArrayList<>();
         Random rand = new Random(chunkSeed);
 
@@ -387,31 +486,20 @@ public class ServerWorldManager {
     // CHUNK SAVING
     // ------------------------------------------------------------------------------------
 
+
     public void saveChunk(String worldName, Chunk chunk) {
-        if (chunk == null) {
-            GameLogger.error("Cannot save null chunk");
-            return;
-        }
+        if (chunk == null) return;
 
         Path chunkPath = getChunkFilePath(worldName, chunk.getChunkX(), chunk.getChunkY());
-        GameLogger.info("Saving chunk at (" + chunk.getChunkX() + "," + chunk.getChunkY() + ") to: " + chunkPath);
+        Vector2 chunkPos = new Vector2(chunk.getChunkX(), chunk.getChunkY());
 
         try {
-            // Ensure parent directories exist
             Path chunksDir = chunkPath.getParent();
             if (chunksDir != null) {
                 storageSystem.getFileSystem().createDirectory(chunksDir.toString());
             }
 
-            // Get WorldData and validate
-            WorldData wd = activeWorlds.get(worldName);
-            if (wd == null) {
-                GameLogger.error("Could not find WorldData for: " + worldName);
-                return;
-            }
-
-            // Build chunk data
-            ChunkData cd = ChunkData.fromChunk(chunk);
+            ChunkData cd = new ChunkData();
             cd.chunkX = chunk.getChunkX();
             cd.chunkY = chunk.getChunkY();
             cd.biomeType = chunk.getBiome().getType();
@@ -419,48 +507,36 @@ public class ServerWorldManager {
             cd.blockData = new ArrayList<>(chunk.getBlockDataForSave());
             cd.generationSeed = chunk.getGenerationSeed();
 
-            // Get chunk objects
-            Vector2 chunkPos = new Vector2(chunk.getChunkX(), chunk.getChunkY());
-            List<WorldObject> objectsInChunk = wd.getChunkObjects().get(chunkPos);
-            if (objectsInChunk == null) {
-                objectsInChunk = Collections.emptyList();
-            }
+            // Get objects from ServerWorldObjectManager
+            List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
+                .getObjectsForChunk(worldName, chunkPos);
 
-            // Convert objects to serializable format
-            List<Map<String, Object>> objMaps = new ArrayList<>();
-            for (WorldObject obj : objectsInChunk) {
-                if (obj != null) {
-                    Map<String, Object> objData = obj.getSerializableData();
-                    if (objData != null) {
-                        objMaps.add(objData);
-                        GameLogger.info("Saving " + obj.getType() + " at (" + obj.getTileX() + "," + obj.getTileY() + ")");
+            if (objects != null) {
+                cd.worldObjects = new ArrayList<>();
+                for (WorldObject obj : objects) {
+                    if (obj != null) {
+                        Map<String, Object> objData = obj.getSerializableData();
+                        if (objData != null) {
+                            cd.worldObjects.add(objData);
+                        }
                     }
                 }
             }
-            cd.worldObjects = objMaps;
 
-            // Serialize to JSON
+            // Serialize and save
             Json json = new Json();
             json.setOutputType(JsonWriter.OutputType.json);
             String jsonData = json.prettyPrint(cd);
-
-            // Write to disk
             storageSystem.getFileSystem().writeString(chunkPath.toString(), jsonData);
 
-            // Update cache states
             chunk.setDirty(false);
             Map<Vector2, TimedChunk> worldChunkMap = chunkCache.get(worldName);
             if (worldChunkMap != null) {
                 worldChunkMap.put(chunkPos, new TimedChunk(chunk));
             }
 
-            // Update world's chunk map
-            wd.getChunks().put(chunkPos, chunk);
-            GameLogger.info("Successfully saved chunk with " + objMaps.size() + " objects to " + chunkPath);
-
         } catch (Exception e) {
-            GameLogger.error("Failed to save chunk at (" + chunk.getChunkX() + "," + chunk.getChunkY() + "): " + e.getMessage());
-            e.printStackTrace();
+            GameLogger.error("Failed to save chunk at " + chunkPos + ": " + e.getMessage());
         }
     }
     // ------------------------------------------------------------------------------------
@@ -497,7 +573,8 @@ public class ServerWorldManager {
 
     public void shutdown() {
         GameLogger.info("Shutting down ServerWorldManager...");
-        // Save all loaded chunks
+
+        // Save chunks
         for (Map.Entry<String, Map<Vector2, TimedChunk>> entry : chunkCache.entrySet()) {
             String worldName = entry.getKey();
             for (TimedChunk tchunk : entry.getValue().values()) {
@@ -506,22 +583,27 @@ public class ServerWorldManager {
                 }
             }
         }
-        // Save all dirty worlds
+
+        // Save worlds
         for (WorldData wd : activeWorlds.values()) {
             if (wd.isDirty()) {
                 saveWorld(wd);
             }
         }
+
+        // Clean up executors
         loadExecutor.shutdown();
         scheduler.shutdown();
+
         GameLogger.info("ServerWorldManager shutdown complete.");
     }
-
     // ------------------------------------------------------------------------------------
     // INNER CLASSES
     // ------------------------------------------------------------------------------------
 
-    /** For storing chunk + lastAccess time so we can evict if idle. */
+    /**
+     * For storing chunk + lastAccess time so we can evict if idle.
+     */
     private static class TimedChunk {
         final Chunk chunk;
         long lastAccess;
@@ -536,19 +618,18 @@ public class ServerWorldManager {
      * Represents chunk data in chunk_<x>_<y>.json, including tileData,
      * block data, and a list of serialized world objects.
      */
+
     public static class ChunkData {
         public int chunkX;
         public int chunkY;
         public BiomeType biomeType;
+        public BiomeData biomeData;
         public int[][] tileData;
         public List<BlockSaveData.BlockData> blockData = new ArrayList<>();
         public long generationSeed;
-
-        // Store objects as a list of Maps
         public List<Map<String, Object>> worldObjects = new ArrayList<>();
 
-        /** Converts an in-memory chunk to our ChunkData POJO. */
-        public static ChunkData fromChunk(Chunk chunk) {
+        public static ChunkData fromChunk(Chunk chunk, List<WorldObject> objects) {
             ChunkData cd = new ChunkData();
             cd.chunkX = chunk.getChunkX();
             cd.chunkY = chunk.getChunkY();
@@ -556,16 +637,31 @@ public class ServerWorldManager {
             cd.tileData = chunk.getTileData().clone();
             cd.blockData = new ArrayList<>(chunk.getBlockDataForSave());
             cd.generationSeed = chunk.getGenerationSeed();
+
+            // Properly serialize world objects
+            if (objects != null && !objects.isEmpty()) {
+                cd.worldObjects = new ArrayList<>();
+                for (WorldObject obj : objects) {
+                    if (obj != null) {
+                        Map<String, Object> objData = obj.getSerializableData();
+                        if (objData != null) {
+                            cd.worldObjects.add(objData);
+                        }
+                    }
+                }
+            }
+
             return cd;
         }
-
-        /** Converts this ChunkData back to a real Chunk object. */
         public Chunk toChunk() {
             BiomeManager tmpBiomeMgr = new BiomeManager(generationSeed);
-            Biome b = tmpBiomeMgr.getBiome(biomeType);
+            BiomeType type = (biomeData != null) ? biomeData.getPrimaryBiomeType() : biomeType;
+            Biome b = tmpBiomeMgr.getBiome(type);
 
             Chunk chunk = new Chunk(chunkX, chunkY, b, generationSeed, tmpBiomeMgr);
             chunk.setTileData(tileData.clone());
+
+            // Process blocks and objects
             for (BlockSaveData.BlockData bd : blockData) {
                 Vector2 pos = new Vector2(bd.x, bd.y);
                 PlaceableBlock.BlockType bt = PlaceableBlock.BlockType.fromId(bd.type);
@@ -576,7 +672,18 @@ public class ServerWorldManager {
                     chunk.addBlock(block);
                 }
             }
-            chunk.setGenerationSeed(generationSeed);
+
+            // Store biome data
+            Vector2 chunkPos = new Vector2(chunkX, chunkY);
+            if (biomeData != null && biomeData.getSecondaryBiomeType() != null) {
+                BiomeTransitionResult transition = new BiomeTransitionResult(
+                    b,
+                    tmpBiomeMgr.getBiome(biomeData.getSecondaryBiomeType()),
+                    biomeData.getTransitionFactor()
+                );
+
+            }
+
             return chunk;
         }
     }

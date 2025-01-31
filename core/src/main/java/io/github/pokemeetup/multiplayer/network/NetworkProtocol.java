@@ -7,6 +7,7 @@ import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryonet.FrameworkMessage;
 import io.github.pokemeetup.blocks.PlaceableBlock;
+import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.multiplayer.server.entity.CreatureEntity;
 import io.github.pokemeetup.multiplayer.server.entity.Entity;
 import io.github.pokemeetup.multiplayer.server.entity.EntityType;
@@ -160,6 +161,30 @@ public class NetworkProtocol {
         kryo.setRegistrationRequired(false);  // Require class registration
     }
 
+    public static class ChunkData {
+        public int chunkX;
+        public int chunkY;
+        public BiomeType primaryBiomeType;
+        public BiomeType secondaryBiomeType;   // Can be null
+        public float biomeTransitionFactor;    // 0.0 to 1.0
+        public int[][] tileData;
+        public BiomeManager.BiomeData biomeData;
+        public List<BlockSaveData.BlockData> blockData;
+        public List<Map<String, Object>> worldObjects;
+        public long generationSeed;
+        public long timestamp;
+    }
+
+    public static class CompressedChunkData {
+        public int chunkX;
+        public int chunkY;
+        public BiomeType primaryBiomeType;
+        public BiomeType secondaryBiomeType;
+        public float biomeTransitionFactor;
+        public byte[] data;
+        public long generationSeed;
+    }
+
     public static void registerPokemonClasses(Kryo kryo) {
         kryo.register(PokemonUpdate.class);
         kryo.register(PokemonSpawn.class);
@@ -204,13 +229,6 @@ public class NetworkProtocol {
 
     }
 
-    public static class CompressedChunkData {
-        public int chunkX;
-        public int chunkY;
-        public byte[] data;
-        public BiomeType biomeType;
-        public long generationSeed;  // Add this field
-    }
     public static class WorldObjectData {
         public float x;
         public float y;
@@ -230,41 +248,6 @@ public class NetworkProtocol {
         public long timestamp;
     }
 
-
-    public static class ChunkData {
-        public int chunkX;
-        public int chunkY;
-        public BiomeType biomeType;
-        public int[][] tileData;
-        public List<Map<String, Object>> worldObjects;
-        public List<BlockSaveData.BlockData> blockData;
-        public long generationSeed; // Added field
-        public long timestamp;
-
-        public void write(Json json) {
-            json.writeObjectStart();
-            json.writeValue("chunkX", chunkX);
-            json.writeValue("chunkY", chunkY);
-            json.writeValue("biomeType", biomeType.name());
-            json.writeValue("tileData", tileData);
-            json.writeValue("worldObjects", worldObjects);
-            json.writeValue("blockData", blockData);
-            json.writeValue("generationSeed", generationSeed); // Add to serialization
-            json.writeValue("timestamp", timestamp);
-            json.writeObjectEnd();
-        }
-
-        public void read(JsonValue jsonData, Json json) {
-            chunkX = jsonData.getInt("chunkX");
-            chunkY = jsonData.getInt("chunkY");
-            biomeType = BiomeType.valueOf(jsonData.getString("biomeType"));
-            tileData = json.readValue(int[][].class, jsonData.get("tileData"));
-            worldObjects = json.readValue(ArrayList.class, Map.class, jsonData.get("worldObjects"));
-            blockData = json.readValue(ArrayList.class, BlockSaveData.BlockData.class, jsonData.get("blockData"));
-            generationSeed = jsonData.getLong("generationSeed", 0); // Add to deserialization
-            timestamp = jsonData.getLong("timestamp", System.currentTimeMillis());
-        }
-    }
 
     public static class ChunkDataFragment {
         public int chunkX;

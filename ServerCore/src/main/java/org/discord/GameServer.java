@@ -31,6 +31,8 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PasswordUtils;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import org.discord.context.ServerGameContext;
+import org.discord.utils.BiomeData;
+import org.discord.utils.ServerBiomeManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -52,11 +54,9 @@ public class GameServer {
     private static final int SCHEDULER_POOL_SIZE = 3;
     private static final long AUTH_TIMEOUT = 10000;
     private static final long SAVE_INTERVAL = 300000;
-    private final Map<String, Map<Vector2, Set<Integer>>> receivedFragmentAcks = new ConcurrentHashMap<>();
     private final ServerWorldObjectManager worldObjectManager;
     private final Server networkServer;
     private final ServerConnectionConfig config;
-    private final BiomeManager biomeManager;
     private final DatabaseManager databaseManager;
     private final ConcurrentHashMap<Integer, String> connectedPlayers;
     private final PlayerManager playerManager;
@@ -104,7 +104,6 @@ public class GameServer {
             this.blockManager = new ServerBlockManager();
             setupNetworkListener();
             this.pluginManager = new PluginManager(worldData);
-            this.biomeManager = new BiomeManager(worldData.getConfig().getSeed());
         } catch (Exception e) {
             GameLogger.error("Failed to initialize game world: " + e.getMessage());
             throw new RuntimeException("Failed to initialize server world", e);
@@ -124,7 +123,6 @@ public class GameServer {
                 );
                 ServerGameContext.get().getWorldManager().saveWorld(worldData);
             }
-
             return worldData;
         } catch (Exception e) {
             GameLogger.error("Failed to initialize multiplayer world: " + e.getMessage());
@@ -256,7 +254,6 @@ public class GameServer {
         }
     }
 
-
     private void handlePlayerUpdate(Connection connection, NetworkProtocol.PlayerUpdate update) {
         try {
             String username = connectedPlayers.get(connection.getID());
@@ -264,13 +261,26 @@ public class GameServer {
                 GameLogger.error("Username mismatch in player update");
                 return;
             }
+            ServerPlayer serverPlayer = activePlayers.get(username);
+            if (serverPlayer == null) {
+                GameLogger.error("No ServerPlayer instance found for: " + username);
+                return;
+            }
 
-            PlayerData playerData = ServerGameContext.get().getStorageSystem().getPlayerDataManager().loadPlayerData(UUID.nameUUIDFromBytes(update.username.getBytes()));
+            // Update ServerPlayer's position and state
+            serverPlayer.setPosition(update.x, update.y);
+            serverPlayer.setDirection(update.direction);
+            serverPlayer.setMoving(update.isMoving);
+            // Then update persistent data
+            PlayerData playerData = ServerGameContext.get().getStorageSystem()
+                .getPlayerDataManager().loadPlayerData(UUID.nameUUIDFromBytes(update.username.getBytes()));
+
             if (playerData == null) {
                 GameLogger.error("No player data found for active player: " + username);
                 return;
             }
 
+            // Update player data
             playerData.setX(update.x);
             playerData.setY(update.y);
             playerData.setDirection(update.direction);
@@ -286,10 +296,11 @@ public class GameServer {
 
             // Save to storage
             UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-            ServerGameContext.get().getStorageSystem().getPlayerDataManager().savePlayerData(playerUUID, playerData);
+            ServerGameContext.get().getStorageSystem()
+                .getPlayerDataManager().savePlayerData(playerUUID, playerData);
 
-            // Broadcast update
-            networkServer.sendToAllTCP(update);
+            // Broadcast update to other players
+            networkServer.sendToAllExceptTCP(connection.getID(), update);
 
         } catch (Exception e) {
             GameLogger.error("Error handling player update: " + e.getMessage());
@@ -501,54 +512,70 @@ public class GameServer {
     public void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
         Vector2 chunkPos = new Vector2(request.chunkX, request.chunkY);
 
-        // 1. Load or generate the chunk (ensure it has up-to-date tile data)
-        Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, (int) chunkPos.x, (int) chunkPos.y);
-        if (chunk == null) {
-            // Some error handling
-            return;
-        }
-
-        // 2. Convert chunk data into the wire format
-        NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
-        chunkData.chunkX = request.chunkX;
-        chunkData.chunkY = request.chunkY;
-        chunkData.biomeType = chunk.getBiome().getType();
-        chunkData.tileData = chunk.getTileData();        // int[][] for the chunk
-        chunkData.blockData = chunk.getBlockDataForSave();
-        chunkData.timestamp = System.currentTimeMillis();
-
-        // 3. Gather all WorldObjects for this chunk
-        List<WorldObject> objects = worldData.getChunkObjects().get(chunkPos);
-        if (objects == null) {
-            // Possibly generate objects, or default to empty list
-            objects = Collections.emptyList();
-        }
-        // Convert them to a serializable form
-        chunkData.worldObjects = new ArrayList<>();
-        for (WorldObject obj : objects) {
-            Map<String, Object> objData = obj.getSerializableData();
-            chunkData.worldObjects.add(objData);
-        }
-        if (objects.isEmpty()) {
-            GameLogger.info("No objects found in chunk " + chunkPos);
-        } else {
-            GameLogger.info("Found " + objects.size() + " objects in chunk " + chunkPos + ":");
-            for (WorldObject obj : objects) {
-                GameLogger.info("- " + obj.getType() + " at (" + obj.getTileX() + "," + obj.getTileY() + ")");
+        try {
+            WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
+            if (worldData == null) {
+                GameLogger.error("Failed to load world data for chunk request");
+                return;
             }
+
+            Chunk chunk = ServerGameContext.get().getWorldManager()
+                .loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
+
+            if (chunk == null) {
+                GameLogger.error("Failed to load chunk at " + chunkPos);
+                return;
+            }
+
+            // Always ensure objects are populated, even for existing chunks
+            List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
+                .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+
+            if (objects == null || objects.isEmpty()) {
+                objects = ServerGameContext.get().getWorldObjectManager()
+                    .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
+                GameLogger.info("Generated new objects for empty chunk at " + chunkPos);
+            }
+
+            NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
+            chunkData.chunkX = request.chunkX;
+            chunkData.chunkY = request.chunkY;
+            chunkData.primaryBiomeType = chunk.getBiome().getType();
+            chunkData.tileData = chunk.getTileData();
+            chunkData.blockData = chunk.getBlockDataForSave();
+            chunkData.timestamp = System.currentTimeMillis();
+            chunkData.worldObjects = new ArrayList<>();
+
+            if (objects != null) {
+                for (WorldObject obj : objects) {
+                    if (obj != null) {
+                        Map<String, Object> objData = obj.getSerializableData();
+                        if (objData != null) {
+                            chunkData.worldObjects.add(objData);
+                            GameLogger.info("Added object to response: " + obj.getType() +
+                                " at (" + obj.getTileX() + "," + obj.getTileY() + ")");
+                        }
+                    }
+                }
+            }
+
+            NetworkProtocol.CompressedChunkData compressed = compressChunkData(chunkData);
+            if (compressed == null) {
+                GameLogger.error("Failed to compress chunk data for " + chunkPos);
+                return;
+            }
+
+            connection.sendTCP(compressed);
+            GameLogger.info("Sent chunk data at " + chunkPos + " with " +
+                (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) + " objects");
+
+        } catch (Exception e) {
+            GameLogger.error("Error processing chunk request: " + e.getMessage());
+            e.printStackTrace();
         }
-
-        // 4. (Optional) compress it using Kryo + GZIP, exactly once
-        NetworkProtocol.CompressedChunkData compressed = compressChunkData(chunkData);
-
-        // 5. Send to client
-        connection.sendTCP(compressed);
-
-        GameLogger.info("Sent FULL chunk data for (" + request.chunkX + "," + request.chunkY + ") to " + connection.getID());
     }
 
     private NetworkProtocol.CompressedChunkData compressChunkData(NetworkProtocol.ChunkData chunkData) {
-        // Similar to your existing code
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             GZIPOutputStream gzip = new GZIPOutputStream(baos);
@@ -565,7 +592,9 @@ public class GameServer {
             NetworkProtocol.CompressedChunkData compressed = new NetworkProtocol.CompressedChunkData();
             compressed.chunkX = chunkData.chunkX;
             compressed.chunkY = chunkData.chunkY;
-            compressed.biomeType = chunkData.biomeType;
+            compressed.primaryBiomeType = chunkData.primaryBiomeType;
+            compressed.secondaryBiomeType = chunkData.secondaryBiomeType;
+            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor;
             compressed.generationSeed = worldData.getConfig().getSeed();
             compressed.data = baos.toByteArray();
             return compressed;
@@ -862,39 +891,6 @@ public class GameServer {
         }
     }
 
-    private void handlePlayerAction(Connection connection, NetworkProtocol.PlayerAction action) {
-        String username = connectedPlayers.get(connection.getID());
-        if (username == null || !username.equals(action.playerId)) {
-            GameLogger.error("Unauthorized player action attempt by " + action.playerId);
-            return;
-        }
-
-        switch (action.actionType) {
-            case CHOP_START:
-                handleChopStart(action);
-                networkServer.sendToAllExceptTCP(connection.getID(), action);
-                break;
-            case CHOP_STOP:
-                handleChopProgress(action);
-                networkServer.sendToAllExceptTCP(connection.getID(), action);
-                break;
-
-            // *** NEW: PUNCH START / STOP ***
-            case PUNCH_START:
-                // No server "tree removal" logic for punch, just broadcast
-                networkServer.sendToAllExceptTCP(connection.getID(), action);
-                GameLogger.info("Player " + action.playerId + " started punching");
-                break;
-            case PUNCH_STOP:
-                networkServer.sendToAllExceptTCP(connection.getID(), action);
-                GameLogger.info("Player " + action.playerId + " stopped punching");
-                break;
-            case PICKUP_ITEM:
-                handleItemPickup(action, connection);
-                break;
-
-        }
-    }
 
     private void handleItemPickup(NetworkProtocol.PlayerAction action, Connection connection) {
         String username = connectedPlayers.get(connection.getID());
@@ -979,190 +975,150 @@ public class GameServer {
         return null;
     }
 
+    private void handlePlayerAction(Connection connection, NetworkProtocol.PlayerAction action) {
+        if (action == null || action.playerId == null) {
+            GameLogger.error("Invalid player action received");
+            return;
+        }
+
+        ServerPlayer player = activePlayers.get(action.playerId);
+        if (player == null) {
+            GameLogger.error("No player found for action: " + action.playerId);
+            return;
+        }
+
+        switch (action.actionType) {
+            case CHOP_START:
+            case PUNCH_START:  // Handle both CHOP and PUNCH the same way
+                GameLogger.info("Processing " + action.actionType + " for player " + action.playerId +
+                    " at position (" + action.tileX + "," + action.tileY +
+                    ") direction: " + action.direction);
+
+                WorldObject targetTree = findServerChoppableObject(player, action.direction);
+                if (targetTree != null) {
+                    player.setChoppingObject(targetTree);
+                    GameLogger.info("Player " + action.playerId + " started chopping tree: " +
+                        targetTree.getId() + " at (" + targetTree.getTileX() + "," +
+                        targetTree.getTileY() + ")");
+                } else {
+                    GameLogger.error("No choppable object found near player " + action.playerId);
+                }
+                networkServer.sendToAllExceptTCP(connection.getID(), action);
+                break;
+
+            case CHOP_STOP:
+            case PUNCH_STOP:  // Handle both CHOP and PUNCH stop the same way
+                handleChopProgress(action);
+                networkServer.sendToAllExceptTCP(connection.getID(), action);
+                break;
+        }
+    }
+
     private void handleChopStart(NetworkProtocol.PlayerAction action) {
         if (action == null || action.playerId == null) {
             GameLogger.error("Invalid CHOP_START: missing playerId");
             return;
         }
 
-        // 1) Find the ServerPlayer
+        // Add logging to track action details
+        GameLogger.info("Processing CHOP_START for player " + action.playerId +
+            " at position (" + action.tileX + "," + action.tileY +
+            ") direction: " + action.direction);
+
         ServerPlayer player = activePlayers.get(action.playerId);
         if (player == null) {
             GameLogger.error("No ServerPlayer found for " + action.playerId);
             return;
         }
 
-        // 2) Based on tileX, tileY, direction, figure out the tile to check
+        // Calculate target tile based on position and direction
         int targetX = action.tileX;
         int targetY = action.tileY;
-        switch (action.direction) {
-            case "up":
-                targetY++;
-                break;
-            case "down":
-                targetY--;
-                break;
-            case "left":
-                targetX--;
-                break;
-            case "right":
-                targetX++;
-                break;
-        }
 
-        // 3) Attempt to find a choppable tree in that tile
+        // Add this debug logging
+        GameLogger.info("Looking for choppable object near player " +
+            action.playerId + " at (" + player.getPosition().x + "," +
+            player.getPosition().y + ")");
+
         WorldObject targetTree = findServerChoppableObject(player, action.direction);
-        if (targetTree == null) {
+        if (targetTree != null) {
+            GameLogger.info("Found tree: " + targetTree.getId() + " at (" +
+                targetTree.getTileX() + "," + targetTree.getTileY() + ")");
+            player.setChoppingObject(targetTree);
+        } else {
             GameLogger.error("No matching tree found to chop at (" + targetX + "," + targetY + ")");
-            return;
         }
-
-        // 4) Mark as the player's chopping target
-        player.setChoppingObject(targetTree);
-
-        // 5) Optionally broadcast chop_start so other players see an animation
-        networkServer.sendToAllExceptTCP(activeUserConnections.get(action.playerId), action);
-
-        GameLogger.info("Player " + action.playerId +
-            " started chopping tree " + targetTree.getId() +
-            " at tile (" + targetX + "," + targetY + ")");
     }
-
     private WorldObject findServerChoppableObject(ServerPlayer player, String direction) {
-        if (player == null) {
-            GameLogger.error("findServerChoppableObject() => Player is null");
-            return null;
-        }
+        Vector2 playerPos = player.getPosition();
+        int playerTileX = (int)Math.floor(playerPos.x / World.TILE_SIZE);
+        int playerTileY = (int)Math.floor(playerPos.y / World.TILE_SIZE);
 
-        // Convert from network coordinates back to tile coordinates
-        float rawX = player.getData().getX();
-        float rawY = player.getData().getY();
+        // Convert to pixel coordinates for proper distance calculations
+        float playerPixelX = playerTileX * World.TILE_SIZE;
+        float playerPixelY = playerTileY * World.TILE_SIZE;
 
-        // Scale back to actual tile coordinates (appears to be multiplied by 32 somewhere)
-        int playerTileX = (int) (rawX / World.TILE_SIZE);  // Divide by 32 to get back to tile coords
-        int playerTileY = (int) (rawY / World.TILE_SIZE);
+        GameLogger.info("Player position - Tile: (" + playerTileX + "," + playerTileY +
+            ") Pixel: (" + playerPixelX + "," + playerPixelY + ")");
 
-        GameLogger.info("Finding choppable object for player:" +
-            "\n  Raw network coords: (" + rawX + "," + rawY + ")" +
-            "\n  Actual tile coords: (" + playerTileX + "," + playerTileY + ")");
-
-        // Calculate chunk coordinates from actual tile coords
-        int chunkX = Math.floorDiv(playerTileX, CHUNK_SIZE);
-        int chunkY = Math.floorDiv(playerTileY, CHUNK_SIZE);
-        GameLogger.info("Player in chunk: " + chunkX + "," + chunkY);
-
-
-        // Calculate search center in pixel coordinates
-        float playerCenterX = playerTileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
-        float playerCenterY = playerTileY * World.TILE_SIZE + (World.TILE_SIZE / 2f);
-
-        // Calculate interaction point
-        float interactX = playerCenterX;
-        float interactY = playerCenterY;
-        float dirOffset = World.TILE_SIZE;
+        // Calculate target position based on direction
+        float targetPixelX = playerPixelX;
+        float targetPixelY = playerPixelY;
+        float searchDistance = World.TILE_SIZE * 1.5f;
 
         switch (direction) {
-            case "up":
-                interactY += dirOffset;
-                break;
-            case "down":
-                interactY -= dirOffset;
-                break;
-            case "left":
-                interactX -= dirOffset;
-                break;
-            case "right":
-                interactX += dirOffset;
-                break;
+            case "up":    targetPixelY += searchDistance; break;
+            case "down":  targetPixelY -= searchDistance; break;
+            case "left":  targetPixelX -= searchDistance; break;
+            case "right": targetPixelX += searchDistance; break;
         }
 
-        // Create search area in pixel coordinates (3x3 tiles centered on interaction point)
-        float searchWidth = World.TILE_SIZE * 3f;
-        float searchHeight = World.TILE_SIZE * 3f;
+        // Create search rectangle around target position
         Rectangle searchArea = new Rectangle(
-            interactX - (searchWidth / 2),
-            interactY - (searchHeight / 2),
-            searchWidth,
-            searchHeight
+            targetPixelX - World.TILE_SIZE,
+            targetPixelY - World.TILE_SIZE,
+            World.TILE_SIZE * 2,
+            World.TILE_SIZE * 2
         );
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                Vector2 searchChunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                List<WorldObject> chunkObjects = worldData.getChunkObjects().get(searchChunkPos);
 
-                // Debug chunk contents
-                GameLogger.info("Checking chunk " + searchChunkPos + ":");
-                if (chunkObjects == null) {
-                    GameLogger.info("- No objects list found for chunk");
-                    continue;
-                }
-                if (chunkObjects.isEmpty()) {
-                    GameLogger.info("- Chunk exists but has no objects");
-                    continue;
-                }
+        GameLogger.info("Search area pixel coords: x=" + searchArea.x + " y=" + searchArea.y +
+            " w=" + searchArea.width + " h=" + searchArea.height);
 
-                GameLogger.info("- Found " + chunkObjects.size() + " objects:");
-                for (WorldObject obj : chunkObjects) {
-                    GameLogger.info("  * " + obj.getType() + " at (" + obj.getTileX() + "," + obj.getTileY() + ") ID: " + obj.getId());
-
-                    // If it's choppable, log its bounds
-                    if (isChoppable(obj.getType())) {
-                        Rectangle objBox = obj.getBoundingBox();
-                        if (objBox != null) {
-                            GameLogger.info("    - Bounds: " + objBox.x + "," + objBox.y + " [" + objBox.width + "x" + objBox.height + "]");
-                            GameLogger.info("    - Search Area: " + searchArea.x + "," + searchArea.y + " [" + searchArea.width + "x" + searchArea.height + "]");
-                            GameLogger.info("    - Overlaps: " + objBox.overlaps(searchArea));
-                        }
-                    }
-                }
-            }
-        }
-        GameLogger.info("Search area in pixels: " + searchArea.x + "," + searchArea.y +
-            " [" + searchArea.width + "x" + searchArea.height + "]");
+        // Calculate chunk coordinates for object lookup
+        int chunkX = Math.floorDiv(playerTileX, CHUNK_SIZE);
+        int chunkY = Math.floorDiv(playerTileY, CHUNK_SIZE);
 
         // Search in current and adjacent chunks
-        WorldObject bestObject = null;
-        float bestDist = Float.MAX_VALUE;
-
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 Vector2 searchChunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                List<WorldObject> chunkObjects = worldData.getChunkObjects().get(searchChunkPos);
+                List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME,searchChunkPos);
+                if (objects.isEmpty()){
+                    GameLogger.error("No objects found for chunk " + searchChunkPos);
+                }
+                for (WorldObject obj : objects) {
+                    if (isChoppable(obj.getType())) {
+                        Rectangle objBounds = new Rectangle(
+                            obj.getTileX() * World.TILE_SIZE - World.TILE_SIZE,
+                            obj.getTileY() * World.TILE_SIZE,
+                            World.TILE_SIZE * 2,
+                            World.TILE_SIZE * 2
+                        );
 
-                if (chunkObjects != null && !chunkObjects.isEmpty()) {
-                    for (WorldObject obj : chunkObjects) {
-                        if (!isChoppable(obj.getType())) continue;
-
-                        // Get object bounds in pixel coordinates
-                        Rectangle objBox = obj.getBoundingBox();
-                        if (objBox == null) continue;
-
-                        if (objBox.overlaps(searchArea)) {
-                            float objCenterX = objBox.x + objBox.width / 2;
-                            float objCenterY = objBox.y + objBox.height / 2;
-                            float dist = Vector2.dst(interactX, interactY, objCenterX, objCenterY);
-
-                            if (dist < bestDist) {
-                                bestDist = dist;
-                                bestObject = obj;
-                                GameLogger.info("Found candidate tree at (" + obj.getTileX() + "," +
-                                    obj.getTileY() + ") distance: " + dist);
-                            }
+                        if (objBounds.overlaps(searchArea)) {
+                            GameLogger.info("Found choppable object: " + obj.getType() +
+                                " at (" + obj.getTileX() + "," + obj.getTileY() + ")");
+                            return obj;
                         }
                     }
                 }
             }
         }
 
-        if (bestObject != null) {
-            GameLogger.info("Selected tree at (" + bestObject.getTileX() + "," + bestObject.getTileY() + ")");
-        } else {
-            GameLogger.info("No suitable tree found near player");
-        }
-
-        return bestObject;
-
+        GameLogger.info("No choppable objects found in search area");
+        return null;
     }
+
     private void handleChopProgress(NetworkProtocol.PlayerAction action) {
         if (action == null || action.playerId == null) {
             return;
@@ -1191,7 +1147,7 @@ public class GameServer {
             Vector2 chunkPos = getChunkCoordsForObject(choppedTree);
 
             // Remove from chunk objects AND broadcast to all clients
-            if (removeObjectFromChunks(choppedTree.getId())) {
+            if (removeObjectFromChunks(choppedTree.getId(), chunkPos)) {
                 // (1) Create and send object removal update
                 NetworkProtocol.WorldObjectUpdate objUpdate = new NetworkProtocol.WorldObjectUpdate();
                 objUpdate.objectId = choppedTree.getId();
@@ -1201,7 +1157,7 @@ public class GameServer {
 
                 // (2) Mark chunk as dirty and save it
                 Chunk chunk = ServerGameContext.get().getWorldManager()
-                    .loadChunk(MULTIPLAYER_WORLD_NAME, (int)chunkPos.x, (int)chunkPos.y);
+                    .loadChunk(MULTIPLAYER_WORLD_NAME, (int) chunkPos.x, (int) chunkPos.y);
 
                 if (chunk != null) {
                     chunk.setDirty(true);
@@ -1220,14 +1176,12 @@ public class GameServer {
         }
     }
 
-    private boolean removeObjectFromChunks(String objectId) {
-        for (Map.Entry<Vector2, List<WorldObject>> entry : worldData.getChunkObjects().entrySet()) {
-            List<WorldObject> objects = entry.getValue();
-            if (objects.removeIf(obj -> obj.getId().equals(objectId))) {
-                // Update the chunk -> objects mapping
-                worldData.getChunkObjects().put(entry.getKey(), objects);
-                return true;
-            }
+    private boolean removeObjectFromChunks(String objectId, Vector2 chunkPos) {
+        List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+        if (objects.removeIf(obj -> obj.getId().equals(objectId))) {
+            // Update the chunk -> objects mapping
+            ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, objects);
+            return true;
         }
         return false;
     }
@@ -1240,7 +1194,6 @@ public class GameServer {
         int cy = Math.floorDiv(obj.getTileY(), CHUNK_SIZE);
         return new Vector2(cx, cy);
     }
-
 
 
     private void handlePokeballSpawning(Vector2 chunkPos, Chunk chunk) {
@@ -1295,6 +1248,7 @@ public class GameServer {
             GameLogger.error("Error handling pokeball spawn: " + e.getMessage());
         }
     }
+
 
     private boolean isChoppable(WorldObject.ObjectType type) {
         return type == WorldObject.ObjectType.TREE_0 ||

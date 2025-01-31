@@ -173,7 +173,7 @@ public class WorldObject {
         this.texture = texture;
     }
 
-    private void ensureTexture() {
+    public void ensureTexture() {
         if (texture == null && type != null) {
             texture = textureCache.get(type);
             if (texture == null) {
@@ -789,46 +789,30 @@ public class WorldObject {
                     return;
                 }
 
-                // Create defensive copy using CopyOnWriteArrayList
+                // Create thread-safe copy of objects
                 List<WorldObject> safeObjects = new CopyOnWriteArrayList<>();
                 for (WorldObject obj : objects) {
                     if (obj != null) {
+                        // Ensure ID exists
                         if (obj.getId() == null || obj.getId().isEmpty()) {
                             obj.setId(UUID.randomUUID().toString());
                         }
+                        // Ensure texture is loaded
+                        obj.ensureTexture();
                         safeObjects.add(obj);
                     }
                 }
 
+                // Update local cache
                 objectsByChunk.put(chunkPos, safeObjects);
 
-                // Break into smaller chunks for network transmission
-                if (
-                    GameContext.get().getGameClient() != null && !
-                        GameContext.get().getGameClient().isSinglePlayer()) {
-                    int chunkSize = 20; // Send objects in smaller batches
-                    for (int i = 0; i < safeObjects.size(); i += chunkSize) {
-                        int end = Math.min(i + chunkSize, safeObjects.size());
-                        List<WorldObject> batch = safeObjects.subList(i, end);
-
-                        NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
-                        update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
-                        for (WorldObject obj : batch) {
-                            update.objectId = obj.getId();
-                            update.data = obj.getSerializableData();
-
-                            GameContext.get().getGameClient().sendWorldObjectUpdate(update);
-                            Thread.sleep(50); // Small delay between sends
-                        }
-                    }
-                }
+                GameLogger.info("Updated chunk " + chunkPos + " with " +
+                    safeObjects.size() + " objects");
 
             } catch (Exception e) {
                 GameLogger.error("Error setting chunk objects: " + e.getMessage());
             }
         }
-
-
         public List<WorldObject> getObjectsNearPosition(float x, float y) {
             List<WorldObject> nearbyObjects = new ArrayList<>();
             int searchRadius = 2; // Search in nearby chunks

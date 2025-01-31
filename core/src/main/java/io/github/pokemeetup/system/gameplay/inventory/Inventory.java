@@ -292,7 +292,6 @@ public class Inventory implements ItemContainer {
     public void validateAndRepair() {
         synchronized (inventoryLock) {
             try {
-                GameLogger.info("Starting inventory validation");
 
                 // Validate slots array
                 if (slots.size() != INVENTORY_SIZE) {
@@ -349,7 +348,6 @@ public class Inventory implements ItemContainer {
 
     public void clear() {
         synchronized (inventoryLock) {
-            GameLogger.info("Clearing inventory");
             for (Slot slot : slots) {
                 if (slot != null) {
                     slot.setItemData(null);
@@ -401,7 +399,6 @@ public class Inventory implements ItemContainer {
                 itemTracker.remove(removedItem.getUuid());
                 slot.setItemData(null);
                 notifyObservers();
-                GameLogger.info("Removed item from slot " + index + ": " + removedItem.getItemId());
             }
         }
     }

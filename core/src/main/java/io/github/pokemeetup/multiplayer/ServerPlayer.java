@@ -16,11 +16,12 @@ import java.util.UUID;
 public class ServerPlayer {
     private final String username;
     private final UUID uuid;
-    private PlayerData playerData;
     private final Inventory inventory;
     private final List<PokemonData> partyPokemon;
     private final Object inventoryLock = new Object();
     private final Object positionLock = new Object();
+    private final Object dataLock = new Object();
+    private PlayerData playerData;
     private WorldObject choppingObject;
 
     public ServerPlayer(String username, PlayerData playerData) {
@@ -34,7 +35,7 @@ public class ServerPlayer {
         if (playerData.getInventoryItems() != null) {
             this.inventory.setAllItems(playerData.getInventoryItems());
         }
-        if (playerData.getPartyPokemon()!= null) {
+        if (playerData.getPartyPokemon() != null) {
             partyPokemon1 = playerData.getPartyPokemon();
         }
 
@@ -53,26 +54,6 @@ public class ServerPlayer {
 
     public UUID getUUID() {
         return uuid;
-    }
-    private final Object dataLock = new Object();
-
-
-    private List<ItemData> validateItems(ItemData[] items) {
-        List<ItemData> validatedItems = new ArrayList<>();
-        for (ItemData item : items) {
-            if (item != null) {
-                if (item.getUuid() == null) {
-                    item.setUuid(UUID.randomUUID());
-                }
-                if (item.getCount() <= 0 || item.getCount() > 64) {
-                    item.setCount(1);
-                }
-                validatedItems.add(item);
-            } else {
-                validatedItems.add(null);
-            }
-        }
-        return validatedItems;
     }
 
     public PlayerData getData() {
@@ -104,9 +85,6 @@ public class ServerPlayer {
             try {
                 // Create deep copy and validate
                 PlayerData validatedData = newData.copy();
-                if (validatedData.validateAndRepairState()) {
-                    GameLogger.info("Repaired player data during update for: " + username);
-                }
 
                 this.playerData = validatedData;
 
@@ -140,12 +118,19 @@ public class ServerPlayer {
         }
     }
 
+    public void setPosition(float x, float y) {
+        synchronized (positionLock) {
+            playerData.setX(x);
+            playerData.setY(y);
+        }
+    }
+
     public int getTileX() {
-        return (int) (playerData.getX());
+        return (int) (playerData.getX() / World.TILE_SIZE);
     }
 
     public int getTileY() {
-        return (int) (playerData.getY() );
+        return (int) (playerData.getY() / World.TILE_SIZE);
     }
 
     public Vector2 getPosition() {
@@ -170,9 +155,21 @@ public class ServerPlayer {
         }
     }
 
+    public void setDirection(String direction) {
+        synchronized (positionLock) {
+            playerData.setDirection(direction);
+        }
+    }
+
     public boolean isMoving() {
         synchronized (positionLock) {
             return playerData.isMoving();
+        }
+    }
+
+    public void setMoving(boolean moving) {
+        synchronized (positionLock) {
+            playerData.setMoving(moving);
         }
     }
 

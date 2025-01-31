@@ -20,7 +20,6 @@ public class DeploymentHelper {
         createDirectory(Paths.get(deploymentDir.toString(), "config"));
         createDirectory(Paths.get(deploymentDir.toString(), "plugins"));
         createDirectory(Paths.get(deploymentDir.toString(), "worlds"));
-        createDirectory(Paths.get(deploymentDir.toString(), "logs"));
         createDirectory(Paths.get(deploymentDir.toString(), "server/data"));
        // Check if we're running from JAR or development environment
         Path serverJar;

@@ -371,6 +371,26 @@ public class InputHandler extends InputAdapter {
             NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
             action.playerId = GameContext.get().getPlayer().getUsername();
 
+            // Calculate target tile based on player's direction
+            int targetTileX = GameContext.get().getPlayer().getTileX();
+            int targetTileY = GameContext.get().getPlayer().getTileY();
+
+            // Adjust target tile based on direction
+            switch(GameContext.get().getPlayer().getDirection()) {
+                case "up":
+                    targetTileY++;
+                    break;
+                case "down":
+                    targetTileY--;
+                    break;
+                case "left":
+                    targetTileX--;
+                    break;
+                case "right":
+                    targetTileX++;
+                    break;
+            }
+
             if (hasAxe) {
                 GameContext.get().getPlayer().getAnimations().startChopping();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
@@ -381,9 +401,14 @@ public class InputHandler extends InputAdapter {
                 action.actionType = NetworkProtocol.ActionType.PUNCH_START;
             }
 
-            action.tileX = GameContext.get().getPlayer().getTileX();
-            action.tileY = GameContext.get().getPlayer().getTileY();
+            // Send the target tile coordinates instead of player position
+            action.tileX = targetTileX;
+            action.tileY = targetTileY;
             action.direction = GameContext.get().getPlayer().getDirection();
+
+            GameLogger.info("Sending action for target tile: (" + targetTileX +
+                "," + targetTileY + ") direction: " + action.direction);
+
             GameContext.get().getGameClient().sendPlayerAction(action);
         }
     }

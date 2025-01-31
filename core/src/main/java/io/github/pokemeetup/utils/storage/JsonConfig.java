@@ -19,7 +19,6 @@ public class JsonConfig {
     private static Json instance;
 
     public static WorldData loadWorldData(String worldName) {
-        // Add check for multiplayer mode
         if (GameContext.get().getGameClient() != null &&
             !GameContext.get().getGameClient().isSinglePlayer()) {
             GameLogger.info("Skipping local world load in multiplayer mode");

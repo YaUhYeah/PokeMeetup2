@@ -1,25 +1,31 @@
+
 package org.discord.context;
 
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
-import io.github.pokemeetup.system.gameplay.overworld.World;
+import org.discord.ServerWorldObjectManager;
 import org.discord.utils.ServerWorldManager;
 
 public final class ServerGameContext {
     private static ServerGameContext instance;
     private final ServerWorldManager worldManager;
     private final ServerStorageSystem storageSystem;
+    private final ServerWorldObjectManager worldObjectManager;
 
-
-    private ServerGameContext(ServerWorldManager worldManager, ServerStorageSystem storageSystem) {
+    private ServerGameContext(ServerWorldManager worldManager,
+                              ServerStorageSystem storageSystem,
+                              ServerWorldObjectManager worldObjectManager) {
         this.worldManager = worldManager;
         this.storageSystem = storageSystem;
+        this.worldObjectManager = worldObjectManager;
     }
 
-    public static void init(ServerWorldManager worldManager, ServerStorageSystem storageSystem) {
+    public static void init(ServerWorldManager worldManager,
+                            ServerStorageSystem storageSystem,
+                            ServerWorldObjectManager worldObjectManager) {
         if (instance != null) {
             throw new IllegalStateException("ServerGameContext already initialized!");
         }
-        instance = new ServerGameContext(worldManager, storageSystem);
+        instance = new ServerGameContext(worldManager, storageSystem, worldObjectManager);
     }
 
     public static ServerGameContext get() {
@@ -37,9 +43,16 @@ public final class ServerGameContext {
         return worldManager;
     }
 
+    public ServerWorldObjectManager getWorldObjectManager() {
+        return worldObjectManager;
+    }
+
     public void dispose() {
         if (worldManager != null) {
             worldManager.shutdown();
+        }
+        if (worldObjectManager != null) {
+            worldObjectManager.cleanup();
         }
         instance = null;
     }
