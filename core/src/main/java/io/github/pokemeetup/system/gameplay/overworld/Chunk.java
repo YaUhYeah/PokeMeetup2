@@ -50,7 +50,7 @@ public class Chunk {
         this.chunkY = chunkY;
         this.biome = biome;
         this.worldSeed = worldSeed;
-        this.generationSeed =worldSeed;
+        this.generationSeed = worldSeed;
         this.biomeManager = biomeManager;
         this.tileData = new int[CHUNK_SIZE][CHUNK_SIZE];
         generateChunkData();
@@ -66,6 +66,29 @@ public class Chunk {
     public void removeBlock(Vector2 position) {
         blocks.remove(position);
         isDirty = true;
+    }
+
+    private List<WorldObject> worldObjects = new ArrayList<>();
+
+    public void setBiome(Biome biome) {
+        this.biome = biome;
+    }
+
+    public List<WorldObject> getWorldObjects() {
+        return worldObjects;
+    }
+
+    public void setWorldObjects(List<WorldObject> worldObjects) {
+        this.worldObjects = worldObjects;
+    }
+
+
+    public void setBlocks(Map<Vector2, PlaceableBlock> blocks) {
+        this.blocks = blocks;
+    }
+
+    public void setElevationBands(int[][] elevationBands) {
+        this.elevationBands = elevationBands;
     }
 
     public PlaceableBlock getBlock(Vector2 position) {
@@ -150,9 +173,9 @@ public class Chunk {
         boolean rightLower = bandE < currentBand;
 
         // Decide which background set to use: GRASS_BG for band=1, ROCK_BG otherwise
-        int topLeftCorner     = isLowestBand ? TileType.MOUNTAIN_TILE_TOP_LEFT_GRASS_BG : TileType.MOUNTAIN_TILE_TOP_LEFT_ROCK_BG;
-        int topRightCorner    = isLowestBand ? TileType.MOUNTAIN_TILE_TOP_RIGHT_GRASS_BG : TileType.MOUNTAIN_TILE_TOP_RIGHT_ROCK_BG;
-        int bottomLeftCorner  = isLowestBand ? TileType.MOUNTAIN_TILE_BOT_LEFT_GRASS_BG : TileType.MOUNTAIN_TILE_BOT_LEFT_ROCK_BG;
+        int topLeftCorner = isLowestBand ? TileType.MOUNTAIN_TILE_TOP_LEFT_GRASS_BG : TileType.MOUNTAIN_TILE_TOP_LEFT_ROCK_BG;
+        int topRightCorner = isLowestBand ? TileType.MOUNTAIN_TILE_TOP_RIGHT_GRASS_BG : TileType.MOUNTAIN_TILE_TOP_RIGHT_ROCK_BG;
+        int bottomLeftCorner = isLowestBand ? TileType.MOUNTAIN_TILE_BOT_LEFT_GRASS_BG : TileType.MOUNTAIN_TILE_BOT_LEFT_ROCK_BG;
         int bottomRightCorner = isLowestBand ? TileType.MOUNTAIN_TILE_BOT_RIGHT_GRASS_BG : TileType.MOUNTAIN_TILE_BOT_RIGHT_ROCK_BG;
 
         // If no side is lower, it's a plateau center.
@@ -355,7 +378,7 @@ public class Chunk {
                     // Example:
                     if (maxLayers > 3) {
                         // Add an extra layer between band 2 and 3:
-                        double extraLayerThreshold = midBandThreshold + (1 - midBandThreshold)*0.5;
+                        double extraLayerThreshold = midBandThreshold + (1 - midBandThreshold) * 0.5;
                         // If elevation > extraLayerThreshold and maxLayers=4: band=4, else band=3
                         if (maxLayers == 4 && baseElevation > extraLayerThreshold) {
                             band = 4;
@@ -394,7 +417,7 @@ public class Chunk {
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dy = -1; dy <= 1; dy++) {
                         if (dx == 0 && dy == 0) continue;
-                        int nx = x+dx, ny = y+dy;
+                        int nx = x + dx, ny = y + dy;
                         if (nx < 0 || ny < 0 || nx >= CHUNK_SIZE || ny >= CHUNK_SIZE) continue;
                         totalNeighbors++;
                         int nbBand = elevationBands[nx][ny];
@@ -440,7 +463,6 @@ public class Chunk {
             return determineTileTypeForBiome(primaryBiome, worldX, worldY);
         }
     }
-
 
 
     private int determineTileTypeForBiome(Biome biome, float worldX, float worldY) {
@@ -503,7 +525,6 @@ public class Chunk {
     }
 
 
-
     private boolean stairsExistBetween(int[][] elevationBands, int fromBand, int toBand) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int y = 0; y < CHUNK_SIZE; y++) {
@@ -523,6 +544,7 @@ public class Chunk {
         }
         return false;
     }
+
     private boolean getRandomChance(float probability) {
         return MathUtils.random() < probability;
     }
@@ -775,8 +797,8 @@ public class Chunk {
 
     private boolean placeAdditionalStairs(int[][] bands, int[][] tiles, int fromBand, int toBand) {
         // Try to place stairs anywhere valid
-        for (int x = 1; x < CHUNK_SIZE-1; x++) {
-            for (int y = 1; y < CHUNK_SIZE-1; y++) {
+        for (int x = 1; x < CHUNK_SIZE - 1; x++) {
+            for (int y = 1; y < CHUNK_SIZE - 1; y++) {
                 if (canPlaceStairsHere(x, y, bands, tiles, fromBand, toBand)) {
                     tiles[x][y] = TileType.STAIRS;
                     return true;
@@ -785,6 +807,7 @@ public class Chunk {
         }
         return false;
     }
+
     private boolean canPlaceStairsHere(int x, int y, int[][] bands, int[][] tiles, int fromBand, int toBand) {
         // Must be at the right elevation
         if (bands[x][y] != fromBand) return false;
@@ -802,10 +825,10 @@ public class Chunk {
     }
 
     private boolean hasAdjacentBand(int x, int y, int targetBand, int[][] bands) {
-        return getBand(x+1, y, bands) == targetBand ||
-            getBand(x-1, y, bands) == targetBand ||
-            getBand(x, y+1, bands) == targetBand ||
-            getBand(x, y-1, bands) == targetBand;
+        return getBand(x + 1, y, bands) == targetBand ||
+            getBand(x - 1, y, bands) == targetBand ||
+            getBand(x, y + 1, bands) == targetBand ||
+            getBand(x, y - 1, bands) == targetBand;
     }
 
     private boolean hasNearbyStairs(int x, int y, int[][] tiles, int radius) {
@@ -822,25 +845,34 @@ public class Chunk {
         }
         return false;
     }
+
     private boolean placeStairsOnSide(int[][] bands, int[][] tiles, int fromBand, int toBand, String side) {
         int startX, startY, endX, endY;
 
-        switch(side) {
+        switch (side) {
             case "north":
-                startX = 1; endX = CHUNK_SIZE-1;
-                startY = CHUNK_SIZE-2; endY = CHUNK_SIZE-1;
+                startX = 1;
+                endX = CHUNK_SIZE - 1;
+                startY = CHUNK_SIZE - 2;
+                endY = CHUNK_SIZE - 1;
                 break;
             case "south":
-                startX = 1; endX = CHUNK_SIZE-1;
-                startY = 1; endY = 2;
+                startX = 1;
+                endX = CHUNK_SIZE - 1;
+                startY = 1;
+                endY = 2;
                 break;
             case "east":
-                startX = CHUNK_SIZE-2; endX = CHUNK_SIZE-1;
-                startY = 1; endY = CHUNK_SIZE-1;
+                startX = CHUNK_SIZE - 2;
+                endX = CHUNK_SIZE - 1;
+                startY = 1;
+                endY = CHUNK_SIZE - 1;
                 break;
             case "west":
-                startX = 1; endX = 2;
-                startY = 1; endY = CHUNK_SIZE-1;
+                startX = 1;
+                endX = 2;
+                startY = 1;
+                endY = CHUNK_SIZE - 1;
                 break;
             default:
                 return false;
@@ -856,7 +888,9 @@ public class Chunk {
             }
         }
         return false;
-    }private void finalizeStairAccess(int[][] tiles, int[][] bands) {
+    }
+
+    private void finalizeStairAccess(int[][] tiles, int[][] bands) {
         // After all stairs are placed, ensure that the tile above the stairs is MOUNTAIN_TILE_CENTER if it’s in the higher band.
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int y = 0; y < CHUNK_SIZE; y++) {
@@ -921,7 +955,7 @@ public class Chunk {
     private int determineNumberOfLayers(Random rand, BiomeType biomeType) {
         // Adjusted to make mountains slightly more common
         float baseChance;
-        switch(biomeType) {
+        switch (biomeType) {
             case SNOW:
                 baseChance = 0.50f;  // 75% no mountain, so 25% mountain
                 break;
@@ -942,6 +976,7 @@ public class Chunk {
         if (r < baseChance + 0.14f) return 2;
         return 3;
     }
+
     private void applyMountainTiles() {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int y = 0; y < CHUNK_SIZE; y++) {
@@ -951,6 +986,7 @@ public class Chunk {
             }
         }
     }
+
     private void autotileCliffs(int[][] bands, int[][] tiles) {
         // We look for places where a tile is in a higher band but has a neighboring tile in a lower band.
         // Those are edges and should be replaced with appropriate cliff tiles.
@@ -1005,7 +1041,6 @@ public class Chunk {
         if (bottomLower) return TileType.MOUNTAIN_TILE_BOT_MID;
         return TileType.MOUNTAIN_TILE_MID_LEFT;
     }
-
 
 
     private boolean layerExists(int[][] bands, int targetBand) {

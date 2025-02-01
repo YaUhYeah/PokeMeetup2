@@ -37,6 +37,15 @@ public class Player {
     private static final float RUN_SPEED_MULTIPLIER = 1.5f;
     private static final float COLLISION_BUFFER = 4f;
     private static final long VALIDATION_INTERVAL = 1000;
+
+    public void updateAndSyncPlayerData() {
+        if (this.playerData == null) {
+            this.playerData = new PlayerData(this.username);
+        }
+        // Update the internal PlayerData from the current player state.
+        this.playerData.updateFromPlayer(this);
+    }
+
     private static final float INPUT_BUFFER_TIME = 0.1f;
     private final Object movementLock = new Object();
     private final Object resourceLock = new Object();
@@ -77,6 +86,7 @@ public class Player {
     private volatile boolean fontInitialized = false;
     private Skin skin;
     private Stage stage;
+
     public Player(int startTileX, int startTileY, World world) {
         this(startTileX, startTileY, world, "Player");
         this.playerData = new PlayerData("Player");
@@ -160,6 +170,7 @@ public class Player {
             GameLogger.error("Failed to initialize GL resources: " + e.getMessage());
         }
     }
+
     public PlayerAnimations getAnimations() {
         return animations;
     }
@@ -448,6 +459,7 @@ public class Player {
     }
 
     public volatile boolean initialized = false;
+
     public void render(SpriteBatch batch) {
         synchronized (resourceLock) {
             if (!initialized) {

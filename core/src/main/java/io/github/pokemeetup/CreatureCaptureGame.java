@@ -78,69 +78,61 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         GameLogger.info("Game initialization complete");
     }
 
-
     public void saveAndDispose() {
         try {
             GameLogger.info("Starting game state save...");
             if (!GameContext.get().getGameClient().isSinglePlayer()){
                 return;
             }
-            if (GameContext.get().getWorld() != null) {
-                // Ensure all chunks are saved first
-                for (Map.Entry<Vector2, Chunk> entry : GameContext.get().getWorld().getChunks().entrySet()) {
+            World world = GameContext.get().getWorld();
+            if (world != null) {
+                // Save all chunks
+                for (Map.Entry<Vector2, Chunk> entry : world.getChunks().entrySet()) {
                     try {
                         Vector2 chunkPos = entry.getKey();
                         Chunk chunk = entry.getValue();
-                        GameContext.get().getWorld().saveChunkData(chunkPos, chunk);
+                        world.saveChunkData(chunkPos, chunk);
                     } catch (Exception e) {
                         GameLogger.error("Failed to save chunk: " + e.getMessage());
                     }
                 }
-
-                // Save world data after all chunks are saved
-                World world = GameContext.get().getWorld();
                 WorldData worldData = world.getWorldData();
-
-                // Update player data if needed
-                if (GameContext.get().getPlayer() != null) {
-                    PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
-                    currentState.updateFromPlayer(GameContext.get().getPlayer());
-                    worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
+                Player player = GameContext.get().getPlayer();
+                if (player != null) {
+                    // Force a final update of the player state.
+                    player.updateAndSyncPlayerData();
+                    worldData.savePlayerData(player.getUsername(), player.getPlayerData(), false);
                 }
-
-                // Force one final save
                 GameContext.get().getWorldManager().saveWorld(worldData);
-
-                // Verify the save
-                FileHandle worldFile = Gdx.files.local("worlds/singleplayer/" + world.getName() + "/world.json");
-                if (!worldFile.exists()) {
-                    GameLogger.error("World file not created after final save!");
-                } else {
-                    GameLogger.info("Final world save successful");
-                }
-                GameContext.get().getWorld().dispose();
+                // (Optionally: flush or check that the file exists here.)
+                world.dispose();
                 GameLogger.info("World disposed successfully");
             }
-
-            cleanupCurrentWorld();
-
         } catch (Exception e) {
             GameLogger.error("Error during game state save: " + e.getMessage());
         }
     }
-
-
     public void reinitializeGame() {
         try {
-         GameContext.get().setWorldManager(WorldManager.getInstance());
+            // Reinitialize world manager and biome manager.
+            GameContext.get().setWorldManager(WorldManager.getInstance());
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
             GameContext.get().getWorldManager().init();
+
+            // Ensure the GameClient is set for singleplayer mode.
+            if (GameContext.get().getGameClient() == null ||
+                !GameContext.get().getGameClient().isSinglePlayer()) {
+                // In singleplayer mode, if the client is null or not set for singleplayer, reinitialize it.
+                GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance());
+                GameLogger.info("Reinitialized singleplayer GameClient in reinitializeGame()");
+            }
 
             GameLogger.info("Game state reinitialized");
         } catch (Exception e) {
             GameLogger.error("Failed to reinitialize game: " + e.getMessage());
         }
     }
+
 
     public void shutdown() {
         try {
@@ -277,18 +269,15 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                     " Items: " + savedPlayerData.getInventoryItems().size() +
                     " Pokemon: " + savedPlayerData.getPartyPokemon().size());
 
-            }
-
-            // Initialize world
+            }// Initialize world
             GameContext.get().setWorld(new World(worldName,
                 worldData.getConfig().getSeed(), biomeManager));
             GameContext.get().getWorld().setWorldData(worldData);
 
-            // Initialize player
             if (savedPlayerData != null) {
                 GameContext.get().setPlayer(new Player(
                     0, 0,
-                    currentWorld,
+                    GameContext.get().getWorld(),   // Use the newly created world!
                     username
                 ));
                 GameContext.get().getPlayer().initializeResources();
@@ -299,9 +288,10 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             } else {
                 GameLogger.info("Creating new player at default position");
                 GameContext.get().setPlayer(new Player(World.DEFAULT_X_POSITION,
-                    World.DEFAULT_Y_POSITION, currentWorld, username));
+                    World.DEFAULT_Y_POSITION, GameContext.get().getWorld(), username));
                 GameContext.get().getPlayer().initializeResources();
             }
+
 
             GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer());
             GameLogger.info("World initialization complete: " + worldName);

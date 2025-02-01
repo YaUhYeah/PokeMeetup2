@@ -1,6 +1,4 @@
 package io.github.pokemeetup.lwjgl3;
-
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window;
@@ -8,8 +6,6 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowListener;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.utils.GameLogger;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 public class Lwjgl3Launcher {
 

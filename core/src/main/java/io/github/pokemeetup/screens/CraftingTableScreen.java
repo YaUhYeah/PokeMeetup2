@@ -3,6 +3,7 @@ package io.github.pokemeetup.screens;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -22,6 +23,7 @@ import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.inventory.Item;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingGrid;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingSystem;
+import io.github.pokemeetup.system.gameplay.inventory.crafting.RecipeGlossaryUI;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventoryObserver;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.ItemContainer;
@@ -34,7 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CraftingTableScreen implements Screen, InventoryScreenInterface, InventoryObserver, CraftingSystem.CraftingSystemObserver {
-    private static final int SLOT_SIZE = 32;
+    public static final int SLOT_SIZE = 32;
     private static final int GRID_SIZE = 3;
     private final Stage stage;
     private final Player player;
@@ -199,13 +201,18 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         container.add(craftingTable);
         return container;
     }
-
-
     private void setupUI(Skin skin) {
-        validateInitialization();
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+
+        // Calculate relative sizes
+        float baseSize = Math.min(screenWidth * 0.04f, screenHeight * 0.07f);
+        float SLOT_SIZE = Math.max(baseSize, 40); // Minimum size of 40
+        float containerPadding = SLOT_SIZE * 0.25f;
 
         Table mainTable = new Table();
         mainTable.setFillParent(true);
+        mainTable.center();
 
         // Semi-transparent background
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
@@ -214,15 +221,39 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         mainTable.setBackground(new TextureRegionDrawable(new TextureRegion(new Texture(bgPixmap))));
         bgPixmap.dispose();
 
-        // Create sections
+        // Content container for better centering
+        Table contentContainer = new Table();
+
+        // Split container for crafting and recipes side by side
+        Table splitContainer = new Table();
+
+        // Crafting section (left side)
         Table craftingContainer = createCraftingSection();
-        mainTable.add(craftingContainer).pad(10).row();
+        craftingContainer.pad(containerPadding);
 
+        // Recipe section (right side)
+        RecipeGlossaryUI recipeGlossary = new RecipeGlossaryUI(stage, skin, this, craftingSystem);
+        ScrollPane recipeScroll = recipeGlossary.getRecipeScroll();
+
+        // Recipe container with proper sizing
+        Table recipeContainer = new Table();
+        recipeContainer.add(new Label("Available Recipes", skin)).pad(containerPadding).row();
+        recipeContainer.add(recipeScroll)
+            .width(screenWidth * 0.25f)  // 25% of screen width
+            .minWidth(SLOT_SIZE * 6)     // Minimum width to show recipes properly
+            .height(screenHeight * 0.4f)  // 40% of screen height
+            .pad(containerPadding);
+
+        // Add both to split container
+        splitContainer.add(craftingContainer).padRight(SLOT_SIZE * 0.5f);
+        splitContainer.add(recipeContainer);
+
+        contentContainer.add(splitContainer).pad(containerPadding).row();
+
+        // Inventory section
         Table inventoryContainer = createInventorySection();
-        mainTable.add(inventoryContainer).pad(10).row();
+        contentContainer.add(inventoryContainer).padTop(SLOT_SIZE * 0.5f).row();
 
-        // Close button
-        // Fix close button implementation
         // Close button
         TextButton closeButton = new TextButton("Close", skin);
         closeButton.addListener(new ClickListener() {
@@ -232,14 +263,25 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
             }
         });
 
-        mainTable.add(closeButton).size(100, 40).pad(10);
+        contentContainer.add(closeButton)
+            .size(SLOT_SIZE * 2.5f, SLOT_SIZE)
+            .pad(SLOT_SIZE * 0.5f);
 
-        // Add main table to stage
+        mainTable.add(contentContainer);
         stage.addActor(mainTable);
-
-
     }
 
+
+    @Override
+    public void resize(int width, int height) {
+        if (stage != null) {
+            stage.getViewport().update(width, height, true);
+
+            // Completely rebuild UI on significant size changes
+            stage.clear();
+            setupUI(skin);
+        }
+    }
     private void initializeInventoryData() {
         this.inventorySlotData = new InventorySlotData[Inventory.INVENTORY_SIZE];
         for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
@@ -369,10 +411,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     }
 
 
-    @Override
-    public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
-    }
 
     @Override
     public void onInventoryChanged() {

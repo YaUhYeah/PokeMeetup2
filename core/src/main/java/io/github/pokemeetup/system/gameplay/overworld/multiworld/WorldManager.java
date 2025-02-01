@@ -104,7 +104,6 @@ public class WorldManager {
             }
         }
     }
-
     public void saveWorld(WorldData worldData) {
         GameLogger.info("Saving world: " + worldData.getName());
 
@@ -156,6 +155,8 @@ public class WorldManager {
                 GameLogger.info("Successfully saved world with commands state: " +
                     worldData.commandsAllowed());
 
+                // **NEW:** Invalidate the cache so future loads will get the updated file.
+                worldCache.remove(worldData.getName());
 
             } catch (Exception e) {
                 GameLogger.error("Failed to save world: " + worldData.getName() +

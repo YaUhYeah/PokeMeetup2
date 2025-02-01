@@ -22,6 +22,7 @@ import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.*;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingGrid;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingSystem;
+import io.github.pokemeetup.system.gameplay.inventory.crafting.RecipeGlossaryUI;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventoryObserver;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
 import io.github.pokemeetup.screens.otherui.InventorySlotUI;
@@ -34,7 +35,7 @@ import java.util.*;
 import java.util.List;
 
 public class InventoryScreen implements Screen, InventoryObserver, CraftingSystem.CraftingSystemObserver, InventoryScreenInterface {
-    private static final int SLOT_SIZE = 40;
+    private static int SLOT_SIZE = 40;
 
     private final Skin skin;
     private final Stage stage;
@@ -171,12 +172,20 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
 
         GameLogger.info("InventoryScreen: Total non-null items loaded: " + nonNullItemCount);
     }
-
     private void setupUI() {
+        float screenWidth = Gdx.graphics.getWidth();
+        float screenHeight = Gdx.graphics.getHeight();
+
+        // Calculate relative sizes
+        float baseSize = Math.min(screenWidth * 0.04f, screenHeight * 0.07f); // Base size for slots
+        SLOT_SIZE = (int) Math.max(baseSize, 40); // Minimum size of 40
+        float containerPadding = SLOT_SIZE * 0.25f;
+
         Table mainTable = new Table();
         mainTable.setFillParent(true);
         mainTable.center();
 
+        // Semi-transparent background
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         bgPixmap.setColor(0, 0, 0, 0.2f);
         bgPixmap.fill();
@@ -185,12 +194,20 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         mainTable.setBackground(background);
         bgPixmap.dispose();
 
+        // Create a container for everything to ensure proper centering
+        Table contentContainer = new Table();
+
+        // Top section container (Crafting + Recipe)
+        Table topContainer = new Table();
+
+        // Crafting section
         Table craftingContainer = new Table();
         craftingContainer.setBackground(createBackground());
-        craftingContainer.pad(10);
+        craftingContainer.pad(containerPadding);
 
+        // Crafting grid
         Table craftingGrid1 = new Table();
-        craftingGrid1.defaults().space(4);
+        craftingGrid1.defaults().space(SLOT_SIZE * 0.1f);
 
         for (int y = 0; y < 2; y++) {
             for (int x = 0; x < 2; x++) {
@@ -206,42 +223,57 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
             }
         }
 
+        // Arrow and result
         Image arrowImage = new Image(TextureManager.ui.findRegion("arrow"));
-
         InventorySlotData resultSlotData = new InventorySlotData(-1, InventorySlotData.SlotType.CRAFTING_RESULT, craftingGrid);
         craftingResultSlotUI = new InventorySlotUI(resultSlotData, skin, this);
 
-        craftingContainer.add(craftingGrid1).padRight(20);
-        craftingContainer.add(arrowImage).size(32, 32).padRight(20);
+        craftingContainer.add(craftingGrid1).padRight(SLOT_SIZE * 0.5f);
+        craftingContainer.add(arrowImage).size(SLOT_SIZE * 0.8f).padRight(SLOT_SIZE * 0.5f);
         craftingContainer.add(craftingResultSlotUI).size(SLOT_SIZE);
 
-        mainTable.add(craftingContainer).padBottom(20);
-        mainTable.row();
+        // Recipe glossary section
+        RecipeGlossaryUI recipeGlossary = new RecipeGlossaryUI(stage, skin, this, craftingSystem);
+        ScrollPane recipeScroll = recipeGlossary.getRecipeScroll();
 
+        Table recipeContainer = new Table();
+        recipeContainer.setBackground(createBackground());
+
+        // Recipe list header
+        Label recipesLabel = new Label("Recipes", skin);
+        recipesLabel.setFontScale(SLOT_SIZE * 0.04f);
+
+        recipeContainer.add(recipesLabel).padBottom(containerPadding).row();
+        recipeContainer.add(recipeScroll)
+            .width(SLOT_SIZE * 6f)
+            .height(SLOT_SIZE * 2.5f)
+            .pad(containerPadding);
+
+        // Add both to top container with proper spacing
+        topContainer.add(craftingContainer).padRight(SLOT_SIZE * 0.5f);
+        topContainer.add(recipeContainer);
+
+        contentContainer.add(topContainer).padBottom(SLOT_SIZE * 0.75f).row();
+
+        // Inventory grid
         Table gridTable = new Table();
         gridTable.setName("gridTable");
         gridTable.setBackground(createBackground());
-        gridTable.pad(10);
+        gridTable.pad(containerPadding);
 
-        List<InventorySlotUI> inventorySlotUIs = new ArrayList<>();
-
+        // Create inventory slots
         int cols = 9;
         for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
             InventorySlotUI slotUI = createSlotUI(i);
-            gridTable.add(slotUI).size(SLOT_SIZE).pad(2);
-            inventorySlotUIs.add(slotUI);
+            gridTable.add(slotUI).size(SLOT_SIZE).pad(SLOT_SIZE * 0.05f);
             if ((i + 1) % cols == 0) {
                 gridTable.row();
             }
         }
 
-        for (InventorySlotUI slotUI : inventorySlotUIs) {
-            slotUI.updateSlot();
-        }
+        contentContainer.add(gridTable).row();
 
-        mainTable.add(gridTable);
-
-        mainTable.row();
+        // Close button
         TextButton closeButton = new TextButton("Close", skin);
         closeButton.addListener(new ClickListener() {
             @Override
@@ -249,17 +281,41 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
                 hide();
             }
         });
-        mainTable.add(closeButton).size(100, 40).pad(10);
+
+        // Scale button size relative to slot size
+        float buttonWidth = SLOT_SIZE * 2.5f;
+        float buttonHeight = SLOT_SIZE * 1.0f;
+        contentContainer.add(closeButton).size(buttonWidth, buttonHeight).pad(SLOT_SIZE * 0.5f);
+
+        // Add the content container to the main table
+        mainTable.add(contentContainer);
 
         stage.addActor(mainTable);
         stage.addActor(heldItemGroup);
     }
 
+    // Update createBackground method for consistent styling
     private Drawable createBackground() {
         return new TextureRegionDrawable(TextureManager.ui.findRegion("hotbar_bg"))
-            .tint(new Color(0.2f, 0.2f, 0.2f, 0.6f));
+            .tint(new Color(0.2f, 0.2f, 0.2f, 0.85f));
     }
 
+    @Override
+    public void resize(int width, int height) {
+        if (stage != null) {
+            stage.getViewport().update(width, height, true);
+
+            // Recalculate UI sizes and update if needed
+            float baseSize = Math.min(width * 0.04f, height * 0.07f);
+            SLOT_SIZE = (int) Math.max(baseSize, 40);
+
+        }
+    }
+
+    private void rebuildUI() {
+        stage.clear();
+        setupUI();
+    }
     public void reloadInventory() {
         GameLogger.info("Reloading inventory (only on show or controlled calls)...");
         if (inventory != null) {
@@ -335,10 +391,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         }
     }
 
-    @Override
-    public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
-    }
 
     @Override
     public void pause() {

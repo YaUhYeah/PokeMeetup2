@@ -215,7 +215,6 @@ public class GameMenu extends Actor {
         createOptionsMenu();
         stage.addActor(menuWindow);
     }
-
     private void performSaveAndExit() {
         if (disposalRequested) return;
         disposalRequested = true;
@@ -233,6 +232,15 @@ public class GameMenu extends Actor {
                             GameContext.get().getGameClient().saveState(GameContext.get().getPlayer().getPlayerData());
                         }
                     } else {
+                        // For singleplayer, update the player's data and save it into the world.
+                        GameContext.get().getPlayer().updateAndSyncPlayerData();
+                        PlayerData playerData = GameContext.get().getPlayer().getPlayerData();
+                        World currentWorld = GameContext.get().getPlayer().getWorld();
+                        if (currentWorld != null) {
+                            WorldData worldData = currentWorld.getWorldData();
+                            worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), playerData, false);
+                            game.getWorldManager().saveWorld(worldData);
+                        }
                         GameContext.get().setInventoryScreen(null);
                         GameContext.get().setCraftingScreen(null);
                         GameContext.get().setBuildModeUI(null);
@@ -241,7 +249,7 @@ public class GameMenu extends Actor {
                 }
 
                 // Schedule GL disposal on main thread
-                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog,true));
+                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, true));
 
             } catch (Exception e) {
                 GameLogger.error("Save failed: " + e.getMessage());
@@ -252,6 +260,7 @@ public class GameMenu extends Actor {
             }
         }).start();
     }
+
 
     private void showErrorDialog(String message) {
         try {
@@ -293,28 +302,23 @@ public class GameMenu extends Actor {
 
     private void saveGame() {
         GameLogger.info("Attempting to save game");
-
         try {
             if (GameContext.get().getGameClient() != null && GameContext.get().getPlayer().getWorld() != null) {
                 World currentWorld = GameContext.get().getPlayer().getWorld();
-
                 if (GameContext.get().getPlayer().getUsername() == null) {
                     throw new Exception("Invalid player state");
                 }
-
-                PlayerData playerData = new PlayerData(GameContext.get().getPlayer().getUsername());
-                playerData.updateFromPlayer(GameContext.get().getPlayer());
-
+                // Sync the player's data
+                GameContext.get().getPlayer().updateAndSyncPlayerData();
+                PlayerData playerData = GameContext.get().getPlayer().getPlayerData();
                 if (GameContext.get().getGameClient().isSinglePlayer()) {
                     WorldData worldData = currentWorld.getWorldData();
                     worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), playerData, false);
                     game.getWorldManager().saveWorld(worldData);
                     GameLogger.info("Game saved successfully");
-
                 } else {
                     GameContext.get().getGameClient().savePlayerState(playerData);
                 }
-
                 showSaveSuccessDialog();
             } else {
                 throw new Exception("Game state is invalid");

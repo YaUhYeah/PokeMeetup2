@@ -32,6 +32,7 @@ import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.multiplayer.OtherPlayer;
 import io.github.pokemeetup.multiplayer.client.GameClient;
+import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.pokemon.Pokemon;
@@ -153,7 +154,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             // Initialize basic UI first
             initializeBasicResources();
 
-            initializeWorldAndPlayer();
+            initializeWorldAndPlayer(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
             this.inputManager = new InputManager(this);
             Player player = GameContext.get().getPlayer();
             // Check if new player needs starter
@@ -171,7 +172,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
-    public GameScreen(CreatureCaptureGame game, String username, GameClient gameClient, boolean commandsEnabled) {
+    public GameScreen(CreatureCaptureGame game, String username, GameClient gameClient, boolean commandsEnabled, String worldName) {
         this.game = game;
         this.username = username;
         this.commandsEnabled = commandsEnabled;
@@ -185,7 +186,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         try {
             initializeBasicResources();
 
-            initializeWorldAndPlayer();
+            initializeWorldAndPlayer(worldName);
             this.inputManager = new InputManager(this);
             Player player = GameContext.get().getPlayer();
 
@@ -348,7 +349,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private void handleMultiplayerInitialization(boolean success) {
         if (success) {
             try {
-                initializeWorldAndPlayer();
+                initializeWorldAndPlayer(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
 
                 if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
                     GameLogger.info("New player detected - handling starter selection");
@@ -536,11 +537,17 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameLogger.info("Chat system initialized at: " + ChatSystem.CHAT_PADDING + "," +
             (screenHeight - chatHeight - ChatSystem.CHAT_PADDING));
     }
-
-    private void initializeWorldAndPlayer() {
+    private void initializeWorldAndPlayer(String worldName) {
         GameLogger.info("Initializing world and player");
 
         try {
+            // For singleplayer, if the GameClient is null, reinitialize it.
+            if (!isMultiplayer && GameContext.get().getGameClient() == null) {
+                GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance());
+                GameLogger.info("Reinitialized singleplayer GameClient");
+            }
+
+            // 1. Initialize or create world
             if (GameContext.get().getWorld() == null) {
                 if (isMultiplayer) {
                     GameContext.get().setWorld(GameContext.get().getGameClient().getCurrentWorld());
@@ -549,7 +556,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                     }
                 } else {
                     GameContext.get().setWorld(new World(
-                        "singleplayer_world",
+                        worldName,
                         System.currentTimeMillis(),
                         new BiomeManager(System.currentTimeMillis())
                     ));
@@ -611,7 +618,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             throw e;
         }
     }
-
 
     private void initializeGameSystems() {
 

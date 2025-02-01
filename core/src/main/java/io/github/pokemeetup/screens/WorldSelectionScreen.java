@@ -743,19 +743,15 @@ public class WorldSelectionScreen implements Screen {
             GameLogger.error("Failed to create world: " + e.getMessage());
             showError("Failed to create world: " + e.getMessage());
         }
-    }
-
-    public void loadSelectedWorld(String username) {
+    }public void loadSelectedWorld(String username) {
         try {
             GameLogger.info("Starting world load: " + selectedWorld.getName());
 
-            // 1. Save current world state if needed
+            // (1) Save the current world state (if applicable)
             if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
-                // Only save if current world matches type we're coming from
                 boolean currentIsMultiplayer = GameContext.get().getGameClient() != null &&
                     !GameContext.get().getGameClient().isSinglePlayer();
                 boolean targetIsMultiplayer = selectedWorld.getName().equals(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
-
                 if (currentIsMultiplayer == targetIsMultiplayer) {
                     PlayerData currentState = GameContext.get().getPlayer().getPlayerData();
                     GameContext.get().getWorld().getWorldData().savePlayerData(
@@ -766,53 +762,43 @@ public class WorldSelectionScreen implements Screen {
                 }
             }
 
-            // 2. Clean up old state
+            // (2) Clean up the old client state
             if (GameContext.get().getGameClient() != null) {
                 GameContext.get().getGameClient().dispose();
                 GameContext.get().setGameClient(null);
             }
-            GameClientSingleton.resetInstance();
 
-            // 3. Load correct world data
-            boolean isMultiplayerWorld = selectedWorld.getName().equals(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
+            // (3) Force a reload of the world data from disk rather than reusing the in-memory selectedWorld.
+            // This is the key change.
+            WorldData reloadedWorldData = GameContext.get().getWorldManager().loadAndValidateWorld(selectedWorld.getName());
+            if (reloadedWorldData == null) {
+                throw new IOException("Failed to load world data from disk for world: " + selectedWorld.getName());
+            }
+            // Update the last played timestamp (if needed)
+            reloadedWorldData.setLastPlayed(System.currentTimeMillis());
 
-            WorldData worldDataCopy = new WorldData(selectedWorld.getName());
-            worldDataCopy.setConfig(selectedWorld.getConfig());
-            worldDataCopy.setWorldTimeInMinutes(selectedWorld.getWorldTimeInMinutes());
-            worldDataCopy.setPlayedTime(selectedWorld.getPlayedTime());
-            worldDataCopy.setLastPlayed(System.currentTimeMillis());
-            worldDataCopy.setCommandsAllowed(selectedWorld.commandsAllowed());
-
-            // 4. Get correct player data for this world
-            PlayerData worldSpecificPlayerData = selectedWorld.getPlayerData(username, isMultiplayerWorld);
+            // (4) Retrieve the correct player data for this world from the reloaded data.
+            PlayerData worldSpecificPlayerData = reloadedWorldData.getPlayerData(username, false);
             if (worldSpecificPlayerData == null) {
                 worldSpecificPlayerData = new PlayerData(username);
             }
 
-            // 5. Initialize world
-            game.initializeWorld(worldDataCopy.getName(), isMultiplayerWorld);
+            // (5) Initialize the world using the reloaded data.
+            game.initializeWorld(reloadedWorldData.getName(), false);
 
-            // 6. Set up appropriate client and connection
-            if (isMultiplayerWorld) {
-                // Connect to server
-                ServerConnectionConfig config = ServerConfigManager.getDefaultServerConfig();
-                GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance(GameContext.get().getPlayer()));
-            } else {
-                // Create singleplayer client
-                GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance(GameContext.get().getPlayer()));
-                GameContext.get().getGameClient().setSinglePlayer(true);
-            }
+            // (6) Set up the singleplayer client.
+            GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance(GameContext.get().getPlayer()));
+            GameContext.get().getGameClient().setSinglePlayer(true);
 
-            // 7. Apply the correct world-specific player data
+            // (7) Apply the saved player data to the new player.
             if (GameContext.get().getPlayer() != null) {
                 GameContext.get().getPlayer().updateFromPlayerData(worldSpecificPlayerData);
             }
 
-            // 8. Switch to game screen
+            // (8) Create and switch to a new GameScreen.
             GameScreen newScreen = new GameScreen(game, username,
-                GameContext.get().getGameClient(), selectedWorld.commandsAllowed());
+                GameContext.get().getGameClient(), selectedWorld.commandsAllowed(), reloadedWorldData.getName());
             GameContext.get().setGameScreen(newScreen);
-
             game.setScreen(newScreen);
             dispose();
 
@@ -821,11 +807,7 @@ public class WorldSelectionScreen implements Screen {
             showError("Failed to load world: " + e.getMessage());
         }
     }
-    /**
-     * Generates a thumbnail for a newly-created or existing world.
-     * <p>
-     * We create a temporary World instance and render it to an FBO.
-     */
+
     private void generateWorldThumbnail(WorldData worldData) {
         final int THUMBNAIL_SIZE = 256;
         FrameBuffer fbo = null;

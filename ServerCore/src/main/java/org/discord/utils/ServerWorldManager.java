@@ -9,6 +9,7 @@ import io.github.pokemeetup.managers.BiomeTransitionResult;
 import io.github.pokemeetup.system.data.BlockSaveData;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.system.gameplay.overworld.UnifiedWorldGenerator;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
@@ -207,7 +208,7 @@ public class ServerWorldManager {
                     List<WorldObject> objects = wd.getChunkObjects().get(pos);
                     if (objects == null || objects.isEmpty()) {
                         GameLogger.info("No objects found for new chunk, generating...");
-                        objects = spawnBiomeObjectsForNewChunk(loaded, loaded.getBiome(), loaded.getGenerationSeed());
+                        objects = ServerGameContext.get().getWorldObjectManager().generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, pos, loaded);
                         if (objects != null && !objects.isEmpty()) {
                             GameLogger.info("Generated " + objects.size() + " objects for chunk " + pos);
                             wd.getChunkObjects().put(pos, objects);
@@ -334,33 +335,7 @@ public class ServerWorldManager {
     }
 
     public Chunk generateNewChunk(WorldData wd, int chunkX, int chunkY) {
-        Vector2 chunkPos = new Vector2(chunkX, chunkY);
-        BiomeData biomeData = serverBiomeManager.getBiomeData(wd.getName(), chunkPos);
-
-        // Get core biome data
-        Biome primaryBiome = serverBiomeManager.getBiomeManager().getBiome(biomeData.getPrimaryBiomeType());
-        long chunkSeed = generateChunkSeed(wd.getConfig().getSeed(), chunkX, chunkY);
-
-        // Construct the chunk
-        Chunk chunk = new Chunk(chunkX, chunkY, primaryBiome, chunkSeed, serverBiomeManager.getBiomeManager());
-
-        // Generate tile data with consideration for transitions
-        int[][] tiles = generateDeterministicTileData(chunk, primaryBiome, chunkSeed);
-        if (biomeData.getSecondaryBiomeType() != null) {
-            Biome secondaryBiome = serverBiomeManager.getBiomeManager().getBiome(biomeData.getSecondaryBiomeType());
-            blendBiomeTiles(tiles, primaryBiome, secondaryBiome, biomeData.getTransitionFactor());
-        }
-        chunk.setTileData(tiles);
-
-        // Generate and store objects
-        List<WorldObject> objects = spawnBiomeObjectsForNewChunk(chunk, primaryBiome, chunkSeed);
-        ServerGameContext.get().getWorldObjectManager()
-            .setObjectsForChunk(wd.getName(), chunkPos, objects);
-
-        chunk.setDirty(true);
-        wd.setDirty(true);
-
-        return chunk;
+        return UnifiedWorldGenerator.generateChunk(chunkX, chunkY, wd.getConfig().getSeed(), biomeManager);
     }
 
     private void blendBiomeTiles(int[][] tiles, Biome primary, Biome secondary, float transitionFactor) {

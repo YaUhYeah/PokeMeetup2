@@ -300,9 +300,7 @@ public class World {
         Biome biome = biomeManager.getBiome(chunkData.primaryBiomeType);
         if (biome == null) biome = biomeManager.getBiome(BiomeType.PLAINS);
 
-        Chunk chunk = new Chunk(chunkData.chunkX, chunkData.chunkY, biome,
-            worldData.getConfig().getSeed(),
-            biomeManager);
+        Chunk chunk = UnifiedWorldGenerator.generateChunk(chunkData.chunkX, chunkData.chunkY, worldSeed, biomeManager);
 
         chunk.setTileData(chunkData.tileData);
 
@@ -933,13 +931,7 @@ public class World {
                     biome = biomeManager.getBiome(BiomeType.PLAINS); // Fallback biome
                 }
 
-                // Create the chunk
-                chunk = new Chunk(
-                    (int) chunkPos.x,
-                    (int) chunkPos.y, biome,
-                    worldSeed,
-                    biomeManager
-                );
+                chunk= UnifiedWorldGenerator.generateChunk((int) chunkPos.x, (int) chunkPos.y, worldSeed, biomeManager);
 
                 // Now save the biome data
                 if (savedBiomeType == null) {
@@ -1053,8 +1045,8 @@ public class World {
         updateLightLevels();
         updateWeather(delta, playerPosition, gameScreen);
 
-        int currentChunkX = (int) Math.floor(playerPosition.x / CHUNK_SIZE);
-        int currentChunkY = (int) Math.floor(playerPosition.y / CHUNK_SIZE);
+        int currentChunkX = GameContext.get().getPlayer().getTileX() / Chunk.CHUNK_SIZE;
+        int currentChunkY = GameContext.get().getPlayer().getTileY() / Chunk.CHUNK_SIZE;
 
         // Manage chunks
         manageChunks(currentChunkX, currentChunkY);
