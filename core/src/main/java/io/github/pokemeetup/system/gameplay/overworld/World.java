@@ -62,6 +62,7 @@ public class World {
     private final WeatherSystem weatherSystem;
     private final WeatherAudioSystem weatherAudioSystem;
     private final Map<Vector2, BiomeTransitionResult> biomeTransitions = new ConcurrentHashMap<>();
+    private FootstepEffectManager footstepEffectManager;
     private Color currentWorldColor = new Color(1, 1, 1, 1);
     private Color previousWorldColor = null;
     private float colorTransitionProgress = 1.0f;
@@ -88,7 +89,6 @@ public class World {
     private ItemEntityManager itemEntityManager;
     private List<Map.Entry<Vector2, Chunk>> cachedSortedChunks = null;
     private int cachedChunkCount = 0;
-
     public World(WorldData worldData) {
         try {
             GameLogger.info("Initializing multiplayer world: " + worldData.getName());
@@ -119,6 +119,7 @@ public class World {
             GameLogger.error("Failed to initialize multiplayer world: " + e.getMessage());
             throw new RuntimeException("World initialization failed", e);
         }
+        footstepEffectManager = new FootstepEffectManager();
         this.itemEntityManager = new ItemEntityManager();
         this.waterEffectManager = new WaterEffectManager();
         waterEffects = new WaterEffectsRenderer();
@@ -139,6 +140,7 @@ public class World {
             this.blockManager = new BlockManager(this);
             this.biomeRenderer = new BiomeRenderer();
 
+            footstepEffectManager = new FootstepEffectManager();
             this.chunks = new ConcurrentHashMap<>();
             this.loadingChunks = new ConcurrentHashMap<>();
 
@@ -157,6 +159,7 @@ public class World {
             this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
             this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
 
+            footstepEffectManager = new FootstepEffectManager();
             // Generate initial chunks if needed
             if (chunks.isEmpty()) {
                 initializeChunksAroundOrigin();
@@ -169,6 +172,23 @@ public class World {
         this.waterEffectManager = new WaterEffectManager();
 
         waterEffects = new WaterEffectsRenderer();
+    }
+
+    public int getTileTypeAt(int tileX, int tileY) {
+        int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
+        int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+        Chunk chunk = chunks.get(chunkPos);
+        if (chunk != null) {
+            int localX = Math.floorMod(tileX, Chunk.CHUNK_SIZE);
+            int localY = Math.floorMod(tileY, Chunk.CHUNK_SIZE);
+            return chunk.getTileType(localX, localY);
+        }
+        return -1;
+    }
+
+    public FootstepEffectManager getFootstepEffectManager() {
+        return footstepEffectManager;
     }
 
     public ItemEntityManager getItemEntityManager() {
@@ -1107,16 +1127,12 @@ public class World {
         updateLightLevels();
         updateWeather(delta, playerPosition, gameScreen);
 
+        footstepEffectManager.update(delta);
 
         // Profile the chunk management routines
-        PerformanceProfiler.start("manageChunks");
         manageChunks(playerPosition);
-        PerformanceProfiler.end("manageChunks");
 
-        // Apply a time budget to chunk requests around the player.
-        PerformanceProfiler.start("updateChunksAroundPlayer");
         updateChunksAroundPlayer();
-        PerformanceProfiler.end("updateChunksAroundPlayer");
         waterEffectManager.update(delta);
 
         // Check if player is on water tile
@@ -1228,6 +1244,7 @@ public class World {
             renderLowObjects(batch, expandedBounds);
 
             itemEntityManager.render(batch);
+            footstepEffectManager.render(batch);
 
             // === RENDER PASS 3: Characters and Mid-Layer Objects ===
             renderMidLayer(batch, player, expandedBounds);
@@ -1288,6 +1305,7 @@ public class World {
             // **Render Bottom Part of Tall Grass Over Player**
 //            renderTallGrassOverPlayer(batch, playerTileX, playerTileY);
 
+            footstepEffectManager.render(batch);
             // **Render Player and Mid-Layer Objects**
             renderMidLayer(batch, player, expandedBounds);
 

@@ -27,16 +27,9 @@ public class OtherPlayer implements Positionable {
     public void setPing(int ping) {
         this.ping = ping;
     }
-    public int getPing() {
-        return ping;
-    }
 
-    // For smooth movement interpolation:
     private final Vector2 targetPosition = new Vector2();
     private final Vector2 startPosition = new Vector2();
-    private final Vector2 velocity = new Vector2();
-
-    // Running flag (set from network updates)
     private boolean wantsToRun;
     private Vector2 position;
     private String direction;

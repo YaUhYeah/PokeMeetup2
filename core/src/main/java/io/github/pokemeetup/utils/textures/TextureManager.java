@@ -39,6 +39,7 @@
         public static TextureAtlas girl;
         public static TextureAtlas pokemonoverworld;
         public static TextureAtlas items;
+        public static TextureAtlas steps;
         public static TextureAtlas boy;
         public static TextureAtlas tiles;
         public static TextureAtlas hairstyles;
@@ -322,12 +323,12 @@
             return whitePixel;
         }
 
-        public static void initialize(TextureAtlas battlebacks, TextureAtlas ui,
+        public static void initialize(TextureAtlas steps, TextureAtlas battlebacks, TextureAtlas ui,
                                       TextureAtlas pokemonback, TextureAtlas pokemonfront, TextureAtlas pokemonicon,
                                       TextureAtlas pokemonoverworld, TextureAtlas items, TextureAtlas boy,
                                       TextureAtlas tiles, TextureAtlas effects, TextureAtlas mountains
             , TextureAtlas blocks, TextureAtlas characters, TextureAtlas clothing, TextureAtlas hairstyles, TextureAtlas buildings, TextureAtlas girl) {
-
+            TextureManager.steps = steps;
             TextureManager.effects = effects;
             TextureManager.battlebacks = battlebacks;
             TextureManager.ui = ui;

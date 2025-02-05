@@ -13,6 +13,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.context.GameContext;
+import io.github.pokemeetup.managers.FootstepEffect;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonParty;
@@ -27,6 +28,7 @@ import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
+import io.github.pokemeetup.utils.textures.TileType;
 
 import java.util.*;
 
@@ -556,6 +558,11 @@ public class Player implements Positionable  {
             String nextDirection = bufferedDirection;
             bufferedDirection = null;
             move(nextDirection);
+        }int tileType = GameContext.get().getWorld().getTileTypeAt(getTileX(), getTileY()); // Implement a helper in World
+        if (tileType == TileType.SAND || tileType == TileType.SNOW || tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND || tileType == TileType.SNOW_2  || tileType == TileType.SNOW_3 || tileType == TileType.SNOW_TALL_GRASS) {
+            // Spawn a footstep effect at the current (or adjusted) position.
+            // You might want to adjust the effect position relative to your sprite’s anchor.
+            GameContext.get().getWorld().getFootstepEffectManager().addEffect(new FootstepEffect(new Vector2(x, y), direction, 0.5f));
         }
     }
     public void render(SpriteBatch batch) {

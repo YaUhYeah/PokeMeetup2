@@ -252,6 +252,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
     private void queueAssets() {
         String[] atlasFiles = {
+            "atlas/steps.atlas",
             "atlas/ui-gfx-atlas.atlas",
             "atlas/back-gfx-atlas",
             "atlas/front-gfx-atlas",
@@ -351,6 +352,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         try {
 
             GameLogger.info("Initializing managers with loaded assets...");
+            TextureAtlas stepsAtlas = assetManager.get("atlas/steps.atlas", TextureAtlas.class);
             TextureAtlas battleAtlas = assetManager.get("atlas/battlebacks-gfx-atlas", TextureAtlas.class);
             TextureAtlas uiAtlas = assetManager.get("atlas/ui-gfx-atlas.atlas", TextureAtlas.class);
             TextureAtlas backAtlas = assetManager.get("atlas/back-gfx-atlas", TextureAtlas.class);
@@ -378,6 +380,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             }
 
             TextureManager.initialize(
+                stepsAtlas,
                 battleAtlas,
                 uiAtlas,
                 backAtlas,
