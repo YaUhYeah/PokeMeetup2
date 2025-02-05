@@ -34,6 +34,8 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.INTERACTION_R
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class Player implements Positionable  {
+    private float walkStepDuration = 0.3f; // Duration (in seconds) to move one tile when walking
+    private float runStepDuration  = 0.2f;
     public static final int FRAME_WIDTH = 32;
     public static final int FRAME_HEIGHT = 48;
     private static final float COLLISION_BOX_WIDTH_RATIO = 0.6f;
@@ -449,8 +451,9 @@ public class Player implements Positionable  {
                 }
             }
             if (isMoving) {
-                float speed = isRunning ? RUN_SPEED_MULTIPLIER : 1.0f;
-                movementProgress += (deltaTime / TILE_TRANSITION_TIME) * speed;
+                // Use the configurable duration based on whether the player is running.
+                float currentDuration = isRunning ? runStepDuration : walkStepDuration;
+                movementProgress += deltaTime / currentDuration;
                 if (movementProgress >= 1.0f) {
                     completeMovement();
                 } else {
@@ -495,21 +498,21 @@ public class Player implements Positionable  {
         x = MathUtils.clamp(x, 0f, 1f);
         return x * x * (3 - 2 * x);
     }
-
     public void move(String newDirection) {
         synchronized (movementLock) {
+            // If a movement is already in progress, buffer the new input immediately.
             if (isMoving) {
-                if (movementProgress > 0.7f) {
-                    bufferedDirection = newDirection;
-                    inputBufferTimer = INPUT_BUFFER_TIME;
-                }
+                bufferedDirection = newDirection;
+                inputBufferTimer = INPUT_BUFFER_TIME;
                 return;
             }
+            // Set the current direction immediately.
             direction = newDirection;
             if (world == null) {
-                GameLogger.error("Cannot move - world is null! Player: " + username);
+                GameLogger.error("Cannot move - world is null! Player: " + getUsername());
                 return;
             }
+            // Determine new tile coordinates based on the direction.
             int newTileX = getTileX();
             int newTileY = getTileY();
             switch (newDirection) {
@@ -528,18 +531,18 @@ public class Player implements Positionable  {
                 default:
                     return;
             }
-            if (world != null && world.isPassable(newTileX, newTileY)) {
+            // Only initiate movement if the target tile is passable.
+            if (world.isPassable(newTileX, newTileY)) {
                 targetTileX = newTileX;
                 targetTileY = newTileY;
                 targetPosition.set(tileToPixelX(newTileX), tileToPixelY(newTileY));
                 startPosition.set(x, y);
-                lastPosition.set(x, y);
+                // You might also update lastPosition here if needed.
                 isMoving = true;
                 movementProgress = 0f;
             }
         }
     }
-
     private void completeMovement() {
         x = targetPosition.x;
         y = targetPosition.y;

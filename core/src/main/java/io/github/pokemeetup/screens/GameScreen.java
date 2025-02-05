@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.profiling.GLProfiler;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
@@ -52,7 +53,6 @@ import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.*;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
-import io.github.pokemeetup.utils.textures.BattleAssets;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.InventoryConverter;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -117,7 +117,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private boolean initializedworld = false;
     private volatile boolean isDisposing = false;
     private BattleTable battleTable;
-    private BattleAssets battleAssets;
     private Skin battleSkin;
     private boolean inBattle = false;
     private Stage battleStage;
@@ -139,6 +138,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private InputManager inputManager;
     private ChestScreen chestScreen;
     private Actor houseToggleButton;
+    private GLProfiler glProfiler;
 
     public GameScreen(CreatureCaptureGame game, String username, GameClient gameClient) {
         this.game = game;
@@ -404,6 +404,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     @Override
     public void show() {
+        glProfiler = new GLProfiler(Gdx.graphics);
+        glProfiler.enable();
         if (GameContext.get().getPlayer() != null) {
             GameContext.get().getPlayer().initializeResources();
         }
@@ -658,8 +660,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     private void initializeBattleAssets() {
         try {
-            battleAssets = new BattleAssets();
-            battleAssets.initialize();
 
 
             try {
@@ -901,7 +901,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     public Player getPlayer() {
         return GameContext.get().getPlayer();
     }
-
 
     public PlayerData getCurrentPlayerState() {
         PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
@@ -1305,7 +1304,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         return message;
     }
 
-
     private void renderOtherPlayers(SpriteBatch batch, Rectangle viewBounds) {
         if (GameContext.get().getGameClient() == null || GameContext.get().getGameClient().isSinglePlayer()) {
             return;
@@ -1386,10 +1384,15 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     @Override
     public void render(float delta) {
+        glProfiler.reset();
 
         if (GameContext.get().getGameClient() != null && GameContext.get().getGameClient().isConnected()) {
-            GameContext.get().getGameClient().update(delta);
             GameContext.get().getGameClient().tick(delta);
+        }
+        int draws = glProfiler.getDrawCalls();
+        int binds = glProfiler.getTextureBindings();
+        if (draws > 200) {
+            Gdx.app.log("GLProfiler", "Draw Calls: " + draws + " Tex Binds: " + binds);
         }
         if (camera != null && starterTable == null) {
             updateCamera();
@@ -1463,6 +1466,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         if (SHOW_DEBUG_INFO) {
             renderDebugInfo();
+
         }
         if (inputManager.getCurrentState() == InputManager.UIState.CRAFTING) {
             if (GameContext.get().getCraftingScreen() != null) {
@@ -1638,6 +1642,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             }
         }
     }
+
     private void renderPlayerListOverlay() {
         // Create a table for the overlay
         Table table = new Table();
@@ -2031,6 +2036,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         if (isDisposing) return;
         isDisposing = true;
 
+        glProfiler.disable();
         try {
             if (GameContext.get().getGameClient().isSinglePlayer() && GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
                 // Convert Player to data

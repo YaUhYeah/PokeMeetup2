@@ -312,11 +312,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         }
     }
 
-    private void rebuildUI() {
-        stage.clear();
-        setupUI();
-    }
-
     public void reloadInventory() {
         GameLogger.info("Reloading inventory (only on show or controlled calls)...");
         if (inventory != null) {
@@ -465,9 +460,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
 
     @Override
     public void onInventoryChanged() {
-        // Just log the change. The slots will update themselves when data changes.
-        GameLogger.info("Inventory changed - not reloading display immediately");
-        // No forced reloadInventory() call here to avoid conflicts.
     }
 
     @Override

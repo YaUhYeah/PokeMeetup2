@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class BlockTextureManager {
-    private static final Map<String, Boolean> chestStates = new HashMap<>();  // Track chest open/closed states
     private static final float FRAME_DURATION = 0.35f; // Adjust animation speed
     private static final Map<String, Animation<TextureRegion>> blockAnimations = new HashMap<>();
     private static final Map<String, TextureRegion[]> blockFrames = new HashMap<>();

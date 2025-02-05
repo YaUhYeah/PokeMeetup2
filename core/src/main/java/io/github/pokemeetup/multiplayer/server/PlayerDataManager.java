@@ -108,11 +108,6 @@ public class PlayerDataManager {
         return PLAYER_DATA_DIR + uuid.toString() + ".json";
     }
 
-    private void initializePeriodicFlush() {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleWithFixedDelay(this::flush, 5, 5, TimeUnit.MINUTES);
-    }
-
 
     public synchronized void flush() {
         if (isFlushInProgress) {
@@ -121,23 +116,17 @@ public class PlayerDataManager {
 
         try {
             isFlushInProgress = true;
-            GameLogger.info("Starting player data flush...");
             Map<UUID, PlayerData> dataToSave = new HashMap<>(playerCache);
 
-            int successCount = 0;
             for (Map.Entry<UUID, PlayerData> entry : dataToSave.entrySet()) {
                 try {
-                    // Call savePlayerData directly without triggering another flush
                     savePlayerData(entry.getKey(), entry.getValue());
-                    successCount++;
                 } catch (Exception e) {
                     GameLogger.error("Failed to flush player data for UUID " +
                         entry.getKey() + ": " + e.getMessage());
                 }
             }
 
-            GameLogger.info("Player data flush complete - " +
-                successCount + "/" + dataToSave.size() + " players saved successfully");
 
         } finally {
             isFlushInProgress = false;

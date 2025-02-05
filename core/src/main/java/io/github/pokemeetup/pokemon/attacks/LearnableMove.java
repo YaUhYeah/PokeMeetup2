@@ -13,10 +13,8 @@ public class LearnableMove {
     private String description;
 
     public LearnableMove() {
-        // Default constructor
     }
 
-    // Getters and setters
     public String getMoveName() {
         return moveName;
     }

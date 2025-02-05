@@ -287,7 +287,6 @@ public class GameClient {
 
     public void setInitializationListener(InitializationListener listener) {
         this.initializationListener = listener;
-        // If already initialized, notify immediately
         if (isInitialized()) {
             Gdx.app.postRunnable(() -> listener.onInitializationComplete(true));
         }
@@ -656,8 +655,6 @@ public class GameClient {
             return;
         }
         chatMessageQueue.offer(message);
-        GameLogger.info("Chat message queued from " + message.sender +
-            " of type " + message.type);
     }
 
     public String getLocalUsername() {
@@ -1397,24 +1394,27 @@ public class GameClient {
             GameLogger.error("Failed to send block placement: " + e.getMessage());
         }
     }
-
     private void handlePlayerLeft(NetworkProtocol.PlayerLeft leftMsg) {
         Gdx.app.postRunnable(() -> {
+            // Remove the OtherPlayer instance
             OtherPlayer leftPlayer = otherPlayers.remove(leftMsg.username);
             if (leftPlayer != null) {
                 leftPlayer.dispose();
             }
 
+            // Remove any pending player updates for this username
             playerUpdates.remove(leftMsg.username);
 
-            // [B] Add a system chat message so players see "X has left the game."
+            // **** Remove the player's ping data ****
+            playerPingMap.remove(leftMsg.username);
+
+            // Optionally, notify via chat that the player has left:
             if (chatMessageHandler != null) {
                 NetworkProtocol.ChatMessage leaveNotification = new NetworkProtocol.ChatMessage();
                 leaveNotification.sender = "System";
                 leaveNotification.content = leftMsg.username + " has left the game";
                 leaveNotification.type = NetworkProtocol.ChatType.SYSTEM;
                 leaveNotification.timestamp = System.currentTimeMillis();
-
                 chatMessageHandler.accept(leaveNotification);
             }
         });

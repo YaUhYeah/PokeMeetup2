@@ -62,7 +62,7 @@ public class ServerLauncher {
             // Initialize ServerGameContext first!
             ServerWorldObjectManager worldObjectManager = new ServerWorldObjectManager();
             worldObjectManager.initializeWorld(MULTIPLAYER_WORLD_NAME);
-            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager());
+            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager(), new ServerBlockManager());
             logger.info("Server game context initialized");
 
             // In your ServerLauncher (or similar startup routine):

@@ -155,14 +155,4 @@ public class Chunk {
         return TileType.isPassableTile(tType);
     }
 
-
-    private static class Point {
-        int x, y;
-
-        Point(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-    }
-
 }

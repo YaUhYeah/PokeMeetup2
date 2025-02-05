@@ -82,8 +82,6 @@ public class ServerWorldObjectManager {
             }
             worldObjectsByWorld.computeIfAbsent(worldName, k -> new ConcurrentHashMap<>())
                 .put(chunkPos, safeObjects);
-            GameLogger.info("Updated " + safeObjects.size() + " objects in chunk " + chunkPos +
-                " for world " + worldName);
         } catch (Exception e) {
             GameLogger.error("Error setting chunk objects: " + e.getMessage());
         }

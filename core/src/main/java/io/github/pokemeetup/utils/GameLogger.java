@@ -3,7 +3,7 @@ package io.github.pokemeetup.utils;
 import com.badlogic.gdx.Gdx;
 
 public class GameLogger {
-    public static boolean isInfoEnabled = true;
+    public static boolean isInfoEnabled = false;
     public static boolean isErrorEnabled = true;
 
     public static void info(String message) {

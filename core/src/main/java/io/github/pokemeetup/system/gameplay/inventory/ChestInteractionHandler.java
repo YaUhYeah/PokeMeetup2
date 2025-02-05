@@ -3,24 +3,11 @@ package io.github.pokemeetup.system.gameplay.inventory;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.context.GameContext;
-import io.github.pokemeetup.system.Player;
-import io.github.pokemeetup.system.gameplay.overworld.World;
-import io.github.pokemeetup.utils.GameLogger;
 
 public class ChestInteractionHandler {
-    private static final float INTERACTION_RANGE = World.TILE_SIZE * 1.5f;
     private boolean isChestOpen = false;
     private Vector2 currentChestPosition = null;
 
-    public void resetChestBlockOpenState(World world) {
-        if (currentChestPosition != null && world != null) {
-            PlaceableBlock chestBlock = world.getBlockManager()
-                .getBlockAt((int) currentChestPosition.x, (int) currentChestPosition.y);
-            if (chestBlock != null && chestBlock.getType() == PlaceableBlock.BlockType.CHEST) {
-                chestBlock.setChestOpen(false);
-            }
-        }
-    }
 
     public boolean canInteractWithChest() {
         if (GameContext.get().getPlayer() == null || GameContext.get().getPlayer().getWorld() == null) {
@@ -50,7 +37,6 @@ public class ChestInteractionHandler {
 
         PlaceableBlock block = GameContext.get().getWorld().getBlockManager().getBlockAt(targetX, targetY);
         if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
-            // Cache the chest position when found
             currentChestPosition = new Vector2(targetX, targetY);
             return true;
         }

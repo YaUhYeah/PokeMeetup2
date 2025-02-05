@@ -28,10 +28,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class BuildingHotbar extends Table {
-    private static final int VISIBLE_SLOTS = 9;
     private static final float SLOT_SIZE = 50f;
     private static final float PADDING = 5f;
-    private static final float PREVIEW_SIZE = 40f;
     private final List<BuildingData> buildingSlots = new ArrayList<>();
     private final ScrollPane scrollPane;
     private final Table slotsTable;
@@ -156,7 +154,6 @@ public class BuildingHotbar extends Table {
     }
 
     public void scroll(int amount) {
-        // Scroll horizontally by amount
         float currentX = scrollPane.getScrollX();
         scrollPane.setScrollX(currentX + amount);
     }

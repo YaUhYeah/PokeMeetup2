@@ -282,7 +282,7 @@ public class ServerWorldManager {
             }
 
             chunk.addBlock(block);
-            GameLogger.info("Added block " + blockType + " at position " + pos);
+            ServerGameContext.get().getServerBlockManager().getPlacedBlocks().put(pos, block);
 
         } catch (Exception e) {
             GameLogger.error("Failed to process block data: " + e.getMessage());

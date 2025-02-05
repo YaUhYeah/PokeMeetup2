@@ -17,10 +17,6 @@ public class PokemonAnimations {
     private float idleTime = 0f;
     private boolean isIdling = false;
 
-    public boolean isIdling() {
-        return isIdling;
-    }
-
     private float idleOffset = 0f;
     private float timeSinceLastIdle = 0f;
     private final Random random = new Random();
@@ -147,12 +143,6 @@ public class PokemonAnimations {
         }
 
         return frame != null ? frame : defaultFrame;
-    }  public float getIdleOffset() {
-        if (!isIdling) return 0f;
-
-        // Create a smooth bounce effect using sine
-        float progress = idleTime / IDLE_BOUNCE_DURATION;
-        return IDLE_BOUNCE_HEIGHT * (float)Math.sin(progress * Math.PI * 2) * (1 - progress);
     }
 
     private TextureRegion getStandingFrame(String direction) {
@@ -207,7 +197,6 @@ public class PokemonAnimations {
             // Handle idle animation
             timeSinceLastIdle += delta;
 
-            // Randomly start new idle animation
             if (!isIdling && random.nextFloat() < IDLE_ANIMATION_CHANCE * delta) {
                 isIdling = true;
                 idleTime = 0f;

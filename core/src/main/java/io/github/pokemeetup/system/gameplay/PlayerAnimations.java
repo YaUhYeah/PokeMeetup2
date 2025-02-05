@@ -49,7 +49,6 @@ public class PlayerAnimations {
         loadAnimations(this.characterType);
     }
 
-    // Default constructor falls back to "boy"
     public PlayerAnimations() {
         this("boy");
     }
