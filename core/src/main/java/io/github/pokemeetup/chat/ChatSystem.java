@@ -12,6 +12,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.utils.GameLogger;
@@ -50,7 +51,6 @@ public class ChatSystem extends Table {
     boolean commandsEnabled;
     private int messageHistoryIndex = -1; // Initialize to -1 to indicate no history selected
     private Table chatWindow;
-    private String currentInputBeforeHistory = "";
     private ScrollPane messageScroll;
     private Table messageTable;
     private boolean isActive;
@@ -129,7 +129,7 @@ public class ChatSystem extends Table {
         }
         if (content.startsWith("/")) {
             GameLogger.info("Command detected. Commands enabled: " + commandsEnabled);
-            if (commandsEnabled || !gameClient.isSinglePlayer()) {
+            if (commandsEnabled || GameContext.get().isMultiplayer()) {
                 String command = content.substring(1);
                 String[] parts = command.split(" ", 2);
                 String commandName = parts[0].toLowerCase();
@@ -175,7 +175,7 @@ public class ChatSystem extends Table {
         chatMessage.timestamp = System.currentTimeMillis();
         chatMessage.type = NetworkProtocol.ChatType.NORMAL;
 
-        if (gameClient.isSinglePlayer()) {
+        if (!GameContext.get().isMultiplayer()) {
             handleIncomingMessage(chatMessage);
         } else {
             handleIncomingMessage(chatMessage);
@@ -419,16 +419,17 @@ public class ChatSystem extends Table {
                     }
                 }
 
-                // Activate chat on T or / when not active
                 if (!isActive && (keycode == Input.Keys.T || keycode == Input.Keys.SLASH)) {
                     activateChat();
                     if (keycode == Input.Keys.SLASH) {
                         inputField.setText("/");
+                        inputField.setCursorPosition(1);
                     }
                     event.cancel();
                     GameLogger.info("Chat activation key pressed: " + Input.Keys.toString(keycode));
                     return true;
                 }
+
 
                 // Handle escape to close chat
                 if (isActive && keycode == Input.Keys.ESCAPE) {

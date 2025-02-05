@@ -3,6 +3,7 @@ package io.github.pokemeetup.context;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.multiplayer.client.GameClient;
@@ -10,6 +11,7 @@ import io.github.pokemeetup.screens.ChestScreen;
 import io.github.pokemeetup.screens.CraftingTableScreen;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.screens.InventoryScreen;
+import io.github.pokemeetup.screens.otherui.BattleTable;
 import io.github.pokemeetup.screens.otherui.BuildModeUI;
 import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.screens.otherui.GameMenu;
@@ -21,16 +23,18 @@ import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 public final class GameContext {
 
     private static GameContext instance;
-
     private final CreatureCaptureGame game;
-    private final ChatSystem chatSystem;
+    private ChatSystem chatSystem;
     private final BattleSystemHandler battleSystem;
+    private BattleTable battleTable;
+    private boolean isMultiplayer;
     private GameClient gameClient;
     private World world;
     private Player player;
     private SpriteBatch batch;
     private SpriteBatch uiBatch;
     private Stage uiStage;
+    private Skin skin;
     private Stage battleStage;
     private InventoryScreen inventoryScreen;
     private BuildModeUI buildModeUI;
@@ -40,6 +44,7 @@ public final class GameContext {
     private WorldManager worldManager;
     private GameScreen gameScreen;
     private DisconnectionManager disconnectionManager;
+    private UIManager uiManager;
 
     /**
      * Private constructor to enforce singleton usage.
@@ -60,7 +65,7 @@ public final class GameContext {
         CraftingTableScreen craftingScreen,
         GameMenu gameMenu,
         ChestScreen chestScreen, WorldManager worldManager,
-        GameScreen gameScreen, DisconnectionManager disconnectionManager
+        GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable
     ) {
         this.game = game;
         this.gameClient = gameClient;
@@ -70,6 +75,7 @@ public final class GameContext {
         this.uiBatch = uiBatch;
         this.uiStage = uiStage;
         this.battleStage = battleStage;
+        this.skin = skin;
         this.chatSystem = chatSystem;
         this.battleSystem = battleSystem;
         this.inventoryScreen = inventoryScreen;
@@ -79,7 +85,10 @@ public final class GameContext {
         this.chestScreen = chestScreen;
         this.worldManager = worldManager;
         this.gameScreen = gameScreen;
-        this.disconnectionManager=disconnectionManager;
+        this.disconnectionManager = disconnectionManager;
+        this.isMultiplayer = isMultiplayer;
+        this.uiManager = uiManager;
+        this.battleTable = battleTable;
     }
 
     public static void init(
@@ -97,8 +106,8 @@ public final class GameContext {
         BuildModeUI buildModeUI,
         CraftingTableScreen craftingScreen,
         GameMenu gameMenu,
-        ChestScreen chestScreen,WorldManager worldManager,
-        GameScreen gameScreen, DisconnectionManager disconnectionManager
+        ChestScreen chestScreen, WorldManager worldManager,
+        GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable
     ) {
         if (instance != null) {
             throw new IllegalStateException("GameContext already initialized!");
@@ -118,7 +127,7 @@ public final class GameContext {
             buildModeUI,
             craftingScreen,
             gameMenu,
-            chestScreen,worldManager,gameScreen,disconnectionManager
+            chestScreen, worldManager, gameScreen, disconnectionManager, isMultiplayer, skin, uiManager, battleTable
         );
     }
 
@@ -133,8 +142,48 @@ public final class GameContext {
         return instance;
     }
 
+    public BattleTable getBattleTable() {
+        return battleTable;
+    }
+
+    public void setChatSystem(ChatSystem chatSystem) {
+        this.chatSystem = chatSystem;
+    }
+
+    public void setBattleTable(BattleTable battleTable) {
+        this.battleTable = battleTable;
+    }
+
+    public UIManager getUiManager() {
+        return uiManager;
+    }
+
+    public void setUiManager(UIManager uiManager) {
+        this.uiManager = uiManager;
+    }
+
+    public boolean isMultiplayer() {
+        return isMultiplayer;
+    }
+
+    public void setMultiplayer(boolean multiplayer) {
+        isMultiplayer = multiplayer;
+    }
+
+    public Skin getSkin() {
+        return skin;
+    }
+
+    public void setSkin(Skin skin) {
+        this.skin = skin;
+    }
+
     public CraftingTableScreen getCraftingScreen() {
         return craftingScreen;
+    }
+
+    public void setCraftingScreen(CraftingTableScreen craftingScreen) {
+        this.craftingScreen = craftingScreen;
     }
 
     public DisconnectionManager getDisconnectionManager() {
@@ -143,10 +192,6 @@ public final class GameContext {
 
     public void setDisconnectionManager(DisconnectionManager disconnectionManager) {
         this.disconnectionManager = disconnectionManager;
-    }
-
-    public void setCraftingScreen(CraftingTableScreen craftingScreen) {
-        this.craftingScreen = craftingScreen;
     }
 
     public GameScreen getGameScreen() {
@@ -161,16 +206,16 @@ public final class GameContext {
         return gameMenu;
     }
 
+    public void setGameMenu(GameMenu gameMenu) {
+        this.gameMenu = gameMenu;
+    }
+
     public WorldManager getWorldManager() {
         return worldManager;
     }
 
     public void setWorldManager(WorldManager worldManager) {
         this.worldManager = worldManager;
-    }
-
-    public void setGameMenu(GameMenu gameMenu) {
-        this.gameMenu = gameMenu;
     }
 
     public CreatureCaptureGame getGame() {
@@ -270,6 +315,9 @@ public final class GameContext {
         if (batch != null) {
             batch.dispose();
         }
+        if (skin != null) {
+            skin.dispose();
+        }
         if (uiBatch != null) {
             uiBatch.dispose();
         }
@@ -281,7 +329,7 @@ public final class GameContext {
             battleStage.dispose();
         }
         if (battleSystem != null) {
-            battleSystem.endBattle(); // or other cleanup
+            battleSystem.endBattle();
         }
 
         instance = null;

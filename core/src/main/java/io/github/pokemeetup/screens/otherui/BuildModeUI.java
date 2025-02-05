@@ -22,6 +22,7 @@ import io.github.pokemeetup.blocks.BuildingTemplate;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.blocks.SmartBuildingManager;
 import io.github.pokemeetup.context.GameContext;
+import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.UITransitionManager;
 import io.github.pokemeetup.system.data.BlockSaveData;
@@ -47,8 +48,6 @@ public class BuildModeUI extends Group {
     private static final Color INVALID_PREVIEW_COLOR = new Color(1, 0, 0, 0.3f);
     private final Skin skin;
     private final BuildingHotbar buildingHotbar;
-    private boolean inBuildingMode = false;
-
     private final Table mainTable;
     private final Table hotbarTable;
     private final SmartBuildingManager smartBuildingManager;
@@ -57,10 +56,11 @@ public class BuildModeUI extends Group {
     private final boolean disposed = false;
     private final Vector2 previewPosition;
     private final UITransitionManager transitionManager = new UITransitionManager();
+    private final BitmapFont font;
+    private boolean inBuildingMode = false;
     private int selectedSlot = 0;
     private boolean canPlaceAtPreview;
     private float stateTime = 0;
-    private final BitmapFont font;
 
     public BuildModeUI(Skin skin) {
         this.skin = skin;
@@ -125,10 +125,18 @@ public class BuildModeUI extends Group {
         int targetY = GameContext.get().getPlayer().getTileY();
 
         switch (GameContext.get().getPlayer().getDirection()) {
-            case "up": targetY++; break;
-            case "down": targetY--; break;
-            case "left": targetX--; break;
-            case "right": targetX++; break;
+            case "up":
+                targetY++;
+                break;
+            case "down":
+                targetY--;
+                break;
+            case "left":
+                targetX--;
+                break;
+            case "right":
+                targetX++;
+                break;
         }
 
         previewPosition.set(targetX, targetY);
@@ -241,6 +249,14 @@ public class BuildModeUI extends Group {
         boolean placed = template.placeBuilding(GameContext.get().getWorld(), tileX, tileY);
         if (placed) {
             consumeMaterials(building.getRequirements());
+
+            String username = GameContext.get().getPlayer().getUsername();
+            if (GameContext.get().isMultiplayer()) {
+                NetworkProtocol.BuildingPlacement bp = template.toNetworkMessage(username, tileX, tileY);
+
+                // Send the building placement to the server.
+                GameContext.get().getGameClient().sendBuildingPlacement(bp);
+            }
             GameLogger.info("Successfully placed building: " + building.getName());
             return true;
         }
@@ -418,10 +434,18 @@ public class BuildModeUI extends Group {
         int targetY = GameContext.get().getPlayer().getTileY();
 
         switch (GameContext.get().getPlayer().getDirection()) {
-            case "up": targetY++; break;
-            case "down": targetY--; break;
-            case "left": targetX--; break;
-            case "right": targetX++; break;
+            case "up":
+                targetY++;
+                break;
+            case "down":
+                targetY--;
+                break;
+            case "left":
+                targetX--;
+                break;
+            case "right":
+                targetX++;
+                break;
         }
 
         BuildingData buildingData = buildingHotbar.getSelectedBuilding();

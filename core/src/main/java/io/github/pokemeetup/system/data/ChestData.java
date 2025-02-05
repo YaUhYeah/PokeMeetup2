@@ -10,16 +10,25 @@ import io.github.pokemeetup.utils.GameLogger;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class ChestData implements Serializable, Json.Serializable,ItemContainer {
     public static final int CHEST_SIZE = 27;
     private static final long serialVersionUID = 1L; // Add serialVersionUID
     public UUID chestId;
-    public ArrayList<ItemData> items;
+    public List<ItemData> items;
     public Vector2 position;
     public boolean isDirty;
     public transient InventorySlotData[] slotDataArray;
+
+    public List<ItemData> getItems() {
+        return items;
+    }
+
+    public void setItems(List<ItemData> items) {
+        this.items = items;
+    }
 
     public ChestData() {
         this.chestId = UUID.randomUUID();

@@ -22,7 +22,7 @@ public class PokemonSpawnManager {
     private static final float BASE_SPAWN_RATE = 0.25f;  // Base 30% chance per check
     private static final float SPAWN_CHECK_INTERVAL = 2.5f;
     private static final Map<BiomeType, Map<TimeOfDay, String[]>> POKEMON_SPAWNS = new HashMap<>();
-    private static final float LEVEL_VARIANCE = 2f; // Random variance in levels
+    private static final float LEVEL_VARIANCE = 2f;
     private static final float MIN_SPAWN_DISTANCE_PIXELS = 5 * World.TILE_SIZE;
     private static final float MAX_SPAWN_DISTANCE_PIXELS = 15 * World.TILE_SIZE;
     private static final int MAX_POKEMON_PER_CHUNK = 4;
@@ -270,8 +270,6 @@ public class PokemonSpawnManager {
         }
 
         Map<Vector2, Chunk> worldChunks = GameContext.get().getWorld().getChunks();
-        // Log some nearby chunk positions that should be loaded
-        GameLogger.info("Checking chunks in radius 1:");
         int radius = 1;
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dy = -radius; dy <= radius; dy++) {
@@ -361,139 +359,110 @@ public class PokemonSpawnManager {
     }
 
     private void initializePokemonSpawns() {
-        // Plains biome
+        // PLAINS biome
         Map<TimeOfDay, String[]> plainsSpawns = new HashMap<>();
         plainsSpawns.put(TimeOfDay.DAY, new String[]{
-            "Pidgey", "Rattata", "Spearow", "Bulbasaur", "Squirtle",
-            "Charmander", "Meowth", "Pikachu", "Jigglypuff", "Psyduck",
-            "Machop", "Geodude", "Tentacool", "Staryu", "Clefairy",
-            "Vulpix", "Growlithe", "Doduo", "Ponyta", "Magnemite",
-            "Farfetch'd", "Dodrio", "Raticate", "Pidgeotto", "Vileplume"
+            "Rattata", "Pidgey", "Sentret", "Hoppip", "Sunkern",
+            "Caterpie", "Weedle", "Oddish", "Bellsprout", "Zigzagoon","Spinarak"
         });
         plainsSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Hoothoot", "Oddish", "Meowth", "Rattata", "Zubat",
-            "Gastly", "Murkrow", "Mankey", "Abra", "Psyduck",
-            "Onix", "Jigglypuff", "Golbat", "Venonat", "Grimer",
-            "Koffing", "Sandslash", "Geodude", "Paras", "Vileplume",
-            "Tentacruel", "Goldeen", "Staryu", "Doduo", "Tentacool"
+            "Zubat", "Hoothoot", "Rattata", "Caterpie", "Weedle",
+            "Hoppip", "Sunkern", "Spinarak",
+            "Skitty"
         });
         POKEMON_SPAWNS.put(BiomeType.PLAINS, plainsSpawns);
 
-        // Forest biome
+        // FOREST biome
         Map<TimeOfDay, String[]> forestSpawns = new HashMap<>();
         forestSpawns.put(TimeOfDay.DAY, new String[]{
-            "Caterpie", "Weedle", "Oddish", "Bellsprout", "Pineco",
-            "Shroomish", "Heracross", "Seedot", "Nuzleaf", "Roselia",
-            "Tangela", "Paras", "Lotad", "Lombre", "Vileplume",
-            "Parasect", "Exeggcute", "Bellossom", "Skitty",
-            "Swablu"
+            "Caterpie", "Weedle", "Oddish", "Bellsprout", "Treecko",
+            "Shroomish", "Seedot", "Lotad", "Nincada", "Poochyena",
+            "Hoppip", "Sunkern"
         });
         forestSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Hoothoot", "Spinarak", "Oddish", "Venonat", "Gastly",
-            "Murkrow", "Drowzee", "Weepinbell", "Pidgeotto", "Misdreavus",
-            "Sneasel", "Gloom", "Scyther", "Roselia", "Cacnea",
-            "Skitty", "Ralts", "Kirlia", "Nuzleaf", "Parasect",
-            "Venomoth", "Farfetch'd", "Abra", "Kadabra"
+            "Hoothoot", "Caterpie", "Weedle", "Oddish", "Bellsprout",
+            "Treecko", "Shroomish", "Seedot", "Lotad", "Poochyena",
+            "Hoppip", "Nincada"
         });
         POKEMON_SPAWNS.put(BiomeType.FOREST, forestSpawns);
 
-        // Snow biome
+        // SNOW biome
         Map<TimeOfDay, String[]> snowSpawns = new HashMap<>();
         snowSpawns.put(TimeOfDay.DAY, new String[]{
-            "Swinub", "Snorunt", "Glalie", "Jynx", "Seel",
-            "Piloswine", "Sneasel", "Dewgong", "Lapras", "Porygon",
-            "Delibird", "Cubchoo"
+            "Swinub", "Snorunt", "Snover", "Spheal", "Cubchoo",
+            "Sneasel", "Vanillite", "Snom"
         });
         snowSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Sneasel", "Delibird", "Snorunt", "Glalie", "Swinub",
-            "Seel", "Piloswine", "Grimer", "Jynx", "Dewgong",
-            "Lapras", "Porygon"
+            "Swinub", "Snorunt", "Snover", "Spheal", "Cubchoo",
+            "Sneasel", "Vanillite", "Snom"
         });
         POKEMON_SPAWNS.put(BiomeType.SNOW, snowSpawns);
 
-        // Desert biome
+        // DESERT biome
         Map<TimeOfDay, String[]> desertSpawns = new HashMap<>();
         desertSpawns.put(TimeOfDay.DAY, new String[]{
-            "Trapinch", "Sandshrew", "Geodude", "Baltoy", "Cacnea",
-            "Diglett", "Sandslash", "Dugtrio", "Nidoran♂", "Nidoran♀",
-            "Nidorino", "Nidorina", "Crobat", "Koffing", "Rhyhorn",
-            "Kabuto", "Kabutops", "Omanyte", "Omastar",
-            "Electrode", "Magmar", "Mr. Mime", "Persian", "Vulpix"
+            "Sandshrew", "Trapinch", "Cacnea", "Sandile", "Diglett",
+            "Vulpix",  "Ekans", "Spinarak",
+            "Poochyena"
         });
         desertSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Zubat", "Voltorb", "Cacnea", "Drowzee", "Abra",
-            "Onix", "Rhyhorn", "Dugtrio", "Koffing", "Kangaskhan",
-            "Machop", "Geodude", "Sandshrew", "Diglett", "Nidoran♂",
-            "Nidoran♀", "Nidorino", "Nidorina", "Crobat",
-            "Electrode", "Magmar", "Mr. Mime", "Persian"
+            "Sandshrew", "Trapinch", "Cacnea", "Sandile", "Diglett",
+            "Vulpix",  "Ekans", "Zubat",
+            "Spinarak"
         });
         POKEMON_SPAWNS.put(BiomeType.DESERT, desertSpawns);
 
-        // Haunted biome
+        // HAUNTED biome
         Map<TimeOfDay, String[]> hauntedSpawns = new HashMap<>();
         hauntedSpawns.put(TimeOfDay.DAY, new String[]{
-            "Misdreavus", "Shuppet", "Duskull", "Gengar", "Banette",
-            "Haunter", "Sableye", "Spiritomb", "Dusclops", "Graveler",
-            "Onix", "Geodude", "Rattata", "Zubat", "Gastly",
-            "Cubone", "Marowak"
+            "Gastly", "Misdreavus", "Shuppet", "Duskull", "Sableye",
+            "Litwick", "Murkrow", "Yamask"
         });
         hauntedSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Gastly", "Haunter", "Gengar", "Zubat", "Golbat",
-            "Cubone", "Marowak", "Misdreavus", "Shuppet", "Duskull",
-            "Dusclops", "Banette", "Sableye", "Spiritomb", "Murkrow"
+            "Gastly", "Misdreavus", "Shuppet", "Duskull", "Sableye",
+            "Litwick", "Murkrow", "Yamask"
         });
         POKEMON_SPAWNS.put(BiomeType.HAUNTED, hauntedSpawns);
 
-        // Rain Forest biome
+        // RAIN FOREST biome
         Map<TimeOfDay, String[]> rainforestSpawns = new HashMap<>();
         rainforestSpawns.put(TimeOfDay.DAY, new String[]{
-            "Treecko", "Slakoth", "Aipom", "Tropius", "Tangela",
-            "Paras", "Lotad", "Lombre", "Seedot", "Nuzleaf",
-            "Roselia", "Cacnea", "Sunkern", "Hoppip", "Exeggcute",
-            "Bellossom", "Pineco", "Shroomish", "Heracross",
-            "Slaking", "Vileplume", "Sceptile", "Beautifly"
+            "Treecko", "Mudkip", "Torchic", "Lotad", "Seedot",
+            "Shroomish", "Sunkern", "Hoppip", "Caterpie", "Weedle",
+            "Nincada", "Poochyena"
         });
         rainforestSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Caterpie", "Weedle", "Pidgey", "Oddish", "Venonat",
-            "Paras", "Exeggcute", "Tangela", "Cacnea", "Sunkern",
-            "Hoppip", "Bellossom", "Shroomish", "Heracross",
-            "Vileplume", "Beautifly", "Pidgeotto",
-            "Nidoran♂", "Nidoran♀", "Nidorino", "Nidorina",
-            "Pikachu", "Meowth", "Rattata"
+            "Treecko", "Mudkip", "Torchic", "Lotad", "Seedot",
+            "Shroomish", "Sunkern", "Hoppip", "Caterpie", "Weedle",
+            "Nincada", "Poochyena"
         });
         POKEMON_SPAWNS.put(BiomeType.RAIN_FOREST, rainforestSpawns);
 
-        // Big Mountains biome
+        // BIG MOUNTAINS biome
         Map<TimeOfDay, String[]> mountainSpawns = new HashMap<>();
         mountainSpawns.put(TimeOfDay.DAY, new String[]{
-            "Machop", "Geodude", "Aron", "Onix", "Teddiursa",
-            "Machoke", "Rhyhorn", "Steelix", "Graveler", "Pineco",
-            "Nosepass", "Larvitar", "Pupitar", "Aggron", "Golem",
-            "Sudowoodo", "Sableye"
+            "Geodude", "Machop", "Onix", "Rhyhorn", "Nosepass",
+            "Larvitar", "Meditite", "Riolu", "Rockruff", "Swinub"
         });
         mountainSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Zubat", "Machop", "Geodude", "Sableye", "Larvitar",
-            "Graveler", "Onix", "Steelix", "Sudowoodo", "Rhyhorn",
-            "Pineco", "Nosepass", "Pupitar", "Aggron", "Golem"
+            "Geodude", "Machop", "Onix", "Rhyhorn", "Nosepass",
+            "Larvitar", "Meditite", "Riolu", "Rockruff", "Swinub"
         });
         POKEMON_SPAWNS.put(BiomeType.BIG_MOUNTAINS, mountainSpawns);
 
         // RUINS biome
         Map<TimeOfDay, String[]> ruinsSpawns = new HashMap<>();
         ruinsSpawns.put(TimeOfDay.DAY, new String[]{
-            "Gastly", "Haunter", "Gengar", "Zubat", "Golbat",
-            "Cubone", "Marowak", "Misdreavus", "Shuppet", "Duskull",
-            "Dusclops", "Banette", "Sableye", "Spiritomb", "Graveler",
-            "Onix", "Geodude", "Rattata"
+            "Zubat", "Geodude", "Kabuto", "Omanyte", "Aerodactyl",
+            "Rattata", "Gastly", "Onix", "Abra", "Cubone"
         });
         ruinsSpawns.put(TimeOfDay.NIGHT, new String[]{
-            "Gastly", "Haunter", "Gengar", "Zubat", "Golbat",
-            "Cubone", "Marowak", "Misdreavus", "Shuppet", "Duskull",
-            "Dusclops", "Banette", "Sableye", "Spiritomb", "Graveler",
-            "Onix", "Geodude", "Rattata"
+            "Zubat", "Geodude", "Kabuto", "Omanyte", "Aerodactyl",
+            "Rattata", "Gastly", "Onix", "Abra", "Cubone"
         });
         POKEMON_SPAWNS.put(BiomeType.RUINS, ruinsSpawns);
     }
+
 
 
 

@@ -4,8 +4,10 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.Player;
+import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
@@ -38,7 +40,7 @@ public class BlockManager {
             return false;
         }
 
-        if (world.getGameClient() != null && !world.getGameClient().isSinglePlayer()) {
+        if (world.getGameClient() != null && GameContext.get().isMultiplayer()) {
             NetworkProtocol.BlockPlacement placement = new NetworkProtocol.BlockPlacement();
             placement.username = player.getUsername();
             placement.blockTypeId = type.id;
@@ -88,7 +90,6 @@ public class BlockManager {
 
         return true;
     }
-
 
 
     public boolean placeBlock(PlaceableBlock.BlockType type, int tileX, int tileY) {
@@ -163,6 +164,7 @@ public class BlockManager {
         PlaceableBlock block = getBlockAt(tileX, tileY);
         return block != null && block.getType().hasCollision;
     }
+
     public void render(SpriteBatch batch, double worldTimeInMinutes) {
         for (Chunk chunk : world.getChunks().values()) {
             for (PlaceableBlock block : chunk.getBlocks().values()) {

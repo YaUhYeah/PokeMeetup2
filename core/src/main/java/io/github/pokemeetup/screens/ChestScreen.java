@@ -1,7 +1,6 @@
 package io.github.pokemeetup.screens;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -16,6 +15,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.blocks.PlaceableBlock;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.screens.otherui.InventorySlotUI;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.ChestData;
@@ -23,15 +23,12 @@ import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.inventory.Item;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingSystem;
-import io.github.pokemeetup.system.gameplay.inventory.secureinventories.ItemContainer;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.InventoryConverter;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
-
-import java.util.Objects;
 
 public class ChestScreen implements Screen, InventoryScreenInterface {
     private static final int SLOT_SIZE = 40;
@@ -41,22 +38,20 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
     private final GameScreen gameScreen;
     private final Stage stage;
     private final Skin skin;
-    private final Player player;
     private final Table inventoryTable;
     private final Table mainTable;
     private final Table chestTable;
+    private final Table closeButtonTable;
     private boolean isVisible = false;
     private Item heldItem = null;
-    private final Table closeButtonTable;
     private Group heldItemGroup;
     private Image heldItemImage;
     private Label heldItemCountLabel;
     private boolean isClosing = false;
 
-    public ChestScreen(Player player, Skin skin, ChestData chestData, Vector2 chestPosition, GameScreen gameScreen) {
-        this.player = player;
+    public ChestScreen(Skin skin, ChestData chestData, Vector2 chestPosition, GameScreen gameScreen) {
         this.skin = skin;
-        this.chestData = chestData;
+        this.chestData = ensureChestData(chestPosition, chestData);
         this.chestPosition = chestPosition;
         this.stage = new Stage(new ScreenViewport());
         this.batch = new SpriteBatch();
@@ -68,19 +63,18 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         setupHeldItemDisplay();
         setupUI();
     }
-
     public Stage getStage() {
         return stage;
     }
 
     @Override
     public Inventory getInventory() {
-        return player.getInventory();
+        return GameContext.get().getPlayer().getInventory();
     }
 
     @Override
     public Player getPlayer() {
-        return player;
+        return GameContext.get().getPlayer();
     }
 
     @Override
@@ -100,7 +94,7 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
     }
 
     @Override
-    public ItemContainer getChestData() {
+    public ChestData getChestData() {
         return chestData;
     }
 
@@ -112,13 +106,6 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         Label titleLabel = new Label("Storage", skin);
         chestTable.add(titleLabel).colspan(9).pad(5).row();
 
-        Table grid = new Table();
-        grid.defaults().space(4);
-
-        // Debug logging
-        GameLogger.info("Creating chest grid for chest at: " + chestPosition);
-        GameLogger.info("Chest data contents: " + (chestData != null ? chestData.toString() : "null"));
-
         int cols = 9;
         for (int i = 0; i < chestData.getSize(); i++) {
             InventorySlotData slotData = chestData.getSlotData(i);
@@ -128,9 +115,26 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
                 chestTable.row();
             }
         }
-
-        chestTable.add(grid);
+    }private ChestData ensureChestData(Vector2 chestPos, ChestData incomingData) {
+        PlaceableBlock block = GameContext.get().getWorld().getBlockManager().getBlockAt((int) chestPos.x, (int) chestPos.y);
+        if (block != null) {
+            ChestData data = block.getChestData();
+            if (data != null) {
+                return data; // Use the already–assigned unique ChestData
+            } else {
+                // No chest data exists; create one now
+                ChestData newData = new ChestData((int) chestPos.x, (int) chestPos.y);
+                block.setChestData(newData);
+                // Immediately notify the server of the new chest state.
+                GameContext.get().getGameClient().sendChestUpdate(newData);
+                return newData;
+            }
+        }
+        // If no block was found, return incomingData (or create a new one as a last resort)
+        return incomingData != null ? incomingData : new ChestData((int) chestPos.x, (int) chestPos.y);
     }
+
+
 
     @Override
     public Item getHeldItemObject() {
@@ -151,8 +155,8 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         grid.defaults().space(4);
 
         int cols = 9;
-        for (int i = 0; i < player.getInventory().getSize(); i++) {
-            InventorySlotData slotData = new InventorySlotData(i, InventorySlotData.SlotType.INVENTORY, player.getInventory());
+        for (int i = 0; i < GameContext.get().getPlayer().getInventory().getSize(); i++) {
+            InventorySlotData slotData = new InventorySlotData(i, InventorySlotData.SlotType.INVENTORY, GameContext.get().getPlayer().getInventory());
 // No need to set slotType again
 
             InventorySlotUI slot = new InventorySlotUI(slotData, skin, this);
@@ -166,7 +170,7 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         inventoryTable.add(grid);
     }
 
-    private void updateUI() {
+    public void updateUI() {
         createChestInventoryGrid();
         createPlayerInventoryGrid();
     }
@@ -298,39 +302,33 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
     public void hide() {
         if (isClosing) return; // Prevent multiple hide() calls
         isClosing = true;
-
         if (!isVisible) {
             isClosing = false;
             return;
         }
 
+        // Transfer any held item (if present) to the player's inventory
         ItemData heldItemData = InventoryConverter.itemToItemData(this.heldItem);
         isVisible = false;
-
         try {
             if (heldItemData != null) {
-                player.getInventory().addItem(heldItemData);
-                this.heldItem = null; // Clear the heldItem
-                updateHeldItemDisplay(); // Update the UI to reflect that there's no held item
+                GameContext.get().getPlayer().getInventory().addItem(heldItemData);
+                this.heldItem = null;
+                updateHeldItemDisplay();
             }
 
-            // Save chest state before closing
+            // Save the chest state – note that saveChestState() should simply send the current chestData to the server
             saveChestState();
 
-            // Clean up UI elements
+            // Clean up the UI elements
             if (stage != null) {
                 stage.clear();
             }
-
-            // Reset chest handler state
             if (gameScreen != null && gameScreen.getChestHandler() != null) {
                 gameScreen.getChestHandler().setChestOpen(false);
                 gameScreen.getChestHandler().reset();
             }
-
-            // Play close sound
             AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_CLOSE);
-
         } catch (Exception e) {
             GameLogger.error("Error during chest close: " + e.getMessage());
         } finally {
@@ -338,35 +336,40 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         }
     }
 
-
     private void saveChestState() {
+        // Play the chest close sound
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_CLOSE);
 
-        // Save final chest state
-        if (player != null && player.getWorld() != null) {
-            PlaceableBlock block = player.getWorld().getBlockManager().getBlockAt(
+        // Save final chest state locally.
+        if (GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
+            PlaceableBlock block = GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(
                 (int) chestPosition.x, (int) chestPosition.y);
             if (block != null) {
                 block.setChestOpen(false);
-                block.setChestData(chestData); // Ensure final state is saved
+                block.setChestData(chestData); // Update block with the current chest data
 
-                // Force save the chunk
+                // Force-save the chunk containing the chest.
                 int chunkX = Math.floorDiv((int) chestPosition.x, World.CHUNK_SIZE);
                 int chunkY = Math.floorDiv((int) chestPosition.y, World.CHUNK_SIZE);
                 Vector2 chunkPos = new Vector2(chunkX, chunkY);
 
-                Chunk chunk = player.getWorld().getChunks().get(chunkPos);
+                Chunk chunk = GameContext.get().getWorld().getChunks().get(chunkPos);
                 if (chunk != null) {
-                    player.getWorld().saveChunkData(chunkPos, chunk);
+                    GameContext.get().getWorld().saveChunkData(chunkPos, chunk);
                 }
             }
         }
 
+        // *** NEW: Send a chest update to the server ***
+        GameContext.get().getGameClient().sendChestUpdate(chestData);
+
+        // Reset the chest handler state (client–side cleanup)
         if (gameScreen != null && gameScreen.getChestHandler() != null) {
             gameScreen.getChestHandler().setChestOpen(false);
             gameScreen.getChestHandler().reset();
         }
     }
+
 
     @Override
     public void render(float delta) {

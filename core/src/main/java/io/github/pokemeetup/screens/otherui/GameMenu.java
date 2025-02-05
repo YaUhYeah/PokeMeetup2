@@ -16,9 +16,11 @@ import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.screens.ModeSelectionScreen;
 import io.github.pokemeetup.system.InputManager;
+import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -54,82 +56,57 @@ public class GameMenu extends Actor {
     }
 
     private void handleExit() {
-        if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
-            Dialog confirmDialog = new Dialog("Confirm Exit", skin) {
-                @Override
-                protected void result(Object object) {
-                    if ((Boolean) object) {
-                        performMultiplayerExit();
-                    }
-                }
-            };
-            confirmDialog.text("Are you sure you want to exit to title?\nYour progress will be saved.");
-            confirmDialog.button("Yes", true);
-            confirmDialog.button("No", false);
-            confirmDialog.show(stage);
+        // In multiplayer mode, perform a multiplayer exit routine.
+        GameClient client = GameContext.get().getGameClient();
+        if (client != null && GameContext.get().isMultiplayer()) {
+            performMultiplayerExit();
         } else {
+            // Otherwise use the regular single-player save-and-dispose routine.
             performSaveAndExit();
         }
     }
 
-    private void performMultiplayerExit() {
-        Dialog loadingDialog = new Dialog("", skin);
-        loadingDialog.text("Saving and exiting...");
-        loadingDialog.show(stage);
+    public void resize(int width, int height) {
+        // Update the viewport for your stage(s)
+        stage.getViewport().update(width, height, true);
 
-        new Thread(() -> {
-            try {
-                GameClient oldClient = GameContext.get().getGameClient();
+        // If your optionsWindow exists, repack it (if needed) and center it.
+        if (optionsWindow != null) {
+            optionsWindow.pack();  // Optional: if your window’s content might affect its size
+            optionsWindow.setPosition(
+                (width - optionsWindow.getWidth()) / 2,
+                (height - optionsWindow.getHeight()) / 2
+            );
+        }
 
-                // 2) Dispose the old client
-                if (oldClient != null) {
-                    oldClient.dispose();
-                }
-
-                // 3) Reset the singleton
-                GameClientSingleton.resetInstance();
-                GameContext.get().setGameClient(null);
-                GameContext.get().setInventoryScreen(null);
-                GameContext.get().setBuildModeUI(null);
-                GameContext.get().setCraftingScreen(null);
-
-
-                // 4) Now schedule UI thread action
-                Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, false));
-
-            } catch (Exception e) {
-                GameLogger.error("Exit failed: " + e.getMessage());
-                Gdx.app.postRunnable(() -> {
-                    loadingDialog.hide();
-                    showErrorDialog("Failed to exit: " + e.getMessage());
-                });
-            }
-        }).start();
     }
 
+    /**
+     * Transitions to the title screen (or ModeSelectionScreen) after disposing of UI resources.
+     *
+     * @param loadingDialog  the dialog that was displayed during shutdown
+     * @param isSinglePlayer if true, the game will reinitialize the world locally;
+     *                       if false (multiplayer) it will simply switch to the title screen.
+     */
     private void safeDisposeAndTransition(Dialog loadingDialog, boolean isSinglePlayer) {
         try {
             isDisposing = true;
-
-            // Clean up menu resources
             if (menuWindow != null) menuWindow.setVisible(false);
-            if (optionsWindow != null) optionsWindow.setVisible(false);
             if (stage != null) {
                 stage.clear();
                 stage.dispose();
             }
-
             if (loadingDialog != null) {
                 loadingDialog.hide();
             }
+            GameContext.get().setInventoryScreen(null);
+            GameContext.get().setCraftingScreen(null);
+            GameContext.get().setBuildModeUI(null);
             if (isSinglePlayer) {
                 game.saveAndDispose();
                 game.reinitializeGame();
             }
-
-
-            // Create new screen
-            game.setScreen(new ModeSelectionScreen(game));
+            game.setScreen(new io.github.pokemeetup.screens.ModeSelectionScreen(game));
             isDisposing = false;
         } catch (Exception e) {
             GameLogger.error("Cleanup error: " + e.getMessage());
@@ -137,6 +114,52 @@ public class GameMenu extends Actor {
             if (loadingDialog != null) loadingDialog.hide();
             showErrorDialog("Error during cleanup: " + e.getMessage());
         }
+    }
+
+    private void performMultiplayerExit() {
+        Dialog confirmDialog = new Dialog("Confirm Exit", skin) {
+            @Override
+            protected void result(Object object) {
+                if ((Boolean) object) {
+                    final Dialog loadingDialog = new Dialog("", skin);
+                    loadingDialog.text("Saving and exiting...");
+                    loadingDialog.show(stage);
+                    new Thread(() -> {
+                        try {
+                            // In multiplayer, simply send the player state to the server.
+                            GameClient client = GameContext.get().getGameClient();
+                            Player player = GameContext.get().getPlayer();
+                            if (client != null && player != null) {
+                                client.saveState(player.getPlayerData());
+                            }
+                            // Dispose the client
+                            if (client != null) {
+                                client.dispose();
+                            }
+                            // Reset the client singleton and clear the reference
+                            GameClientSingleton.resetInstance();
+                            GameContext.get().setGameClient(null);
+                            // (Optionally, also clear UI screens that depend on multiplayer.)
+                            GameContext.get().setInventoryScreen(null);
+                            GameContext.get().setCraftingScreen(null);
+                            GameContext.get().setBuildModeUI(null);
+                            // Transition to the title screen (or ModeSelectionScreen)
+                            Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, false));
+                        } catch (Exception e) {
+                            GameLogger.error("Exit failed: " + e.getMessage());
+                            Gdx.app.postRunnable(() -> {
+                                loadingDialog.hide();
+                                showErrorDialog("Failed to exit: " + e.getMessage());
+                            });
+                        }
+                    }).start();
+                }
+            }
+        };
+        confirmDialog.text("Are you sure you want to exit to title?\nYour progress will be saved on the server.");
+        confirmDialog.button("Yes", true);
+        confirmDialog.button("No", false);
+        confirmDialog.show(stage);
     }
 
     private void createMenu() {
@@ -169,7 +192,7 @@ public class GameMenu extends Actor {
         saveButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                if (GameContext.get().getGameClient().isSinglePlayer()) {
+                if (!GameContext.get().isMultiplayer()) {
                     saveGame();
                 }
             }
@@ -215,42 +238,17 @@ public class GameMenu extends Actor {
         createOptionsMenu();
         stage.addActor(menuWindow);
     }
+
     private void performSaveAndExit() {
         if (disposalRequested) return;
         disposalRequested = true;
-
-        Dialog loadingDialog = new Dialog("", skin);
+        final Dialog loadingDialog = new Dialog("", skin);
         loadingDialog.text("Saving game...");
         loadingDialog.show(stage);
-
         new Thread(() -> {
             try {
-                // Save game state
-                if (GameContext.get().getGameClient() != null) {
-                    if (!GameContext.get().getGameClient().isSinglePlayer()) {
-                        if (GameContext.get().getPlayer().getWorld() != null) {
-                            GameContext.get().getGameClient().saveState(GameContext.get().getPlayer().getPlayerData());
-                        }
-                    } else {
-                        // For singleplayer, update the player's data and save it into the world.
-                        GameContext.get().getPlayer().updateAndSyncPlayerData();
-                        PlayerData playerData = GameContext.get().getPlayer().getPlayerData();
-                        World currentWorld = GameContext.get().getPlayer().getWorld();
-                        if (currentWorld != null) {
-                            WorldData worldData = currentWorld.getWorldData();
-                            worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), playerData, false);
-                            game.getWorldManager().saveWorld(worldData);
-                        }
-                        GameContext.get().setInventoryScreen(null);
-                        GameContext.get().setCraftingScreen(null);
-                        GameContext.get().setBuildModeUI(null);
-                        game.saveAndDispose();
-                    }
-                }
-
-                // Schedule GL disposal on main thread
+                game.saveAndDispose();
                 Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, true));
-
             } catch (Exception e) {
                 GameLogger.error("Save failed: " + e.getMessage());
                 Gdx.app.postRunnable(() -> {
@@ -260,7 +258,6 @@ public class GameMenu extends Actor {
             }
         }).start();
     }
-
 
     private void showErrorDialog(String message) {
         try {
@@ -304,21 +301,12 @@ public class GameMenu extends Actor {
         GameLogger.info("Attempting to save game");
         try {
             if (GameContext.get().getGameClient() != null && GameContext.get().getPlayer().getWorld() != null) {
-                World currentWorld = GameContext.get().getPlayer().getWorld();
-                if (GameContext.get().getPlayer().getUsername() == null) {
-                    throw new Exception("Invalid player state");
-                }
-                // Sync the player's data
-                GameContext.get().getPlayer().updateAndSyncPlayerData();
                 PlayerData playerData = GameContext.get().getPlayer().getPlayerData();
-                if (GameContext.get().getGameClient().isSinglePlayer()) {
-                    WorldData worldData = currentWorld.getWorldData();
-                    worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), playerData, false);
-                    game.getWorldManager().saveWorld(worldData);
-                    GameLogger.info("Game saved successfully");
-                } else {
-                    GameContext.get().getGameClient().savePlayerState(playerData);
-                }
+                // In single-player mode, update and save the world state.
+                GameContext.get().getWorld().getWorldData().savePlayerData(
+                    GameContext.get().getPlayer().getUsername(), playerData, false);
+                WorldManager.getInstance().saveWorld(GameContext.get().getWorld().getWorldData());
+                GameLogger.info("Game saved successfully");
                 showSaveSuccessDialog();
             } else {
                 throw new Exception("Game state is invalid");

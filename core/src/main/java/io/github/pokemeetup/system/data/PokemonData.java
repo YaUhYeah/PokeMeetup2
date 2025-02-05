@@ -12,13 +12,12 @@ import java.util.stream.Collectors;
 
 public class PokemonData {
     private final Vector2 position = new Vector2();
-    // Basic Info
     public String name;
     public UUID uuid = UUID.randomUUID();
     public int level;
     public String nature;
     public Pokemon.PokemonType primaryType;
-    public Pokemon.PokemonType secondaryType; // Can be null
+    public Pokemon.PokemonType secondaryType;
     // Stats
     public Stats stats;
     // Moves
@@ -68,11 +67,12 @@ public class PokemonData {
         this.currentHp = Math.min(Math.max(0, hp), stats != null ? stats.getHp() : hp);
     }
 
-
     public static PokemonData fromPokemon(Pokemon pokemon) {
         if (pokemon == null) {
             throw new IllegalArgumentException("Cannot create PokemonData from null Pokemon.");
         }
+        // (Optionally force a recalculation here:)
+        pokemon.calculateStats();
         PokemonData data = new PokemonData();
         data.setName(pokemon.getName());
         data.setLevel(pokemon.getLevel());
@@ -80,24 +80,31 @@ public class PokemonData {
         data.setUuid(pokemon.getUuid());
         data.setPrimaryType(pokemon.getPrimaryType());
         data.setSecondaryType(pokemon.getSecondaryType());
-        data.setCurrentHp(pokemon.getCurrentHp()); // Add this line
+        data.setCurrentHp(pokemon.getCurrentHp());
 
-        data.setBaseHp(pokemon.getStats().getHp());
-        data.setBaseAttack(pokemon.getStats().getAttack());
-        data.setBaseDefense(pokemon.getStats().getDefense());
-        data.setBaseSpAtk(pokemon.getStats().getSpecialAttack());
-        data.setBaseSpDef(pokemon.getStats().getSpecialDefense());
-        data.setBaseSpeed(pokemon.getStats().getSpeed());
+        // Save species base stats
+        data.setBaseHp(pokemon.getSpeciesBaseHp());
+        data.setBaseAttack(pokemon.getSpeciesBaseAttack());
+        data.setBaseDefense(pokemon.getSpeciesBaseDefense());
+        data.setBaseSpAtk(pokemon.getSpeciesBaseSpAtk());
+        data.setBaseSpDef(pokemon.getSpeciesBaseSpDef());
+        data.setBaseSpeed(pokemon.getSpeciesBaseSpeed());
 
         data.setCurrentExperience(pokemon.getCurrentExperience());
         data.setExperienceToNextLevel(pokemon.getExperienceForNextLevel());
         if (pokemon.getMoves() != null) {
-            List<MoveData> moveDataList = pokemon.getMoves().stream().map(MoveData::fromMove).filter(Objects::nonNull).collect(Collectors.toList());
+            List<MoveData> moveDataList = pokemon.getMoves().stream()
+                .map(MoveData::fromMove)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
             data.setMoves(moveDataList);
         }
-
+        // IMPORTANT: Create a new PokemonData.Stats from the Pokemon's stats
+        data.setStats(new PokemonData.Stats(pokemon.getStats()));
         return data;
     }
+
+
     public boolean verifyIntegrity() {
         if (this.name == null || this.name.isEmpty()) {
             GameLogger.error("PokemonData integrity check failed: name is null or empty");
@@ -308,45 +315,31 @@ public class PokemonData {
             this.currentHp = Math.min(this.stats.getHp(), this.currentHp + amount);
         }
     }
-    private int currentHp;
-
-    public Pokemon toPokemon() {
+    private int currentHp;public Pokemon toPokemon() {
         if (name == null || name.isEmpty()) {
             throw new IllegalStateException("Pokemon name is missing.");
         }
-
-        if (primaryType == null) {
-            // This should never happen if setters are correctly implemented
-            primaryType = Pokemon.PokemonType.NORMAL;
-        }
-
-        Pokemon pokemon = new Pokemon(name, level);
+        // Create the Pokemon using the full constructor that takes species base stats:
+        Pokemon pokemon = new Pokemon(name, level, baseHp, baseAttack, baseDefense, baseSpAtk, baseSpDef, baseSpeed);
         pokemon.setUuid(uuid);
         pokemon.setNature(nature);
         pokemon.setPrimaryType(primaryType);
         pokemon.setSecondaryType(secondaryType);
-        pokemon.setCurrentHp(this.currentHp);
-
-        // Apply base stats
-        pokemon.getStats().setHp(baseHp);
-        pokemon.getStats().setAttack(baseAttack);
-        pokemon.getStats().setDefense(baseDefense);
-        pokemon.getStats().setSpecialAttack(baseSpAtk);
-        pokemon.getStats().setSpecialDefense(baseSpDef);
-        pokemon.getStats().setSpeed(baseSpeed);
-
-        // Apply moves
+        // Recalculate stats in case they need to be recomputed:
+        pokemon.calculateStats();
+        pokemon.setCurrentHp(pokemon.getStats().getHp());
+        // Convert moves and add them
         for (MoveData moveData : moves) {
             Move move = moveData.toMove();
             if (move != null) {
                 pokemon.getMoves().add(move);
             }
         }
-
         return pokemon;
     }
 
-    // Nested Stats class
+
+
     public static class Stats {
         public int hp;
         public int attack;

@@ -20,7 +20,7 @@ public class JsonConfig {
 
     public static WorldData loadWorldData(String worldName) {
         if (GameContext.get().getGameClient() != null &&
-            !GameContext.get().getGameClient().isSinglePlayer()) {
+            GameContext.get().isMultiplayer()) {
             GameLogger.info("Skipping local world load in multiplayer mode");
             return null;
         }
@@ -167,6 +167,8 @@ public class JsonConfig {
                 json.writeValue("direction", playerData.getDirection());
                 json.writeValue("isMoving", playerData.isMoving());
                 json.writeValue("wantsToRun", playerData.isWantsToRun());
+                json.writeValue("characterType", playerData.getCharacterType());
+
 
                 // Inventory Items
                 json.writeArrayStart("inventoryItems");
@@ -198,6 +200,7 @@ public class JsonConfig {
                 playerData.setDirection(jsonData.getString("direction", "down"));
                 playerData.setMoving(jsonData.getBoolean("isMoving", false));
                 playerData.setWantsToRun(jsonData.getBoolean("wantsToRun", false));
+                playerData.setCharacterType(jsonData.getString("characterType", "boy"));
 
                 // Inventory Items
                 JsonValue inventoryArray = jsonData.get("inventoryItems");

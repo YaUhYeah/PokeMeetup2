@@ -11,6 +11,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.*;
 import com.badlogic.gdx.utils.Align;
 import io.github.pokemeetup.audio.AudioManager;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.screens.InventoryScreenInterface;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
@@ -39,6 +40,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     private Label itemNameLabel;
     private Label durabilityLabel;
     private Image durabilityBar;
+
     public InventorySlotUI(InventorySlotData slotData, Skin skin, InventoryScreenInterface screenInterface) {
         this.slotData = slotData;
         this.skin = skin;
@@ -276,7 +278,10 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         } finally {
             InventoryLock.writeUnlock();
             updateSlot();
-            screenInterface.updateHeldItemDisplay(); // Ensure UI updates after logic
+            screenInterface.updateHeldItemDisplay();
+            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+                GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
+            }
         }
     }
 
@@ -304,7 +309,9 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         } finally {
             InventoryLock.writeUnlock();
             updateSlot();
-            screenInterface.updateHeldItemDisplay();
+            screenInterface.updateHeldItemDisplay();if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+                GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
+            }
         }
     }
 
@@ -363,7 +370,9 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         // Update UI after shift-click
         updateSlot();
-        screenInterface.updateHeldItemDisplay();
+        screenInterface.updateHeldItemDisplay();if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+            GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
+        }
     }
 
 
@@ -398,17 +407,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         }
     }
 
-    private void moveAllToChest(ItemData itemData) {
-        ItemContainer chest = screenInterface.getChestData();
-        if (chest == null || itemData == null) return;
-        int remaining = addItemToContainer(chest, itemData);
-        if (remaining <= 0) {
-            slotData.setItemData(null);
-        } else {
-            itemData.setCount(remaining);
-            slotData.setItemData(itemData);
-        }
-    }
 
     private int addItemToContainer(ItemContainer container, ItemData itemData) {
         if (container instanceof Inventory) {
@@ -469,7 +467,9 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         screenInterface.setHeldItem(newHeld);
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP);
-    }private int tryMergeItemData(ItemContainer container, ItemData itemToMove) {
+    }
+
+    private int tryMergeItemData(ItemContainer container, ItemData itemToMove) {
         int remainder = itemToMove.getCount();
 
         for (int i = 0; i < container.getSize(); i++) {

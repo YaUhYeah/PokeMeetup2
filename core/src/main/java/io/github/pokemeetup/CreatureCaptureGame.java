@@ -6,7 +6,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.assets.loaders.TextureAtlasLoader;
 import com.badlogic.gdx.assets.loaders.resolvers.InternalFileHandleResolver;
-import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
@@ -59,7 +58,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     }
 
     public boolean isMultiplayerMode() {
-        return false;
+        return GameContext.get().isMultiplayer();
     }
 
     @Override
@@ -81,7 +80,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     public void saveAndDispose() {
         try {
             GameLogger.info("Starting game state save...");
-            if (!GameContext.get().getGameClient().isSinglePlayer()){
+            if (GameContext.get().isMultiplayer()){
                 return;
             }
             World world = GameContext.get().getWorld();
@@ -99,8 +98,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 WorldData worldData = world.getWorldData();
                 Player player = GameContext.get().getPlayer();
                 if (player != null) {
-                    // Force a final update of the player state.
-                    player.updateAndSyncPlayerData();
                     worldData.savePlayerData(player.getUsername(), player.getPlayerData(), false);
                 }
                 GameContext.get().getWorldManager().saveWorld(worldData);
@@ -121,7 +118,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             // Ensure the GameClient is set for singleplayer mode.
             if (GameContext.get().getGameClient() == null ||
-                !GameContext.get().getGameClient().isSinglePlayer()) {
+                !GameContext.get().isMultiplayer()) {
                 // In singleplayer mode, if the client is null or not set for singleplayer, reinitialize it.
                 GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance());
                 GameLogger.info("Reinitialized singleplayer GameClient in reinitializeGame()");
@@ -157,55 +154,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             });
         } catch (Exception e) {
             GameLogger.error("Error during shutdown: " + e.getMessage());
-        }
-    }
-
-    public void cleanupCurrentWorld() {
-        try {
-            GameLogger.info("Cleaning up current world state...");
-
-            // Save current world if exists
-            if (GameContext.get().getWorld() != null) {
-                // Validate world data before saving
-                if (GameContext.get().getWorld().getWorldData() == null) {
-                    GameLogger.error("World data is null - creating new");
-                    WorldData newData = new WorldData(GameContext.get().getWorld().getName());
-                    GameContext.get().getWorld().setWorldData(newData);
-                }
-
-                // Ensure player data is saved to world
-                if (GameContext.get().getPlayer() != null) {
-                    PlayerData currentState = GameContext.get().getPlayer().getPlayerData();
-                    GameContext.get().getWorld().getWorldData().savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
-                    GameLogger.info("Saved player data for: " + GameContext.get().getPlayer().getUsername());
-                }
-
-                // Force a final save
-                GameContext.get().getWorld().save();
-
-                // Validate save was successful
-                FileHandle worldFile = Gdx.files.local("worlds/singleplayer/" +
-                    GameContext.get().getWorld().getName() + "/world.json");
-                if (!worldFile.exists()) {
-                    GameLogger.error("World file not created after save");
-                }
-
-                // Clean up world resources
-                GameContext.get().getWorld().dispose();
-                GameContext.get().setWorld(null);
-            }
-
-            // Clean up player
-            if (GameContext.get().getPlayer() != null) {
-                GameContext.get().getPlayer().dispose();
-                GameContext.get().setPlayer(null);
-            }
-
-
-            GameLogger.info("World state cleaned up successfully");
-
-        } catch (Exception e) {
-            GameLogger.error("Error cleaning up world state: " + e.getMessage());
         }
     }
 
@@ -322,6 +270,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             "atlas/clothing.atlas",
             "atlas/hairstyles.atlas",
             "atlas/buildings.atlas",
+            "atlas/girl.atlas",
         };
 
         for (String path : atlasFiles) {
@@ -410,6 +359,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             TextureAtlas overworldAtlas = assetManager.get("atlas/overworld-gfx-atlas.atlas", TextureAtlas.class);
             TextureAtlas itemsAtlas = assetManager.get("atlas/items-gfx-atlas", TextureAtlas.class);
             TextureAtlas boyAtlas = assetManager.get("atlas/boy-gfx-atlas", TextureAtlas.class);
+            TextureAtlas girlAtlas = assetManager.get("atlas/girl.atlas", TextureAtlas.class);
             TextureAtlas effects = assetManager.get("atlas/move_effects_gfx.atlas", TextureAtlas.class);
             TextureAtlas mountains = assetManager.get("atlas/mountain-atlas.atlas", TextureAtlas.class);
             TextureAtlas tilesAtlas = assetManager.get("atlas/tiles-gfx-atlas", TextureAtlas.class);
@@ -438,7 +388,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 boyAtlas,
                 tilesAtlas,
                 effects,
-                mountains, blocks, characters, clothing, hairstyles, buildings
+                mountains, blocks, characters, clothing, hairstyles, buildings, girlAtlas
 
             );
 
@@ -451,7 +401,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             SpriteBatch uiBatch = new SpriteBatch();
             Stage uiStage = new Stage();
             Stage battleStage = new Stage();
-            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null,WorldManager.getInstance(), null, new DisconnectionManager(this));
+            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null,WorldManager.getInstance(), null, new DisconnectionManager(this), false,null, null,null);
 
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
             GameContext.get().getWorldManager().init();

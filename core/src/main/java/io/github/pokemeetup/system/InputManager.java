@@ -111,19 +111,19 @@ public class InputManager {
     }
 
     private void showGameMenu() {
-        if (gameScreen.getGameMenu() == null) {
-            gameScreen.setGameMenu(new GameMenu(
+        if (GameContext.get().getGameMenu() == null) {
+                GameContext.get().setGameMenu(new GameMenu(
                 gameScreen.getGame(),
                 gameScreen.getSkin(),
                 this
             ));
         }
-        gameScreen.getGameMenu().show();
+        GameContext.get().getGameMenu().show();
     }
 
     private void showChestScreen() {
         if (gameScreen.getChestScreen() == null) {
-            gameScreen.setChestScreen(new ChestScreen(GameContext.get().getPlayer(), gameScreen.getSkin(), null, null, gameScreen));
+            gameScreen.setChestScreen(new ChestScreen(gameScreen.getSkin(), null, null, gameScreen));
         }
         gameScreen.getChestScreen().show();
     }

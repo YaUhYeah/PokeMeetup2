@@ -18,7 +18,7 @@ public class SpawnCommand implements Command {
     public String[] getAliases() { return new String[0]; }
 
     @Override
-    public String getDescription() { return "teleports player to spawn"; }
+    public String getDescription() { return "Teleports the player to spawn."; }
 
     @Override
     public String getUsage() { return "/spawn"; }
@@ -30,54 +30,44 @@ public class SpawnCommand implements Command {
     public void execute(String args, GameClient gameClient, ChatSystem chatSystem) {
         try {
             GameLogger.info("Executing spawn command...");
-
             Player player = GameContext.get().getPlayer();
             if (player == null) {
-                chatSystem.addSystemMessage("Error: Player not found");
+                chatSystem.addSystemMessage("Error: Player not found.");
                 return;
             }
-
             World currentWorld = GameContext.get().getWorld();
-
             if (currentWorld == null) {
-                chatSystem.addSystemMessage("Error: World not found");
+                chatSystem.addSystemMessage("Error: World not found.");
                 return;
             }
-
-            if (currentWorld.getWorldData() == null || currentWorld.getWorldData().getConfig() == null) {
-                chatSystem.addSystemMessage("Error: World configuration not available");
-                return;
-            }
-
+            // Get spawn coordinates from the world configuration.
             int tileX = currentWorld.getWorldData().getConfig().getTileSpawnX();
             int tileY = currentWorld.getWorldData().getConfig().getTileSpawnY();
-
             float pixelX = tileX * World.TILE_SIZE;
             float pixelY = tileY * World.TILE_SIZE;
 
+            // Teleport the player.
             player.getPosition().set(pixelX, pixelY);
-
-            player.setMoving(false);
-
             player.setTileX(tileX);
             player.setTileY(tileY);
             player.setX(pixelX);
             player.setY(pixelY);
-
-            player.setDirection(player.getDirection());
-            player.setRenderPosition(new Vector2(pixelX, pixelY));
             player.setMoving(false);
+            player.setRenderPosition(new Vector2(pixelX, pixelY));
 
-            player.validateResources();
-            currentWorld.setPlayer(player);
+            chatSystem.addSystemMessage("Teleported to spawn point! (" + tileX + ", " + tileY + ")");
+            GameLogger.info("Player teleported to spawn: " + pixelX + ", " + pixelY);
 
-            if (!gameClient.isSinglePlayer()) {
+            // **The crucial fix: Reset the chunk state.**
+            currentWorld.clearChunks();
+            // Now trigger a fresh initial load (this method does not check the flag)
+            currentWorld.loadChunksAroundPlayer();
+
+            // If in multiplayer mode, update the server.
+            if (GameContext.get().isMultiplayer()) {
                 gameClient.sendPlayerUpdate();
                 gameClient.savePlayerState(player.getPlayerData());
             }
-            chatSystem.addSystemMessage("Teleported to spawn point! (" + tileX + ", " + tileY + ")");
-            GameLogger.info("Player successfully teleported to spawn: " + pixelX + "," + pixelY);
-
         } catch (Exception e) {
             GameLogger.error("Spawn command failed: " + e.getMessage());
             chatSystem.addSystemMessage("Error executing spawn command: " + e.getMessage());

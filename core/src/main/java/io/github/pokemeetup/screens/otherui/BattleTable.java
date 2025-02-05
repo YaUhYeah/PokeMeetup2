@@ -14,8 +14,8 @@ import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.actions.SequenceAction;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
-import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
@@ -29,37 +29,20 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.util.HashMap;
-import java.util.List;
 
 public class BattleTable extends Table {
-    private static final float PLAYER_PLATFORM_Y = 0.12f; // Lowered from 0.18f
-    private static final float ENEMY_PLATFORM_Y = 0.48f;  // Lowered from 0.58f
-    private static final float CONTROLS_BOTTOM_PADDING = 20f;
-    private static final float BUTTON_HEIGHT = 45f;
-    private static final float BUTTON_PADDING = 10f;
-    private static final float INFO_BOX_PADDING = 15f;
-    private static final float POKEMON_SCALE = 1.5f;
-    private static final float PLATFORM_SCALE = 1.0f;
-    private static final float PLAYER_PLATFORM_X = 0.15f;
-    private static final float ENEMY_PLATFORM_X = 0.75f;
-    private static final float PLATFORM_WIDTH_RATIO = 0.25f;
-    private static final float BUTTON_WIDTH = 160f;
-    private static final float HP_BAR_WIDTH = 100;    // Adjust HP bar width to match HUD
-
-    private static final float PLATFORM_VERTICAL_OFFSET = 20f;
-
-    private static final float BASE_WIDTH = 800f;
-    private static final float BASE_HEIGHT = 480f;
-    private static final float POKEMON_BASE_SIZE = 85f;
+    // Constants for layout and animation
+    private static final float BATTLE_SCREEN_WIDTH = 800f;
+    private static final float BATTLE_SCREEN_HEIGHT = 480f;
+    private static final float HP_BAR_WIDTH = 100f;
     private static final float ANIMATION_DURATION = 0.5f;
     private static final float DAMAGE_FLASH_DURATION = 0.1f;
     private static final float HP_UPDATE_DURATION = 0.5f;
-    private static final int MAX_TURN_COUNT = 20;
-    private static final ObjectMap<Pokemon.PokemonType, ObjectMap<Pokemon.PokemonType, Float>> typeEffectiveness;
     private static final float PLATFORM_SHAKE_DECAY = 0.9f;
     private static final float MIN_SHAKE_INTENSITY = 0.1f;
-    private static final float RUN_SUCCESS_BASE = 0.5f;
-    private static final float LEVEL_FACTOR = 0.1f;
+    private static final float PLATFORM_VERTICAL_OFFSET = 20f;
+    private static final float POKEMON_SCALE = 1.5f;
+    private static final int MAX_TURN_COUNT = 20;
     private static final HashMap<Pokemon.PokemonType, Color> TYPE_COLORS = new HashMap<Pokemon.PokemonType, Color>() {{
         put(Pokemon.PokemonType.FIRE, new Color(1, 0.3f, 0.3f, 1));
         put(Pokemon.PokemonType.WATER, new Color(0.2f, 0.6f, 1, 1));
@@ -80,6 +63,7 @@ public class BattleTable extends Table {
         put(Pokemon.PokemonType.STEEL, new Color(0.7f, 0.7f, 0.8f, 1));
         put(Pokemon.PokemonType.FAIRY, new Color(1, 0.6f, 0.8f, 1));
     }};// Fine-tuned positioning constants// Update these constants for better positioning
+    private static ObjectMap<Pokemon.PokemonType, ObjectMap<Pokemon.PokemonType, Float>> typeEffectiveness = new ObjectMap<>();
 
     static {
         typeEffectiveness = new ObjectMap<>();
@@ -281,81 +265,63 @@ public class BattleTable extends Table {
         }});
     }
 
+    // Instance fields
     private final Stage stage;
     private final Skin skin;
     private final Pokemon playerPokemon;
     private final Pokemon enemyPokemon;
-    private final Array<Action> pendingActions = new Array<>();
-    private final ShapeRenderer shapeRenderer;
     private TextureRegion platformTexture;
-    private float playerPlatformX, playerPlatformY;
-    private float enemyPlatformX, enemyPlatformY;
-    private final Vector2 cameraShake;
-    private float shakeDuration;
-    private float shakeTimer;
-    private Table battleScene;
-    private Image playerPlatform;
-    private Image enemyPlatform;
-    private Image playerPokemonImage;
-    private Image enemyPokemonImage;
-    private Table actionMenu;
-    private Table moveMenu;
-    private ProgressBar playerHPBar;
-    private ProgressBar enemyHPBar;
+    private Image playerPlatform, enemyPlatform;
+    private Image playerPokemonImage, enemyPokemonImage;
+    private ProgressBar playerHPBar, enemyHPBar;
     private Label battleText;
-    private TextButton fightButton;
-    private TextButton bagButton;
-    private TextButton pokemonButton;
-    private TextButton runButton;
+    private Table actionMenu;
+    private TextButton fightButton, bagButton, pokemonButton, runButton;
     private BattleState currentState;
     private BattleCallback callback;
     private float stateTimer = 0;
-    private int turnCount = 0;
     private boolean isAnimating = false;
-    private float currentShakeIntensity = 0;
-    private PokemonHUD playerHUD;
-    private PokemonHUD enemyHUD;
-    private int selectedMoveIndex = 0;
-    private Table moveSelectionMenu;
-    private Label powerLabel;
-    private Label accuracyLabel;
-    private Label descriptionLabel;
-    private Label moveTypeLabel;
-    private boolean initialized = false;
+    private ProgressBar expBar;
+    private boolean moveSelectionActive = false;
 
+    // –––––––––––––––––––
+    // CONSTRUCTOR
+    // –––––––––––––––––––
     public BattleTable(Stage stage, Skin skin, Pokemon playerPokemon, Pokemon enemyPokemon) {
         super();
         this.stage = stage;
         this.skin = skin;
         this.playerPokemon = playerPokemon;
         this.enemyPokemon = enemyPokemon;
-        this.shapeRenderer = new ShapeRenderer();
-        this.cameraShake = new Vector2();
         this.currentState = BattleState.INTRO;
-        this.isAnimating = true;
+        setFillParent(true);
         setTouchable(Touchable.enabled);
+        setZIndex(100);
         stage.addActor(this);
-
-        stage.setViewport(new FitViewport(BASE_WIDTH, BASE_HEIGHT));
+        stage.setViewport(new FitViewport(BATTLE_SCREEN_WIDTH, BATTLE_SCREEN_HEIGHT));
         stage.getViewport().update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
+        // Ensure the skin contains our HP bar styles so updateHPBarColor() won’t fail
+        ensureHPBarStyles();
+
+        // Initialize battle assets – textures, UI components, platforms, Pokémon sprites, HP bars, HUD, etc.
         try {
             initializeTextures();
             initializeUIComponents();
             initializePlatforms();
             initializePokemonSprites();
             setupHPBars();
-            initializeHUDElements();
-            initializeMoveMenu();
-            initializeMoveLabels();
+            // (Other initialization such as HUD and move menus may follow here.)
             setupContainer();
-
-            initialized = true;
             startBattleAnimation();
         } catch (Exception e) {
             GameLogger.error("Error initializing battle table: " + e.getMessage());
         }
     }
+
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    // SKIN STYLE REGISTRATION FOR HP BARS
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 
     private static void initTypeEffectiveness(Pokemon.PokemonType attackType,
                                               ObjectMap<Pokemon.PokemonType, Float> effectiveness) {
@@ -363,10 +329,17 @@ public class BattleTable extends Table {
 
     }
 
+    /**
+     * Creates a ProgressBar style with a background and a colored knob. The color of the knob
+     * is chosen based on the given “percentage” value:
+     * – > 0.5 uses green,
+     * – between 0.2 and 0.5 uses yellow,
+     * – below 0.2 uses red.
+     */
     private static ProgressBar.ProgressBarStyle createHPBarStyle(float percentage) {
         ProgressBar.ProgressBarStyle style = new ProgressBar.ProgressBarStyle();
 
-        // Background
+        // Background drawable
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         bgPixmap.setColor(0.2f, 0.2f, 0.2f, 0.8f);
         bgPixmap.fill();
@@ -374,7 +347,7 @@ public class BattleTable extends Table {
         style.background = new TextureRegionDrawable(new TextureRegion(bgTexture));
         bgPixmap.dispose();
 
-        // Foreground
+        // Foreground (knob) drawable
         Pixmap fgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         Color barColor;
         if (percentage > 0.5f) {
@@ -387,337 +360,437 @@ public class BattleTable extends Table {
         fgPixmap.setColor(barColor);
         fgPixmap.fill();
         Texture fgTexture = new Texture(fgPixmap);
-        TextureRegionDrawable knob = new TextureRegionDrawable(new TextureRegion(fgTexture));
-        style.knob = knob;
-        style.knobBefore = knob;
+        TextureRegionDrawable knobDrawable = new TextureRegionDrawable(new TextureRegion(fgTexture));
+        style.knob = knobDrawable;
+        style.knobBefore = knobDrawable;
         fgPixmap.dispose();
 
         return style;
     }
 
-    private void setupContainer() {
-        setFillParent(true);
-        setTouchable(Touchable.childrenOnly);
-        setZIndex(100);
+    public void showMoveReplacementDialog(final Move newMove) {
+        final Table replacementTable = new Table(skin);
+        replacementTable.setBackground(createTranslucentBackground(0.7f));
+        replacementTable.defaults().pad(10);
+
+        Label promptLabel = new Label("Select a move to replace with " + newMove.getName() + ":", skin);
+        promptLabel.setWrap(true);
+        promptLabel.setAlignment(Align.center);
+        replacementTable.add(promptLabel).colspan(2).row();
+
+        final java.util.List<Move> currentMoves = playerPokemon.getMoves();
+        // For each current move, create a button.
+        for (int i = 0; i < currentMoves.size(); i++) {
+            final int index = i;
+            TextButton moveButton = new TextButton(currentMoves.get(i).getName(), skin);
+            moveButton.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    // Replace the selected move with the new move.
+                    currentMoves.set(index, newMove);
+                    battleText.setText(playerPokemon.getName() + " learned " + newMove.getName() + "!");
+                    // Optionally play a “new move” sound:
+                    replacementTable.remove();
+                }
+            });
+            replacementTable.add(moveButton).width(150).height(40);
+            if ((i + 1) % 2 == 0) {
+                replacementTable.row();
+            }
+        }
+        // A cancel button lets the player opt out; in this example we auto–replace the first move.
+        TextButton cancelButton = new TextButton("Cancel", skin);
+        cancelButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                // Fallback: remove the first move and add the new one.
+                currentMoves.remove(0);
+                currentMoves.add(newMove);
+                battleText.setText(playerPokemon.getName() + " learned " + newMove.getName() + " by replacing an old move!");
+                replacementTable.remove();
+            }
+        });
+        replacementTable.add(cancelButton).colspan(2).width(150).height(40);
+
+        replacementTable.pack();
+        // Center the table on the battle screen.
+        replacementTable.setPosition((getWidth() - replacementTable.getWidth()) / 2,
+            (getHeight() - replacementTable.getHeight()) / 2);
+        addActor(replacementTable);
     }
 
+    public void displayMessage(String message) {
+        // Set the battle text label.
+        battleText.setText(message);
+        // Optionally, you can add an action to fade the text out after a delay.
+        battleText.clearActions();
+        battleText.addAction(Actions.sequence(
+            Actions.delay(2.0f),
+            Actions.fadeOut(1.0f),
+            Actions.run(() -> {
+                battleText.setText(""); // Clear message after fade
+                battleText.getColor().a = 1f; // Reset alpha for next message
+            })
+        ));
+    }
 
-    @Override
-    protected void sizeChanged() {
-        super.sizeChanged();
-        if (initialized) {
-            updateSizes();
-            updateLayout();
-            updatePokemonPositions();
-            if (currentState == BattleState.INTRO && isAnimating) {
-                clearActions();
-                resetPokemonPositions();
-            }
+    /**
+     * Ensures that the skin contains ProgressBar styles for HP bars (green, yellow, red).
+     */
+    private void ensureHPBarStyles() {
+        if (!skin.has("hp-bar-green", ProgressBar.ProgressBarStyle.class)) {
+            skin.add("hp-bar-green", createHPBarStyle(1.0f), ProgressBar.ProgressBarStyle.class);
+        }
+        if (!skin.has("hp-bar-yellow", ProgressBar.ProgressBarStyle.class)) {
+            skin.add("hp-bar-yellow", createHPBarStyle(0.35f), ProgressBar.ProgressBarStyle.class);
+        }
+        if (!skin.has("hp-bar-red", ProgressBar.ProgressBarStyle.class)) {
+            skin.add("hp-bar-red", createHPBarStyle(0.1f), ProgressBar.ProgressBarStyle.class);
         }
     }
 
-    public BattleState getCurrentState() {
-        return currentState;
+    // Inside your BattleTable class
+
+    /**
+     * Updates the HP bar’s style based on the current percentage. If the percentage is high,
+     * it uses the “hp-bar-green” style; medium uses “hp-bar-yellow” and low uses “hp-bar-red”.
+     */
+    private void updateHPBarColor(ProgressBar bar, float percentage) {
+        String styleKey;
+        if (percentage > 0.5f) {
+            styleKey = "hp-bar-green";
+        } else if (percentage > 0.2f) {
+            styleKey = "hp-bar-yellow";
+        } else {
+            styleKey = "hp-bar-red";
+        }
+        // Use the registered style from the skin
+        bar.setStyle(skin.get(styleKey, ProgressBar.ProgressBarStyle.class));
     }
 
-    public boolean isAnimating() {
-        return isAnimating;
+    /**
+     * Enables or disables the battle interface by setting the touchability and visibility
+     * of the action menu and its buttons.
+     */
+    private void setBattleInterfaceEnabled(boolean enabled) {
+        if (actionMenu != null) {
+            actionMenu.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
+            actionMenu.setVisible(enabled);
+        }
+        if (fightButton != null) {
+            fightButton.setDisabled(!enabled);
+            fightButton.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
+        }
+        if (bagButton != null) {
+            bagButton.setDisabled(!enabled);
+            bagButton.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
+        }
+        if (pokemonButton != null) {
+            pokemonButton.setDisabled(!enabled);
+            pokemonButton.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
+        }
+        if (runButton != null) {
+            runButton.setDisabled(!enabled);
+            runButton.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
+        }
+    }
+    // Example: If you have a background texture, you could load it here:
+    // TextureRegion battleBackground = TextureManager.battlebacks.findRegion("battle_bg");
+    // if (battleBackground == null) {
+    //     GameLogger.error("Battle background texture not found; using default color.");
+    // }
+
+    // --- UI INITIALIZATION METHODS ---
+
+    /**
+     * Loads the required textures for the battle scene. Here we load the battle platform
+     * texture from the TextureManager. You can add more textures (for backgrounds, etc.)
+     * as needed.
+     */
+    private void initializeTextures() {
+        platformTexture = TextureManager.battlebacks.findRegion("battle_platform");
+        if (platformTexture == null) {
+            throw new RuntimeException("Failed to load battle platform texture");
+        }
     }
 
-    private void updateSizes() {
-        float viewportWidth = stage.getViewport().getWorldWidth();
-        float viewportHeight = stage.getViewport().getWorldHeight();
+    /**
+     * Initializes the UI components for battle.
+     * The action menu containing the four buttons is now positioned using the local
+     * BattleTable coordinates and brought to the front.
+     */
+    private void initializeUIComponents() {
+        // Create battle text label.
+        battleText = new Label("", skin);
+        battleText.setWrap(true);
+        battleText.setAlignment(Align.center);
+        battleText.setTouchable(Touchable.disabled);
+        // Position the battleText at the top center.
+        // (If the BattleTable’s size is not yet set, we use fallback constants.)
+        float tableWidth = (getWidth() > 0 ? getWidth() : BATTLE_SCREEN_WIDTH);
+        float tableHeight = (getHeight() > 0 ? getHeight() : BATTLE_SCREEN_HEIGHT);
+        battleText.setSize(tableWidth, 30);
+        battleText.setPosition(0, tableHeight - 40);
 
-        // Calculate platform sizes
-        float platformWidth = viewportWidth * PLATFORM_WIDTH_RATIO;
-        float platformHeight = platformWidth * 0.3f; // Keep platforms relatively flat
+        // Create action menu.
+        actionMenu = new Table(skin);
+        actionMenu.setBackground(createTranslucentBackground(0.5f));
+        actionMenu.defaults().space(10);
+        // Create buttons.
+        fightButton = new TextButton("FIGHT", skin);
+        bagButton = new TextButton("BAG", skin);
+        pokemonButton = new TextButton("POKEMON", skin);
+        runButton = new TextButton("RUN", skin);
 
-        // Update platform sizes
-        playerPlatform.setSize(platformWidth, platformHeight);
-        enemyPlatform.setSize(platformWidth, platformHeight);
-
-        // Calculate Pokemon sizes
-        float pokemonSize = platformWidth * 0.8f;
-        playerPokemonImage.setSize(pokemonSize, pokemonSize);
-        enemyPokemonImage.setSize(pokemonSize, pokemonSize);
-        updatePokemonPositions();
-    }
-
-
-    private void updateLayout() {
-        if (!initialized) return;
-
-        clear();
-        setTouchable(Touchable.enabled);
-
-        // Main container
-
-        Table mainContainer = new Table();
-        mainContainer.setName("MainContainer");
-        mainContainer.setFillParent(true);
-        mainContainer.top().padTop(10);
-        mainContainer.setTouchable(Touchable.enabled);  // Changed from childrenOnly
-
-
-        Table controlSection = new Table() {
+        // Add listeners.
+        fightButton.addListener(new ClickListener() {
             @Override
-            public Actor hit(float x, float y, boolean touchable) {
-                Actor hit = super.hit(x, y, touchable);
-                GameLogger.info("Control section hit check at " + x + "," + y +
-                    " result: " + (hit != null ? hit.getName() : "null"));
-                return hit;
+            public void clicked(InputEvent event, float x, float y) {
+                handleFightButton();
             }
-        };
-        controlSection.setName("ControlSection");
-        controlSection.setBackground(createTranslucentBackground(0.7f));
-        controlSection.setTransform(false);
-        controlSection.setTouchable(Touchable.enabled);
+        });
+        runButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                attemptRun();
+            }
+        });
+        // (bagButton and pokemonButton listeners can be added similarly.)
 
+        // Arrange buttons in a 2x2 grid.
+        actionMenu.add(fightButton).width(180).height(50);
+        actionMenu.add(bagButton).width(180).height(50);
+        actionMenu.row();
+        actionMenu.add(pokemonButton).width(180).height(50);
+        actionMenu.add(runButton).width(180).height(50);
+        actionMenu.pack();
 
-        // Enemy section
-        Table enemySection = new Table();
-        enemySection.setTouchable(Touchable.disabled);
-        enemySection.add(enemyHUD).expandX().right().pad(INFO_BOX_PADDING).row();
+        // Update its position based on the BattleTable’s size.
+        updateActionMenuPosition();
 
-        Stack enemyStack = new Stack();
-        enemyStack.setTouchable(Touchable.disabled);
-        enemyStack.add(enemyPlatform);
-        enemyStack.add(enemyPokemonImage);
-        enemySection.add(enemyStack).expand().right().padRight(stage.getWidth() * 0.1f);
-
-        // Player section
-        Table playerSection = new Table();
-        playerSection.setTouchable(Touchable.disabled);
-        playerSection.add(playerHUD).expandX().left().pad(INFO_BOX_PADDING).row();
-
-        Stack playerStack = new Stack();
-        playerStack.setTouchable(Touchable.disabled);
-        playerStack.add(playerPlatform);
-        playerStack.add(playerPokemonImage);
-        playerSection.add(playerStack).expand().left().padLeft(stage.getWidth() * 0.1f);
-
-        Table buttonContainer = new Table();
-        buttonContainer.setName("ButtonContainer");
-        buttonContainer.setTouchable(Touchable.enabled);  // Changed from childrenOnly
-        setupBattleButtons(buttonContainer);
-        // Add components with explicit layout
-        controlSection.add(battleText).expandX().fillX().pad(10).row();
-        controlSection.add(buttonContainer).expandX().fillX().padBottom(5).padTop(5).height(BUTTON_HEIGHT * 2 + BUTTON_PADDING * 3);
-
-
-        // Add sections to main container
-        mainContainer.add(enemySection).expand().fill().row();
-        mainContainer.add(playerSection).expand().fill().row();
-        mainContainer.add(controlSection).expandX().fillX().bottom().padBottom(CONTROLS_BOTTOM_PADDING);
-        add(mainContainer).expand().fill();
-
-        boolean canInteract = currentState == BattleState.PLAYER_TURN && !isAnimating;
-        enableBattleButtons(canInteract);
-
-        GameLogger.info("Layout updated - Current state: " + currentState +
-            ", Animating: " + isAnimating +
-            ", Buttons touchable: " + (fightButton != null ? fightButton.getTouchable() : "null"));
+        // Initially hide the menu.
+        actionMenu.setVisible(false);
+        actionMenu.setTouchable(Touchable.disabled);
+        addActor(battleText);
+        addActor(actionMenu);
     }
 
-    private void updatePokemonPositions() {
-        float viewportWidth = stage.getViewport().getWorldWidth();
-        float viewportHeight = stage.getViewport().getWorldHeight();
+    private void attemptRun() {
+        if (isAnimating) return;  // Don’t allow multiple run attempts during an animation
 
-        // Update platform positions
-        playerPlatformX = viewportWidth * PLAYER_PLATFORM_X;
-        playerPlatformY = viewportHeight * PLAYER_PLATFORM_Y;
-        enemyPlatformX = viewportWidth * ENEMY_PLATFORM_X;
-        enemyPlatformY = viewportHeight * ENEMY_PLATFORM_Y;
-
-        playerPlatform.setPosition(playerPlatformX, playerPlatformY);
-        enemyPlatform.setPosition(enemyPlatformX, enemyPlatformY);
-
-        // Calculate Pokemon positions relative to platforms
-        float playerPokemonOffsetX = (playerPlatform.getWidth() - (playerPokemonImage.getWidth() * POKEMON_SCALE)) / 2f;
-        float playerPokemonOffsetY = (playerPlatform.getHeight() - (playerPokemonImage.getHeight() * POKEMON_SCALE)) / 2f;
-
-        float enemyPokemonOffsetX = (enemyPlatform.getWidth() - (enemyPokemonImage.getWidth() * POKEMON_SCALE)) / 2f;
-        float enemyPokemonOffsetY = (enemyPlatform.getHeight() - (enemyPokemonImage.getHeight() * POKEMON_SCALE)) / 2f;
-
-        // Position Pokemon with proper centering and vertical offset
-        playerPokemonImage.setPosition(
-            playerPlatformX + playerPokemonOffsetX,
-            playerPlatformY + playerPokemonOffsetY + PLATFORM_VERTICAL_OFFSET
-        );
-
-        enemyPokemonImage.setPosition(
-            enemyPlatformX + enemyPokemonOffsetX,
-            enemyPlatformY + enemyPokemonOffsetY + PLATFORM_VERTICAL_OFFSET
-        );
-
-        // Ensure proper scaling
-        playerPokemonImage.setScale(POKEMON_SCALE);
-        enemyPokemonImage.setScale(POKEMON_SCALE);
+        float runChance = 0.8f;  // Example: 80% chance to run successfully
+        if (MathUtils.random() < runChance) {
+            battleText.setText("Got away safely!");
+            // Create a sequence action to delay a bit before cleaning up the battle.
+            SequenceAction escapeSequence = Actions.sequence(
+                Actions.delay(1.0f),
+                Actions.run(() -> {
+                    // Notify any callback that the battle ended with a successful run.
+                    if (callback != null) {
+                        callback.onBattleEnd(true);
+                    }
+                    cleanup();
+                    remove();  // Remove the battle table from the stage.
+                })
+            );
+            addAction(escapeSequence);
+            isAnimating = true;
+        } else {
+            battleText.setText("Can't escape!");
+            // Let the enemy take its turn by transitioning to ENEMY_TURN.
+            transitionToState(BattleState.ENEMY_TURN);
+        }
     }
 
+    /**
+     * Called when the player clicks the "FIGHT" button.
+     * Instead of immediately executing a move, we now show a move–selection UI.
+     */
 
-    private TextureRegionDrawable createButtonBackground(Color color) {
+
+    private void handleFightButton() {
+        // Hide the main action menu immediately:
+        if (actionMenu != null) {
+            actionMenu.setVisible(false);
+            actionMenu.setTouchable(Touchable.disabled);
+        }
+        // Set flag to indicate that move selection is active.
+        moveSelectionActive = true;
+        // Then show the move selection UI:
+        showMoveSelection();
+    }
+
+    /**
+     * Helper method to create a translucent background drawable.
+     */
+    private TextureRegionDrawable createTranslucentBackground(float alpha) {
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-        pixmap.setColor(color);
+        pixmap.setColor(0, 0, 0, alpha);
         pixmap.fill();
         Texture texture = new Texture(pixmap);
+        TextureRegion region = new TextureRegion(texture);
         pixmap.dispose();
-        return new TextureRegionDrawable(new TextureRegion(texture));
-    }
-
-    private void updateUI() {
-        if (battleText == null || actionMenu == null || moveMenu == null) {
-            GameLogger.error("UI components not properly initialized");
-            return;
-        }
-        if (!initialized) {
-            GameLogger.error("Battle table not properly initialized");
-            return;
-        }
-
-
-        boolean isPlayerTurn = currentState == BattleState.PLAYER_TURN;
-        boolean isBattleEnded = currentState == BattleState.ENDED;
-        actionMenu.setVisible(isPlayerTurn && !isAnimating);
-        moveMenu.setVisible(false);
-        if (fightButton != null) fightButton.setDisabled(!isPlayerTurn || isBattleEnded);
-        if (bagButton != null) bagButton.setDisabled(!isPlayerTurn || isBattleEnded);
-        if (pokemonButton != null) pokemonButton.setDisabled(!isPlayerTurn || isBattleEnded);
-        if (runButton != null) runButton.setDisabled(!isPlayerTurn || isBattleEnded);
-        updateHPBars();
-        updateStatusEffects();
-        updateBattleText();
-    }
-
-
-    private TextureRegionDrawable createTranslucentBackground(float alpha) {
-        Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-        bgPixmap.setColor(0, 0, 0, alpha);
-        bgPixmap.fill();
-        TextureRegion region = new TextureRegion(new Texture(bgPixmap));
-        bgPixmap.dispose();
         return new TextureRegionDrawable(region);
     }
 
-    @Override
-    public Stage getStage() {
-        return stage;
+    private void setupContainer() {
+        Table mainContainer = new Table();
+        mainContainer.setFillParent(true);
+        mainContainer.top().padTop(10);
+        mainContainer.setBackground(createTranslucentBackground(0.5f));
+
+        // Enemy section.
+        Table enemySection = new Table();
+        enemySection.add(new Label(enemyPokemon.getName(), skin)).expandX().right().pad(10).row();
+        enemySection.add(enemyHPBar).expandX().right().pad(10).row();
+        Stack enemyStack = new Stack();
+        enemyStack.add(enemyPlatform);
+        enemyStack.add(enemyPokemonImage);
+        enemySection.add(enemyStack).expand().right().padRight(stage.getWidth() * 0.1f).row();
+
+        // Player section.
+        Table playerSection = new Table();
+        playerSection.add(new Label(playerPokemon.getName(), skin)).expandX().left().pad(10).row();
+        playerSection.add(playerHPBar).expandX().left().pad(10).row();
+        Stack playerStack = new Stack();
+        playerStack.add(playerPlatform);
+        playerStack.add(playerPokemonImage);
+        playerSection.add(playerStack).expand().left().padLeft(stage.getWidth() * 0.1f).row();
+
+        // Control section: displays battle text.
+        Table controlSection = new Table();
+        controlSection.setBackground(createTranslucentBackground(0.7f));
+        controlSection.add(battleText).expandX().fillX().pad(10).row();
+        controlSection.setTouchable(Touchable.enabled);
+
+        mainContainer.add(enemySection).expand().fill().row();
+        mainContainer.add(playerSection).expand().fill().row();
+        mainContainer.add(controlSection).expandX().fillX().bottom().padBottom(20f);
+
+        addActor(mainContainer);
     }
 
-    @Override
-    public Skin getSkin() {
-        return skin;
+    private void initializePlatforms() {
+        playerPlatform = new Image(platformTexture);
+        enemyPlatform = new Image(platformTexture);
+        // Ensure no scaling is applied here
+        playerPlatform.setScaling(Scaling.none);
+        enemyPlatform.setScaling(Scaling.none);
+        // Their positions will be set later in updateLayout()
     }
 
-    public void setCallback(BattleCallback callback) {
-        this.callback = callback;
-    }
-
-    private void startShakeEffect() {
-        currentShakeIntensity = (float) 5.0;
-        shakeDuration = (float) 0.3;
-        shakeTimer = 0;
-    }
-
-    private void updateShakeEffects(float delta) {
-        if (shakeTimer < shakeDuration) {
-            shakeTimer += delta;
-
-            // Calculate shake offset
-            float xOffset = MathUtils.random(-currentShakeIntensity, currentShakeIntensity);
-            float yOffset = MathUtils.random(-currentShakeIntensity, currentShakeIntensity);
-            cameraShake.set(xOffset, yOffset);
-
-            // Apply shake to platforms and Pokemon
-            playerPlatform.setPosition(
-                playerPlatformX + xOffset,
-                playerPlatformY + yOffset
-            );
-            playerPokemonImage.setPosition(
-                playerPlatformX + platformTexture.getRegionWidth() / 2 - playerPokemonImage.getWidth() / 2 + xOffset,
-                playerPlatformY + platformTexture.getRegionHeight() + yOffset
-            );
-
-            // Decay shake intensity
-            currentShakeIntensity *= PLATFORM_SHAKE_DECAY;
-            if (currentShakeIntensity < MIN_SHAKE_INTENSITY) {
-                currentShakeIntensity = 0;
-                resetPositions();
-            }
+    private void initializePokemonSprites() {
+        TextureRegion playerTexture = playerPokemon.getBackSprite();
+        TextureRegion enemyTexture = enemyPokemon.getFrontSprite();
+        if (playerTexture == null || enemyTexture == null) {
+            throw new RuntimeException("Failed to load Pokémon sprites");
         }
+        playerPokemonImage = new Image(playerTexture);
+        enemyPokemonImage = new Image(enemyTexture);
+        // Set sizes keeping aspect ratio – adjust as needed
+        float playerAspect = (float) playerTexture.getRegionWidth() / playerTexture.getRegionHeight();
+        float enemyAspect = (float) enemyTexture.getRegionWidth() / enemyTexture.getRegionHeight();
+        float baseSize = 85f;
+        playerPokemonImage.setSize(baseSize * playerAspect, baseSize);
+        enemyPokemonImage.setSize(baseSize * enemyAspect, baseSize);
+        playerPokemonImage.setScaling(Scaling.none);
+        enemyPokemonImage.setScaling(Scaling.none);
     }
 
-    private void resetPositions() {
-        playerPlatform.setPosition(playerPlatformX, playerPlatformY);
-        enemyPlatform.setPosition(enemyPlatformX, enemyPlatformY);
-        playerPokemonImage.setPosition(
-            playerPlatformX + platformTexture.getRegionWidth() / 2f - playerPokemonImage.getWidth() / 2f,
-            playerPlatformY + platformTexture.getRegionHeight()
-        );
-        enemyPokemonImage.setPosition(
-            enemyPlatformX + platformTexture.getRegionWidth() / 2f - enemyPokemonImage.getWidth() / 2f,
-            enemyPlatformY + platformTexture.getRegionHeight()
-        );
+    private void setupHPBars() {
+        // Create health bars using the current HP values.
+        playerHPBar = new ProgressBar(0, playerPokemon.getStats().getHp(), 1, false,
+            createHPBarStyle(playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp()));
+        playerHPBar.setSize(HP_BAR_WIDTH, 8);
+        playerHPBar.setValue(playerPokemon.getCurrentHp());
+
+        enemyHPBar = new ProgressBar(0, enemyPokemon.getStats().getHp(), 1, false,
+            createHPBarStyle(enemyPokemon.getCurrentHp() / (float) enemyPokemon.getStats().getHp()));
+        enemyHPBar.setSize(HP_BAR_WIDTH, 8);
+        enemyHPBar.setValue(enemyPokemon.getCurrentHp());
+        expBar = new ProgressBar(0, playerPokemon.getExperienceForNextLevel(), 1, false, skin.get("default-horizontal", ProgressBar.ProgressBarStyle.class));
+        expBar.setSize(HP_BAR_WIDTH, 6);
+        expBar.setPosition(playerHPBar.getX(), playerHPBar.getY() - 10);
+        addActor(expBar);
     }
 
+    public void updateExpBar() {
+        int nextLevelExp = playerPokemon.getExperienceForNextLevel();
+        expBar.setRange(0, nextLevelExp);
+        expBar.setValue(playerPokemon.getCurrentExperience());
+    }
+
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    // BATTLE LOGIC, ANIMATION, AND STATE HANDLING
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    private void startBattleAnimation() {
+        GameLogger.info("Starting battle animation");
+        isAnimating = true;
+        currentState = BattleState.INTRO;
+        setBattleInterfaceEnabled(false);
+        SequenceAction introSequence = Actions.sequence(
+            Actions.run(() -> battleText.setText("Wild " + enemyPokemon.getName() + " appeared!")),
+            Actions.delay(1.0f),
+            Actions.run(() -> {
+                GameLogger.info("Battle intro complete – player turn begins");
+                isAnimating = false;
+                currentState = BattleState.PLAYER_TURN;
+                battleText.setText("What will " + playerPokemon.getName() + " do?");
+                setBattleInterfaceEnabled(true);
+            })
+        );
+        addAction(introSequence);
+    }
+
+    /**
+     * Updates the HP bars (both value and color) according to current HP percentages.
+     */
+    public void updateHPBars() {
+        float playerHPPercent = playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp();
+        playerHPBar.setValue(playerPokemon.getCurrentHp());
+        updateHPBarColor(playerHPBar, playerHPPercent);
+
+        float enemyHPPercent = enemyPokemon.getCurrentHp() / (float) enemyPokemon.getStats().getHp();
+        enemyHPBar.setValue(enemyPokemon.getCurrentHp());
+        updateHPBarColor(enemyHPBar, enemyHPPercent);
+    }
 
     @Override
     public void act(float delta) {
         super.act(delta);
-
-        // Always increment stateTimer, regardless of isAnimating
         stateTimer += delta;
+        updateHPBars();
+        updateExpBar();
 
-        if (Gdx.input.justTouched()) {
-            Vector2 stageCoords = stage.screenToStageCoordinates(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
-            float x = stageCoords.x;
-            float y = stageCoords.y;
-            Actor hit = stage.hit(x, y, true);
-
-            if (hit != null) {
-                GameLogger.info("Touch detected on: " + hit.getClass().getSimpleName() +
-                    " at " + x + "," + y +
-                    " State: " + currentState +
-                    " Animating: " + isAnimating +
-                    " Button enabled: " + (hit instanceof TextButton ? !((TextButton) hit).isDisabled() : "N/A"));
-
-                Actor current = hit;
-                StringBuilder hierarchy = new StringBuilder();
-                while (current != null) {
-                    hierarchy.insert(0, current.getClass().getSimpleName() + " -> ");
-                    current = current.getParent();
-                }
-                GameLogger.info("Touch hierarchy: " + hierarchy);
+        // Only update battleText if there are no pending actions.
+        if (battleText.getActions().size == 0) {
+            switch (currentState) {
+                case INTRO:
+                    if (stateTimer >= ANIMATION_DURATION) {
+                        transitionToState(BattleState.PLAYER_TURN);
+                        battleText.setText("What will " + playerPokemon.getName() + " do?");
+                    }
+                    break;
+                case PLAYER_TURN:
+                    if (!moveSelectionActive && actionMenu != null && !actionMenu.isVisible() && !isAnimating) {
+                        showActionMenu(true);
+                    }
+                    break;
+                case ENEMY_TURN:
+                    if (!isAnimating && stateTimer >= 0.5f) {
+                        executeEnemyMove();
+                    }
+                    break;
+                case ENDED:
+                    if (!isAnimating) {
+                        finishBattle();
+                    }
+                    break;
+                default:
+                    break;
             }
         }
-
-        if (playerHPBar == null || enemyHPBar == null) {
-            return;
-        }
-
-        updateShakeEffects(delta);
-        updateUI();
-
-        switch (currentState) {
-            case INTRO:
-                updateIntroState();
-                break;
-
-            case PLAYER_TURN:
-                if (!actionMenu.isVisible() && !moveMenu.isVisible()) {
-                    showActionMenu(true);
-                }
-                break;
-
-            case ENEMY_TURN:
-                if (stateTimer >= 0.5f) {
-                    executeEnemyMove();
-                }
-                break;
-
-        }
     }
-
 
 
     @Override
@@ -727,25 +800,14 @@ public class BattleTable extends Table {
 
     private void executeEnemyMove() {
         if (isAnimating || enemyPokemon.getCurrentHp() <= 0) return;
-
-        // Simple AI - prioritize super effective moves
         Move selectedMove = null;
         float bestEffectiveness = 0f;
-
         for (Move move : enemyPokemon.getMoves()) {
             if (move.getPp() > 0) {
-                float effectiveness = getTypeEffectiveness(
-                    move.getType(),
-                    playerPokemon.getPrimaryType()
-                );
-
+                float effectiveness = getTypeEffectiveness(move.getType(), playerPokemon.getPrimaryType());
                 if (playerPokemon.getSecondaryType() != null) {
-                    effectiveness *= getTypeEffectiveness(
-                        move.getType(),
-                        playerPokemon.getSecondaryType()
-                    );
+                    effectiveness *= getTypeEffectiveness(move.getType(), playerPokemon.getSecondaryType());
                 }
-
                 if (effectiveness > bestEffectiveness) {
                     bestEffectiveness = effectiveness;
                     selectedMove = move;
@@ -756,1293 +818,239 @@ public class BattleTable extends Table {
             executeStruggle(enemyPokemon, playerPokemon);
             return;
         }
-
         executeMove(selectedMove, enemyPokemon, playerPokemon, false);
     }
 
-    private void applyEndOfTurnEffects(Pokemon pokemon) {
-        if (!pokemon.hasStatus()) return;
-
-        switch (pokemon.getStatus()) {
-            case BURNED:
-                float burnDamage = pokemon.getStats().getHp() * 0.0625f;
-                applyDamage(pokemon, burnDamage);
-                showBattleText(pokemon.getName() + " was hurt by its burn!");
-                break;
-
-            case POISONED:
-                float poisonDamage = pokemon.getStats().getHp() * 0.125f;
-                applyDamage(pokemon, poisonDamage);
-                showBattleText(pokemon.getName() + " was hurt by poison!");
-                break;
-
-            case BADLY_POISONED:
-                float toxicDamage = pokemon.getStats().getHp() * (0.0625f * pokemon.getToxicCounter());
-                applyDamage(pokemon, toxicDamage);
-                pokemon.incrementToxicCounter();
-                showBattleText(pokemon.getName() + " was hurt by toxic!");
-                break;
-        }
-
-        updateHPBars();
+    private void executeStruggle(Pokemon attacker, Pokemon defender) {
+        float damage = attacker.getStats().getAttack() * 0.5f;
+        float recoil = damage * 0.25f;
+        applyDamage(defender, damage);
+        applyDamage(attacker, recoil);
+        battleText.setText(attacker.getName() + " used Struggle!");
     }
 
-    private void attemptRun() {
+    private float getTypeEffectiveness(Pokemon.PokemonType attackType, Pokemon.PokemonType defendType) {
+        if (attackType == null || defendType == null) {
+            GameLogger.error("Null type encountered in getTypeEffectiveness: attackType=" + attackType + ", defendType=" + defendType);
+            return 1.0f;
+        }
+        ObjectMap<Pokemon.PokemonType, Float> effectivenessMap = typeEffectiveness.get(attackType);
+        if (effectivenessMap == null) return 1.0f;
+        return effectivenessMap.get(defendType, 1.0f);
+    }
+
+    private void executeMove(Move move, Pokemon attacker, Pokemon defender, boolean isPlayerMove) {
         if (isAnimating) return;
-
-        float runChance = calculateRunChance();
-        if (MathUtils.random() < runChance) {
-            showBattleText("Got away safely!");
-
-            // Create fade out sequence without using battleScene
-            SequenceAction escapeSequence = Actions.sequence(
-                Actions.parallel(
-                    Actions.run(() -> {
-                        // Fade out Pokemon sprites
-                        if (playerPokemonImage != null) {
-                            playerPokemonImage.addAction(Actions.fadeOut(0.5f));
-                        }
-                        if (enemyPokemonImage != null) {
-                            enemyPokemonImage.addAction(Actions.fadeOut(0.5f));
-                        }
-                    }),
-                    Actions.delay(0.5f)
-                ),
-                Actions.parallel(
-                    Actions.run(() -> {
-                        // Fade out HUD elements
-                        if (playerHUD != null) {
-                            playerHUD.addAction(Actions.fadeOut(0.5f));
-                        }
-                        if (enemyHUD != null) {
-                            enemyHUD.addAction(Actions.fadeOut(0.5f));
-                        }
-                        // Fade out action menu
-                        if (actionMenu != null) {
-                            actionMenu.addAction(Actions.fadeOut(0.5f));
-                        }
-                    }),
-                    Actions.delay(0.5f)
-                ),
-                // Final cleanup
-                Actions.run(() -> {
-                    // Play sound effect
-//                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.BATTLE_RUN);
-
-                    // Call callback
-                    if (callback != null) {
-                        callback.onBattleEnd(true);
-                    }
-                    // Clean up battle
-                    cleanup();
-                    remove();
-                })
-            );
-
-            addAction(escapeSequence);
-            isAnimating = true; // Set animating state
-            currentState = BattleState.RUNNING;
-
-        } else {
-            showBattleText("Can't escape!");
-//            AudioManager.getInstance().playSound(AudioManager.SoundEffect.MOVE_MISS);
-            transitionToState(BattleState.ENEMY_TURN);
-        }
+        isAnimating = true;
+        // Hide the main action menu if it’s showing.
+        showActionMenu(false);
+        SequenceAction moveSequence = Actions.sequence(
+            Actions.run(() -> battleText.setText(attacker.getName() + " used " + move.getName() + "!")),
+            Actions.delay(0.5f),
+            Actions.run(() -> {
+                float damage = calculateDamage(move, attacker, defender);
+                applyDamage(defender, damage);
+                // Flash the target sprite.
+                Image targetSprite = (defender == playerPokemon ? playerPokemonImage : enemyPokemonImage);
+                targetSprite.addAction(Actions.sequence(
+                    Actions.color(Color.RED),
+                    Actions.delay(DAMAGE_FLASH_DURATION),
+                    Actions.color(Color.WHITE)
+                ));
+            }),
+            Actions.delay(0.5f),
+            Actions.run(() -> finishMoveExecution(isPlayerMove))
+        );
+        addAction(moveSequence);
     }
 
-    // Helper method to clean up battle gracefully
-    private void cleanup() {
+    private float calculateDamage(Move move, Pokemon attacker, Pokemon defender) {
+        float baseDamage = move.getPower() * ((move.isSpecial() ?
+            ((float) attacker.getStats().getSpecialAttack() / defender.getStats().getSpecialDefense()) :
+            ((float) attacker.getStats().getAttack() / defender.getStats().getDefense())));
+        float typeMultiplier = getTypeEffectiveness(move.getType(), defender.getPrimaryType());
+        if (defender.getSecondaryType() != null) {
+            typeMultiplier *= getTypeEffectiveness(move.getType(), defender.getSecondaryType());
+        }
+        float variation = MathUtils.random(0.85f, 1.0f);
+        return baseDamage * typeMultiplier * variation;
+    }
+
+    private void updateActionMenuPosition() {
+        actionMenu.pack();
+        float tableWidth = getWidth() > 0 ? getWidth() : BATTLE_SCREEN_WIDTH;
+        float tableHeight = getHeight() > 0 ? getHeight() : BATTLE_SCREEN_HEIGHT;
+        // Center horizontally and place at 30% of the height from the bottom.
+        float posX = (tableWidth - actionMenu.getWidth()) / 2f;
+        float posY = tableHeight * 0.3f;
+        actionMenu.setPosition(posX, posY);
+        actionMenu.toFront();
+    }
+
+    @Override
+    protected void sizeChanged() {
+        super.sizeChanged();
+        updateActionMenuPosition();
+    }
+
+    private void applyDamage(Pokemon target, float damage) {
+        Image targetSprite = (target == playerPokemon ? playerPokemonImage : enemyPokemonImage);
+        targetSprite.addAction(Actions.sequence(
+            Actions.color(Color.RED),
+            Actions.delay(DAMAGE_FLASH_DURATION),
+            Actions.color(Color.WHITE)
+        ));
+        float newHP = Math.max(0, target.getCurrentHp() - damage);
+        target.setCurrentHp(newHP);
+        updateHPBars();
+        if (target.getCurrentHp() <= 0) {
+            transitionToState(BattleState.ENDED);
+        }
+
+    }
+
+    private void finishMoveExecution(boolean isPlayerMove) {
+        // Ensure animation flag is cleared
         isAnimating = false;
-
-        // Clear all menus
-        if (actionMenu != null) actionMenu.remove();
-        if (moveMenu != null) moveMenu.remove();
-        if (moveSelectionMenu != null) moveSelectionMenu.remove();
-
-        // Clear sprites
-        if (playerPokemonImage != null) playerPokemonImage.remove();
-        if (enemyPokemonImage != null) enemyPokemonImage.remove();
-
-        // Clear HUD
-        if (playerHUD != null) playerHUD.remove();
-        if (enemyHUD != null) enemyHUD.remove();
+        // Then check if either side has fainted:
+        if (playerPokemon.getCurrentHp() <= 0 || enemyPokemon.getCurrentHp() <= 0) {
+            transitionToState(BattleState.ENDED);
+        } else if (isPlayerMove) {
+            // After player’s attack, switch to enemy turn.
+            transitionToState(BattleState.ENEMY_TURN);
+            executeEnemyMove();
+        } else {
+            // Otherwise return to player turn.
+            transitionToState(BattleState.PLAYER_TURN);
+            showActionMenu(true);
+        }
     }
 
-    public void dispose() {
-        // Clean up resources
-        if (playerPokemonImage != null) {
-            playerPokemonImage.remove();
-        }
-        if (shapeRenderer != null) {
-            shapeRenderer.dispose();
-        }
-        if (enemyPokemonImage != null) {
-            enemyPokemonImage.remove();
-        }
-        if (battleScene != null) {
-            battleScene.remove();
-        }
-        if (enemyHPBar != null && enemyHPBar.getStyle().knob instanceof TextureRegionDrawable) {
-            ((TextureRegionDrawable) enemyHPBar.getStyle().knob).getRegion().getTexture().dispose();
-        }
-        if (playerHPBar != null && playerHPBar.getStyle().knob instanceof TextureRegionDrawable) {
-            ((TextureRegionDrawable) playerHPBar.getStyle().knob).getRegion().getTexture().dispose();
-        }
-        // Dispose of any textures created for HP bars
-        Array<Cell> cells = playerHUD.getCells();
-        for (Cell cell : cells) {
-            Actor actor = cell.getActor();
-            if (actor instanceof ProgressBar) {
-                ProgressBar bar = (ProgressBar) actor;
-                Drawable knob = bar.getStyle().knob;
-                if (knob instanceof TextureRegionDrawable) {
-                    ((TextureRegionDrawable) knob).getRegion().getTexture().dispose();
-                }
-            }
-        }
-        clearActions();
-        remove();
-    }
-
-
-
-    private float calculateRunChance() {
-        // Make it very easy to run
-        float baseChance = 0.9f; // 90% base chance
-
-        // Small bonus based on level difference
-        float levelBonus = Math.max(0, playerPokemon.getLevel() - enemyPokemon.getLevel()) * 0.02f;
-
-        // Cap at 95% chance
-        return Math.min(0.95f, baseChance + levelBonus);
-    }
-
-    private void initializeMoveMenu() {
-        moveMenu = new Table(skin);
-        moveMenu.setBackground(createTranslucentBackground(0.8f));
-        moveMenu.defaults().pad(10).size(180, 45);
-
-        // Create move buttons grid
-        Table moveGrid = new Table();
-        moveGrid.defaults().pad(5);
-
-        // Add moves
-        for (int i = 0; i < playerPokemon.getMoves().size(); i++) {
-            final int moveIndex = i;
-            Move move = playerPokemon.getMoves().get(i);
-
-            Table moveButton = createMoveButton(move);
-            moveButton.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    if (!isAnimating && currentState == BattleState.PLAYER_TURN) {
-                        selectedMoveIndex = moveIndex;
-                        executeMove(move, playerPokemon, enemyPokemon, true);
-                    }
-                }
-            });
-
-            if (i % 2 == 0) {
-                moveGrid.add(moveButton).padRight(10);
-            } else {
-                moveGrid.add(moveButton).row();
-            }
-        }
-        TextButton backButton = new TextButton("BACK", skin);
-        backButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                showActionMenu(true);
-            }
-        });
-
-        moveMenu.add(moveGrid).expand().fill().row();
-        moveMenu.add(backButton).size(150, 40).pad(10);
-        moveMenu.setVisible(false);  // Initially hidden
-        addActor(moveMenu);
-    }
-
-    private void updateBattleText() {
-        if (battleText == null) {
-            GameLogger.error("Battle text not initialized");
-            return;
-        }
-
-        String message = "";
-        switch (currentState) {
-            case INTRO:
-                message = "Wild " + enemyPokemon.getName() + " appeared!";
-                break;
+    private void transitionToState(BattleState newState) {
+        currentState = newState;
+        stateTimer = 0;
+        switch (newState) {
             case PLAYER_TURN:
-                message = "What will " + playerPokemon.getName() + " do?";
+                setBattleInterfaceEnabled(true);
+                showActionMenu(true);
                 break;
             case ENEMY_TURN:
-                message = "Wild " + enemyPokemon.getName() + " is thinking...";
+                setBattleInterfaceEnabled(false);
+                showActionMenu(false);
                 break;
             case ENDED:
-                message = playerPokemon.getCurrentHp() > 0 ? "Victory!" : "Defeat!";
+                setBattleInterfaceEnabled(false);
+                showActionMenu(false);
                 break;
             default:
                 break;
         }
-        battleText.setText(message);
-    }
-
-
-    private void initializePlatforms() {
-        platformTexture = TextureManager.getBattlebacks().findRegion("battle_platform");
-        if (platformTexture == null) {
-            throw new RuntimeException("Failed to load battle platform texture");
-        }
-
-        playerPlatform = new Image(platformTexture);
-        enemyPlatform = new Image(platformTexture);
-
-        // Remove scaling
-        playerPlatform.setScaling(Scaling.none);
-        enemyPlatform.setScaling(Scaling.none);
-
-        // Force visibility
-        playerPlatform.setVisible(true);
-        enemyPlatform.setVisible(true);
-
-        // Do not add platforms directly to the stage
-        // They will be added to the layout in updateLayout()
-    }
-
-    private void resetPokemonPositions() {
-        if (playerPokemonImage != null && enemyPokemonImage != null) {
-            float stageWidth = stage.getWidth();
-            float stageHeight = stage.getHeight();
-
-            // Position platforms
-            playerPlatform.setScale(PLATFORM_SCALE);
-            enemyPlatform.setScale(PLATFORM_SCALE);
-
-            float platformWidth = platformTexture.getRegionWidth() * PLATFORM_SCALE;
-            float platformHeight = platformTexture.getRegionHeight() * PLATFORM_SCALE;
-
-            playerPlatform.setPosition(
-                stageWidth * PLAYER_PLATFORM_X,
-                stageHeight * PLAYER_PLATFORM_Y
-            );
-
-            enemyPlatform.setPosition(
-                stageWidth * ENEMY_PLATFORM_X,
-                stageHeight * ENEMY_PLATFORM_Y
-            );
-
-            // Position Pokemon with proper offset
-            playerPokemonImage.setScale(POKEMON_SCALE);
-            enemyPokemonImage.setScale(POKEMON_SCALE);
-
-            playerPokemonImage.setPosition(
-                playerPlatformX + (platformWidth - playerPokemonImage.getWidth()) / 2f,
-                playerPlatformY + platformHeight * 0.5f + PLATFORM_VERTICAL_OFFSET
-            );
-
-            enemyPokemonImage.setPosition(
-                enemyPlatformX + (platformWidth - enemyPokemonImage.getWidth()) / 2f,
-                enemyPlatformY + platformHeight * 0.5f + PLATFORM_VERTICAL_OFFSET
-            );
-        }
-    }
-
-
-    private void initializePokemonSprites() {
-        TextureRegion playerTexture = playerPokemon.getBackSprite();
-        TextureRegion enemyTexture = enemyPokemon.getFrontSprite();
-
-        if (playerTexture == null || enemyTexture == null) {
-            throw new RuntimeException("Failed to load Pokemon sprites");
-        }
-
-        playerPokemonImage = new Image(playerTexture);
-        enemyPokemonImage = new Image(enemyTexture);
-
-        // Set base size while maintaining aspect ratio
-        float playerAspect = playerTexture.getRegionWidth() / (float) playerTexture.getRegionHeight();
-        float enemyAspect = enemyTexture.getRegionWidth() / (float) enemyTexture.getRegionHeight();
-
-        playerPokemonImage.setSize(POKEMON_BASE_SIZE * playerAspect, POKEMON_BASE_SIZE);
-        enemyPokemonImage.setSize(POKEMON_BASE_SIZE * enemyAspect, POKEMON_BASE_SIZE);
-
-        // Remove scaling
-        playerPokemonImage.setScaling(Scaling.none);
-        enemyPokemonImage.setScaling(Scaling.none);
-    }
-
-
-    private void initializeHUDElements() {
-        // Player HP bar
-        playerHUD = new PokemonHUD(skin, playerPokemon, true);
-        playerHUD.setHPBar(playerHPBar);
-
-        // Enemy HP bar
-        enemyHUD = new PokemonHUD(skin, enemyPokemon, false);
-        enemyHUD.setHPBar(enemyHPBar);
-    }
-
-    private void initializeUIComponents() {
-        // Initialize battle text
-        battleText = new Label("", skin);
-        battleText.setWrap(true);
-        battleText.setAlignment(Align.center);
-        battleText.setTouchable(Touchable.disabled);
-
-
-        // Create button style with better visibility
-        TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
-        buttonStyle.font = skin.getFont("default");
-        buttonStyle.up = createButtonBackground(new Color(0.2f, 0.2f, 0.5f, 0.9f));
-        buttonStyle.down = createButtonBackground(new Color(0.15f, 0.15f, 0.4f, 0.9f));
-        buttonStyle.over = createButtonBackground(new Color(0.25f, 0.25f, 0.6f, 0.9f));
-        buttonStyle.fontColor = Color.WHITE;
-
-        // Initialize buttons with fixed size
-        fightButton = new TextButton("FIGHT", buttonStyle);
-        bagButton = new TextButton("BAG", buttonStyle);
-        pokemonButton = new TextButton("POKEMON", buttonStyle);
-        runButton = new TextButton("RUN", buttonStyle);
-
-        // Enable button interaction and make text bigger
-        TextButton[] buttons = {fightButton, bagButton, pokemonButton, runButton};
-        for (TextButton button : buttons) {
-            button.setTouchable(Touchable.enabled);
-            button.getLabel().setFontScale(1.2f);
-            button.setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
-        }
-
-        fightButton.setTouchable(Touchable.enabled);
-        bagButton.setTouchable(Touchable.enabled);
-        pokemonButton.setTouchable(Touchable.enabled);
-        runButton.setTouchable(Touchable.enabled);
-        // Create action menu
-        actionMenu = new Table();
-        actionMenu.setTouchable(Touchable.childrenOnly); // Important: allow touch events to reach buttons
-        actionMenu.defaults().size(BUTTON_WIDTH, BUTTON_HEIGHT).pad(BUTTON_PADDING);
-        actionMenu.setBackground(createTranslucentBackground(0.5f));
-
-        // Add buttons to actionMenu with proper spacing
-        actionMenu.add(fightButton).size(BUTTON_WIDTH, BUTTON_HEIGHT);
-        actionMenu.add(bagButton).size(BUTTON_WIDTH, BUTTON_HEIGHT);
-        actionMenu.add(pokemonButton).size(BUTTON_WIDTH, BUTTON_HEIGHT);
-        actionMenu.add(runButton).size(BUTTON_WIDTH, BUTTON_HEIGHT);
-
-        // Set up container properties
-        actionMenu.pack(); // Important: properly size the container
-        actionMenu.setTransform(false); // Better touch handling
-        actionMenu.setTouchable(Touchable.enabled);
+        GameLogger.info("Transitioned to state: " + currentState);
     }
 
     private void showActionMenu(boolean show) {
         if (actionMenu != null) {
             actionMenu.setVisible(show);
             actionMenu.setTouchable(show ? Touchable.enabled : Touchable.disabled);
-
-            // Make sure buttons are properly enabled/disabled
-            if (show) {
-                fightButton.setDisabled(false);
-                bagButton.setDisabled(false);
-                pokemonButton.setDisabled(playerPokemon.getCurrentHp() <= 0);
-                runButton.setDisabled(false);
-
-                // Refresh touchable states
-                fightButton.setTouchable(Touchable.enabled);
-                bagButton.setTouchable(Touchable.enabled);
-                pokemonButton.setTouchable(Touchable.enabled);
-                runButton.setTouchable(Touchable.enabled);
-            }
+            actionMenu.toFront();
         }
-
-        if (moveMenu != null) {
-            moveMenu.setVisible(!show);
-            moveMenu.setTouchable(!show ? Touchable.enabled : Touchable.disabled);
-        }
-        GameLogger.info("Action menu " + (show ? "shown" : "hidden") + " - State: " + currentState);
-    }
-
-    private void setBattleInterfaceEnabled(boolean enabled) {
-        GameLogger.info("Setting battle interface enabled: " + enabled);
-
-        // Update control section
-        if (actionMenu != null) {
-            actionMenu.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
-            actionMenu.setVisible(enabled);
-        }
-
-        // Update button container
-        if (fightButton != null) {
-            TextButton[] buttons = {fightButton, bagButton, pokemonButton, runButton};
-            for (TextButton button : buttons) {
-                button.setDisabled(!enabled);
-                button.setTouchable(enabled ? Touchable.enabled : Touchable.disabled);
-                GameLogger.info(button.getName() + " enabled: " + enabled);
-            }
-        }
-    }
-
-    private void startBattleAnimation() {
-        GameLogger.info("Starting battle animation");
-        isAnimating = true;
-        currentState = BattleState.INTRO;
-        setBattleInterfaceEnabled(false);  // Disable interface during intro
-
-        SequenceAction introSequence = Actions.sequence(
-            Actions.run(() -> {
-                battleText.setText("Wild " + enemyPokemon.getName() + " appeared!");
-                GameLogger.info("Battle intro started");
-            }),
-            Actions.delay(1.0f),
-            Actions.run(() -> {
-                GameLogger.info("Battle intro complete - transitioning to player turn");
-                isAnimating = false;
-                currentState = BattleState.PLAYER_TURN;
-                battleText.setText("What will " + playerPokemon.getName() + " do?");
-                setBattleInterfaceEnabled(true);  // Enable interface after intro
-                updateUI();
-            })
-        );
-
-        addAction(introSequence);
-    }
-
-    private Table createTypeIcon(Pokemon.PokemonType type) {
-        Table iconContainer = new Table();
-        Color typeColor = TYPE_COLORS.get(type);
-
-        // Create circular background
-        Pixmap iconPixmap = new Pixmap(30, 30, Pixmap.Format.RGBA8888);
-        iconPixmap.setColor(typeColor);
-        iconPixmap.fillCircle(15, 15, 15);
-
-        TextureRegionDrawable iconBg = new TextureRegionDrawable(
-            new TextureRegion(new Texture(iconPixmap)));
-        iconPixmap.dispose();
-
-        iconContainer.setBackground(iconBg);
-        return iconContainer;
-    }
-
-    private void updateHPBarColor(ProgressBar bar, float percentage) {
-        String styleKey;
-        if (percentage > 0.5f) {
-            styleKey = "hp-bar-green";
-        } else if (percentage > 0.2f) {
-            styleKey = "hp-bar-yellow";
-        } else {
-            styleKey = "hp-bar-red";
-        }
-
-        bar.setStyle(skin.get(styleKey, ProgressBar.ProgressBarStyle.class));
-    }
-
-    private void initializeTextures() {
-        // Load platform texture
-        platformTexture = TextureManager.battlebacks.findRegion("battle_platform");
-        if (platformTexture == null) {
-            throw new RuntimeException("Failed to load battle platform texture");
-        }
-
-        // Load background texture
-        TextureRegion battleBackground = TextureManager.battlebacks.findRegion("battle_bg_plains");
-        if (battleBackground == null) {
-            throw new RuntimeException("Failed to load battle background texture");
-        }
-    }
-
-    private void setupHPBars() {
-        // Player HP bar
-        playerHPBar = new ProgressBar(0, playerPokemon.getStats().getHp(), 1, false,
-            createHPBarStyle(playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp()));
-        playerHPBar.setSize(HP_BAR_WIDTH, 8); // Reduce height
-        playerHPBar.setValue(playerPokemon.getCurrentHp());
-
-        // Enemy HP bar
-        enemyHPBar = new ProgressBar(0, enemyPokemon.getStats().getHp(), 1, false,
-            createHPBarStyle(enemyPokemon.getCurrentHp() / (float) enemyPokemon.getStats().getHp()));
-        enemyHPBar.setSize(HP_BAR_WIDTH, 8); // Reduce height
-        enemyHPBar.setValue(enemyPokemon.getCurrentHp());
-    }
-
-    private void handleBagButton() {
-        // Implement bag functionality
-        showNotImplementedMessage("Bag feature coming soon!");
-    }
-
-    private void handlePokemonButton() {
-        // Implement Pokemon switch functionality
-        showNotImplementedMessage("Pokemon switch feature coming soon!");
-    }
-
-    private void showNotImplementedMessage(String message) {
-        // Show a message for unimplemented features
-        battleText.setText(message);
-    }
-
-    private void createMoveMenu() {
-        moveMenu = new Table();
-        moveMenu.setFillParent(true);
-        moveMenu.center();
-        moveMenu.defaults().pad(5).size(200, 50);
-
-        // Add moves from player's Pokemon
-        for (Move move : playerPokemon.getMoves()) {
-            TextButton moveButton = new TextButton(move.getName(), skin, "battle");
-            moveButton.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    GameLogger.info("Move selected: " + move.getName());
-                    executeMove(move, playerPokemon, enemyPokemon, true);
-                }
-            });
-            moveMenu.add(moveButton).row();
-        }
-
-        // Add back button
-        TextButton backButton = new TextButton("BACK", skin, "battle");
-        backButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                showMoveMenu(false);
-            }
-        });
-        moveMenu.add(backButton).row();
-
-        // Initially hide move menu
-        moveMenu.setVisible(false);
-        stage.addActor(moveMenu);
-    }
-
-    public void showMoveMenu(boolean show) {
-        GameLogger.info("Showing move menu: " + show);
-        if (moveMenu == null) {
-            createMoveMenu();
-        }
-        moveMenu.setVisible(show);
-        actionMenu.setVisible(!show);
     }
 
     private void showMoveSelection() {
-        if (isAnimating || currentState != BattleState.PLAYER_TURN) return;
+        final Table moveSelectionTable = new Table(skin);
+        moveSelectionTable.setBackground(createTranslucentBackground(0.7f));
+        moveSelectionTable.defaults().pad(10).space(10);
 
-        GameLogger.info("Showing move selection menu");
-
-        // Hide main action menu
-        showActionMenu(false);
-
-        if (moveSelectionMenu != null) {
-            moveSelectionMenu.remove();
+        java.util.List<Move> moves = playerPokemon.getMoves();
+        if (moves == null || moves.isEmpty()) {
+            battleText.setText(playerPokemon.getName() + " has no moves!");
+            actionMenu.setVisible(true);
+            actionMenu.setTouchable(Touchable.enabled);
+            return;
         }
-
-        // Initialize move menu
-        moveSelectionMenu = new Table();
-        moveSelectionMenu.setBackground(createTranslucentBackground(0.8f));
-        moveSelectionMenu.defaults().pad(10).size(200, 50);
-        moveSelectionMenu.setTouchable(Touchable.enabled);
-
-        // Create move grid
-        Table moveGrid = new Table();
-        moveGrid.defaults().pad(5).size(180, 45);
-        moveGrid.setTouchable(Touchable.enabled);
-
-        // Add moves
-        for (Move move : playerPokemon.getMoves()) {
-            Table moveButton = createMoveButton(move);
-            moveButton.setTouchable(Touchable.enabled);
-
+        // Create a button for each move.
+        for (final Move move : moves) {
+            TextButton moveButton = new TextButton(move.getName(), skin);
             moveButton.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
-                    if (!isAnimating && currentState == BattleState.PLAYER_TURN) {
-                        executeMove(move, playerPokemon, enemyPokemon, true);
-                        hideMoveSelection();
-                    }
+                    moveSelectionActive = false; // Clear the flag once a move is selected
+                    moveSelectionTable.remove();
+                    executeMove(move, playerPokemon, enemyPokemon, true);
                 }
             });
-
-            moveGrid.add(moveButton).pad(5);
-            if (moveGrid.getCells().size % 2 == 0) {
-                moveGrid.row();
-            }
+            moveSelectionTable.add(moveButton).fillX().row();
         }
-
-        // Add back button
-        TextButton backButton = new TextButton("BACK", skin);
-        backButton.setTouchable(Touchable.enabled);
-        backButton.addListener(new ClickListener() {
+        TextButton cancelButton = new TextButton("Cancel", skin);
+        cancelButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                hideMoveSelection();
-                showActionMenu(true);
+                moveSelectionActive = false; // Clear the flag when canceling
+                moveSelectionTable.remove();
+                actionMenu.setVisible(true);
+                actionMenu.setTouchable(Touchable.enabled);
+                actionMenu.toFront();
             }
         });
+        moveSelectionTable.add(cancelButton).fillX();
 
-        moveSelectionMenu.add(moveGrid).expand().fill().pad(10).row();
-        moveSelectionMenu.add(backButton).size(150, 40).pad(10);
 
-        // Position the menu
-        moveSelectionMenu.setPosition(
-            (stage.getWidth() - moveSelectionMenu.getPrefWidth()) / 2,
-            (stage.getHeight() - moveSelectionMenu.getPrefHeight()) / 2
-        );
-
-        stage.addActor(moveSelectionMenu);
+        moveSelectionTable.pack();
+        // Position the move selection UI in the center.
+        float tableWidth = (getWidth() > 0 ? getWidth() : BATTLE_SCREEN_WIDTH);
+        float tableHeight = (getHeight() > 0 ? getHeight() : BATTLE_SCREEN_HEIGHT);
+        float posX = (tableWidth - moveSelectionTable.getWidth()) / 2f;
+        float posY = (tableHeight - moveSelectionTable.getHeight()) / 2f;
+        moveSelectionTable.setPosition(posX, posY);
+        moveSelectionTable.toFront();
+        addActor(moveSelectionTable);
     }
 
-    private void updateMoveInfo(Move move) {
-        if (powerLabel == null || accuracyLabel == null ||
-            descriptionLabel == null || moveTypeLabel == null) {
-            GameLogger.error("Move info labels not initialized");
-            return;
-        }
 
-        // Update power
-        String powerText = move.getPower() > 0 ? String.valueOf(move.getPower()) : "-";
-        powerLabel.setText(powerText);
-
-        // Update accuracy
-        String accuracyText = move.getAccuracy() > 0 ? move.getAccuracy() + "%" : "-";
-        accuracyLabel.setText(accuracyText);
-
-        // Update type
-        moveTypeLabel.setText(move.getType().toString());
-        moveTypeLabel.setColor(TextureManager.getTypeColor(move.getType()));
-
-        // Update description
-        descriptionLabel.setText(move.getDescription());
-    }
-
-    private void hideMoveSelection() {
-        if (moveSelectionMenu != null) {
-            moveSelectionMenu.addAction(Actions.sequence(
-                Actions.fadeOut(0.2f),
-                Actions.removeActor()
-            ));
-        }
-    }
-
-    private void initializeMoveLabels() {
-        // Create labels with default style
-        powerLabel = new Label("", skin);
-        accuracyLabel = new Label("", skin);
-        descriptionLabel = new Label("", skin);
-        moveTypeLabel = new Label("", skin);
-
-        // Configure label properties
-        powerLabel.setFontScale(0.9f);
-        accuracyLabel.setFontScale(0.9f);
-        descriptionLabel.setFontScale(0.8f);
-        moveTypeLabel.setFontScale(0.9f);
-
-        // Enable text wrapping for description
-        descriptionLabel.setWrap(true);
-    }
-
-    private Table createMoveButton(final Move move) {
-        Table button = new Table();
-
-        // Get type-based style
-        Color typeColor = TYPE_COLORS.getOrDefault(move.getType(), TYPE_COLORS.get(Pokemon.PokemonType.NORMAL));
-        button.setBackground(createGradientBackground(typeColor));
-
-        // Move name
-        Label nameLabel = new Label(move.getName(), new Label.LabelStyle(skin.getFont("default"), Color.WHITE));
-        nameLabel.setFontScale(1.2f);
-
-        // PP counter
-        Label ppLabel = new Label(move.getPp() + "/" + move.getMaxPp(),
-            new Label.LabelStyle(skin.getFont("default"), Color.WHITE));
-
-        // Type icon
-        Table typeIcon = createTypeIcon(move.getType());
-
-        // Layout
-        Table content = new Table();
-        content.add(nameLabel).left().expandX().row();
-        content.add(ppLabel).left().padTop(5);
-
-        button.add(content).expand().fill().pad(10);
-        button.add(typeIcon).size(30).right().pad(10);
-
-        // Click handling
-        button.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                executeMove(move, playerPokemon, enemyPokemon, true);
-            }
-
-            @Override
-            public void enter(InputEvent event, float x, float y, int pointer, Actor fromActor) {
-                button.setColor(button.getColor().mul(1.2f));
-                updateMoveInfo(move);
-            }
-
-            @Override
-            public void exit(InputEvent event, float x, float y, int pointer, Actor toActor) {
-                button.setColor(typeColor);
-            }
-        });
-        setTouchable(Touchable.enabled);
-        return button;
-    }
-
-    private TextureRegionDrawable createGradientBackground(Color baseColor) {
-        Pixmap pixmap = new Pixmap(300, 80, Pixmap.Format.RGBA8888);
-
-        // Create gradient effect
-        for (int x = 0; x < 300; x++) {
-            float alpha = 0.9f;
-            float factor = x / 300f;
-            Color gradientColor = new Color(
-                baseColor.r + (factor * 0.2f),
-                baseColor.g + (factor * 0.2f),
-                baseColor.b + (factor * 0.2f),
-                alpha
-            );
-            pixmap.setColor(gradientColor);
-            for (int y = 0; y < 80; y++) {
-                pixmap.drawPixel(x, y);
-            }
-        }
-
-        Texture texture = new Texture(pixmap);
-        pixmap.dispose();
-        return new TextureRegionDrawable(new TextureRegion(texture));
-    }
-
-    public void update(float delta) {
-        stateTimer += delta;
-
-        // Process any pending animations
-        if (!pendingActions.isEmpty() && !isAnimating) {
-            Action nextAction = pendingActions.removeIndex(0);
-            addAction(nextAction);
-        }
-
-        // Update battle state
-        switch (currentState) {
-            case INTRO:
-                updateIntroState();
-                break;
-            case PLAYER_TURN:
-                updatePlayerTurn();
-                break;
-            case ENEMY_TURN:
-                updateEnemyTurn();
-                break;
-            case ANIMATING:
-                updateAnimations(delta);
-                break;
-            case ENDED:
-                updateEndState();
-                break;
-        }
-
-        // Update UI elements
-        updateHPBars();
-        updateStatusEffects();
-    }
-
-    private void finishMoveExecution(boolean isPlayerMove) {
-        Move usedMove;
-        if (isPlayerMove) {
-            usedMove = playerPokemon.getMoves().get(selectedMoveIndex);
-        } else {
-            usedMove = enemyPokemon.getMoves().get(0);
-        }
-        applyEndOfTurnEffects(isPlayerMove ? playerPokemon : enemyPokemon);
-
-        if (checkBattleEnd()) {
-            return;
-        }
-        if (callback != null) {
-            callback.onMoveUsed(
-                isPlayerMove ? playerPokemon : enemyPokemon,
-                usedMove,
-                isPlayerMove ? enemyPokemon : playerPokemon
-            );
-            callback.onTurnEnd(isPlayerMove ? playerPokemon : enemyPokemon);
-        }
-        isAnimating = false;
-        transitionToState(isPlayerMove ? BattleState.ENEMY_TURN : BattleState.PLAYER_TURN);
-
-        playerHUD.update();
-        enemyHUD.update();
-    }
-
-    private void updateEndState() {
-        if (!isAnimating) {
-            boolean playerWon = playerPokemon.getCurrentHp() > 0;
-
-            SequenceAction endSequence = Actions.sequence(
-                Actions.run(() -> showBattleText(
-                    playerWon ? "Victory!" :
-                        playerPokemon.getName() + " fainted!"
-                )),
-                Actions.delay(2.0f),
-                Actions.parallel(
-                    Actions.run(() -> {
-                        playerPokemonImage.addAction(Actions.fadeOut(1.0f));
-                        enemyPokemonImage.addAction(Actions.fadeOut(1.0f));
-                    })
-                ),
-                Actions.delay(1.0f),
-                Actions.run(() -> {
-                    if (callback != null) {
-                        callback.onBattleEnd(playerWon);
-                    }
-                })
-            );
-
-            addAction(endSequence);
-            isAnimating = true;
-        }
-    }
-
-    private void updateIntroState() {
-        if (stateTimer >= ANIMATION_DURATION) {
-            transitionToState(BattleState.PLAYER_TURN);
-            showBattleText(generateBattleStartText());
-        }
-    }
-
-    private void updatePlayerTurn() {
-        if (!actionMenu.isVisible() && !isAnimating) {
-            showActionMenu(true);
-        }
-    }
-
-    private void updateEnemyTurn() {
-        if (!isAnimating && stateTimer >= 0.5f) { // Small delay before enemy action
-            executeEnemyMove();
-        }
-    }
-
-    private void updateAnimations(float delta) {
-        if (!isAnimating) {
-            if (currentState == BattleState.PLAYER_TURN) {
-                checkBattleEnd();
-            } else if (currentState == BattleState.ENEMY_TURN) {
-                transitionToState(BattleState.PLAYER_TURN);
-            }
-        }
-    }
-
-    private void executeMove(Move move, Pokemon attacker, Pokemon defender, boolean isPlayerMove) {
-        if (isAnimating) return;
-
-        isAnimating = true;
-        showActionMenu(false); // Hide action menu when move starts
-        if (moveSelectionMenu != null) {
-            moveSelectionMenu.remove(); // Remove the move selection menu
-        }
-
-
-        SequenceAction moveSequence = Actions.sequence(
-            // Hide all menus first
+    private void finishBattle() {
+        boolean playerWon = playerPokemon.getCurrentHp() > 0 && enemyPokemon.getCurrentHp() <= 0;
+        SequenceAction endSequence = Actions.sequence(
+            Actions.run(() -> battleText.setText(playerWon ? "Victory!" : playerPokemon.getName() + " fainted!")),
+            Actions.delay(2.0f),
             Actions.run(() -> {
-                if (actionMenu != null) actionMenu.setVisible(false);
-                if (moveMenu != null) moveMenu.setVisible(false);
-            }),
-            Actions.delay(0.5f),
-
-            Actions.run(() -> {
-                showBattleText(attacker.getName() + " used " + move.getName() + "!");
-            }),
-            Actions.delay(0.5f),
-
-            // 3. Show damage effect
-            Actions.run(() -> {
-                float damage = calculateDamage(move, attacker, defender);
-                applyDamage(defender, damage);
-
-                // Flash the defender sprite
-                Image defenderSprite = (defender == playerPokemon) ? playerPokemonImage : enemyPokemonImage;
-                defenderSprite.addAction(Actions.sequence(
-                    Actions.color(Color.RED),
-                    Actions.delay(0.1f),
-                    Actions.color(Color.WHITE)
-                ));
-
-                // Shake effect for powerful moves
-                if (move.getPower() > 80) {
-                    startShakeEffect();
+                if (callback != null) {
+                    callback.onBattleEnd(playerWon);
                 }
-            }),
-            Actions.delay(0.5f),
-
-            // 4. Show effectiveness message
-            Actions.run(() -> {
-                showEffectivenessMessage(move, defender);
-            }),
-            Actions.delay(0.5f),
-
-            // 5. End move execution
-            Actions.run(() -> {
-                finishMoveExecution(isPlayerMove);
+                cleanup();
+                remove();
             })
         );
-
-        // Add the sequence to the stage
-        stage.addAction(moveSequence);
+        addAction(endSequence);
+        isAnimating = true;
     }
 
-    private void showEffectivenessMessage(Move move, Pokemon defender) {
-        float effectiveness = calculateTypeEffectiveness(move.getType(), defender);
-
-        if (effectiveness > 1.5f) {
-            showBattleText("It's super effective!");
-        } else if (effectiveness < 0.5f) {
-            showBattleText("It's not very effective...");
-        } else if (effectiveness == 0) {
-            showBattleText("It had no effect...");
-        }
+    public void setCallback(BattleCallback callback) {
+        this.callback = callback;
     }
 
-    private float calculateTypeEffectiveness(Pokemon.PokemonType moveType, Pokemon defender) {
-        float effectiveness = getTypeEffectiveness(moveType, defender.getPrimaryType());
-
-        if (defender.getSecondaryType() != null) {
-            effectiveness *= getTypeEffectiveness(moveType, defender.getSecondaryType());
-        }
-
-        return effectiveness;
+    private void cleanup() {
+        // Dispose or remove any actors, textures, or listeners that are no longer needed.
+        if (playerPokemonImage != null) playerPokemonImage.clear();
+        if (enemyPokemonImage != null) enemyPokemonImage.clear();
+        clearActions();
     }
 
-    private float calculateDamage(Move move, Pokemon attacker, Pokemon defender) {
-        float baseDamage = move.getPower() * (move.isSpecial() ?
-            (float) attacker.getStats().getSpecialAttack() / defender.getStats().getSpecialDefense() :
-            (float) attacker.getStats().getAttack() / defender.getStats().getDefense());
-
-        float typeMultiplier = getTypeEffectiveness(move.getType(), defender.getPrimaryType());
-        if (defender.getSecondaryType() != null) {
-            typeMultiplier *= getTypeEffectiveness(move.getType(), defender.getSecondaryType());
-        }
-
-        float variation = MathUtils.random(0.85f, 1.0f);
-
-        float statusMultiplier = attacker.getStatusModifier(move);
-
-        return baseDamage * typeMultiplier * variation * statusMultiplier;
-    }
-
-    private void applyDamage(Pokemon target, float damage) {
-        // Flash the Pokemon sprite
-        Image targetSprite = target == playerPokemon ? playerPokemonImage : enemyPokemonImage;
-        targetSprite.addAction(Actions.sequence(
-            Actions.color(Color.RED),
-            Actions.delay(DAMAGE_FLASH_DURATION),
-            Actions.color(Color.WHITE)
-        ));
-
-        float newHP = Math.max(0, target.getCurrentHp() - damage);
-        animateHPBar(target, newHP);
-        target.setCurrentHp(newHP);
-    }
-
-    private void animateHPBar(Pokemon pokemon, float newHP) {
-        ProgressBar hpBar = pokemon == playerPokemon ? playerHPBar : enemyHPBar;
-        float startHP = hpBar.getValue();
-
-        hpBar.addAction(Actions.sequence(
-            Actions.run(() -> updateHPBarColor(hpBar, newHP / pokemon.getStats().getHp())),
-            Actions.moveTo(startHP, newHP, HP_UPDATE_DURATION, Interpolation.smooth)
-        ));
-    }
-
-    private void setupBattleButtons(Table buttonContainer) {
-        GameLogger.info("Setting up battle buttons");
-
-        // Create button style with proper states
-        TextButton.TextButtonStyle style = new TextButton.TextButtonStyle();
-        style.font = skin.getFont("default");
-        style.up = createButtonBackground(new Color(0.2f, 0.2f, 0.5f, 0.9f));
-        style.down = createButtonBackground(new Color(0.15f, 0.15f, 0.4f, 1f));
-        style.over = createButtonBackground(new Color(0.25f, 0.25f, 0.6f, 0.9f));
-        style.fontColor = Color.WHITE;
-        style.disabledFontColor = new Color(0.7f, 0.7f, 0.7f, 1f);
-
-        // Initialize buttons
-        fightButton = new TextButton("FIGHT", style);
-        fightButton.setName("FightButton");
-        fightButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                GameLogger.info("Fight button clicked - State: " + currentState + " Animating: " + isAnimating);
-                if (!isAnimating && currentState == BattleState.PLAYER_TURN) {
-                    showMoveSelection();
-                    event.stop();
-                }
-            }
-        });
-
-        bagButton = new TextButton("BAG", style);
-        bagButton.setName("BagButton");
-        bagButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                GameLogger.info("Bag button clicked - State: " + currentState + " Animating: " + isAnimating);
-                if (!isAnimating && currentState == BattleState.PLAYER_TURN) {
-                    handleBagButton();
-                    event.stop();
-                }
-            }
-        });
-
-        pokemonButton = new TextButton("POKEMON", style);
-        pokemonButton.setName("PokemonButton");
-        pokemonButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                GameLogger.info("Pokemon button clicked - State: " + currentState + " Animating: " + isAnimating);
-                if (!isAnimating && currentState == BattleState.PLAYER_TURN) {
-                    handlePokemonButton();
-                    event.stop();
-                }
-            }
-        });
-
-        runButton = new TextButton("RUN", style);
-        runButton.setName("RunButton");
-        runButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                GameLogger.info("Run button clicked - State: " + currentState + " Animating: " + isAnimating);
-                if (!isAnimating && currentState == BattleState.PLAYER_TURN) {
-                    attemptRun();
-                    event.stop();
-                }
-            }
-        });
-
-        // Set up button grid
-        Table buttonGrid = new Table();
-        buttonGrid.setName("ButtonGrid");
-        buttonGrid.setTouchable(Touchable.enabled);
-        buttonGrid.defaults().size(BUTTON_WIDTH, BUTTON_HEIGHT).pad(BUTTON_PADDING);
-
-        // Add buttons to grid with proper layout
-        buttonGrid.add(fightButton).expand().fill().pad(BUTTON_PADDING);
-        buttonGrid.add(bagButton).expand().fill().pad(BUTTON_PADDING).row();
-        buttonGrid.add(pokemonButton).expand().fill().pad(BUTTON_PADDING);
-        buttonGrid.add(runButton).expand().fill().pad(BUTTON_PADDING);
-
-        // Set up button container
-        buttonContainer.setName("ButtonContainer");
-        buttonContainer.setTouchable(Touchable.enabled);
-        buttonContainer.setTransform(false);
-        buttonContainer.add(buttonGrid).expand().fill().pad(5);
-
-        // Ensure buttons are touchable and enabled
-        TextButton[] buttons = {fightButton, bagButton, pokemonButton, runButton};
-        for (TextButton btn : buttons) {
-            btn.setTouchable(Touchable.enabled);
-        }
-
-        enableBattleButtons(currentState == BattleState.PLAYER_TURN && !isAnimating);
-        GameLogger.info("Battle buttons setup complete - Current state: " + currentState +
-            " Animating: " + isAnimating);
-    }
-
-
-    private float calculateTypeEffectiveness(Move move, Pokemon defender) {
-        if (move == null || defender == null) {
-            return 1.0f;
-        }
-
-        float effectiveness = getTypeEffectiveness(move.getType(), defender.getPrimaryType());
-
-        // Consider secondary type if present
-        if (defender.getSecondaryType() != null) {
-            effectiveness *= getTypeEffectiveness(move.getType(), defender.getSecondaryType());
-        }
-
-        return effectiveness;
-    }
-
-    private void showEffectivenessMessage(float effectiveness) {
-        if (effectiveness > 1.5f) {
-            showBattleText("It's super effective!");
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.SUPER_EFFECTIVE);
-        } else if (effectiveness < 0.5f) {
-            showBattleText("It's not very effective...");
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.NOT_EFFECTIVE);
-        } else if (effectiveness == 0) {
-            showBattleText("It had no effect...");
-        }
-    }
-    private void enableBattleButtons(boolean enable) {
-        if (fightButton == null) return;
-
-        TextButton[] buttons = {fightButton, bagButton, pokemonButton, runButton};
-        for (TextButton button : buttons) {
-            button.setDisabled(!enable);
-            button.setTouchable(enable ? Touchable.enabled : Touchable.childrenOnly);
-            GameLogger.info(button.getName() + " enabled: " + enable +
-                " touchable: " + button.getTouchable());
-        }
-    }
-
-    private boolean checkBattleEnd() {
-        if (playerPokemon.getCurrentHp() <= 0 || enemyPokemon.getCurrentHp() <= 0 ||
-            turnCount >= MAX_TURN_COUNT) {
-
-            boolean playerWon = playerPokemon.getCurrentHp() > 0 && enemyPokemon.getCurrentHp() <= 0;
-            currentState = BattleState.ENDED;
-            isAnimating = true;
-
-            // Create ending sequence
-            SequenceAction endSequence = Actions.sequence(
-                Actions.run(() -> {
-                    if (turnCount >= MAX_TURN_COUNT) {
-                        showBattleText("Battle ended in a draw!");
-                    } else {
-                        showBattleText(playerWon ? "Victory!" : playerPokemon.getName() + " fainted!");
-                    }
-                }),
-                Actions.delay(2.0f),
-                Actions.parallel(
-                    Actions.run(() -> {
-                        if (playerPokemonImage != null) {
-                            playerPokemonImage.addAction(Actions.fadeOut(1.0f));
-                        }
-                        if (enemyPokemonImage != null) {
-                            enemyPokemonImage.addAction(Actions.fadeOut(1.0f));
-                        }
-                    })
-                ),
-                Actions.delay(1.0f),
-                Actions.run(() -> {
-                    if (callback != null) {
-                        callback.onBattleEnd(playerWon);
-                    }
-                    dispose();
-                })
-            );
-
-            addAction(endSequence); // Add to BattleTable instead of battleScene
-            return true;
-        }
-        return false;
-    }
-
-    private void showBattleText(String text) {
-        battleText.setText(text);
-        battleText.addAction(Actions.sequence(
-            Actions.alpha(0),
-            Actions.fadeIn(0.2f)
-        ));
-    }
-
-    private void transitionToState(BattleState newState) {
-        GameLogger.info("Transitioning from " + currentState + " to " + newState);
-
-        boolean wasAnimating = isAnimating;
-        currentState = newState;
-        stateTimer = 0;
-
-        switch (newState) {
-            case INTRO:
-                isAnimating = true;
-                enableBattleButtons(false);
-                break;
-
-            case PLAYER_TURN:
-                isAnimating = false;
-                enableBattleButtons(true);
-                showActionMenu(true);
-                break;
-
-            case ENEMY_TURN:
-                isAnimating = false;
-                enableBattleButtons(false);
-                showActionMenu(false);
-                break;
-
-            case ENDED:
-                isAnimating = false;
-                enableBattleButtons(false);
-                showActionMenu(false);
-                break;
-        }
-
-        // Update UI if animation state changed
-        if (wasAnimating != isAnimating) {
-            updateUI();
-        }
-
-        GameLogger.info("State transition complete - " +
-            "State: " + currentState +
-            " Animating: " + isAnimating +
-            " Buttons enabled: " + (currentState == BattleState.PLAYER_TURN && !isAnimating));
-    }
-
-    private String generateBattleStartText() {
-        return "Wild " + enemyPokemon.getName() + " appeared!";
-    }
-
-    private void updateHPBars() {
-        // Update player HP bar
-        float playerHPPercent = playerPokemon.getCurrentHp() / playerPokemon.getStats().getHp();
-        playerHPBar.setValue(playerPokemon.getCurrentHp());
-        updateHPBarColor(playerHPBar, playerHPPercent);
-
-        // Update enemy HP bar
-        float enemyHPPercent = enemyPokemon.getCurrentHp() / enemyPokemon.getStats().getHp();
-        enemyHPBar.setValue(enemyPokemon.getCurrentHp());
-        updateHPBarColor(enemyHPBar, enemyHPPercent);
-    }
-
-    private void updateStatusEffects() {
-        // Update player Pokemon status
-        if (playerPokemon.hasStatus()) {
-            playerHUD.updateStatusIcon(TextureManager.getStatusIcon(
-                TextureManager.StatusCondition.valueOf(playerPokemon.getStatus().name())));
-        }
-
-        // Update enemy Pokemon status
-        if (enemyPokemon.hasStatus()) {
-            enemyHUD.updateStatusIcon(TextureManager.getStatusIcon(
-                TextureManager.StatusCondition.valueOf(enemyPokemon.getStatus().name())));
-        }
-    }
-
-    private void executeStruggle(Pokemon attacker, Pokemon defender) {
-        // Struggle implementation - damages both Pokemon
-        float damage = attacker.getStats().getAttack() * 0.5f;
-        float recoil = damage * 0.25f;
-
-        applyDamage(defender, damage);
-        applyDamage(attacker, recoil);
-
-        showBattleText(attacker.getName() + " used Struggle!");
-    }
-
-    private float getTypeEffectiveness(Pokemon.PokemonType attackType, Pokemon.PokemonType defendType) {
-        if (attackType == null || defendType == null) {
-            GameLogger.error("Null type detected in getTypeEffectiveness: attackType=" + attackType + ", defendType=" + defendType);
-            return 1.0f; // Neutral effectiveness when types are unknown
-        }
-        ObjectMap<Pokemon.PokemonType, Float> effectivenessMap = typeEffectiveness.get(attackType);
-        if (effectivenessMap == null) {
-            GameLogger.error("No effectiveness data for attackType: " + attackType);
-            return 1.0f; // Default to neutral effectiveness
-        }
-        return effectivenessMap.get(defendType, 1.0f);
-    }
-
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    // ENUM FOR BATTLE STATE
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
     private enum BattleState {
-        INTRO,        // Initial battle animation
-        PLAYER_TURN,  // Player selecting action
-        ENEMY_TURN,   // Enemy AI selecting action
-        ANIMATING,    // Move animations playing
-        ENDED,        // Battle complete
-        RUNNING,      // Attempting to flee
-        CATCHING      // Pokeball throw animation
+        INTRO,
+        PLAYER_TURN,
+        ENEMY_TURN,
+        ANIMATING,
+        ENDED,
+        RUNNING,
+        CATCHING
     }
 
-
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    // CALLBACK INTERFACE & CLEANUP
+    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
     public interface BattleCallback {
         void onBattleEnd(boolean playerWon);
 
@@ -2051,138 +1059,5 @@ public class BattleTable extends Table {
         void onStatusChange(Pokemon pokemon, Pokemon.Status newStatus);
 
         void onMoveUsed(Pokemon user, Move move, Pokemon target);
-    }
-
-    private static class PokemonHUD extends Table {
-        private final Table statusContainer;
-        private final Pokemon pokemon;
-        private Label hpLabel;
-        private ProgressBar hpBar;
-        private Label nameLabel;
-        private Label levelLabel;
-        private Skin skin;
-
-        public PokemonHUD(Skin skin, Pokemon pokemon, boolean isPlayer) {
-            this.pokemon = pokemon;
-            this.skin = skin;
-
-
-            // Name and Level
-            nameLabel = new Label(pokemon.getName(), skin);
-            levelLabel = new Label("Lv." + pokemon.getLevel(), skin);
-
-            // Top row
-            Table topRow = new Table();
-            topRow.add(nameLabel).left().expandX();
-            topRow.add(levelLabel).right();
-
-            // HP Label
-            hpLabel = new Label((int) pokemon.getCurrentHp() + "/" + (int) pokemon.getStats().getHp(), skin);
-            hpLabel.setFontScale(0.7f);
-
-            statusContainer = new Table();
-            statusContainer.setName("statusContainer");
-
-            // Layout without backgrounds
-            add(topRow).expandX().fillX().pad(2).row();
-            add(hpLabel).expandX().pad(2);
-
-            setVisible(true);
-        }
-
-        private Drawable createHUDBackground() {
-            Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-            pixmap.setColor(0, 0, 0, 0.5f);
-            pixmap.fill();
-            TextureRegion region = new TextureRegion(new Texture(pixmap));
-            pixmap.dispose();
-            return new TextureRegionDrawable(region);
-        }
-
-        private String getHPStyleKey(float percentage) {
-            if (percentage > 0.5f) {
-                return "hp-bar-green";
-            } else if (percentage > 0.2f) {
-                return "hp-bar-yellow";
-            } else {
-                return "hp-bar-red";
-            }
-        }
-
-        public void update() {
-            levelLabel.setText("Lv." + pokemon.getLevel());
-
-            float currentPercentage = pokemon.getCurrentHp() / (float) pokemon.getStats().getHp();
-            String newStyleKey = getHPStyleKey(currentPercentage);
-
-            hpBar.setStyle(skin.get(newStyleKey, ProgressBar.ProgressBarStyle.class));
-            hpBar.setValue(pokemon.getCurrentHp());
-
-            hpLabel.setText((int) pokemon.getCurrentHp() + "/" + (int) pokemon.getStats().getHp());
-        }
-
-
-        public void setHPBar(ProgressBar hpBar) {
-            this.hpBar = hpBar;
-
-            // Remove existing HP bar if present
-            for (Cell<?> cell : getCells()) {
-                if (cell.getActor() == hpBar) {
-                    cell.setActor(null);
-                }
-            }
-
-            // Add HP bar directly without any container
-            add(hpBar).expandX().fillX().height(8).pad(4).row();
-        }
-
-        @Override
-        public void layout() {
-            super.layout();
-            // Ensure proper scaling of the HUD components
-            setScale(1.0f);
-            invalidateHierarchy();
-        }
-
-        public void updateStatusIcon(TextureRegion statusIcon) {
-            statusContainer.clear();
-            if (statusIcon != null) {
-                Image statusImage = new Image(statusIcon);
-                statusContainer.add(statusImage).size(32).pad(2);
-            }
-        }
-    }
-
-    public class ActionButton extends TextButton {
-        private final Runnable action;
-        private final BattleTable battleTable;
-
-        public ActionButton(String text, TextButtonStyle style, Runnable action, BattleTable battleTable) {
-            super(text, style);
-            this.action = action;
-            this.battleTable = battleTable;
-
-            addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    GameLogger.info(text + " button clicked - State: " + battleTable.getCurrentState() +
-                        " Animating: " + battleTable.isAnimating() +
-                        " Disabled: " + isDisabled());
-
-                    if (!isDisabled() && !battleTable.isAnimating() &&
-                        battleTable.getCurrentState() == BattleState.PLAYER_TURN) {
-                        action.run();
-                    }
-                }
-            });
-        }
-
-        @Override
-        public void act(float delta) {
-            super.act(delta);
-            boolean enabled = battleTable.getCurrentState() == BattleState.PLAYER_TURN &&
-                !battleTable.isAnimating();
-            setDisabled(!enabled);
-        }
     }
 }

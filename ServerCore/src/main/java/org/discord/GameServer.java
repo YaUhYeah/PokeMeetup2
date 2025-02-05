@@ -21,6 +21,7 @@ import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.pokemon.WildPokemon;
+import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
@@ -30,6 +31,8 @@ import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PasswordUtils;
 import io.github.pokemeetup.utils.textures.TextureManager;
+import net.jpountz.lz4.LZ4Compressor;
+import net.jpountz.lz4.LZ4Factory;
 import org.discord.context.ServerGameContext;
 import org.discord.utils.BiomeData;
 import org.discord.utils.ServerBiomeManager;
@@ -44,13 +47,14 @@ import java.util.zip.GZIPOutputStream;
 
 import static io.github.pokemeetup.CreatureCaptureGame.MULTIPLAYER_WORLD_NAME;
 import static io.github.pokemeetup.system.gameplay.overworld.World.CHUNK_SIZE;
+import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 import static io.github.pokemeetup.system.gameplay.overworld.WorldObject.WorldObjectManager.MAX_POKEBALLS_PER_CHUNK;
 import static io.github.pokemeetup.system.gameplay.overworld.WorldObject.WorldObjectManager.POKEBALL_SPAWN_CHANCE;
 
 public class GameServer {
+    private static final int WRITE_BUFFER = 65536;
+    private static final int OBJECT_BUFFER = 65536;
 
-    private static final int WRITE_BUFFER = 32768; // 32KB
-    private static final int OBJECT_BUFFER = 32768;
     private static final int SCHEDULER_POOL_SIZE = 3;
     private static final long AUTH_TIMEOUT = 10000;
     private static final long SAVE_INTERVAL = 300000;
@@ -206,6 +210,35 @@ public class GameServer {
         }
     }
 
+    private void handleItemDrop(Connection connection, NetworkProtocol.ItemDrop drop) {
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null || !username.equals(drop.username)) {
+            GameLogger.error("Unauthorized item drop attempt");
+            return;
+        }
+
+        // Validate the drop position isn't too far from player
+        ServerPlayer player = activePlayers.get(username);
+        if (player == null) {
+            GameLogger.error("No player found for item drop");
+            return;
+        }
+
+        float distance = Vector2.dst(
+            player.getPosition().x, player.getPosition().y,
+            drop.x, drop.y
+        );
+
+        if (distance > TILE_SIZE * 2) {
+            GameLogger.error("Item drop position too far from player");
+            return;
+        }
+
+        // Broadcast the drop to all other players
+        networkServer.sendToAllExceptTCP(connection.getID(), drop);
+    }
+
+
     private void cleanupPlayerSession(int connectionId, String username) {
         synchronized (activeUserConnections) {
             activeUserConnections.remove(username);
@@ -345,8 +378,8 @@ public class GameServer {
     }
 
     private boolean isValidSpawnPosition(float x, float y) {
-        int tileX = (int) (x / World.TILE_SIZE);
-        int tileY = (int) (y / World.TILE_SIZE);
+        int tileX = (int) (x / TILE_SIZE);
+        int tileY = (int) (y / TILE_SIZE);
 
         if (tileX < 0 || tileX >= World.WORLD_SIZE ||
             tileY < 0 || tileY >= World.WORLD_SIZE) {
@@ -515,19 +548,18 @@ public class GameServer {
         try {
             WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
             if (worldData == null) {
-                GameLogger.error("Failed to load world data for chunk request");
+                GameLogger.error("Failed to load world data for chunk request at " + chunkPos);
                 return;
             }
 
-            Chunk chunk = ServerGameContext.get().getWorldManager()
-                .loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
-
+            // Load or generate the chunk
+            Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
             if (chunk == null) {
-                GameLogger.error("Failed to load chunk at " + chunkPos);
+                GameLogger.error("Failed to load/generate chunk at " + chunkPos);
                 return;
             }
 
-            // Always ensure objects are populated, even for existing chunks
+            // Ensure objects are populated
             List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
                 .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
 
@@ -546,14 +578,13 @@ public class GameServer {
             chunkData.timestamp = System.currentTimeMillis();
             chunkData.worldObjects = new ArrayList<>();
 
+            // Add all valid objects
             if (objects != null) {
                 for (WorldObject obj : objects) {
                     if (obj != null) {
-                        Map<String, Object> objData = obj.getSerializableData();
+                        HashMap<String, Object> objData = obj.getSerializableData();
                         if (objData != null) {
                             chunkData.worldObjects.add(objData);
-                            GameLogger.info("Added object to response: " + obj.getType() +
-                                " at (" + obj.getTileX() + "," + obj.getTileY() + ")");
                         }
                     }
                 }
@@ -565,40 +596,57 @@ public class GameServer {
                 return;
             }
 
+            // Send compressed chunk data
             connection.sendTCP(compressed);
             GameLogger.info("Sent chunk data at " + chunkPos + " with " +
                 (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) + " objects");
 
         } catch (Exception e) {
-            GameLogger.error("Error processing chunk request: " + e.getMessage());
+            GameLogger.error("Error processing chunk request at " + chunkPos + ": " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     private NetworkProtocol.CompressedChunkData compressChunkData(NetworkProtocol.ChunkData chunkData) {
         try {
+            // First serialize the ChunkData to an uncompressed byte array using Kryo.
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            GZIPOutputStream gzip = new GZIPOutputStream(baos);
-            Output output = new Output(gzip);
+            int initialBufferSize = 16 * 1024;   // 16 KB
+            int maxBufferSize = 256 * 1024;        // 256 KB
+            Output output = new Output(initialBufferSize, maxBufferSize);
+            output.setOutputStream(baos);
+
 
             Kryo kryo = new Kryo();
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
             kryo.writeObject(output, chunkData);
-
             output.close();
-            gzip.close();
+            byte[] uncompressedData = baos.toByteArray();
 
+            // Compress using LZ4.
+            LZ4Factory factory = LZ4Factory.fastestInstance();
+            LZ4Compressor compressor = factory.fastCompressor();
+            int maxCompressedLength = compressor.maxCompressedLength(uncompressedData.length);
+            byte[] compressedBuffer = new byte[maxCompressedLength];
+            int compressedLength = compressor.compress(uncompressedData, 0, uncompressedData.length,
+                compressedBuffer, 0, maxCompressedLength);
+            // Create a new array of the actual compressed size.
+            byte[] finalCompressedData = Arrays.copyOf(compressedBuffer, compressedLength);
+
+            // Build the compressed chunk message.
             NetworkProtocol.CompressedChunkData compressed = new NetworkProtocol.CompressedChunkData();
             compressed.chunkX = chunkData.chunkX;
             compressed.chunkY = chunkData.chunkY;
             compressed.primaryBiomeType = chunkData.primaryBiomeType;
-            compressed.secondaryBiomeType = chunkData.secondaryBiomeType;
-            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor;
+            compressed.secondaryBiomeType = chunkData.secondaryBiomeType; // if any
+            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor; // if any
             compressed.generationSeed = worldData.getConfig().getSeed();
-            compressed.data = baos.toByteArray();
+            // New field: the original uncompressed length.
+            compressed.originalLength = uncompressedData.length;
+            compressed.data = finalCompressedData;
             return compressed;
-        } catch (IOException e) {
+        } catch (Exception e) {
             GameLogger.error("Chunk compression failed: " + e.getMessage());
             return null;
         }
@@ -673,6 +721,35 @@ public class GameServer {
                     if (object instanceof NetworkProtocol.BlockPlacement) {
                         handleBlockPlacement(connection, (NetworkProtocol.BlockPlacement) object);
                     }
+                    if (object instanceof NetworkProtocol.ItemDrop) {
+                        handleItemDrop(connection, (NetworkProtocol.ItemDrop) object);
+                        return;
+                    }
+                    if (object instanceof NetworkProtocol.BuildingPlacement) {
+                        handleBuildingPlacement(connection, (NetworkProtocol.BuildingPlacement) object);
+                    }
+                    if (object instanceof NetworkProtocol.ChestUpdate) {
+                        handleChestUpdate(connection, (NetworkProtocol.ChestUpdate) object);
+                        return;
+                    }if (object instanceof NetworkProtocol.ItemPickup) {
+                        handleItemPickup(connection, (NetworkProtocol.ItemPickup) object);
+                        return;
+                    }
+                    if (object instanceof NetworkProtocol.PlayerInfoUpdate) {
+                        NetworkProtocol.PlayerInfoUpdate update = (NetworkProtocol.PlayerInfoUpdate) object;
+                        playerPingMap.put(update.username, update.ping);
+                        // Optionally, broadcast the new list to all clients immediately…
+                        broadcastPlayerList();
+                    }
+
+                    if (object instanceof NetworkProtocol.PingRequest) {
+                        NetworkProtocol.PingRequest pingRequest = (NetworkProtocol.PingRequest) object;
+                        NetworkProtocol.PingResponse pingResponse = new NetworkProtocol.PingResponse();
+                        pingResponse.timestamp = pingRequest.timestamp; // echo back the timestamp
+                        connection.sendTCP(pingResponse);
+                        return;
+                    }
+
                     if (object instanceof NetworkProtocol.SavePlayerDataRequest) {
                         NetworkProtocol.SavePlayerDataRequest saveRequest =
                             (NetworkProtocol.SavePlayerDataRequest) object;
@@ -707,6 +784,125 @@ public class GameServer {
                 handleDisconnect(connection);
             }
         });
+    }private void broadcastPlayerList() {
+        NetworkProtocol.PlayerList list = new NetworkProtocol.PlayerList();
+        List<NetworkProtocol.PlayerInfo> infos = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : playerPingMap.entrySet()) {
+            NetworkProtocol.PlayerInfo info = new NetworkProtocol.PlayerInfo();
+            info.username = entry.getKey();
+            info.ping = entry.getValue();
+            infos.add(info);
+        }
+        list.players = infos;
+        networkServer.sendToAllTCP(list);
+    }
+
+    private void handleItemPickup(Connection connection, NetworkProtocol.ItemPickup pickup) {
+        // Validate the message
+        if (pickup == null || pickup.entityId == null) {
+            GameLogger.error("Received invalid ItemPickup message.");
+            return;
+        }
+
+        // Validate that the sender’s username matches the connection.
+        String sender = connectedPlayers.get(connection.getID());
+        if (sender == null || !sender.equals(pickup.username)) {
+            GameLogger.error("Item pickup username mismatch: expected " + sender + " but got " + pickup.username);
+            return;
+        }
+
+        // Retrieve the item entity from the server’s item entity manager.
+        // (Assuming ServerGameContext.get().getItemEntityManager() exists.)
+        ItemEntity itemEntity = ServerGameContext.get().getItemEntityManager().getItemEntity(pickup.entityId);
+        if (itemEntity == null) {
+            GameLogger.error("Item entity not found for pickup: " + pickup.entityId);
+            return;
+        }
+
+        // Remove the item from the server state.
+        ServerGameContext.get().getItemEntityManager().removeItemEntity(pickup.entityId);
+        GameLogger.info("Item " + pickup.entityId + " picked up by " + pickup.username);
+
+        // Optionally: update the player's inventory on the server side here.
+        // For example, retrieve the ServerPlayer for pickup.username and add itemEntity.getItemData() to their inventory.
+        // (This depends on how you want to handle authoritative inventory data on the server.)
+
+        // Broadcast the pickup to all other clients so they remove the item.
+        networkServer.sendToAllExceptTCP(connection.getID(), pickup);
+    }private void handleChestUpdate(Connection connection, NetworkProtocol.ChestUpdate update) {
+        // Validate sender
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null || !username.equals(update.username)) {
+            GameLogger.error("Unauthorized chest update attempt from " + update.username);
+            return;
+        }
+
+        // Look up the chest block by chestId using the block manager.
+        PlaceableBlock chestBlock = blockManager.getChestBlock(update.chestId);
+        if (chestBlock == null) {
+            GameLogger.error("Chest block with id " + update.chestId + " not found");
+            return;
+        }
+
+        // Synchronize updates for this chest
+        Object lock = chestLocks.computeIfAbsent(update.chestId, id -> new Object());
+        synchronized(lock) {
+            ChestData currentChest = chestBlock.getChestData();
+            if (currentChest == null) {
+                // In a correctly synchronized world, this case should not happen.
+                int posX = (int) chestBlock.getPosition().x;
+                int posY = (int) chestBlock.getPosition().y;
+                currentChest = new ChestData(posX, posY);
+            }
+            // Replace the items list with a defensive copy of the update.
+            currentChest.setItems(new ArrayList<>(update.items));
+            chestBlock.setChestData(currentChest);
+
+            // Mark the containing chunk dirty and save it.
+            Vector2 chestPos = chestBlock.getPosition();
+            int chunkX = Math.floorDiv((int) chestPos.x, World.CHUNK_SIZE);
+            int chunkY = Math.floorDiv((int) chestPos.y, World.CHUNK_SIZE);
+            Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
+            if (chunk != null) {
+                chunk.setDirty(true);
+                ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
+            }
+
+            GameLogger.info("Processed chest update from " + update.username + " for chest " + update.chestId);
+            networkServer.sendToAllTCP(update);
+        }
+    }
+
+    private void handleBuildingPlacement(Connection connection, NetworkProtocol.BuildingPlacement bp) {
+        // Validate that the sender’s username matches the connection
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null || !username.equals(bp.username)) {
+            GameLogger.error("Unauthorized building placement attempt by " + bp.username);
+            return;
+        }
+
+        // Loop over the layout and place each block.
+        for (int x = 0; x < bp.width; x++) {
+            for (int y = 0; y < bp.height; y++) {
+                String typeId = bp.blockTypeIds[x][y];
+                boolean isFlipped = bp.flippedFlags[x][y];
+                if (typeId == null || typeId.isEmpty()) continue;
+                PlaceableBlock.BlockType type = PlaceableBlock.BlockType.fromItemId(typeId);
+                int tileX = bp.startX + x;
+                int tileY = bp.startY + y;
+                boolean placed = blockManager.placeBlock(type, tileX, tileY, isFlipped);
+                if (!placed) {
+                    GameLogger.error("Failed to place block at (" + tileX + "," + tileY + ") of type " + type);
+                    return;
+                }
+            }
+        }
+
+        // (Optionally mark affected chunks as dirty, etc.)
+
+        // Broadcast the building placement to all other clients
+        networkServer.sendToAllExceptTCP(connection.getID(), bp);
+        GameLogger.info("Building placement by " + bp.username + " placed at (" + bp.startX + "," + bp.startY + ")");
     }
 
     private void initializePeriodicTasks() {
@@ -748,7 +944,7 @@ public class GameServer {
             if (conn.getID() != connection.getID()) {
                 try {
                     networkServer.sendToTCP(conn.getID(), message);
-                } catch (Exception e) {
+                } catch (Exception ignored) {
                 }
             }
         }
@@ -889,90 +1085,7 @@ public class GameServer {
         } catch (Exception e) {
             GameLogger.error("Error processing message for " + username + ": " + e.getMessage());
         }
-    }
 
-
-    private void handleItemPickup(NetworkProtocol.PlayerAction action, Connection connection) {
-        String username = connectedPlayers.get(connection.getID());
-        if (username == null) {
-            GameLogger.error("Unauthorized pickup attempt");
-            return;
-        }
-
-        // Suppose action.targetPosition is the tile/pixel coords of the item
-        Vector2 itemPos = action.targetPosition;
-        if (itemPos == null) {
-            GameLogger.error("No item position specified");
-            return;
-        }
-
-        // Convert to chunk coords
-        Vector2 chunkPos = new Vector2(
-            (int) Math.floor(itemPos.x / (CHUNK_SIZE * World.TILE_SIZE)),
-            (int) Math.floor(itemPos.y / (CHUNK_SIZE * World.TILE_SIZE))
-        );
-
-        // Look up chunk’s object list
-        List<WorldObject> objects = worldData.getChunkObjects().get(chunkPos);
-        if (objects == null) return;
-
-        // Find the nearest item object
-        WorldObject itemObject = null;
-        float minDist = Float.MAX_VALUE;
-        for (WorldObject obj : objects) {
-            if (obj.getType() == WorldObject.ObjectType.POKEBALL /* or ITEM, ETC. */) {
-                float dist = Vector2.dst(obj.getPixelX(), obj.getPixelY(), itemPos.x, itemPos.y);
-                if (dist < minDist && dist < 48) {
-                    minDist = dist;
-                    itemObject = obj;
-                }
-            }
-        }
-        if (itemObject == null) {
-            GameLogger.info("No item found at pickup location");
-            return;
-        }
-
-        // Remove from chunk
-        if (objects.remove(itemObject)) {
-            worldData.getChunkObjects().put(chunkPos, objects);
-
-            // Broadcast removal
-            NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
-            update.objectId = itemObject.getId();
-            update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-            networkServer.sendToAllTCP(update);
-
-            // Example: add to player’s inventory
-            // e.g. "wooden_plank" or "pokeball" item
-            // This will vary by your inventory logic
-            PlayerData playerData = /* load or get from your manager */
-                ServerGameContext.get().getStorageSystem().getPlayerDataManager()
-                    .loadPlayerData(UUID.nameUUIDFromBytes(username.getBytes()));
-            if (playerData != null) {
-                // e.g. add 1 "pokeball" to inventory
-                playerData.getInventoryItems().add(new ItemData("pokeball", 1, UUID.randomUUID()));
-                // Then save
-                ServerGameContext.get().getStorageSystem()
-                    .getPlayerDataManager().savePlayerData(UUID.nameUUIDFromBytes(username.getBytes()), playerData);
-            }
-
-            // Save chunk or entire world
-            ServerGameContext.get().getWorldManager().saveWorld(worldData);
-            GameLogger.info(username + " picked up item " + itemObject.getId()
-                + " at " + itemObject.getPixelX() + "," + itemObject.getPixelY());
-        }
-    }
-
-    private WorldObject findWorldObjectById(String objectId) {
-        for (List<WorldObject> list : worldData.getChunkObjects().values()) {
-            for (WorldObject obj : list) {
-                if (obj.getId().equals(objectId)) {
-                    return obj;
-                }
-            }
-        }
-        return null;
     }
 
     private void handlePlayerAction(Connection connection, NetworkProtocol.PlayerAction action) {
@@ -989,10 +1102,7 @@ public class GameServer {
 
         switch (action.actionType) {
             case CHOP_START:
-            case PUNCH_START:  // Handle both CHOP and PUNCH the same way
-                GameLogger.info("Processing " + action.actionType + " for player " + action.playerId +
-                    " at position (" + action.tileX + "," + action.tileY +
-                    ") direction: " + action.direction);
+            case PUNCH_START:
 
                 WorldObject targetTree = findServerChoppableObject(player, action.direction);
                 if (targetTree != null) {
@@ -1007,56 +1117,21 @@ public class GameServer {
                 break;
 
             case CHOP_STOP:
-            case PUNCH_STOP:  // Handle both CHOP and PUNCH stop the same way
-                handleChopProgress(action);
+            case PUNCH_STOP:
                 networkServer.sendToAllExceptTCP(connection.getID(), action);
                 break;
         }
     }
 
-    private void handleChopStart(NetworkProtocol.PlayerAction action) {
-        if (action == null || action.playerId == null) {
-            GameLogger.error("Invalid CHOP_START: missing playerId");
-            return;
-        }
 
-        // Add logging to track action details
-        GameLogger.info("Processing CHOP_START for player " + action.playerId +
-            " at position (" + action.tileX + "," + action.tileY +
-            ") direction: " + action.direction);
-
-        ServerPlayer player = activePlayers.get(action.playerId);
-        if (player == null) {
-            GameLogger.error("No ServerPlayer found for " + action.playerId);
-            return;
-        }
-
-        // Calculate target tile based on position and direction
-        int targetX = action.tileX;
-        int targetY = action.tileY;
-
-        // Add this debug logging
-        GameLogger.info("Looking for choppable object near player " +
-            action.playerId + " at (" + player.getPosition().x + "," +
-            player.getPosition().y + ")");
-
-        WorldObject targetTree = findServerChoppableObject(player, action.direction);
-        if (targetTree != null) {
-            GameLogger.info("Found tree: " + targetTree.getId() + " at (" +
-                targetTree.getTileX() + "," + targetTree.getTileY() + ")");
-            player.setChoppingObject(targetTree);
-        } else {
-            GameLogger.error("No matching tree found to chop at (" + targetX + "," + targetY + ")");
-        }
-    }
     private WorldObject findServerChoppableObject(ServerPlayer player, String direction) {
         Vector2 playerPos = player.getPosition();
-        int playerTileX = (int)Math.floor(playerPos.x / World.TILE_SIZE);
-        int playerTileY = (int)Math.floor(playerPos.y / World.TILE_SIZE);
+        int playerTileX = (int) Math.floor(playerPos.x / TILE_SIZE);
+        int playerTileY = (int) Math.floor(playerPos.y / TILE_SIZE);
 
         // Convert to pixel coordinates for proper distance calculations
-        float playerPixelX = playerTileX * World.TILE_SIZE;
-        float playerPixelY = playerTileY * World.TILE_SIZE;
+        float playerPixelX = playerTileX * TILE_SIZE;
+        float playerPixelY = playerTileY * TILE_SIZE;
 
         GameLogger.info("Player position - Tile: (" + playerTileX + "," + playerTileY +
             ") Pixel: (" + playerPixelX + "," + playerPixelY + ")");
@@ -1064,21 +1139,29 @@ public class GameServer {
         // Calculate target position based on direction
         float targetPixelX = playerPixelX;
         float targetPixelY = playerPixelY;
-        float searchDistance = World.TILE_SIZE * 1.5f;
+        float searchDistance = TILE_SIZE * 1.5f;
 
         switch (direction) {
-            case "up":    targetPixelY += searchDistance; break;
-            case "down":  targetPixelY -= searchDistance; break;
-            case "left":  targetPixelX -= searchDistance; break;
-            case "right": targetPixelX += searchDistance; break;
+            case "up":
+                targetPixelY += searchDistance;
+                break;
+            case "down":
+                targetPixelY -= searchDistance;
+                break;
+            case "left":
+                targetPixelX -= searchDistance;
+                break;
+            case "right":
+                targetPixelX += searchDistance;
+                break;
         }
 
         // Create search rectangle around target position
         Rectangle searchArea = new Rectangle(
-            targetPixelX - World.TILE_SIZE,
-            targetPixelY - World.TILE_SIZE,
-            World.TILE_SIZE * 2,
-            World.TILE_SIZE * 2
+            targetPixelX - TILE_SIZE,
+            targetPixelY - TILE_SIZE,
+            TILE_SIZE * 2,
+            TILE_SIZE * 2
         );
 
         GameLogger.info("Search area pixel coords: x=" + searchArea.x + " y=" + searchArea.y +
@@ -1092,17 +1175,17 @@ public class GameServer {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 Vector2 searchChunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME,searchChunkPos);
-                if (objects.isEmpty()){
+                List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, searchChunkPos);
+                if (objects.isEmpty()) {
                     GameLogger.error("No objects found for chunk " + searchChunkPos);
                 }
                 for (WorldObject obj : objects) {
                     if (isChoppable(obj.getType())) {
                         Rectangle objBounds = new Rectangle(
-                            obj.getTileX() * World.TILE_SIZE - World.TILE_SIZE,
-                            obj.getTileY() * World.TILE_SIZE,
-                            World.TILE_SIZE * 2,
-                            World.TILE_SIZE * 2
+                            obj.getTileX() * TILE_SIZE - TILE_SIZE,
+                            obj.getTileY() * TILE_SIZE,
+                            TILE_SIZE * 2,
+                            TILE_SIZE * 2
                         );
 
                         if (objBounds.overlaps(searchArea)) {
@@ -1119,83 +1202,8 @@ public class GameServer {
         return null;
     }
 
-    private void handleChopProgress(NetworkProtocol.PlayerAction action) {
-        if (action == null || action.playerId == null) {
-            return;
-        }
-        try {
-            ServerPlayer player = activePlayers.get(action.playerId);
-            if (player == null) {
-                GameLogger.error("No ServerPlayer found for " + action.playerId);
-                return;
-            }
 
-            // The tree that was being chopped
-            WorldObject choppedTree = player.getChoppingObject();
-            if (choppedTree == null) {
-                GameLogger.info("No active chopping object for player " + action.playerId);
-                return;
-            }
-
-            // Clear the chopping reference
-            player.setChoppingObject(null);
-
-            GameLogger.info("Processing chop completion for tree ID " + choppedTree.getId()
-                + " at tile (" + choppedTree.getTileX() + "," + choppedTree.getTileY() + ")");
-
-            // Convert tile coords to chunk coords
-            Vector2 chunkPos = getChunkCoordsForObject(choppedTree);
-
-            // Remove from chunk objects AND broadcast to all clients
-            if (removeObjectFromChunks(choppedTree.getId(), chunkPos)) {
-                // (1) Create and send object removal update
-                NetworkProtocol.WorldObjectUpdate objUpdate = new NetworkProtocol.WorldObjectUpdate();
-                objUpdate.objectId = choppedTree.getId();
-                objUpdate.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-                objUpdate.data = choppedTree.getSerializableData();
-                networkServer.sendToAllTCP(objUpdate);
-
-                // (2) Mark chunk as dirty and save it
-                Chunk chunk = ServerGameContext.get().getWorldManager()
-                    .loadChunk(MULTIPLAYER_WORLD_NAME, (int) chunkPos.x, (int) chunkPos.y);
-
-                if (chunk != null) {
-                    chunk.setDirty(true);
-                    ServerGameContext.get().getWorldManager()
-                        .saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
-                    GameLogger.info("Saved chunk after tree removal at " + chunkPos);
-                }
-
-
-                GameLogger.info("Tree removal complete and broadcasted: " + choppedTree.getId());
-            }
-
-        } catch (Exception e) {
-            GameLogger.error("Error in handleChopProgress: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    private boolean removeObjectFromChunks(String objectId, Vector2 chunkPos) {
-        List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
-        if (objects.removeIf(obj -> obj.getId().equals(objectId))) {
-            // Update the chunk -> objects mapping
-            ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, objects);
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Given a WorldObject, figure out which chunk it belongs to.
-     */
-    private Vector2 getChunkCoordsForObject(WorldObject obj) {
-        int cx = Math.floorDiv(obj.getTileX(), CHUNK_SIZE);
-        int cy = Math.floorDiv(obj.getTileY(), CHUNK_SIZE);
-        return new Vector2(cx, cy);
-    }
-
-
+    private static final ConcurrentHashMap<UUID, Object> chestLocks = new ConcurrentHashMap<>();
     private void handlePokeballSpawning(Vector2 chunkPos, Chunk chunk) {
         try {
             List<WorldObject> chunkObjects = worldData.getChunkObjects().computeIfAbsent(chunkPos, k -> new ArrayList<>());
@@ -1260,7 +1268,6 @@ public class GameServer {
             type == WorldObject.ObjectType.RUINS_TREE;
     }
 
-
     private void handleBlockPlacement(Connection connection, NetworkProtocol.BlockPlacement placement) {
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(placement.username)) {
@@ -1270,41 +1277,50 @@ public class GameServer {
 
         switch (placement.action) {
             case PLACE:
-                // Place the block in the server's world
-                boolean placed = blockManager.placeBlock(PlaceableBlock.BlockType.fromItemId(placement.blockTypeId), placement.tileX, placement.tileY);
+                // Place the block using our block manager.
+                PlaceableBlock.BlockType type = PlaceableBlock.BlockType.fromItemId(placement.blockTypeId);
+                boolean placed = blockManager.placeBlock(type, placement.tileX, placement.tileY, false);
                 if (placed) {
-                    // Broadcast to other clients
+                    // *** NEW CODE: Update the corresponding chunk ***
+                    int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
+                    int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
+                    Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
+                    if (chunk != null) {
+                        // (Assume that blockManager.placeBlock() internally creates and returns the new block.)
+                        // If not, then get the block from your block manager’s internal map:
+                        Vector2 blockPos = new Vector2(placement.tileX, placement.tileY);
+                        PlaceableBlock block = blockManager.getBlockAt(blockPos);
+                        if (block != null) {
+                            chunk.getBlocks().put(blockPos, block);
+                            chunk.setDirty(true);
+                            ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
+                        }
+                    }
+                    // Broadcast to other clients.
                     networkServer.sendToAllExceptTCP(connection.getID(), placement);
                 } else {
                     GameLogger.error("Failed to place block at (" + placement.tileX + ", " + placement.tileY + ")");
                 }
                 break;
             case REMOVE:
-                // Remove the block from the server's world
+                // Remove the block from our world.
                 blockManager.removeBlock(placement.tileX, placement.tileY);
-                // Broadcast to other clients
+                // Also update the chunk data.
+                int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
+                int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
+                Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
+                if (chunk != null) {
+                    chunk.getBlocks().remove(new Vector2(placement.tileX, placement.tileY));
+                    chunk.setDirty(true);
+                    ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
+                }
+                // Broadcast to other clients.
                 networkServer.sendToAllExceptTCP(connection.getID(), placement);
                 break;
         }
     }
+    private final ConcurrentHashMap<String, Integer> playerPingMap = new ConcurrentHashMap<>();
 
-    private int selectTileType(Map<Integer, Integer> distribution, Random random) {
-        int roll = random.nextInt(100);
-        int total = 0;
-
-        for (Map.Entry<Integer, Integer> entry : distribution.entrySet()) {
-            total += entry.getValue();
-            if (roll < total) {
-                return entry.getKey();
-            }
-        }
-
-        return distribution.keySet().iterator().next();
-    }
-
-    public ServerConnectionConfig getConfig() {
-        return config;
-    }
 
 
     private static class ConnectionInfo {

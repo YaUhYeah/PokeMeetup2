@@ -66,6 +66,22 @@ public class WildPokemon extends Pokemon {
     private boolean isInterpolating = false;
     private float lastUpdateX;
     private float lastUpdateY;
+    public WildPokemon(String name, int level) {
+        // Initialize with default/dummy values
+        super(name, level);
+        this.pixelX = 0;
+        this.pixelY = 0;
+        this.x = 0;
+        this.y = 0;
+        this.startPosition = new Vector2(0, 0);
+        this.targetPosition = new Vector2(0, 0);
+        this.direction = "down";
+        this.currentMoveTime = 0;
+        this.width = 0;
+        this.height = 0;
+        this.boundingBox = new Rectangle(0, 0, 0, 0);
+        this.animations = null;
+    }
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, TextureRegion overworldSprite) {
         super(name, level);
@@ -272,7 +288,19 @@ public class WildPokemon extends Pokemon {
     }
 
     public void update(float delta, World world) {
-        if (world == null) return;
+        if (world == null) return;if (isDespawning) {
+            if (despawnAnimation != null) {
+                // Update the despawn animation.
+                // The update method returns true when the animation is complete.
+                if (despawnAnimation.update(delta)) {
+                    // Once the despawn animation has finished,
+                    // mark the Pokémon as expired so that it can be removed from the world.
+                    isExpired = true;
+                }
+            }
+            // Skip all other update logic when despawning.
+            return;
+        }
 
         // Update AI first
         if (ai != null) {

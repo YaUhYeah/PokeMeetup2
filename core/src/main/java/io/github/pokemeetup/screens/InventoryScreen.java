@@ -11,13 +11,14 @@ import com.badlogic.gdx.graphics.g2d.ParticleEffect;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.*;
+import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.system.InputManager;
 import io.github.pokemeetup.system.Player;
+import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.*;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingGrid;
@@ -26,7 +27,6 @@ import io.github.pokemeetup.system.gameplay.inventory.crafting.RecipeGlossaryUI;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventoryObserver;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
 import io.github.pokemeetup.screens.otherui.InventorySlotUI;
-import io.github.pokemeetup.system.gameplay.inventory.secureinventories.ItemContainer;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.InventoryConverter;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -135,7 +135,7 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
     }
 
     @Override
-    public ItemContainer getChestData() {
+    public ChestData getChestData() {
         return null;
     }
 
@@ -205,25 +205,27 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         craftingContainer.setBackground(createBackground());
         craftingContainer.pad(containerPadding);
 
-        // Crafting grid
+        // Crafting grid (2x2)
         Table craftingGrid1 = new Table();
         craftingGrid1.defaults().space(SLOT_SIZE * 0.1f);
 
         for (int y = 0; y < 2; y++) {
             for (int x = 0; x < 2; x++) {
                 final int index = y * 2 + x;
-                InventorySlotData craftSlotData = new InventorySlotData(index, InventorySlotData.SlotType.CRAFTING, craftingGrid);
-
+                // FIX: Use the existing InventorySlotData from the CraftingGrid.
+                InventorySlotData craftSlotData = craftingGrid.getSlotData(index);
                 InventorySlotUI craftSlot = new InventorySlotUI(craftSlotData, skin, this);
                 craftingSlotUIs.add(craftSlot);
                 craftingSystem.addSlotObserver(index, craftSlot);
 
                 craftingGrid1.add(craftSlot).size(SLOT_SIZE);
-                if (x == 1) craftingGrid1.row();
+                if (x == 1) {
+                    craftingGrid1.row();
+                }
             }
         }
 
-        // Arrow and result
+        // Arrow and result slot
         Image arrowImage = new Image(TextureManager.ui.findRegion("arrow"));
         InventorySlotData resultSlotData = new InventorySlotData(-1, InventorySlotData.SlotType.CRAFTING_RESULT, craftingGrid);
         craftingResultSlotUI = new InventorySlotUI(resultSlotData, skin, this);
@@ -232,36 +234,39 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         craftingContainer.add(arrowImage).size(SLOT_SIZE * 0.8f).padRight(SLOT_SIZE * 0.5f);
         craftingContainer.add(craftingResultSlotUI).size(SLOT_SIZE);
 
-        // Recipe glossary section
+        // --- NEW: Explicitly constrain the crafting container's cell ---
+        topContainer.add(craftingContainer)
+            .padRight(SLOT_SIZE * 0.5f)
+            .minWidth(SLOT_SIZE * 3)     // At least enough to show the 2x2 grid plus some extra space
+            .minHeight(SLOT_SIZE * 2)
+            .align(Align.topLeft);
+        // --------------------------------------------------------------
+
+        // Recipe glossary section – layout remains unchanged
         RecipeGlossaryUI recipeGlossary = new RecipeGlossaryUI(stage, skin, this, craftingSystem);
         ScrollPane recipeScroll = recipeGlossary.getRecipeScroll();
+        recipeScroll.setScrollingDisabled(true, false);
 
         Table recipeContainer = new Table();
         recipeContainer.setBackground(createBackground());
-
-        // Recipe list header
         Label recipesLabel = new Label("Recipes", skin);
         recipesLabel.setFontScale(SLOT_SIZE * 0.04f);
-
         recipeContainer.add(recipesLabel).padBottom(containerPadding).row();
         recipeContainer.add(recipeScroll)
-            .width(SLOT_SIZE * 6f)
-            .height(SLOT_SIZE * 2.5f)
+            .width(screenWidth * 0.75f)
+            .minWidth(SLOT_SIZE * 6)
+            .height(screenHeight * 0.4f)
             .pad(containerPadding);
 
-        // Add both to top container with proper spacing
-        topContainer.add(craftingContainer).padRight(SLOT_SIZE * 0.5f);
-        topContainer.add(recipeContainer);
+        topContainer.add(recipeContainer).expandX().fillX();
 
         contentContainer.add(topContainer).padBottom(SLOT_SIZE * 0.75f).row();
 
-        // Inventory grid
+        // Inventory grid (unchanged)
         Table gridTable = new Table();
         gridTable.setName("gridTable");
         gridTable.setBackground(createBackground());
         gridTable.pad(containerPadding);
-
-        // Create inventory slots
         int cols = 9;
         for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
             InventorySlotUI slotUI = createSlotUI(i);
@@ -270,10 +275,9 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
                 gridTable.row();
             }
         }
-
         contentContainer.add(gridTable).row();
 
-        // Close button
+        // Close button (unchanged)
         TextButton closeButton = new TextButton("Close", skin);
         closeButton.addListener(new ClickListener() {
             @Override
@@ -281,20 +285,16 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
                 hide();
             }
         });
-
-        // Scale button size relative to slot size
         float buttonWidth = SLOT_SIZE * 2.5f;
         float buttonHeight = SLOT_SIZE * 1.0f;
         contentContainer.add(closeButton).size(buttonWidth, buttonHeight).pad(SLOT_SIZE * 0.5f);
 
-        // Add the content container to the main table
         mainTable.add(contentContainer);
-
         stage.addActor(mainTable);
         stage.addActor(heldItemGroup);
     }
 
-    // Update createBackground method for consistent styling
+
     private Drawable createBackground() {
         return new TextureRegionDrawable(TextureManager.ui.findRegion("hotbar_bg"))
             .tint(new Color(0.2f, 0.2f, 0.2f, 0.85f));
@@ -316,6 +316,7 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         stage.clear();
         setupUI();
     }
+
     public void reloadInventory() {
         GameLogger.info("Reloading inventory (only on show or controlled calls)...");
         if (inventory != null) {

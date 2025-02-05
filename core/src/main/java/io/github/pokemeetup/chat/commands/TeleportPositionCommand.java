@@ -67,7 +67,7 @@ public class TeleportPositionCommand implements Command {
             float pixelY = tileY * World.TILE_SIZE;
 
             // Clear existing chunks if in multiplayer
-            if (!gameClient.isSinglePlayer()) {
+            if (GameContext.get().isMultiplayer()) {
                 currentWorld.getChunks().clear();
                 // Calculate new chunk coordinates
                 int chunkX = (int) Math.floor(tileX / (float)World.CHUNK_SIZE);
@@ -91,7 +91,7 @@ public class TeleportPositionCommand implements Command {
             player.setRenderPosition(new Vector2(pixelX, pixelY));
 
             // In multiplayer, send position update
-            if (!gameClient.isSinglePlayer()) {
+            if (GameContext.get().isMultiplayer()) {
                 NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
                 update.username = player.getUsername();
                 update.x = pixelX;

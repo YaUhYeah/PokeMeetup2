@@ -2,6 +2,7 @@ package io.github.pokemeetup.system.gameplay.inventory;
 
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.blocks.PlaceableBlock;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
@@ -21,18 +22,18 @@ public class ChestInteractionHandler {
         }
     }
 
-    public boolean canInteractWithChest(Player player) {
-        if (player == null || player.getWorld() == null) {
+    public boolean canInteractWithChest() {
+        if (GameContext.get().getPlayer() == null || GameContext.get().getPlayer().getWorld() == null) {
             return false;
         }    if (isChestOpen) {
             return false;
         }
 
-        int targetX = player.getTileX();
-        int targetY = player.getTileY();
+        int targetX = GameContext.get().getPlayer().getTileX();
+        int targetY = GameContext.get().getPlayer().getTileY();
 
         // Get tile in front of player based on direction
-        switch (player.getDirection()) {
+        switch (GameContext.get().getPlayer().getDirection()) {
             case "up":
                 targetY++;
                 break;
@@ -47,7 +48,7 @@ public class ChestInteractionHandler {
                 break;
         }
 
-        PlaceableBlock block = player.getWorld().getBlockManager().getBlockAt(targetX, targetY);
+        PlaceableBlock block = GameContext.get().getWorld().getBlockManager().getBlockAt(targetX, targetY);
         if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
             // Cache the chest position when found
             currentChestPosition = new Vector2(targetX, targetY);

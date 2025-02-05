@@ -160,6 +160,7 @@ public class CraftingSystem {
         // Check if we have no extra items
         return found.keySet().equals(required.keySet());
     }
+
     private RecipeManager.CraftingRecipe findMatchingRecipe() {
         if (resultSlot == null) return null;
         List<RecipeManager.CraftingRecipe> recipes = recipeManager.getRecipesByOutput(resultSlot.getItemId());
@@ -181,6 +182,7 @@ public class CraftingSystem {
         }
         return totalCount;
     }
+
     public boolean craftOneItem() {
         synchronized (craftingLock) {
             if (resultSlot == null) return false;
@@ -246,7 +248,6 @@ public class CraftingSystem {
             }
         }
     }
-
 
     public void setItemInGrid(int index, ItemData item) {
         synchronized (craftingLock) {

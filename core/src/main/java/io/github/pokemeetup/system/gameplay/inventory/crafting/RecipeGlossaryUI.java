@@ -1,6 +1,5 @@
 package io.github.pokemeetup.system.gameplay.inventory.crafting;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -29,7 +28,6 @@ public class RecipeGlossaryUI {
 
     public RecipeGlossaryUI(Stage stage, Skin skin, InventoryScreenInterface screenInterface,
                             CraftingSystem craftingSystem) {
-        this.slotSize = Math.min(Gdx.graphics.getWidth() * 0.04f, Gdx.graphics.getHeight() * 0.07f);
         this.stage = stage;
         this.skin = skin;
         this.screenInterface = screenInterface;
@@ -74,8 +72,6 @@ public class RecipeGlossaryUI {
     public ScrollPane getRecipeScroll() {
         return recipeScroll;
     }
-
-    private float slotSize;
 
     private void createRecipeEntry(RecipeManager.CraftingRecipe recipe) {
         Table entry = new Table();
@@ -162,14 +158,26 @@ public class RecipeGlossaryUI {
         }
 
         if (shaped) {
-            // Place items according to pattern
-            for (int row = 0; row < pattern.length; row++) {
-                for (int col = 0; col < pattern[row].length; col++) {
-                    if (pattern[row][col] != null) {
-                        int gridIndex = row * pattern[row].length + col;
-                        String itemId = pattern[row][col].equals("P") ? ItemManager.ItemIDs.WOODEN_PLANKS :
-                            pattern[row][col].equals("S") ? ItemManager.ItemIDs.STICK : null;
+            // Calculate grid dimension (assumed square) and compute offsets to center the pattern.
+            int totalSlots = craftingSystem.getCraftingGrid().getSize();
+            int gridDimension = (int) Math.sqrt(totalSlots);
+            int patternRows = pattern.length;
+            int patternCols = pattern[0].length;
+            int offsetRow = (gridDimension - patternRows) / 2;
+            int offsetCol = (gridDimension - patternCols) / 2;
 
+            for (int row = 0; row < patternRows; row++) {
+                for (int col = 0; col < patternCols; col++) {
+                    if (pattern[row][col] != null) {
+                        // Use the grid dimension and offset to calculate the proper grid index.
+                        int gridIndex = (offsetRow + row) * gridDimension + (offsetCol + col);
+                        String symbol = pattern[row][col];
+                        String itemId = null;
+                        if ("P".equals(symbol)) {
+                            itemId = ItemManager.ItemIDs.WOODEN_PLANKS;
+                        } else if ("S".equals(symbol)) {
+                            itemId = ItemManager.ItemIDs.STICK;
+                        }
                         if (itemId != null) {
                             ItemData item = findAndRemoveItem(screenInterface.getInventory(), itemId, 1);
                             if (item != null) {
@@ -179,8 +187,38 @@ public class RecipeGlossaryUI {
                     }
                 }
             }
+        } else {
+            // For shapeless recipes, a simple sequential placement can be used.
+            int gridSize = craftingSystem.getCraftingGrid().getSize();
+            int index = 0;
+            for (String[] strings : pattern) {
+                for (String string : strings) {
+                    if (string != null) {
+                        String itemId = null;
+                        if ("P".equals(string)) {
+                            itemId = ItemManager.ItemIDs.WOODEN_PLANKS;
+                        } else if ("S".equals(string)) {
+                            itemId = ItemManager.ItemIDs.STICK;
+                        }
+                        if (itemId != null) {
+                            // Place item in the next available slot in grid order
+                            while (index < gridSize && craftingSystem.getItemInGrid(index) != null) {
+                                index++;
+                            }
+                            if (index < gridSize) {
+                                ItemData item = findAndRemoveItem(screenInterface.getInventory(), itemId, 1);
+                                if (item != null) {
+                                    craftingSystem.setItemInGrid(index, item);
+                                }
+                                index++;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
+
 
     private ItemData findAndRemoveItem(Inventory inventory, String itemId, int count) {
         for (int i = 0; i < inventory.getSize(); i++) {

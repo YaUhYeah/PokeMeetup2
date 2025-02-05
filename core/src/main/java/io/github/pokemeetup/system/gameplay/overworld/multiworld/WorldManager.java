@@ -275,7 +275,8 @@ public class WorldManager {
 
             for (String dirName : worldFolders) {
                 String dirPath = "worlds/singleplayer/" + dirName;
-                if (fs.isDirectory(dirPath)) continue;
+                // Process only directories; skip if it's not a directory.
+                if (!fs.isDirectory(dirPath)) continue;
 
                 String worldFilePath = dirPath + "/world.json";
                 if (!fs.exists(worldFilePath)) {

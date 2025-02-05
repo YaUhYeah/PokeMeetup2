@@ -29,6 +29,29 @@ public class Inventory implements ItemContainer {
             slotDataArray[i] = new InventorySlotData(i, InventorySlotData.SlotType.INVENTORY, this);
         }
     }
+    public ItemData getSelectedItem(int hotbarSlot) {
+        synchronized (inventoryLock) {
+            if (hotbarSlot >= 0 && hotbarSlot < 9) {
+                Slot slot = slots.get(hotbarSlot);
+                return slot != null ? slot.getItemData() : null;
+            }
+            return null;
+        }
+    }
+    public boolean removeItem(ItemData itemData) {
+        synchronized (inventoryLock) {
+            for (Slot slot : slots) {
+                ItemData slotItem = slot.getItemData();
+                if (slotItem != null && slotItem.getUuid().equals(itemData.getUuid())) {
+                    slot.setItemData(null);
+                    itemTracker.remove(itemData.getUuid());
+                    notifyObservers();
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
 
     public ItemData getItemAt(int index) {
         synchronized (inventoryLock) {
@@ -42,12 +65,7 @@ public class Inventory implements ItemContainer {
                 return null;
             }
 
-            ItemData item = slot.getItemData(); // Now returns actual reference
-            if (item != null) {
-                GameLogger.info("Got item at slot " + index + ": " +
-                    item.getItemId() + " x" + item.getCount());
-            }
-            return item;
+            return slot.getItemData();
         }
     }
 

@@ -3,7 +3,6 @@ package io.github.pokemeetup.blocks;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
-
 import java.util.*;
 
 public class SmartBuildingManager {
@@ -19,16 +18,6 @@ public class SmartBuildingManager {
 
     private void initializeBuildingTemplates() {
         buildingTemplates.put("wooden_house", BuildingTemplate.createWoodenHouse());
-    }
-
-    public boolean placeBuilding(String templateId, int startX, int startY) {
-        BuildingTemplate template = buildingTemplates.get(templateId);
-        if (template == null) {
-            GameLogger.error("No template found for: " + templateId);
-            return false;
-        }
-
-        return template.placeBuilding(world, startX, startY);
     }
 
     private void initializeSmartBlocks() {
@@ -56,7 +45,6 @@ public class SmartBuildingManager {
     public PlaceableBlock.BlockType getSmartBlockType(String groupId, int x, int y) {
         SmartBlockConfig config = smartBlocks.get(groupId);
         if (config == null) return null;
-
         ConnectionPattern pattern = calculateConnectionPattern(groupId, x, y);
         return config.getVariantForPattern(pattern);
     }
@@ -66,14 +54,12 @@ public class SmartBuildingManager {
         boolean south = hasConnection(groupId, x, y - 1);
         boolean east = hasConnection(groupId, x + 1, y);
         boolean west = hasConnection(groupId, x - 1, y);
-
         return new ConnectionPattern(north, south, east, west);
     }
 
     private boolean hasConnection(String groupId, int x, int y) {
         PlaceableBlock block = world.getBlockManager().getBlockAt(x, y);
         if (block == null) return false;
-
         SmartBlockConfig config = smartBlocks.get(groupId);
         return config != null && config.containsBlockType(block.getType());
     }
@@ -88,7 +74,6 @@ public class SmartBuildingManager {
     private void updateBlockIfNeeded(int x, int y, String groupId) {
         PlaceableBlock existingBlock = world.getBlockManager().getBlockAt(x, y);
         if (existingBlock == null) return;
-
         SmartBlockConfig config = smartBlocks.get(groupId);
         if (config != null && config.containsBlockType(existingBlock.getType())) {
             PlaceableBlock.BlockType newType = getSmartBlockType(groupId, x, y);

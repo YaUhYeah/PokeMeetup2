@@ -1,4 +1,5 @@
 package io.github.pokemeetup.system.gameplay.inventory.crafting;
+
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 
@@ -108,4 +109,3 @@ public class RecipeManager {
         public boolean isShaped() { return shaped; }
     }
 }
-

@@ -92,8 +92,9 @@ public class GameFileSystem {
 
     public boolean isDirectory(String path) {
         checkDelegate();
-        return !delegate.isDirectory(path);
+        return delegate.isDirectory(path);
     }
+
 
     public String[] list(String path) {
         checkDelegate();

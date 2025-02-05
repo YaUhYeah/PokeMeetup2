@@ -4,6 +4,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
+import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.utils.GameLogger;
 
 public class BuildingTemplate {
@@ -32,13 +33,11 @@ public class BuildingTemplate {
         template.setBlock(3, 1, new BlockData(PlaceableBlock.BlockType.HOUSE_MIDDLE_PART_1, true));
         template.setBlock(4, 1, new BlockData(PlaceableBlock.BlockType.HOUSE_MIDDLE_PART, true));
 
-
         template.setBlock(0, 2, new BlockData(PlaceableBlock.BlockType.ROOFINNER, false));
         template.setBlock(1, 2, new BlockData(PlaceableBlock.BlockType.ROOF_MIDDLE_OUTSIDE, false));
         template.setBlock(2, 2, new BlockData(PlaceableBlock.BlockType.ROOF_MIDDLE_OUTER, false));
         template.setBlock(3, 2, new BlockData(PlaceableBlock.BlockType.ROOF_MIDDLE_OUTSIDE, true));
         template.setBlock(4, 2, new BlockData(PlaceableBlock.BlockType.ROOFINNER, true));
-
 
         template.setBlock(0, 3, new BlockData(PlaceableBlock.BlockType.ROOF_CORNER, false));
         template.setBlock(1, 3, new BlockData(PlaceableBlock.BlockType.ROOF_CORNER_1, false));
@@ -87,26 +86,23 @@ public class BuildingTemplate {
                 for (int y = 0; y < height; y++) {
                     BlockData blockData = layout[x][y];
                     if (blockData != null) {
-                        // Create position for the block
                         Vector2 pos = new Vector2(startX + x, startY + y);
                         boolean placed = world.getBlockManager().placeBlock(blockData.type, startX + x, startY + y);
                         if (!placed) {
                             GameLogger.error("Failed to place block at " + pos + " of type " + blockData.type);
                             return false;
                         }
-
                         PlaceableBlock placedBlock = world.getBlockManager().getBlockAt(startX + x, startY + y);
                         if (placedBlock != null && blockData.isFlipped) {
                             placedBlock.toggleFlip();
                             // Mark the chunk as dirty so flipping is saved
-                            int chunkX = Math.floorDiv((int)placedBlock.getPosition().x, World.CHUNK_SIZE);
-                            int chunkY = Math.floorDiv((int)placedBlock.getPosition().y, World.CHUNK_SIZE);
+                            int chunkX = Math.floorDiv((int) placedBlock.getPosition().x, World.CHUNK_SIZE);
+                            int chunkY = Math.floorDiv((int) placedBlock.getPosition().y, World.CHUNK_SIZE);
                             Chunk chunk = world.getChunks().get(new Vector2(chunkX, chunkY));
                             if (chunk != null) {
                                 chunk.setDirty(true);
                             }
                         }
-
                         GameLogger.info("Placed block: " + blockData.type + " at " + pos +
                             " flipped: " + blockData.isFlipped);
                     }
@@ -114,7 +110,6 @@ public class BuildingTemplate {
             }
             AudioManager.getInstance().playSound(AudioManager.SoundEffect.HOUSE_BUILD);
             return true;
-
         } catch (Exception e) {
             GameLogger.error("Error placing building: " + e.getMessage());
             return false;
@@ -131,6 +126,31 @@ public class BuildingTemplate {
             }
         }
         return true;
+    }
+
+    public NetworkProtocol.BuildingPlacement toNetworkMessage(String username, int startX, int startY) {
+        NetworkProtocol.BuildingPlacement bp = new NetworkProtocol.BuildingPlacement();
+        bp.username = username;
+        bp.startX = startX;
+        bp.startY = startY;
+        bp.width = this.width;
+        bp.height = this.height;
+        bp.blockTypeIds = new String[width][height];
+        bp.flippedFlags = new boolean[width][height];
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                BlockData data = this.getBlockAt(x, y);
+                if (data != null) {
+                    bp.blockTypeIds[x][y] = data.type.id;
+                    bp.flippedFlags[x][y] = data.isFlipped;
+                } else {
+                    bp.blockTypeIds[x][y] = "";
+                    bp.flippedFlags[x][y] = false;
+                }
+            }
+        }
+        bp.timestamp = System.currentTimeMillis();
+        return bp;
     }
 
     public static class BlockData {

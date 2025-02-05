@@ -5,6 +5,8 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
+import io.github.pokemeetup.audio.AudioManager;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.attacks.Move;
 import io.github.pokemeetup.pokemon.data.PokemonDatabase;
 import io.github.pokemeetup.system.battle.BattleCompletionHandler;
@@ -18,61 +20,73 @@ import java.util.Random;
 import java.util.UUID;
 
 public class Pokemon {
-    private static final int BASE_EXP_REQUIREMENT = 100; // Base exp needed for level 2
     private static Weather currentWeather = Weather.CLEAR;
     private static int weatherTurns = 0;
     public String name;
-    private Status status = Status.NONE;
-    private int sleepTurns = 0;
-    private int toxicCounter = 1;
-    private boolean flinched = false;
-    private int confusedTurns = 0;
-    private boolean canMove = true;
     public int level;
-    private String nature;
-    private boolean isShiny;
-    private UUID uuid;
-    private int baseExperience;
-    private int currentExperience;
-    private int experienceToNextLevel;
-    private BattleCompletionHandler completionHandler;
-    private boolean battleWon;
     public Stats stats;
     public List<Move> moves;
     public PokemonType primaryType;
     public PokemonType secondaryType;
     public float currentHp;
+    private Status status = Status.NONE;
+    private int sleepTurns = 0;
+    private int toxicCounter = 1;
+    private boolean flinched = false;
+    private int confusedTurns = 0;
+    private String nature;
+    private boolean isShiny;
+    private UUID uuid;
+    private int currentExperience;
     private TextureRegion iconSprite;
-
-    public int getCurrentExperience() {
-        return currentExperience;
-    }
-
     private TextureRegion frontSprite;
     private TextureRegion backSprite;
     private TextureRegion frontShinySprite;
     private TextureRegion backShinySprite;
     private PokemonAnimations animations;
+    private int speciesBaseHp;
+    private int speciesBaseAttack;
+    private int speciesBaseDefense;
+    private int speciesBaseSpAtk;
+    private int speciesBaseSpDef;
+    private int speciesBaseSpeed;
     private Vector2 position;
     private String direction;
     private boolean isMoving;
+    private String growthRate;
     private TextureRegion[] iconFrames; // Array to hold both frames
     private int currentIconFrame;       // Index to track the current frame
     private float frameDuration = 0.5f; // Duration each frame is shown in seconds
     private float frameTimer = 0;
-    public Pokemon(String name, int level) {
+
+    public Pokemon(String name, int level,
+                   int speciesBaseHp, int speciesBaseAttack, int speciesBaseDefense,
+                   int speciesBaseSpAtk, int speciesBaseSpDef, int speciesBaseSpeed) {
+        // Save species base stats for later use
+        this.speciesBaseHp = speciesBaseHp;
+        this.speciesBaseAttack = speciesBaseAttack;
+        this.speciesBaseDefense = speciesBaseDefense;
+        this.speciesBaseSpAtk = speciesBaseSpAtk;
+        this.speciesBaseSpDef = speciesBaseSpDef;
+        this.speciesBaseSpeed = speciesBaseSpeed;
+
         this.uuid = UUID.randomUUID();
         this.name = name;
         this.level = level;
         this.nature = generateNature();
         this.isShiny = calculateShinyStatus();
         this.stats = new Stats();
-        TextureRegion iconSheet = TextureManager.getPokemonicon().findRegion(name.toUpperCase() + "_icon");
         this.moves = new ArrayList<>();
+        TextureRegion iconSheet = TextureManager.getPokemonicon().findRegion(name.toUpperCase() + "_icon");
         iconFrames = new TextureRegion[2];
         iconFrames[0] = new TextureRegion(iconSheet, 0, 0, iconSheet.getRegionWidth() / 2, iconSheet.getRegionHeight());
         iconFrames[1] = new TextureRegion(iconSheet, iconSheet.getRegionWidth() / 2, 0, iconSheet.getRegionWidth() / 2, iconSheet.getRegionHeight());
-
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null && template.growthRate != null && !template.growthRate.isEmpty()) {
+            this.growthRate = template.growthRate;
+        } else {
+            this.growthRate = "Medium Fast"; // default growth rate
+        }
         this.position = new Vector2();
         this.direction = "down";
         this.isMoving = false;
@@ -81,15 +95,50 @@ public class Pokemon {
         loadFront(TextureManager.getPokemonfront());
         loadBack(TextureManager.getPokemonback());
         loadOverworld(TextureManager.getPokemonoverworld());
+        calculateStats();
+        this.currentHp = stats.getHp();
     }
 
-    public void heal() {
-        this.currentHp = this.stats.getHp();
-        this.status = Status.NONE;
-        this.toxicCounter = 1;
-        this.flinched = false;
-        this.confusedTurns = 0;
+    public Pokemon(String name, int level) {
+        this(name, level,
+            getBaseStat(name, "hp"),
+            getBaseStat(name, "attack"),
+            getBaseStat(name, "defense"),
+            getBaseStat(name, "spAtk"),
+            getBaseStat(name, "spDef"),
+            getBaseStat(name, "speed"));
     }
+
+    /**
+     * Helper method to look up a given stat for a Pokémon by name.
+     *
+     * @param name The Pokémon’s name.
+     * @param stat A string identifying the stat (“hp”, “attack”, “defense”, “spAtk”, “spDef”, or “speed”)
+     * @return The value from the template if found; otherwise a default value.
+     */
+    private static int getBaseStat(String name, String stat) {
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null) {
+            switch (stat) {
+                case "hp":
+                    return template.baseStats.baseHp;
+                case "attack":
+                    return template.baseStats.baseAttack;
+                case "defense":
+                    return template.baseStats.baseDefense;
+                case "spAtk":
+                    return template.baseStats.baseSpAtk;
+                case "spDef":
+                    return template.baseStats.baseSpDef;
+                case "speed":
+                    return template.baseStats.baseSpeed;
+                default:
+                    return 45; // fallback default
+            }
+        }
+        return 45; // fallback default if template not found
+    }
+
     public static void applyWeatherEffects(Pokemon pokemon) {
         if (weatherTurns > 0) {
             switch (currentWeather) {
@@ -112,6 +161,66 @@ public class Pokemon {
                 currentWeather = Weather.CLEAR;
             }
         }
+    }
+
+    private int totalExpForLevel(int L) {
+        double exp;
+        switch (growthRate.toLowerCase()) {
+            case "fast":
+                exp = (4.0 * Math.pow(L, 3)) / 5.0;
+                break;
+            case "medium slow":
+                exp = ((6.0 / 5.0) * Math.pow(L, 3)) - (15 * Math.pow(L, 2)) + (100 * L) - 140;
+                break;
+            case "slow":
+                exp = (5.0 * Math.pow(L, 3)) / 4.0;
+                break;
+            case "medium fast":
+            default:
+                exp = Math.pow(L, 3);
+                break;
+        }
+        return (int) exp;
+    }
+
+    public int getExperienceForNextLevel() {
+        return totalExpForLevel(level + 1) - totalExpForLevel(level);
+    }
+
+    public int getSpeciesBaseHp() {
+        return speciesBaseHp;
+    }
+
+    public int getSpeciesBaseAttack() {
+        return speciesBaseAttack;
+    }
+
+    public int getSpeciesBaseDefense() {
+        return speciesBaseDefense;
+    }
+
+    public int getSpeciesBaseSpAtk() {
+        return speciesBaseSpAtk;
+    }
+
+    public int getSpeciesBaseSpDef() {
+        return speciesBaseSpDef;
+    }
+
+    public int getSpeciesBaseSpeed() {
+        return speciesBaseSpeed;
+    }
+
+    public int getCurrentExperience() {
+        return currentExperience;
+    }
+
+    public void heal() {
+        this.currentHp = this.stats.getHp();
+        this.status = Status.NONE;
+        this.toxicCounter = 1;
+        this.flinched = false;
+        this.confusedTurns = 0;
     }
 
     public boolean hasStatus() {
@@ -163,7 +272,6 @@ public class Pokemon {
         this.toxicCounter = 1;
         this.flinched = false;
         this.confusedTurns = 0;
-        this.canMove = true;
     }
 
     public boolean canAttack() {
@@ -247,9 +355,6 @@ public class Pokemon {
         return 1.0f;
     }
 
-    // Add to Builder class
-
-
     private void checkLevelUp() {
         int currentLevel = level;
         int expNeeded = getExperienceForNextLevel();
@@ -269,9 +374,42 @@ public class Pokemon {
         checkLevelUp();
     }
 
-    // Add these methods
+    private void levelUp() {
+        level++;
+        GameLogger.info(getName() + " leveled up to " + level + "!");
+
+        // Use the ChatSystem for a level-up message.
+        GameContext.get().getChatSystem().addSystemMessage(getName() + " leveled up to " + level + "!");
+
+        // Save old stats for comparison...
+        int oldHp = stats.getHp();
+        int oldAttack = stats.getAttack();
+        int oldDefense = stats.getDefense();
+        int oldSpAtk = stats.getSpecialAttack();
+        int oldSpDef = stats.getSpecialDefense();
+        int oldSpeed = stats.getSpeed();
+
+        // Recalculate stats...
+        calculateStats();
+
+        // Optionally, show stat increases (you might log these or add additional system messages)
+        showStatIncrease("HP", oldHp, stats.getHp());
+        showStatIncrease("Attack", oldAttack, stats.getAttack());
+        showStatIncrease("Defense", oldDefense, stats.getDefense());
+        showStatIncrease("Sp. Atk", oldSpAtk, stats.getSpecialAttack());
+        showStatIncrease("Sp. Def", oldSpDef, stats.getSpecialDefense());
+        showStatIncrease("Speed", oldSpeed, stats.getSpeed());
+
+        // Heal the Pokémon upon level-up
+        currentHp = stats.getHp();
+
+        // Check for new moves
+        learnNewMovesAtLevel(level);
+    }
+
+
+
     public int getBaseExperience() {
-        // Base experience varies by Pokemon
         switch (name.toUpperCase()) {
             case "CHARMANDER":
             case "BULBASAUR":
@@ -314,35 +452,9 @@ public class Pokemon {
             GameLogger.error("Failed to load overworld sprite sheet for: " + name);
         }
     }
-    private void levelUp() {
-        level++;
-        GameLogger.info(getName() + " leveled up to " + level + "!");
 
-        // Save old stats for comparison
-        int oldHp = stats.getHp();
-        int oldAttack = stats.getAttack();
-        int oldDefense = stats.getDefense();
-        int oldSpAtk = stats.getSpecialAttack();
-        int oldSpDef = stats.getSpecialDefense();
-        int oldSpeed = stats.getSpeed();
 
-        // Recalculate stats
-        calculateStats();
-
-        // Show stat increases
-        showStatIncrease("HP", oldHp, stats.getHp());
-        showStatIncrease("Attack", oldAttack, stats.getAttack());
-        showStatIncrease("Defense", oldDefense, stats.getDefense());
-        showStatIncrease("Sp. Atk", oldSpAtk, stats.getSpecialAttack());
-        showStatIncrease("Sp. Def", oldSpDef, stats.getSpecialDefense());
-        showStatIncrease("Speed", oldSpeed, stats.getSpeed());
-
-        // Heal Pokemon on level up (optional)
-        currentHp = stats.getHp();
-
-        // Check for new moves
-        learnNewMovesAtLevel(level);
-    }private void showStatIncrease(String statName, int oldValue, int newValue) {
+    private void showStatIncrease(String statName, int oldValue, int newValue) {
         int increase = newValue - oldValue;
         if (increase > 0) {
             GameLogger.info(getName() + "'s " + statName + " increased by " + increase + "!");
@@ -350,24 +462,35 @@ public class Pokemon {
     }
 
     private void learnNewMovesAtLevel(int level) {
-        // Get the list of move entries from the PokemonDatabase
+        // Get the list of move entries from the Pokémon Database
         List<PokemonDatabase.MoveEntry> moveEntries = PokemonDatabase.getTemplate(name).moves;
         for (PokemonDatabase.MoveEntry entry : moveEntries) {
             if (entry.level == level) {
-                // Learn the new move
+                // Learn the new move:
                 Move newMove = PokemonDatabase.getMoveByName(entry.name);
                 if (newMove != null) {
-                    // Clone the move
                     Move clonedMove = PokemonDatabase.cloneMove(newMove);
-                    // If already have 4 moves, replace the oldest one or prompt the player
+                    // If fewer than 4 moves, simply add the new move.
                     if (moves.size() < 4) {
                         moves.add(clonedMove);
+                        GameLogger.info(name + " learned " + entry.name + "!");
+                        if (GameContext.get().getBattleTable() != null) {
+                            GameContext.get().getBattleTable().displayMessage(name + " learned " + entry.name + "!");
+                        }
                     } else {
-                        // Replace the first move (you can implement move replacement logic as needed)
-                        moves.remove(0);
-                        moves.add(clonedMove);
+                        // Otherwise, prompt the user to choose which move to replace.
+                        if (GameContext.get().getBattleTable() != null) {
+                            GameContext.get().getBattleTable().showMoveReplacementDialog(clonedMove);
+                        } else {
+                            // Fallback: auto–replace the first move.
+                            moves.remove(0);
+                            moves.add(clonedMove);
+                            GameLogger.info(name + " learned " + entry.name + " by replacing an old move!");
+                            if (GameContext.get().getBattleTable() != null) {
+                                GameContext.get().getBattleTable().displayMessage(name + " learned " + entry.name + " by replacing an old move!");
+                            }
+                        }
                     }
-                    GameLogger.info(name + " learned " + entry.name + "!");
                 }
             }
         }
@@ -566,6 +689,10 @@ public class Pokemon {
         return animations;
     }
 
+    public void setAnimations(PokemonAnimations animations) {
+        this.animations = animations;
+    }
+
     public int getToxicCounter() {
         return toxicCounter;
     }
@@ -578,41 +705,24 @@ public class Pokemon {
         toxicCounter = 1;
     }
 
-    public void setAnimations(PokemonAnimations animations) {
-        this.animations = animations;
-    }
-
-
-    public int getExperienceForNextLevel() {
-        // Using a modified cubic growth formula for smoother progression
-        return (int)(BASE_EXP_REQUIREMENT * Math.pow(level, 2.5) / 5);
-    }
 
     private int calculateStat(int base, int iv, int ev) {
-        // Apply nature modifier (random 10% variance)
+        // Example uses a nature modifier with ±10% random variation.
         float natureModifier = 1.0f + (new Random().nextFloat() * 0.2f - 0.1f);
-
-        // Standard Pokemon stat formula with nature consideration
-        return (int)(((2 * base + iv + ev / 4) * level / 100f + 5) * natureModifier);
+        return (int) (((2 * base + iv + (float) ev / 4) * level / 100f + 5) * natureModifier);
     }
-    void calculateStats() {
-        // Base stats - these should vary by Pokemon species
-        int baseHp = 45;
-        int baseAtk = 49;
-        int baseDef = 49;
-        int baseSpAtk = 65;
-        int baseSpDef = 65;
-        int baseSpd = 45;
 
-        // Calculate new stats using Pokemon formula
-        stats.setHp(((2 * baseHp + stats.ivs[0] + stats.evs[0] / 4) * level / 100) + level + 10);
-        stats.setAttack(calculateStat(baseAtk, stats.ivs[1], stats.evs[1]));
-        stats.setDefense(calculateStat(baseDef, stats.ivs[2], stats.evs[2]));
-        stats.setSpecialAttack(calculateStat(baseSpAtk, stats.ivs[3], stats.evs[3]));
-        stats.setSpecialDefense(calculateStat(baseSpDef, stats.ivs[4], stats.evs[4]));
-        stats.setSpeed(calculateStat(baseSpd, stats.ivs[5], stats.evs[5]));
+    public void calculateStats() {
+        stats.setHp(((2 * speciesBaseHp + stats.ivs[0] + stats.evs[0] / 4) * level / 100) + level + 10);
+        stats.setAttack(calculateStat(speciesBaseAttack, stats.ivs[1], stats.evs[1]));
+        stats.setDefense(calculateStat(speciesBaseDefense, stats.ivs[2], stats.evs[2]));
+        stats.setSpecialAttack(calculateStat(speciesBaseSpAtk, stats.ivs[3], stats.evs[3]));
+        stats.setSpecialDefense(calculateStat(speciesBaseSpDef, stats.ivs[4], stats.evs[4]));
+        stats.setSpeed(calculateStat(speciesBaseSpeed, stats.ivs[5], stats.evs[5]));
+
+        // For example, if paralyzed, halve the speed
         if (status == Status.PARALYZED) {
-            stats.setSpeed(stats.getSpeed() / 2); // Paralysis halves speed
+            stats.setSpeed(stats.getSpeed() / 2);
         }
     }
 
@@ -627,7 +737,6 @@ public class Pokemon {
         FAINTED
     }
 
-    // Add weather effect handling (can be expanded later)
     public enum Weather {
         CLEAR,
         RAIN,
@@ -638,7 +747,7 @@ public class Pokemon {
 
     public enum PokemonType {
         NORMAL, FIRE, WATER, ELECTRIC, GRASS, ICE, FIGHTING, POISON, GROUND, FLYING,
-        PSYCHIC, BUG, ROCK, GHOST, DRAGON, DARK, STEEL, FAIRY,UNKNOWN
+        PSYCHIC, BUG, ROCK, GHOST, DRAGON, DARK, STEEL, FAIRY, UNKNOWN
     }
 
     public static class Stats {
@@ -665,7 +774,6 @@ public class Pokemon {
             return ivs;
         }
 
-        // Getters and setters
         public int getHp() {
             return hp;
         }
@@ -716,7 +824,7 @@ public class Pokemon {
     }
 
     public static class Builder {
-        private Pokemon pokemon;
+        private final Pokemon pokemon;
 
         public Builder(String name, int level) {
             pokemon = new Pokemon(name, level);
@@ -742,7 +850,9 @@ public class Pokemon {
         public Builder withMoves(List<Move> moves) {
             pokemon.setMoves(new ArrayList<>(moves));
             return this;
-        }public Builder withStatus(Status status) {
+        }
+
+        public Builder withStatus(Status status) {
             pokemon.setStatus(status);
             return this;
         }

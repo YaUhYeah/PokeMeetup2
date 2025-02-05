@@ -20,16 +20,18 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
 
     @Override
     public void moveFile(String sourcePath, String destinationPath) throws IOException {
-        File sourceFile = new File(sourcePath);
-        File destFile = new File(destinationPath);
+        // Use getFile to get the proper internal storage location.
+        File sourceFile = getFile(sourcePath);
+        File destFile = getFile(destinationPath);
 
         if (!sourceFile.exists()) {
-            throw new FileNotFoundException("Source file does not exist: " + sourcePath);
+            throw new FileNotFoundException("Source file does not exist: " + sourceFile.getAbsolutePath());
         }
 
         boolean success = sourceFile.renameTo(destFile);
         if (!success) {
-            throw new IOException("Failed to move file from " + sourcePath + " to " + destinationPath);
+            throw new IOException("Failed to move file from " + sourceFile.getAbsolutePath() +
+                " to " + destFile.getAbsolutePath());
         }
     }
 
@@ -242,7 +244,6 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
         Log.d(TAG, "Deleted file: " + path);
     }
 
-
     @Override
     public void deleteDirectory(String path) {
         File dir = getFile(path);
@@ -250,17 +251,19 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
             File[] files = dir.listFiles();
             if (files != null) {
                 for (File file : files) {
+                    // Construct the relative path for the sub-file or subdirectory.
+                    String relativePath = path + "/" + file.getName();
                     if (file.isDirectory()) {
-                        deleteDirectory(file.getName());
+                        deleteDirectory(relativePath);
                     } else {
                         if (!file.delete()) {
-                            Log.e(TAG, "Failed to delete file in directory: " + file.getPath());
+                            Log.e(TAG, "Failed to delete file in directory: " + file.getAbsolutePath());
                         }
                     }
                 }
             }
             if (!dir.delete()) {
-                Log.e(TAG, "Failed to delete directory: " + path);
+                Log.e(TAG, "Failed to delete directory: " + dir.getAbsolutePath());
                 throw new RuntimeException("Failed to delete directory: " + path);
             }
             Log.d(TAG, "Deleted directory: " + path);

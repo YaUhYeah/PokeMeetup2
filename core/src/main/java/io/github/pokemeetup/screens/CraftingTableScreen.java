@@ -3,7 +3,6 @@ package io.github.pokemeetup.screens;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -18,6 +17,7 @@ import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.screens.otherui.InventorySlotUI;
 import io.github.pokemeetup.system.InputManager;
 import io.github.pokemeetup.system.Player;
+import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.inventory.Item;
@@ -26,7 +26,6 @@ import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingSystem;
 import io.github.pokemeetup.system.gameplay.inventory.crafting.RecipeGlossaryUI;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventoryObserver;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
-import io.github.pokemeetup.system.gameplay.inventory.secureinventories.ItemContainer;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.InventoryConverter;
@@ -100,7 +99,7 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     }
 
     @Override
-    public ItemContainer getChestData() {
+    public ChestData getChestData() {
         return null;
     }
 

@@ -1,7 +1,5 @@
 package io.github.pokemeetup.multiplayer.network;
 
-import com.badlogic.gdx.utils.Json;
-import com.badlogic.gdx.utils.JsonValue;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
@@ -18,6 +16,7 @@ import io.github.pokemeetup.system.data.ItemData;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.PokemonData;
+import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
@@ -27,12 +26,17 @@ import io.github.pokemeetup.utils.UUIDSerializer;
 import java.io.Serializable;
 import java.util.*;
 
-public class NetworkProtocol {
+public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the same package)
+
     public static void registerClasses(Kryo kryo) {
         // Basic and commonly used classes
         kryo.register(UUID.class, new UUIDSerializer());
         kryo.register(Vector2.class);
+        kryo.register(PlayerInfo.class);
+        kryo.register(PingRequest.class);
+        kryo.register(PingResponse.class);
         kryo.register(ArrayList.class);
+        kryo.register(BuildingPlacement.class);
         kryo.register(CompressedChunkData.class);
         kryo.register(List.class);
         kryo.register(ChunkPos.class);
@@ -68,6 +72,7 @@ public class NetworkProtocol {
         kryo.register(InventoryUpdate.class);
         kryo.register(ChunkData.class);
         kryo.register(BiomeType.class);
+        kryo.register(PlayerInfoUpdate.class);
         // Game state and network classes
         kryo.register(PlayerPosition.class);
         kryo.register(PlayerUpdate.class);
@@ -109,7 +114,7 @@ public class NetworkProtocol {
         kryo.register(io.github.pokemeetup.system.data.WorldData.WorldConfig.class);
 
         kryo.register(TeamCreate.class);
-
+        kryo.register(ItemPickup.class);
         kryo.register(ServerShutdown.class);
         kryo.register(TeleportRequest.class);
         kryo.register(TeleportResponse.class);
@@ -124,6 +129,7 @@ public class NetworkProtocol {
         kryo.register(ServerInfoRequest.class);
         kryo.register(ServerInfoResponse.class);
         kryo.register(SavePlayerDataRequest.class);
+        kryo.register(ChestUpdate.class);
         kryo.register(SavePlayerDataResponse.class);
         kryo.register(GetPlayerDataRequest.class);
         kryo.register(GetPlayerDataResponse.class);
@@ -132,10 +138,12 @@ public class NetworkProtocol {
         kryo.register(FrameworkMessage.RegisterTCP.class);
         kryo.register(FrameworkMessage.RegisterUDP.class);
         kryo.register(ServerInfo.class);
-        // Additional Entity subclasses
         kryo.register(WorldObject.class);
+        kryo.register(PlayerList.class);
         kryo.register(WorldObject.ObjectType.class);
         kryo.register(CreatureEntity.class);
+        kryo.register(ItemEntity.class);
+        kryo.register(ItemEntityRemove.class);
         kryo.register(PokeballEntity.class);
         kryo.register(ForceDisconnect.class);
         kryo.register(ForceLogout.class);
@@ -143,6 +151,7 @@ public class NetworkProtocol {
         kryo.register(ReliableUpdate.class);
         kryo.register(ClientMessage.class);
         kryo.register(ServerResponse.class);
+        kryo.register(ItemDrop.class);
         kryo.register(ConnectionValidation.class);
         kryo.register(UUID.class, new com.esotericsoftware.kryo.Serializer<UUID>() {
 
@@ -159,30 +168,6 @@ public class NetworkProtocol {
         });
         kryo.setReferences(false);  // Disable object references
         kryo.setRegistrationRequired(false);  // Require class registration
-    }
-
-    public static class ChunkData {
-        public int chunkX;
-        public int chunkY;
-        public BiomeType primaryBiomeType;
-        public BiomeType secondaryBiomeType;   // Can be null
-        public float biomeTransitionFactor;    // 0.0 to 1.0
-        public int[][] tileData;
-        public BiomeManager.BiomeData biomeData;
-        public List<BlockSaveData.BlockData> blockData;
-        public List<Map<String, Object>> worldObjects;
-        public long generationSeed;
-        public long timestamp;
-    }
-
-    public static class CompressedChunkData {
-        public int chunkX;
-        public int chunkY;
-        public BiomeType primaryBiomeType;
-        public BiomeType secondaryBiomeType;
-        public float biomeTransitionFactor;
-        public byte[] data;
-        public long generationSeed;
     }
 
     public static void registerPokemonClasses(Kryo kryo) {
@@ -229,6 +214,60 @@ public class NetworkProtocol {
 
     }
 
+    public static class BuildingPlacement implements Serializable {
+        public String username;
+        public int startX;
+        public int startY;
+        public int width;
+        public int height;
+        public String[][] blockTypeIds;  // For each block position, the block type id (e.g. "wooden_planks")
+        public boolean[][] flippedFlags; // For each block position, whether it is flipped
+        public long timestamp;
+    }
+
+    public static class ChunkData {
+        public int chunkX;
+        public int chunkY;
+        public BiomeType primaryBiomeType;
+        public BiomeType secondaryBiomeType;   // Can be null
+        public float biomeTransitionFactor;    // 0.0 to 1.0
+        public int[][] tileData;
+        public BiomeManager.BiomeData biomeData;
+        public List<BlockSaveData.BlockData> blockData;
+        public List<HashMap<String, Object>> worldObjects = new ArrayList<>();
+
+        public long generationSeed;
+        public long timestamp;
+    }
+
+    public static class CompressedChunkData {
+        public int chunkX;
+        public int chunkY;
+        public BiomeType primaryBiomeType;
+        public BiomeType secondaryBiomeType;
+        public float biomeTransitionFactor;
+        public byte[] data;
+        public int originalLength;
+        public long generationSeed;
+    }
+
+    public static class ItemPickup {
+        public UUID entityId;
+        public String username;
+        public long timestamp;
+    }
+
+    public static class ItemEntitySpawn {
+        public UUID entityId;
+        public ItemData itemData;
+        public float x;
+        public float y;
+    }
+
+    public static class ItemEntityRemove {
+        public UUID entityId;
+    }
+
     public static class WorldObjectData {
         public float x;
         public float y;
@@ -248,6 +287,13 @@ public class NetworkProtocol {
         public long timestamp;
     }
 
+    public static class ItemDrop {
+        public ItemData itemData;
+        public float x;
+        public float y;
+        public String username;
+        public long timestamp;
+    }
 
     public static class ChunkDataFragment {
         public int chunkX;
@@ -483,7 +529,6 @@ public class NetworkProtocol {
     public static class PlayerPosition {
         public HashMap<String, PlayerUpdate> players = new HashMap<>();
     }
-    // Update the PlayerUpdate class in NetworkProtocol.java
 
     public static class ChatMessage {
         public String sender;
@@ -500,6 +545,13 @@ public class NetworkProtocol {
         public long timestamp;
     }
 
+    public static class ChestUpdate implements Serializable {
+        public String username;       // The player making the update
+        public UUID chestId;           // (Assuming your ChestData has an integer id)
+        public List<ItemData> items;  // The new list of items in the chest
+        public long timestamp;
+    }
+
     public static class SavePlayerDataRequest {
         public UUID uuid;
         public PlayerData playerData;
@@ -512,6 +564,7 @@ public class NetworkProtocol {
         public String message;
         public long timestamp;
     }
+    // Update the PlayerUpdate class in NetworkProtocol.java
 
     public static class GetPlayerDataRequest {
         public UUID uuid;
@@ -673,5 +726,30 @@ public class NetworkProtocol {
         public String to;
         public boolean accepted;
         public long timestamp;
+    }
+
+    public static class PingRequest {
+        public long timestamp;  // when the ping was sent
+    }
+
+    public static class PingResponse {
+        public long timestamp;  // echoed timestamp
+    }
+
+    // A simple container for one player’s info:
+    public static class PlayerInfo {
+        public String username;
+        public int ping; // in milliseconds
+    }
+
+    // When a client wants to update its own info…
+    public static class PlayerInfoUpdate {
+        public String username;
+        public int ping;
+    }
+
+    // When the server broadcasts the full list…
+    public static class PlayerList {
+        public List<PlayerInfo> players;
     }
 }

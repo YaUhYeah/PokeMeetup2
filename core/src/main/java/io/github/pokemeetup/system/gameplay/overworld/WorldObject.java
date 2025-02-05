@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.JsonValue;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
@@ -71,12 +72,14 @@ public class WorldObject {
                     textureCache.put(ObjectType.POKEBALL, atlas.findRegion("pokeball"));
                     textureCache.put(ObjectType.CACTUS, atlas.findRegion("desert_cactus"));
                     textureCache.put(ObjectType.BUSH, atlas.findRegion("bush"));
+                    textureCache.put(ObjectType.SUNFLOWER, atlas.findRegion("sunflower"));
                     textureCache.put(ObjectType.VINES, atlas.findRegion("vines"));
                     textureCache.put(ObjectType.DEAD_TREE, atlas.findRegion("dead_tree"));
                     textureCache.put(ObjectType.SMALL_HAUNTED_TREE, atlas.findRegion("small_haunted_tree"));
                     textureCache.put(ObjectType.RUIN_POLE, atlas.findRegion("ruins_pole"));
                     textureCache.put(ObjectType.RUINS_TREE, atlas.findRegion("ruins_tree"));
                     textureCache.put(ObjectType.APRICORN_TREE, atlas.findRegion("apricorn_tree_grown"));
+                    textureCache.put(ObjectType.CHERRY_TREE, atlas.findRegion("CherryTree"));
                     // Add other object types as needed
                 }
             }
@@ -85,63 +88,103 @@ public class WorldObject {
         }
     }
 
+
     public void updateFromData(Map<String, Object> data) {
         if (data == null) return;
-
         try {
+            // --- Handle tileX ---
             Object tileXObj = data.get("tileX");
-            Object tileYObj = data.get("tileY");
-            if (tileXObj instanceof Number && tileYObj instanceof Number) {
+            if (tileXObj instanceof JsonValue) {
+                this.tileX = ((JsonValue) tileXObj).getInt("value", 0);
+            } else if (tileXObj instanceof Number) {
                 this.tileX = ((Number) tileXObj).intValue();
+            }
+            // --- Handle tileY ---
+            Object tileYObj = data.get("tileY");
+            if (tileYObj instanceof JsonValue) {
+                this.tileY = ((JsonValue) tileYObj).getInt("value", 0);
+            } else if (tileYObj instanceof Number) {
                 this.tileY = ((Number) tileYObj).intValue();
-                this.pixelX = tileX * World.TILE_SIZE;
-                this.pixelY = tileY * World.TILE_SIZE;
+            }
+            this.pixelX = tileX * World.TILE_SIZE;
+            this.pixelY = tileY * World.TILE_SIZE;
+
+            // --- Handle spawnTime ---
+            Object spawnTimeObj = data.get("spawnTime");
+            if (spawnTimeObj instanceof JsonValue) {
+                this.spawnTime = ((JsonValue) spawnTimeObj).getFloat("value", 0f);
+            } else if (spawnTimeObj instanceof Number) {
+                this.spawnTime = ((Number) spawnTimeObj).floatValue();
+            } else {
+                this.spawnTime = (type != null && type.isPermanent ? 0 : System.currentTimeMillis() / 1000f);
             }
 
-            // Handle optional spawnTime with default
-            Object spawnTimeObj = data.get("spawnTime");
-            this.spawnTime = spawnTimeObj instanceof Number ?
-                ((Number) spawnTimeObj).floatValue() :
-                (type != null && type.isPermanent ? 0 : System.currentTimeMillis() / 1000f);
-
-            // Handle optional isCollidable with default based on type
+            // --- Handle isCollidable ---
             Object collidableObj = data.get("isCollidable");
-            this.isCollidable = collidableObj instanceof Boolean ?
-                (Boolean) collidableObj :
-                (type != null && type.isCollidable);
+            if (collidableObj instanceof JsonValue) {
+                this.isCollidable = ((JsonValue) collidableObj).getBoolean("value", (type != null && type.isCollidable));
+            } else if (collidableObj instanceof Boolean) {
+                this.isCollidable = (Boolean) collidableObj;
+            } else {
+                this.isCollidable = (type != null && type.isCollidable);
+            }
 
-            // Handle type with validation
-            String typeStr = (String) data.get("type");
-            if (typeStr != null) {
+            // --- Handle type ---
+            Object raw = data.get("type");
+            String typeStr = "";
+            if (raw instanceof JsonValue) {
+                // Extract the inner "value" (e.g. "SUNFLOWER")
+                typeStr = ((JsonValue) raw).getString("value", "");
+            } else if (raw instanceof String) {
+                typeStr = (String) raw;
+            } else if (raw != null) {
+                typeStr = raw.toString();
+            }
+            if (typeStr.isEmpty()) {
+                GameLogger.error("Empty type string in serialized data. Setting default type.");
+                this.type = ObjectType.TREE_0;
+            } else {
                 try {
-                    this.type = ObjectType.valueOf(typeStr);
+                    this.type = ObjectType.valueOf(typeStr.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    GameLogger.error("Invalid object type: " + typeStr);
+                    GameLogger.error("Invalid type string: " + typeStr + ". Setting default type.");
+                    this.type = ObjectType.TREE_0;
                 }
             }
 
-            // Handle optional ID with UUID generation if missing
-            String idStr = (String) data.get("id");
-            this.id = idStr != null ? idStr : UUID.randomUUID().toString();
+            // --- Handle id ---
+            Object idObj = data.get("id");
+            if (idObj instanceof JsonValue) {
+                this.id = ((JsonValue) idObj).getString("value", UUID.randomUUID().toString());
+            } else if (idObj instanceof String) {
+                this.id = (String) idObj;
+            } else if (idObj != null) {
+                this.id = idObj.toString();
+            } else {
+                this.id = UUID.randomUUID().toString();
+            }
 
-            ensureTexture();
+            // Ensure texture is set
         } catch (Exception e) {
-            GameLogger.error("Error updating WorldObject from data: " + e.getMessage() +
-                "\nData: " + data.toString());
+            GameLogger.error("Error updating WorldObject from data: " + e.getMessage() + "\nData: " + data.toString());
         }
     }
 
-    // In getSerializableData, ensure we're sending all required fields:
-    public Map<String, Object> getSerializableData() {
-        Map<String, Object> data = new HashMap<>();
+    public HashMap<String, Object> getSerializableData() {
+        HashMap<String, Object> data = new HashMap<>();
         data.put("tileX", tileX);
         data.put("tileY", tileY);
-        data.put("type", type != null ? type.name() : null);
+        if (type == null) {
+            GameLogger.error("WorldObject " + id + " has null type; defaulting to TREE_0.");
+            type = ObjectType.TREE_0;
+        }
+        data.put("type", type.name());
         data.put("spawnTime", spawnTime);
         data.put("isCollidable", isCollidable);
         data.put("id", id);
         return data;
     }
+
 
     public WorldObject copy() {
         // Create a new object with the same tile position and type
@@ -592,10 +635,9 @@ public class WorldObject {
                 height
             );
         }
-
         private boolean boundsOverlapWithPadding(Rectangle bounds1, Rectangle bounds2, int spacing) {
-            // Instead of big padding, use minimal or none
-            float padding = World.TILE_SIZE * Math.min(spacing, 1);
+            // Use the full spacing value so that trees (and other objects) have enough room
+            float padding = World.TILE_SIZE * spacing;
             Rectangle paddedBounds = new Rectangle(
                 bounds1.x - padding,
                 bounds1.y - padding,

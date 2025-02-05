@@ -1,5 +1,6 @@
 package io.github.pokemeetup.multiplayer.client;
 
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.system.Player;
@@ -31,7 +32,8 @@ public class GameClientSingleton {
                     instance = null;
                 }
 
-                instance = new GameClient(config, false);
+                GameContext.get().setMultiplayer(true);
+                instance = new GameClient(config);
 
                 return instance;
 
@@ -66,7 +68,8 @@ public class GameClientSingleton {
                     instance = null;
                 }
                 ServerConnectionConfig singlePlayerConfig = ServerConnectionConfig.getDefault();
-                instance = new GameClient(singlePlayerConfig, true);
+                GameContext.get().setMultiplayer(false);
+                instance = new GameClient(singlePlayerConfig);
                 instance.setActivePlayer(player);
                 return instance;
             } catch (Exception e) {
@@ -86,7 +89,8 @@ public class GameClientSingleton {
                 }
 
                 ServerConnectionConfig singlePlayerConfig = ServerConnectionConfig.getDefault();
-                instance = new GameClient(singlePlayerConfig, true);
+                GameContext.get().setMultiplayer(false);
+                instance = new GameClient(singlePlayerConfig);
                 return instance;
 
             } catch (Exception e) {

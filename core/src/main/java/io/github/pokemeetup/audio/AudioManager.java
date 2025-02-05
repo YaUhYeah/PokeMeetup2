@@ -512,6 +512,7 @@ public class AudioManager {
 
     public enum SoundEffect {
         ITEM_PICKUP("sounds/pickup.ogg"),
+        ITEM_PICKUP_OW("sounds/item_ow_pickup.ogg"),
         MENU_SELECT("sounds/select.ogg"),
         MENU_BACK("sounds/back.ogg"),
         BATTLE_WIN("sounds/battle_win.ogg"),

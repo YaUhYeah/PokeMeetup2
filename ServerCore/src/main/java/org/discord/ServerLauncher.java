@@ -6,6 +6,7 @@ import com.google.gson.GsonBuilder;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.inventory.ItemEntityManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
@@ -61,31 +62,20 @@ public class ServerLauncher {
             // Initialize ServerGameContext first!
             ServerWorldObjectManager worldObjectManager = new ServerWorldObjectManager();
             worldObjectManager.initializeWorld(MULTIPLAYER_WORLD_NAME);
-            ServerGameContext.init(serverWorldManager, storage, worldObjectManager);
+            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager());
             logger.info("Server game context initialized");
 
-            // Now handle world initialization
+            // In your ServerLauncher (or similar startup routine):
             WorldData worldData = serverWorldManager.loadWorld("multiplayer_world");
             if (worldData == null) {
-                logger.info("Creating new multiplayer world...");
+                logger.info("No existing world; creating new multiplayer world...");
                 long seed = System.currentTimeMillis();
-                worldData = serverWorldManager.createWorld(
-                    "multiplayer_world",
-                    seed,
-                    0.15f,  // Tree rate
-                    0.05f   // Pokemon rate
-                );
-
-                if (worldData == null) {
-                    throw new RuntimeException("Failed to create multiplayer world");
-                }
-
-                // Generate initial chunks after world creation
-                generateInitialChunks(serverWorldManager, worldData);
-                logger.info("Created new multiplayer world with seed: " + seed);
-            } else {
-                logger.info("Loaded existing multiplayer world");
+                worldData = serverWorldManager.createWorld("multiplayer_world", seed, 0.15f, 0.05f);
             }
+            logger.info("World loaded – warming up spawn area chunks");
+            generateInitialChunks(serverWorldManager, worldData);
+
+
 
             // Start game server
             GameServer server = new GameServer(config);

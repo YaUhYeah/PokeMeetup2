@@ -12,7 +12,6 @@ import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.*;
 
-
 public class PlayerData {
     private String username;
     private float x;
@@ -22,6 +21,9 @@ public class PlayerData {
     private boolean wantsToRun;
     private List<ItemData> inventoryItems;
     private List<PokemonData> partyPokemon;
+
+    // New field: characterType ("boy" or "girl")
+    private String characterType = "boy";
 
     public PlayerData() {
         this.direction = "down";
@@ -33,7 +35,6 @@ public class PlayerData {
         this();
         this.username = username;
     }
-
 
     public void updateFromPlayer(Player player) {
         if (player == null) {
@@ -47,6 +48,9 @@ public class PlayerData {
             this.direction = player.getDirection();
             this.isMoving = player.isMoving();
             this.wantsToRun = player.isRunning();
+
+            // Update the character type from the player instance.
+            this.setCharacterType(player.getCharacterType());
 
             this.inventoryItems = new ArrayList<>(Collections.nCopies(Inventory.INVENTORY_SIZE, null));
             this.partyPokemon = new ArrayList<>(Collections.nCopies(PokemonParty.MAX_PARTY_SIZE, null));
@@ -90,7 +94,6 @@ public class PlayerData {
             .count();
     }
 
-
     public boolean validateAndRepairState() {
         boolean wasRepaired = false;
 
@@ -133,6 +136,7 @@ public class PlayerData {
 
         return true;
     }
+
     public int getValidPokemonCount() {
         if (partyPokemon == null) return 0;
         return (int) partyPokemon.stream()
@@ -140,73 +144,69 @@ public class PlayerData {
             .count();
     }
 
+    /**
+     * Applies this saved state to the given player.
+     * Note that this implementation always clears the current inventory and Pokémon party.
+     */
     public void applyToPlayer(Player player) {
-        if (player == null) return;
-
-        GameLogger.info("Applying PlayerData to player: " + this.username);
-        int validItems = getValidItemCount();
-        int validPokemon = getValidPokemonCount();
-        GameLogger.info("Initial PlayerData state - Valid Items: " + validItems +
-            " Valid Pokemon: " + validPokemon);
-
-        try {
-            if (validateAndRepairState()) {
-                GameLogger.info("Data was repaired during validation");
-            }
-
-            player.setX(this.x);
-            player.setY(this.y);
-            player.setRenderPosition(new Vector2(x * World.TILE_SIZE, y * World.TILE_SIZE));
-            player.setDirection(direction);
-            player.setMoving(isMoving);
-            player.setRunning(wantsToRun);
-
-            if (validItems > 0) {
-                player.getInventory().clear();
-                for (ItemData item : inventoryItems) {
-                    if (item != null && item.isValid()) {
-                        player.getInventory().addItem(item.copy());
-                        GameLogger.info("Restored item: " + item.getItemId() + " x" + item.getCount());
-                    }
-                }
-            }
-
-
-            int currentPartySize = player.getPokemonParty().getSize();
-            if (validPokemon > 0 && currentPartySize == 0) {
-                player.getPokemonParty().clearParty();
-                for (PokemonData pokemonData : partyPokemon) {
-                    if (pokemonData != null && pokemonData.verifyIntegrity()) {
-                        Pokemon pokemon = pokemonData.toPokemon();
-                        player.getPokemonParty().addPokemon(pokemon);
-                        GameLogger.info("Added Pokemon: " + pokemon.getName());
-                    }
-                }
-            } else {
-                GameLogger.info("Skipping re-adding Pokemon to player, " +
-                    "because party is already non-empty or no valid Pokemon data found.");
-            }
-
-            // Log final valid counts
-            GameLogger.info("Final player state - Items: " + player.getInventory().getAllItems().size() +
-                " Pokemon: " + player.getPokemonParty().getSize());
-
-        } catch (Exception e) {
-            GameLogger.error("Error applying PlayerData: " + e.getMessage());
+        if (player == null) {
+            GameLogger.error("Cannot apply PlayerData to a null player.");
+            return;
         }
+
+        // Update basic state (position, direction, movement)
+        player.setX(this.x);
+        player.setY(this.y);
+        player.setDirection(this.direction);
+        player.setMoving(this.isMoving);
+        player.setRunning(this.wantsToRun);
+
+        // Also update the character type in the Player instance.
+        player.setCharacterType(this.characterType);
+
+        if (player.getInventory() != null) {
+            player.getInventory().clear();
+        }
+        if (this.inventoryItems != null) {
+            for (ItemData item : this.inventoryItems) {
+                if (item != null && item.isValid()) {
+                    player.getInventory().addItem(item.copy());
+                }
+            }
+        } else {
+            GameLogger.info("No saved inventory items for player: " + username);
+        }
+
+        // Always update the Pokémon party: clear the party then add saved Pokémon.
+        if (player.getPokemonParty() != null) {
+            player.getPokemonParty().clearParty();
+        }
+        if (this.partyPokemon != null) {
+            for (PokemonData pData : this.partyPokemon) {
+                if (pData != null && pData.verifyIntegrity()) {
+                    Pokemon pokemon = pData.toPokemon();
+                    if (pokemon != null) {
+                        player.getPokemonParty().addPokemon(pokemon);
+                    } else {
+                        GameLogger.error("Failed to convert PokemonData to Pokemon for player: " + username);
+                    }
+                }
+            }
+        } else {
+            GameLogger.info("No saved Pokémon for player: " + username);
+        }
+
+        GameLogger.info("Applied saved PlayerData to player: " + username);
     }
 
-
-    private boolean validateItemData(ItemData item) {
-        return item != null &&
-            item.getItemId() != null &&
-            !item.getItemId().isEmpty() &&
-            item.getCount() > 0 &&
-            item.getCount() <= Item.MAX_STACK_SIZE &&
-            ItemManager.getItem(item.getItemId()) != null &&
-            item.getUuid() != null;
+    // --- New methods for character type support ---
+    public String getCharacterType() {
+        return characterType;
     }
 
+    public void setCharacterType(String characterType) {
+        this.characterType = characterType;
+    }
 
     public PlayerData copy() {
         PlayerData copy = new PlayerData(this.username);
@@ -216,8 +216,7 @@ public class PlayerData {
         copy.setDirection(this.direction);
         copy.setMoving(this.isMoving);
         copy.setWantsToRun(this.wantsToRun);
-
-        // Deep copy inventory items
+        copy.setCharacterType(this.characterType);
         if (this.inventoryItems != null) {
             List<ItemData> inventoryCopy = new ArrayList<>();
             for (ItemData item : this.inventoryItems) {
@@ -230,7 +229,6 @@ public class PlayerData {
             copy.setInventoryItems(inventoryCopy);
         }
 
-        // Deep copy Pokemon party
         if (this.partyPokemon != null) {
             List<PokemonData> partyCopy = new ArrayList<>();
             for (PokemonData pokemon : this.partyPokemon) {
@@ -310,6 +308,16 @@ public class PlayerData {
         this.partyPokemon = partyPokemon;
     }
 
+    private boolean validateItemData(ItemData item) {
+        return item != null &&
+            item.getItemId() != null &&
+            !item.getItemId().isEmpty() &&
+            item.getCount() > 0 &&
+            item.getCount() <= Item.MAX_STACK_SIZE &&
+            ItemManager.getItem(item.getItemId()) != null &&
+            item.getUuid() != null;
+    }
+
     @Override
     public String toString() {
         return "io.github.pokemeetup.system.data.PlayerData{" +
@@ -318,6 +326,7 @@ public class PlayerData {
             ", direction='" + direction + '\'' +
             ", inventory=" + (inventoryItems != null ? inventoryItems.size() : "null") + " items" +
             ", party=" + (partyPokemon != null ? partyPokemon.size() : "null") + " pokemon" +
+            ", characterType='" + characterType + '\'' +
             '}';
     }
 }

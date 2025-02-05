@@ -598,10 +598,19 @@ public class WorldSelectionScreen implements Screen {
             @Override
             protected void result(Object object) {
                 if ((Boolean) object) {
+                    // Retrieve all the fields
                     TextField nameField = findActor("nameField");
                     CheckBox cheatsAllowed = findActor("cheatsAllowed");
                     TextField seedField = findActor("seedField");
                     TextField dialogUsernameField = findActor("usernameField");
+                    // Get the character selection buttons
+                    TextButton boyButton = findActor("boyButton");
+                    TextButton girlButton = findActor("girlButton");
+                    // Determine the chosen character type (default "boy")
+                    String selectedCharacterType = "boy";
+                    if (girlButton != null && girlButton.isChecked()) {
+                        selectedCharacterType = "girl";
+                    }
 
                     boolean commandsEnabled = cheatsAllowed != null && cheatsAllowed.isChecked();
                     GameLogger.info("Create world dialog - Commands enabled checkbox: " + commandsEnabled);
@@ -614,7 +623,6 @@ public class WorldSelectionScreen implements Screen {
                         showError("World name cannot be empty");
                         return;
                     }
-
                     if (username.isEmpty()) {
                         username = DEFAULT_PLAYER_NAME;
                     }
@@ -631,12 +639,13 @@ public class WorldSelectionScreen implements Screen {
                         }
                     }
 
-                    createNewWorld(worldName, seed, username, commandsEnabled);
+                    // Pass the chosen character type to createNewWorld
+                    createNewWorld(worldName, seed, username, commandsEnabled, selectedCharacterType);
                 }
             }
         };
 
-        // Create fields
+        // Create the basic input fields as before…
         TextField nameField = new TextField("", skin);
         nameField.setName("nameField");
         nameField.setMessageText("World name");
@@ -653,7 +662,20 @@ public class WorldSelectionScreen implements Screen {
         dialogUsernameField.setName("usernameField");
         dialogUsernameField.setMessageText("Your username (optional)");
 
-        // Add fields to dialog
+        // *** NEW: Create character selection UI ***
+        Label characterLabel = new Label("Choose Character:", skin);
+        TextButton boyButton = new TextButton("Boy", skin);
+        boyButton.setName("boyButton");
+        TextButton girlButton = new TextButton("Girl", skin);
+        girlButton.setName("girlButton");
+        ButtonGroup<TextButton> characterGroup = new ButtonGroup<>(boyButton, girlButton);
+        characterGroup.setMinCheckCount(1);
+        characterGroup.setMaxCheckCount(1);
+        characterGroup.setUncheckLast(true);
+        // Default to boy
+        boyButton.setChecked(true);
+
+        // Add all fields to the dialog content
         dialog.getContentTable().add(new Label("World Name:", skin)).left().padBottom(5);
         dialog.getContentTable().row();
         dialog.getContentTable().add(nameField).width(300).padBottom(15);
@@ -666,12 +688,21 @@ public class WorldSelectionScreen implements Screen {
         dialog.getContentTable().row();
         dialog.getContentTable().add(dialogUsernameField).width(300).padBottom(15);
         dialog.getContentTable().row();
+        // Add the character selection elements
+        dialog.getContentTable().add(characterLabel).left().padBottom(5);
+        dialog.getContentTable().row();
+        Table characterTable = new Table();
+        characterTable.add(boyButton).pad(5);
+        characterTable.add(girlButton).pad(5);
+        dialog.getContentTable().add(characterTable).width(300).padBottom(15);
+        dialog.getContentTable().row();
         dialog.getContentTable().add(cheatsAllowed).left().padBottom(15);
 
         dialog.button("Create", true);
         dialog.button("Cancel", false);
         dialog.show(stage);
     }
+
 
     private void showDeleteConfirmDialog() {
         Dialog dialog = new Dialog("Delete World", skin) {
@@ -703,7 +734,7 @@ public class WorldSelectionScreen implements Screen {
         }
     }
 
-    private void createNewWorld(String name, long seed, String username, boolean cheatsAllowed) {
+    private void createNewWorld(String name, long seed, String username, boolean cheatsAllowed, String characterType) {
         try {
             GameLogger.info("Creating new world '" + name + "' with commands " +
                 (cheatsAllowed ? "enabled" : "disabled"));
@@ -715,26 +746,27 @@ public class WorldSelectionScreen implements Screen {
                 return;
             }
 
-            // Immediately set and save commands flag
+            // Immediately set and save the commands flag
             world.setCommandsAllowed(cheatsAllowed);
             GameLogger.info("Set initial commands state: " + world.commandsAllowed());
 
-            // Create config
+            // Create and assign world config
             WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
             config.setTreeSpawnRate(0.15f);
             config.setPokemonSpawnRate(0.05f);
             world.setConfig(config);
 
-            // Create player data
+            // Create new player data and set the character type (e.g., "boy" or "girl")
             PlayerData playerData = new PlayerData(username);
+            playerData.setCharacterType(characterType);
             world.savePlayerData(username, playerData, false);
 
-            // Force an immediate save
+            // Force an immediate save of the world
             GameContext.get().getWorldManager().saveWorld(world);
 
             GameLogger.info("World creation complete - Commands enabled: " + world.commandsAllowed());
 
-            // Generate thumbnail and update UI
+            // Generate a thumbnail and update UI
             generateWorldThumbnail(world);
             refreshWorldList();
             selectWorld(world);
@@ -743,14 +775,16 @@ public class WorldSelectionScreen implements Screen {
             GameLogger.error("Failed to create world: " + e.getMessage());
             showError("Failed to create world: " + e.getMessage());
         }
-    }public void loadSelectedWorld(String username) {
+    }
+
+    public void loadSelectedWorld(String username) {
         try {
             GameLogger.info("Starting world load: " + selectedWorld.getName());
 
             // (1) Save the current world state (if applicable)
             if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
                 boolean currentIsMultiplayer = GameContext.get().getGameClient() != null &&
-                    !GameContext.get().getGameClient().isSinglePlayer();
+                    GameContext.get().isMultiplayer();
                 boolean targetIsMultiplayer = selectedWorld.getName().equals(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
                 if (currentIsMultiplayer == targetIsMultiplayer) {
                     PlayerData currentState = GameContext.get().getPlayer().getPlayerData();
@@ -789,6 +823,7 @@ public class WorldSelectionScreen implements Screen {
             // (6) Set up the singleplayer client.
             GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance(GameContext.get().getPlayer()));
             GameContext.get().getGameClient().setSinglePlayer(true);
+            GameContext.get().setMultiplayer(false);
 
             // (7) Apply the saved player data to the new player.
             if (GameContext.get().getPlayer() != null) {

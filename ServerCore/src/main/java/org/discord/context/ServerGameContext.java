@@ -2,6 +2,7 @@
 package org.discord.context;
 
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
+import io.github.pokemeetup.system.gameplay.inventory.ItemEntityManager;
 import org.discord.ServerWorldObjectManager;
 import org.discord.utils.ServerWorldManager;
 
@@ -10,22 +11,25 @@ public final class ServerGameContext {
     private final ServerWorldManager worldManager;
     private final ServerStorageSystem storageSystem;
     private final ServerWorldObjectManager worldObjectManager;
+    private final ItemEntityManager itemEntityManager;
 
     private ServerGameContext(ServerWorldManager worldManager,
                               ServerStorageSystem storageSystem,
-                              ServerWorldObjectManager worldObjectManager) {
+                              ServerWorldObjectManager worldObjectManager,
+                              ItemEntityManager itemEntityManager) {
         this.worldManager = worldManager;
         this.storageSystem = storageSystem;
         this.worldObjectManager = worldObjectManager;
-    }
+this.itemEntityManager = itemEntityManager;}
 
     public static void init(ServerWorldManager worldManager,
                             ServerStorageSystem storageSystem,
-                            ServerWorldObjectManager worldObjectManager) {
+                            ServerWorldObjectManager worldObjectManager,
+                            ItemEntityManager itemEntityManager) {
         if (instance != null) {
             throw new IllegalStateException("ServerGameContext already initialized!");
         }
-        instance = new ServerGameContext(worldManager, storageSystem, worldObjectManager);
+        instance = new ServerGameContext(worldManager, storageSystem, worldObjectManager, itemEntityManager);
     }
 
     public static ServerGameContext get() {
@@ -33,6 +37,11 @@ public final class ServerGameContext {
             throw new IllegalStateException("ServerGameContext not initialized yet!");
         }
         return instance;
+    }
+
+
+    public ItemEntityManager getItemEntityManager() {
+        return itemEntityManager;
     }
 
     public ServerStorageSystem getStorageSystem() {

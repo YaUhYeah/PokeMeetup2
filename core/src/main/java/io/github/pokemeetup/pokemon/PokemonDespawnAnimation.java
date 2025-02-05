@@ -1,6 +1,7 @@
 package io.github.pokemeetup.pokemon;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
@@ -9,18 +10,16 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class PokemonDespawnAnimation {
     private static final float DESPAWN_DURATION = 1.0f; // Total animation time in seconds
-    private static final float SPARKLE_DURATION = 0.3f; // Duration for each sparkle
+    private static final float SPARKLE_DURATION = 0.3f;
     private static final int NUM_SPARKLES = 6; // Number of sparkle particles
 
     private float animationTime = 0f;
     private final List<Sparkle> sparkles;
-    private boolean isComplete = false;
+    private final boolean isComplete = false;
     private final Vector2 position;
-    private final Random random;
 
     private static class Sparkle {
         float x, y;
@@ -38,7 +37,6 @@ public class PokemonDespawnAnimation {
     public PokemonDespawnAnimation(float x, float y) {
         this.position = new Vector2(x, y);
         this.sparkles = new ArrayList<>();
-        this.random = new Random();
         initializeSparkles();
     }
 
@@ -49,13 +47,15 @@ public class PokemonDespawnAnimation {
         }
     }
 
+    /**
+     * Call this method each frame; it returns true once the animation duration has elapsed.
+     */
     public boolean update(float delta) {
         animationTime += delta;
 
-        // Update sparkles
+        // Update each sparkle’s lifetime and position (spiraling outward)
         for (Sparkle sparkle : sparkles) {
             sparkle.lifeTime += delta;
-            // Move sparkles outward in a spiral pattern
             float radius = (sparkle.lifeTime / DESPAWN_DURATION) * 32f;
             float rotationSpeed = 360f * (sparkle.lifeTime / DESPAWN_DURATION);
             sparkle.angle += rotationSpeed * delta;
@@ -63,9 +63,14 @@ public class PokemonDespawnAnimation {
             sparkle.y = position.y + radius * MathUtils.sinDeg(sparkle.angle);
         }
 
+        // When animation time exceeds duration, signal completion.
         return animationTime >= DESPAWN_DURATION;
     }
 
+    /**
+     * Renders the Pokémon fading out along with its sparkles.
+     * The sparkles are drawn with additive blending so they “glow.”
+     */
     public void render(SpriteBatch batch, TextureRegion pokemonSprite, float width, float height) {
         if (isComplete) return;
 
@@ -73,28 +78,30 @@ public class PokemonDespawnAnimation {
         float alpha = 1.0f - progress;
         float scale = 1.0f - (progress * 0.5f);
 
-        // Save batch color
-        Color prevColor = batch.getColor();
+        // Save the current batch color and blend function settings.
+        Color prevColor = new Color(batch.getColor());
+        int oldSrcFunc = batch.getBlendSrcFunc();
+        int oldDstFunc = batch.getBlendDstFunc();
 
-        // Render fading Pokémon
+        // Render the Pokémon sprite fading out.
         batch.setColor(prevColor.r, prevColor.g, prevColor.b, alpha);
         float scaledWidth = width * scale;
         float scaledHeight = height * scale;
         float xOffset = (width - scaledWidth) / 2;
         float yOffset = (height - scaledHeight) / 2;
-
         batch.draw(pokemonSprite,
             position.x + xOffset, position.y + yOffset,
             scaledWidth / 2, scaledHeight / 2,
             scaledWidth, scaledHeight,
             1f, 1f, 0);
 
-        // Render sparkles
+        // Now render sparkles using additive blending.
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
         TextureRegion sparkleTexture = TextureManager.ui.findRegion("sparkle");
         if (sparkleTexture != null) {
             for (Sparkle sparkle : sparkles) {
                 float sparkleProgress = sparkle.lifeTime / SPARKLE_DURATION;
-                float sparkleAlpha = 1.0f - (sparkleProgress > 1f ? 1f : sparkleProgress);
+                float sparkleAlpha = 1.0f - (Math.min(sparkleProgress, 1f));
                 float sparkleScale = 0.5f - (sparkleProgress * 0.3f);
 
                 batch.setColor(1f, 1f, 1f, sparkleAlpha);
@@ -105,8 +112,8 @@ public class PokemonDespawnAnimation {
                     1f, 1f, sparkle.angle);
             }
         }
-
-        // Restore batch color
+        // Restore the batch’s original blend function and color.
+        batch.setBlendFunction(oldSrcFunc, oldDstFunc);
         batch.setColor(prevColor);
     }
 

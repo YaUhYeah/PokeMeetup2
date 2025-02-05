@@ -1,9 +1,6 @@
 package io.github.pokemeetup.screens;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Input;
-import com.badlogic.gdx.Preferences;
-import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.*;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
@@ -18,7 +15,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.Timer;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
@@ -26,6 +23,7 @@ import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
+import io.github.pokemeetup.screens.otherui.ServerManagementDialog;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -34,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LoginScreen implements Screen {
+    // --- Constants for minimum/maximum dimensions and virtual viewport size ---
     public static final String SERVERS_PREFS = "ServerPrefs";
     public static final float MIN_WIDTH = 300f;
     public static final float MAX_WIDTH = 500f;
@@ -41,6 +40,11 @@ public class LoginScreen implements Screen {
     private static final int MIN_HEIGHT = 600;
     private static final float CONNECTION_TIMEOUT = 30f;
     private static final int MAX_CONNECTION_ATTEMPTS = 3;
+
+    // Virtual resolution (for the FitViewport) – adjust as needed.
+    private static final float VIRTUAL_WIDTH = 800;
+    private static final float VIRTUAL_HEIGHT = 600;
+
     public final Stage stage;
     public final Skin skin;
     public final CreatureCaptureGame game;
@@ -62,20 +66,21 @@ public class LoginScreen implements Screen {
     private boolean isConnecting = false;
     private int connectionAttempts = 0;
     private ScrollPane serverListScrollPane;
+    private TextButton editServerButton;
+    private TextButton deleteServerButton;
 
     public LoginScreen(CreatureCaptureGame game) {
         this.game = game;
-        this.stage = new Stage(new ScreenViewport());
+        // Use a FitViewport to ensure all content is visible regardless of device aspect ratio.
+        this.stage = new Stage(new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
         this.skin = new Skin(Gdx.files.internal("atlas/ui-gfx-atlas.json"));
         this.prefs = Gdx.app.getPreferences("LoginPrefs");
         loadServers();
 
         createUIComponents();
-
         setupListeners();
-
         initializeUI();
-
+        setupInputHandling();
         loadSavedCredentials();
 
         Gdx.input.setInputProcessor(stage);
@@ -95,84 +100,160 @@ public class LoginScreen implements Screen {
         return config;
     }
 
-    private void createUIComponents() {
-        mainTable = new Table();
-        mainTable.setFillParent(true);
+    private void setupInputHandling() {
+        boolean isMobile = Gdx.app.getType() == Application.ApplicationType.Android
+            || Gdx.app.getType() == Application.ApplicationType.iOS;
 
-        // Create buttons first
-        TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
-        buttonStyle.up = skin.getDrawable("button");
-        buttonStyle.down = skin.getDrawable("button-pressed");
-        buttonStyle.over = skin.getDrawable("button-over");
-        buttonStyle.font = skin.getFont("default-font");
+        float touchPadding = isMobile ? 12 : 6; // Larger touch targets on mobile
 
-        loginButton = new TextButton("Login", buttonStyle);
-        registerButton = new TextButton("Register", buttonStyle);
-        backButton = new TextButton("Back", buttonStyle);
+        // Update button sizes
+        loginButton.padTop(touchPadding).padBottom(touchPadding);
+        registerButton.padTop(touchPadding).padBottom(touchPadding);
 
-        // Create custom text field style
-        TextField.TextFieldStyle textFieldStyle = new TextField.TextFieldStyle(skin.get(TextField.TextFieldStyle.class));
-        textFieldStyle.font = skin.getFont("default-font");
-        textFieldStyle.fontColor = Color.WHITE;
-        textFieldStyle.background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield"));
-        textFieldStyle.cursor = skin.getDrawable("cursor");
-        textFieldStyle.selection = skin.getDrawable("selection");
-        textFieldStyle.messageFontColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+        // Add ripple effect on mobile
+        if (isMobile) {
+            addTouchRipple(loginButton);
+            addTouchRipple(registerButton);
+        }
 
-        // Create input fields
-        usernameField = new TextField("", textFieldStyle);
-        usernameField.setMessageText("Enter username");
-
-        passwordField = new TextField("", textFieldStyle);
-        passwordField.setMessageText("Enter password");
-        passwordField.setPasswordMode(true);
-        passwordField.setPasswordCharacter('*');
-
-        // Create checkbox
-        rememberMeBox = new CheckBox(" Remember Me", skin);
-
-        // Create labels
-        feedbackLabel = new Label("", skin);
-        feedbackLabel.setWrap(true);
-
-        statusLabel = new Label("", skin);
-        statusLabel.setWrap(true);
-
-        // Create progress bar
-        ProgressBar.ProgressBarStyle progressStyle = new ProgressBar.ProgressBarStyle();
-        progressStyle.background = skin.getDrawable("progress-bar-bg");
-        progressStyle.knob = skin.getDrawable("progress-bar-knob");
-        progressStyle.knobBefore = skin.getDrawable("progress-bar-bg");
-
-        connectionProgress = new ProgressBar(0, 1, 0.01f, false, progressStyle);
-        connectionProgress.setVisible(false);
-
-        // Create server list
-        serverListScrollPane = createServerList();
+        // Handle back button on Android
+        if (Gdx.app.getType() == Application.ApplicationType.Android) {
+            stage.addListener(new InputListener() {
+                @Override
+                public boolean keyDown(InputEvent event, int keycode) {
+                    if (keycode == Input.Keys.BACK) {
+                        handleBackButton();
+                        return true;
+                    }
+                    return false;
+                }
+            });
+        }
     }
 
-    private ScrollPane createServerList() {
-        serverListTable = new Table();
+    private void addTouchRipple(final TextButton targetButton) {
+        targetButton.addListener(new InputListener() {
+            private Actor ripple;
+            private float startX, startY;
+
+            @Override
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int buttonId) {
+                // Create ripple effect
+                ripple = new Image(TextureManager.ui.findRegion("circle"));
+                ripple.setSize(20, 20);
+                ripple.setPosition(x - 10, y - 10); // Center ripple on touch
+                ripple.setColor(1, 1, 1, 0.3f);
+                startX = x;
+                startY = y;
+
+                targetButton.addActor(ripple);
+
+                // Animate ripple
+                float duration = 0.4f;
+                ripple.addAction(Actions.parallel(
+                    Actions.scaleTo(10, 10, duration),
+                    Actions.fadeOut(duration),
+                    Actions.run(() -> ripple.remove())
+                ));
+
+                return true;
+            }
+
+            @Override
+            public void touchDragged(InputEvent event, float x, float y, int pointer) {
+                // If drag exceeds threshold, cancel ripple
+                if (Math.abs(x - startX) > 20 || Math.abs(y - startY) > 20) {
+                    if (ripple != null) {
+                        ripple.remove();
+                        ripple = null;
+                    }
+                }
+            }
+
+            @Override
+            public void touchUp(InputEvent event, float x, float y, int pointer, int buttonId) {
+                // Fade out ripple faster on touch up
+                if (ripple != null) {
+                    ripple.addAction(Actions.fadeOut(0.1f));
+                }
+            }
+        });
+    }
+
+    private void handleBackButton() {
+        if (isConnecting) {
+            // Show confirmation dialog when attempting to cancel login
+            Dialog dialog = new Dialog("Cancel Login?", skin) {
+                @Override
+                protected void result(Object obj) {
+                    if ((Boolean) obj) {
+                        // User confirmed cancel
+                        if (GameContext.get().getGameClient() != null) {
+                            GameContext.get().getGameClient().dispose();
+                            GameContext.get().setGameClient(null);
+                        }
+                        isConnecting = false;
+                        connectionProgress.setVisible(false);
+                        setUIEnabled(true);
+                        statusLabel.setText("");
+                        feedbackLabel.setText("Login cancelled");
+                    }
+                }
+            };
+
+            dialog.text("Are you sure you want to cancel the login?");
+            dialog.button("Yes", true);
+            dialog.button("No", false);
+            dialog.show(stage);
+
+        } else {
+            // If not connecting, just go back to mode selection
+            game.setScreen(new ModeSelectionScreen(game));
+        }
+    }
+
+    private void updateServerList() {
+        // Clear existing list
+        serverListTable.clear();
         serverListTable.top();
 
-        // Add servers
+        // Add header if needed
+        Label headerLabel = new Label("Available Servers", skin, "title-small");
+        serverListTable.add(headerLabel).pad(10).row();
+
+        // Add server entries
+        boolean hasServers = false;
         for (ServerConnectionConfig server : servers) {
             Table serverEntry = createServerEntry(server);
             serverListTable.add(serverEntry).expandX().fillX().padBottom(2).row();
+            hasServers = true;
         }
 
-        // Create scroll pane with styling
-        ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle();
-        scrollStyle.background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield"));
-        scrollStyle.vScroll = skin.getDrawable("scrollbar-v");
-        scrollStyle.vScrollKnob = skin.getDrawable("scrollbar-knob-v");
+        // Add empty state message if no servers
+        if (!hasServers) {
+            Label emptyLabel = new Label("No servers available.", skin);
+            emptyLabel.setColor(Color.GRAY);
+            serverListTable.add(emptyLabel).pad(20);
+        }
 
-        ScrollPane scrollPane = new ScrollPane(serverListTable, scrollStyle);
-        scrollPane.setScrollingDisabled(true, false);
-        scrollPane.setFadeScrollBars(false);
-        scrollPane.setOverscroll(false, false);
+        // Select first server by default if none selected
+        if (selectedServer == null && servers.size > 0) {
+            selectedServer = servers.first();
+            Cell<?> firstCell = serverListTable.getCells().first();
+            if (firstCell != null && firstCell.getActor() instanceof Table) {
+                updateServerSelection((Table) firstCell.getActor());
+            }
+        }
 
-        return scrollPane;
+        // Force layout update
+        serverListTable.invalidate();
+        serverListScrollPane.invalidate();
+
+        // Save server list
+        saveServers();
+
+        // Log update
+        GameLogger.info("Server list updated with " + servers.size + " servers");
     }
 
     private Table createServerEntry(final ServerConnectionConfig server) {
@@ -180,52 +261,62 @@ public class LoginScreen implements Screen {
         entry.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("info-box-bg")));
         entry.pad(10);
 
-        // Server icon with error handling
+        // Left icon (unchanged)
         Table iconContainer = new Table();
         try {
-            if (server.getIconPath() != null && !server.getIconPath().isEmpty()) {
-                FileHandle iconFile = Gdx.files.internal(server.getIconPath());
-                if (iconFile.exists()) {
-                    Image icon = new Image(new TextureRegionDrawable(new TextureRegion(new Texture(iconFile))));
-                    iconContainer.add(icon).size(32, 32);
+            if (server.getIconPath() != null) {
+                if (TextureManager.ui.findRegion("default-server-icon") == null
+                    || !server.getIconPath().contains("default-server-icon")) {
+                    FileHandle iconFile = Gdx.files.internal(server.getIconPath());
+                    if (iconFile.exists()) {
+                        Image icon = new Image(new Texture(iconFile));
+                        icon.setSize(32, 32);
+                        iconContainer.add(icon).size(32);
+                    } else {
+                        addDefaultIcon(iconContainer);
+                    }
                 } else {
-                    // Use default icon
-                    Image defaultIcon = new Image(TextureManager.ui.findRegion("default-server-icon"));
-                    iconContainer.add(defaultIcon).size(32, 32);
+                    Image icon = new Image(TextureManager.ui.findRegion("default-server-icon"));
+                    icon.setSize(32, 32);
+                    iconContainer.add(icon).size(32);
                 }
             } else {
-                // Use default icon
-                Image defaultIcon = new Image(TextureManager.ui.findRegion("default-server-icon"));
-                iconContainer.add(defaultIcon).size(32, 32);
+                addDefaultIcon(iconContainer);
             }
         } catch (Exception e) {
             GameLogger.error("Failed to load server icon: " + e.getMessage());
-            // Use default icon
-            Image defaultIcon = new Image(TextureManager.ui.findRegion("default-server-icon"));
-            iconContainer.add(defaultIcon).size(32, 32);
+            addDefaultIcon(iconContainer);
         }
 
-        // Server info
-        Table infoTable = new Table();
-        infoTable.left();
+        // Middle info panel with single-line labels using ellipsis
+        Table infoPanel = new Table();
+        infoPanel.defaults().expandX().fillX().space(5);
+        infoPanel.left();
 
-        Label nameLabel = new Label(server.getServerName(), skin);
+        Label nameLabel = new Label(server.getServerName(), skin, "title-small");
+        nameLabel.setWrap(false);
+        nameLabel.setEllipsis(true);
         nameLabel.setFontScale(1.1f);
+        // Force a fixed height (adjust 24 as needed)
+        infoPanel.add(nameLabel).left().expandX().fillX().height(24).row();
 
-        Label motdLabel = new Label(server.getMotd() != null ? server.getMotd() : "Welcome!", skin);
+        Label motdLabel = new Label(server.getMotd() != null ? server.getMotd() : "Welcome!", skin, "default");
+        motdLabel.setWrap(false);
+        motdLabel.setEllipsis(true);
         motdLabel.setColor(0.8f, 0.8f, 0.8f, 1f);
+        infoPanel.add(motdLabel).left().expandX().fillX().height(24).row();
 
-        Label addressLabel = new Label(server.getServerIP() + ":" + server.getTcpPort(), skin);
+        Label addressLabel = new Label(server.getServerIP() + ":" + server.getTcpPort(), skin, "small");
+        addressLabel.setWrap(false);
+        addressLabel.setEllipsis(true);
         addressLabel.setColor(0.7f, 0.7f, 0.7f, 1f);
+        infoPanel.add(addressLabel).left().expandX().fillX().height(24).row();
 
-        infoTable.add(nameLabel).left().row();
-        infoTable.add(motdLabel).left().padTop(2).row();
-        infoTable.add(addressLabel).left().padTop(2);
 
-        entry.add(iconContainer).padRight(10);
-        entry.add(infoTable).expandX().fillX().left();
+        entry.add(iconContainer).padRight(10).width(40);
+        entry.add(infoPanel).expandX().fillX();
 
-        // Selection handling
+        // Selection listeners (unchanged)
         entry.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -251,112 +342,186 @@ public class LoginScreen implements Screen {
         return entry;
     }
 
-    private void updateServerSelection(Table selectedEntry) {
-        // Update visual selection for all entries
-        for (Cell<?> cell : serverListTable.getCells()) {
-            Actor actor = cell.getActor();
-            if (actor instanceof Table) {
-                Table entry = (Table) actor;
-                TextureRegionDrawable background;
-                if (entry == selectedEntry) {
-                    background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield-active"));
-                    background.setMinWidth(entry.getWidth());
-                    background.setMinHeight(entry.getHeight());
-                    entry.setBackground(background);
-                } else {
-                    background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield"));
-                    background.setMinWidth(entry.getWidth());
-                    background.setMinHeight(entry.getHeight());
-                    entry.setBackground(background);
-                }
+    private void addDefaultIcon(Table container) {
+        // Fallback: either from atlas or from file
+        if (TextureManager.ui.findRegion("default-server-icon") != null) {
+            Image defaultIcon = new Image(TextureManager.ui.findRegion("default-server-icon"));
+            defaultIcon.setSize(32, 32);
+            container.add(defaultIcon).size(32);
+        } else {
+            // fallback file load
+            FileHandle iconFile = Gdx.files.internal(DEFAULT_SERVER_ICON);
+            if (iconFile.exists()) {
+                Image defaultIcon = new Image(new Texture(iconFile));
+                defaultIcon.setSize(32, 32);
+                container.add(defaultIcon).size(32);
             }
         }
     }
 
-    private void initializeUI() {
-        float screenWidth = Gdx.graphics.getWidth();
-        float contentWidth = Math.min(500, screenWidth * 0.9f);
+    private void updateUI() {
+        // (Optional) If you need to update UI elements dynamically.
+    }
 
-        // Create dark panel container
+    private void initializeUI() {
+        // Instead of using Gdx.graphics.getWidth/Height, we use the stage's viewport dimensions.
+        float screenWidth = stage.getWidth();
+        float screenHeight = stage.getHeight();
+
+        // Determine content width/height (capped to MAX_WIDTH and a reasonable height)
+        float contentWidth = Math.min(MAX_WIDTH, screenWidth * 0.9f);
+        float contentHeight = Math.min(700, screenHeight * 0.9f);
+
+        // Create a dark panel that will hold our login UI elements.
         Table darkPanel = new Table();
         darkPanel.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("window")));
         darkPanel.pad(20);
 
-        // Title
-        Label titleLabel = new Label("PokeMeetup", skin);
+        // Title section
+        Label titleLabel = new Label("PokéMeetup", skin, "title");
         titleLabel.setFontScale(2f);
         darkPanel.add(titleLabel).padBottom(30).row();
 
-        // Server selection section
-        Label serverLabel = new Label("Select Server", skin);
-        serverLabel.setFontScale(1.2f);
-        darkPanel.add(serverLabel).left().padBottom(10).row();
+        // --- Server selection section ---
+        Table serverHeader = new Table();
+        serverHeader.defaults().pad(5);
+        Label serverLabel = new Label("Available Servers", skin, "title-small");
+        serverHeader.add(serverLabel).expandX().left();
+        TextButton addServerButton = new TextButton("Add Server", skin);
+        addServerButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                showServerDialog(null);
+            }
+        });// Add a back button at the top left of the screen
+        Table topLeftTable = new Table();
+        topLeftTable.setFillParent(true);
+        topLeftTable.top().left();
+        topLeftTable.add(backButton);  // adjust padding as needed
+        stage.addActor(topLeftTable);
 
-        // Server list container
+        serverHeader.add(addServerButton).right();
+        darkPanel.add(serverHeader).fillX().padBottom(10).row();
+
         darkPanel.add(serverListScrollPane)
             .width(contentWidth - 40)
-            .height(180)
+            // Cap the height (or use a fraction of the available stage height)
+            .height(Math.min(220, screenHeight * 0.25f))
             .padBottom(20)
             .row();
+// --- Login form section ---
+        Table loginForm = createLoginForm(contentWidth);
+        darkPanel.add(loginForm).width(contentWidth - 40).row();
 
-        // Login fields
-        Table fieldsTable = new Table();
-        fieldsTable.defaults().width(contentWidth - 40).padBottom(10);
+// --- Server action buttons (Edit/Delete) section ---
+        Table serverActionTable = new Table();
+        serverActionTable.defaults().width((contentWidth - 40) / 2f).height(40).padTop(10);
+        serverActionTable.add(editServerButton).padRight(10);
+        serverActionTable.add(deleteServerButton);
+        darkPanel.add(serverActionTable).padBottom(20).row();
 
-        // Username field with label
+// --- Status and progress section ---
+        Table statusSection = new Table();
+        statusSection.add(statusLabel).width(contentWidth - 40).padBottom(5).row();
+        statusSection.add(connectionProgress).width(contentWidth - 40).height(4).padBottom(5).row();
+        statusSection.add(feedbackLabel).width(contentWidth - 40);
+        darkPanel.add(statusSection).row();
+
+
+        // Instead of manually setting the position of darkPanel, add it to a root table that fills the stage.
+        mainTable.clear();
+        mainTable.setFillParent(true);
+        mainTable.center().pad(10);
+        mainTable.add(darkPanel);
+        darkPanel.pack();
+        stage.addActor(mainTable);
+    }
+
+    private Table createLoginForm(float width) {
+        Table form = new Table();
+        // Use relative width for each row
+        form.defaults().width(width - 40).padBottom(10);
+
+        // Username row
         Table usernameRow = new Table();
         Label usernameLabel = new Label("Username:", skin);
         usernameRow.add(usernameLabel).width(80).right().padRight(10);
         usernameRow.add(usernameField).expandX().fillX().height(36);
-        fieldsTable.add(usernameRow).row();
+        form.add(usernameRow).row();
 
-        // Password field with label
+        // Password row
         Table passwordRow = new Table();
         Label passwordLabel = new Label("Password:", skin);
         passwordRow.add(passwordLabel).width(80).right().padRight(10);
         passwordRow.add(passwordField).expandX().fillX().height(36);
-        fieldsTable.add(passwordRow).row();
+        form.add(passwordRow).row();
 
-        // Remember me checkbox
-        rememberMeBox = new CheckBox(" Remember Me", skin);
-        fieldsTable.add(rememberMeBox).left().padTop(5).row();
+        // Remember me
+        form.add(rememberMeBox).left().padTop(5).row();
 
-        darkPanel.add(fieldsTable).row();
+        // Buttons row
+        Table buttons = new Table();
+        buttons.defaults().width((width - 60) / 2f).height(40);
+        buttons.add(loginButton).padRight(10);
+        buttons.add(registerButton);
+        form.add(buttons).padTop(20);
 
-        // Buttons
-        Table buttonTable = new Table();
-        float buttonWidth = (contentWidth - 60) / 2;
+        return form;
+    }
 
-        // Login and Register buttons
-        Table actionButtons = new Table();
-        actionButtons.add(loginButton).width(buttonWidth).padRight(10);
-        actionButtons.add(registerButton).width(buttonWidth);
-        buttonTable.add(actionButtons).padBottom(10).row();
 
-        // Back button
-        buttonTable.add(backButton).width(buttonWidth);
+    private ScrollPane createServerList() {
+        serverListTable = new Table();
+        // Let each row expand horizontally
+        serverListTable.defaults().expandX().fillX().pad(5);
+        serverListTable.top();
 
-        darkPanel.add(buttonTable).padTop(20).padBottom(10).row();
-
-        // Status elements
-        Table statusTable = new Table();
-        statusTable.add(statusLabel).width(contentWidth - 40).padBottom(5).row();
-        statusTable.add(connectionProgress).width(contentWidth - 40).height(4).padBottom(5).row();
-        statusTable.add(feedbackLabel).width(contentWidth - 40);
-
-        darkPanel.add(statusTable).row();
-
-        // Add to main table
-        mainTable.add(darkPanel);
-        // Select first server by default if available
-
-        stage.addActor(mainTable);
-        if (servers.isEmpty()) {
-            return;
+        // We'll add servers once we call updateServerList() again
+        for (ServerConnectionConfig server : servers) {
+            Table serverEntry = createServerEntry(server);
+            serverListTable.add(serverEntry).expandX().fillX().padBottom(2).row();
         }
-        if (servers != null && servers.size > 0) {
-            selectedServer = servers.first();
-            updateServerSelection((Table) serverListTable.getCells().first().getActor());
+
+        // Scroll pane style
+        ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle();
+        scrollStyle.background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield"));
+        scrollStyle.vScroll = skin.getDrawable("scrollbar-v");
+        scrollStyle.vScrollKnob = skin.getDrawable("scrollbar-knob-v");
+
+        ScrollPane scrollPane = new ScrollPane(serverListTable, scrollStyle);
+        scrollPane.setFadeScrollBars(false);
+        scrollPane.setScrollingDisabled(true, false); // only vertical
+        scrollPane.setForceScroll(false, true);
+        scrollPane.setOverscroll(false, false);
+
+        return scrollPane;
+    }
+
+    private void saveServers() {
+        try {
+            Json json = new Json();
+            StringBuilder sb = new StringBuilder();
+
+            for (ServerConnectionConfig server : servers) {
+                ServerEntry entry = new ServerEntry(
+                    server.getServerName(),
+                    server.getServerIP(),
+                    server.getTcpPort(),
+                    server.getUdpPort(),
+                    server.getMotd(),
+                    server.isDefault(),
+                    server.getMaxPlayers(),
+                    server.getIconPath()
+                );
+                if (sb.length() > 0) sb.append("|");
+                sb.append(json.toJson(entry));
+            }
+
+            Preferences prefs = Gdx.app.getPreferences(SERVERS_PREFS);
+            prefs.putString("servers", sb.toString());
+            prefs.flush();
+        } catch (Exception e) {
+            GameLogger.error("Failed to save servers: " + e.getMessage());
         }
     }
 
@@ -397,11 +562,9 @@ public class LoginScreen implements Screen {
                 GameClientSingleton.resetInstance();
             }
 
+            GameContext.get().setMultiplayer(true);
             // Create new client
-            GameContext.get().setGameClient(new GameClient(
-                selectedServer,
-                false
-            ));
+            GameContext.get().setGameClient(new GameClient(selectedServer));
 
             // Set up response handlers
             GameContext.get().getGameClient().setLoginResponseListener(response -> {
@@ -514,39 +677,48 @@ public class LoginScreen implements Screen {
         }
     }
 
-    // In LoginScreen.java - Update handleLoginResponse
+    private void showMultiplayerCharacterSelectionDialog(final NetworkProtocol.LoginResponse response,
+                                                         final Runnable onComplete) {
+        final Dialog dialog = new Dialog("Choose Your Character", skin) {
+            @Override
+            protected void result(Object object) {
+                // The object is the result provided when the button was added.
+                String chosenType = (String) object;
+                // Update the player data from the login response.
+                response.playerData.setCharacterType(chosenType);
+                // Optionally send the update to the server.
+                GameContext.get().getGameClient().savePlayerState(response.playerData);
+                onComplete.run();
+            }
+        };
+
+// Add buttons with their result values.
+        dialog.button("Boy", "boy");
+        dialog.button("Girl", "girl");
+
+// Optionally, add a label or any other content.
+        dialog.getContentTable().add(new Label("Select your character:", skin)).colspan(2).pad(10);
+
+// Finally, show the dialog.
+        dialog.show(stage);
+
+
+    }
+
     private void handleLoginResponse(NetworkProtocol.LoginResponse response) {
         isConnecting = false;
-
         if (response.success) {
-            GameLogger.info("Login successful, transitioning to loading screen");
-            try {
-                // Create loading screen
-                LoadingScreen loadingScreen = new LoadingScreen(game, null);
-                GameContext.get().setGameScreen(new GameScreen(game, response.username,
-                    GameContext.get().getGameClient()));
-
-                // Verify game screen creation
-                if (!GameContext.get().getGameScreen().isInitialized()) {
-                    showError("Failed to initialize game screen");
-                    return;
-                }
-
-                // Set next screen and transition
-                loadingScreen.setNextScreen(GameContext.get().getGameScreen());
-                game.setScreen(loadingScreen);
-
-                // Save credentials if needed
-                if (rememberMeBox.isChecked()) {
-                    saveCredentials(usernameField.getText(), passwordField.getText());
-                }
-
-                dispose(); // Clean up login screen
-
-            } catch (Exception e) {
-                GameLogger.error("Failed to transition to game: " + e.getMessage());
-                showError("Failed to start game: " + e.getMessage());
-                setUIEnabled(true);
+            // Mark as authenticated and store the username.
+            // In multiplayer, check whether the returned PlayerData indicates a new player.
+            if (GameContext.get().isMultiplayer() &&
+                (response.playerData.getCharacterType() == null || response.playerData.getCharacterType().isEmpty())) {
+                // Prompt character selection before proceeding.
+                showMultiplayerCharacterSelectionDialog(response, () -> {
+                    proceedToGameAfterCharacterSelection(response);
+                });
+            } else {
+                // Otherwise, simply continue.
+                proceedToGameAfterCharacterSelection(response);
             }
         } else {
             showError(response.message != null ? response.message : "Login failed");
@@ -554,31 +726,35 @@ public class LoginScreen implements Screen {
         }
     }
 
-    private void handleAlreadyLoggedIn() {
-        isConnecting = false;
-        connectionProgress.setVisible(false);
+    private void proceedToGameAfterCharacterSelection(NetworkProtocol.LoginResponse response) {
+        try {
+            // Create a loading screen (your existing LoadingScreen implementation)
+            LoadingScreen loadingScreen = new LoadingScreen(game, null);
+            game.setScreen(loadingScreen);
 
-        // Show warning dialog
-        Dialog dialog = new Dialog("Already Logged In", skin) {
-            @Override
-            protected void result(Object obj) {
-                if ((Boolean) obj) {
-                    // User chose to force login - attempt relogin with force flag
-                    forceRelogin();
-                } else {
-                    // User cancelled - reset UI
-                    setUIEnabled(true);
-                    statusLabel.setText("");
-                    feedbackLabel.setText("Login cancelled");
-                }
+            // Now create the GameScreen. In your GameScreen constructor, use the information
+            // from response.playerData (which now includes the chosen character type) to initialize the Player.
+            GameScreen gameScreen = new GameScreen(
+                game,
+                response.username,
+                GameContext.get().getGameClient()
+            );
+            // Tell the loading screen which screen to switch to
+            loadingScreen.setNextScreen(gameScreen);
+
+            // Optionally, save credentials here.
+            if (rememberMeBox.isChecked()) {
+                saveCredentials(usernameField.getText(), passwordField.getText());
             }
-        };
-
-        dialog.text("This account is already logged in.\nWould you like to disconnect the other session?");
-        dialog.button("Yes, log out other session", true);
-        dialog.button("Cancel", false);
-        dialog.show(stage);
+            // Clean up the login screen.
+            dispose();
+        } catch (Exception e) {
+            GameLogger.error("Failed to transition to game: " + e.getMessage());
+            showError("Failed to start game: " + e.getMessage());
+            setUIEnabled(true);
+        }
     }
+
 
     private void forceRelogin() {
         if (GameContext.get().getGameClient() != null) {
@@ -596,7 +772,8 @@ public class LoginScreen implements Screen {
 
         // Create new client with force login flag
         try {
-            GameContext.get().setGameClient(new GameClient(selectedServer, false));
+            GameContext.get().setGameClient(new GameClient(selectedServer));
+            GameContext.get().setMultiplayer(true);
 
             // Set login response listener
             GameContext.get().getGameClient().setLoginResponseListener(this::handleForceLoginResponse);
@@ -720,10 +897,7 @@ public class LoginScreen implements Screen {
         } else {
             showError("Connection failed after multiple attempts. Please try again later.");
             setUIEnabled(true);
-
         }
-
-
     }
 
     private void handleConnectionError(Exception e) {
@@ -732,8 +906,6 @@ public class LoginScreen implements Screen {
             setUIEnabled(true);
             isConnecting = false;
             connectionProgress.setVisible(false);
-
-
         });
     }
 
@@ -782,7 +954,7 @@ public class LoginScreen implements Screen {
                                 game,
                                 username,
                                 GameContext.get().getGameClient()
-                            )  );
+                            ));
                             game.setScreen(GameContext.get().getGameScreen());
                             dispose(); // Clean up login screen
                         } catch (Exception e) {
@@ -824,7 +996,6 @@ public class LoginScreen implements Screen {
                     }
                 }
             });
-
         }
 
         if (registerButton != null) {
@@ -849,7 +1020,7 @@ public class LoginScreen implements Screen {
             });
         }
 
-        // Add enter key listener
+        // Add enter key listener for login
         stage.addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
@@ -869,29 +1040,15 @@ public class LoginScreen implements Screen {
 
     @Override
     public void resize(int width, int height) {
-        // Enforce minimum dimensions
+        // Enforce a minimum dimension
         width = (int) Math.max(width, MIN_WIDTH);
         height = Math.max(height, MIN_HEIGHT);
 
-        GameLogger.info("Resizing login screen to: " + width + "x" + height);
-
         stage.getViewport().update(width, height, true);
 
-        // Recalculate UI dimensions
-        float contentWidth = Math.min(MAX_WIDTH, width * 0.9f);
-
-        // Update main container size
-        if (mainTable != null) {
-            mainTable.setWidth(contentWidth);
-            mainTable.invalidateHierarchy();
-        }
-
-        // Update server list if it exists
-        if (serverListScrollPane != null) {
-            serverListScrollPane.setWidth(contentWidth - 40);
-            serverListScrollPane.invalidateHierarchy();
-        }
-
+        // Let the UI recalc its layout
+        mainTable.invalidateHierarchy();
+        serverListScrollPane.invalidateHierarchy();
     }
 
     private void updateStatusLabel(String status, Color color) {
@@ -1046,19 +1203,16 @@ public class LoginScreen implements Screen {
         }
     }
 
-    // Helper method to show errors in a consistent way
     private void showError(String message) {
         Gdx.app.postRunnable(() -> {
             feedbackLabel.setColor(Color.RED);
             feedbackLabel.setText(message);
-
-            // Add screen shake effect for feedback
+            // small shake effect
             stage.addAction(Actions.sequence(
                 Actions.moveBy(5f, 0f, 0.05f),
                 Actions.moveBy(-10f, 0f, 0.05f),
                 Actions.moveBy(5f, 0f, 0.05f)
             ));
-
             GameLogger.error(message);
         });
     }
@@ -1147,15 +1301,9 @@ public class LoginScreen implements Screen {
     private void saveCredentials(String username, String password) {
         GameLogger.info("Saving credentials for: " + username + ", remember: " + true);
         prefs.putBoolean("rememberMe", true);
-        if (true) {
-            prefs.putString("username", username);
-            prefs.putString("password", password);
-            GameLogger.info("Credentials saved to preferences");
-        } else {
-            prefs.remove("username");
-            prefs.remove("password");
-            GameLogger.info("Credentials removed from preferences");
-        }
+        prefs.putString("username", username);
+        prefs.putString("password", password);
+        GameLogger.info("Credentials saved to preferences");
         prefs.flush();
     }
 
@@ -1177,7 +1325,6 @@ public class LoginScreen implements Screen {
             GameLogger.info("No saved credentials found");
         }
     }
-
 
     private void attemptRegistration() {
         String username = usernameField.getText().trim();
@@ -1208,10 +1355,8 @@ public class LoginScreen implements Screen {
                     GameClientSingleton.resetInstance();
                 }
 
-                GameContext.get().setGameClient(new GameClient(
-                    selectedServer,
-                    false
-                ));
+                GameContext.get().setGameClient(new GameClient(selectedServer));
+                GameContext.get().setMultiplayer(true);
 
                 GameContext.get().getGameClient().setRegistrationResponseListener(response -> {
                     Gdx.app.postRunnable(() -> {
@@ -1331,7 +1476,6 @@ public class LoginScreen implements Screen {
         });
     }
 
-
     private void showErrorMessage(String title, String message) {
         Dialog dialog = new Dialog(title, skin) {
             @Override
@@ -1343,29 +1487,6 @@ public class LoginScreen implements Screen {
         dialog.text(message);
         dialog.button("OK", true);
         dialog.show(stage);
-    }
-
-    private void setupButtonListeners(TextButton loginButton, TextButton registerButton, TextButton backButton) {
-        loginButton.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                attemptLogin();
-            }
-        });
-
-        registerButton.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                attemptRegistration();
-            }
-        });
-
-        backButton.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                fadeToScreen(new ModeSelectionScreen(game));
-            }
-        });
     }
 
     private void handleRegistrationError(Exception e) {
@@ -1471,10 +1592,12 @@ public class LoginScreen implements Screen {
 
     @Override
     public void hide() {
+        // Implement if needed
     }
 
     @Override
     public void show() {
+        // Implement if needed
     }
 
     @Override
@@ -1486,6 +1609,140 @@ public class LoginScreen implements Screen {
     public void resume() {
         // Implement if needed
     }
+
+    private void deleteServer(ServerConnectionConfig server) {
+        if (server.isDefault()) {
+            showError("Cannot delete default server");
+            return;
+        }
+        Dialog confirm = new Dialog("Confirm Delete", skin) {
+            @Override
+            protected void result(Object obj) {
+                if ((Boolean) obj) {
+                    servers.removeValue(server, true);
+                    saveServers();
+                    updateServerList();
+                }
+            }
+        };
+        confirm.text("Are you sure you want to delete this server?");
+        confirm.button("Yes", true);
+        confirm.button("No", false);
+        confirm.show(stage);
+    }
+
+
+    private void showServerDialog(ServerConnectionConfig editServer) {
+        ServerManagementDialog dialog = new ServerManagementDialog(
+            skin,
+            editServer,
+            config -> {
+                if (editServer != null) {
+                    servers.removeValue(editServer, true);
+                }
+                servers.add(config);
+                saveServers();
+                updateServerList();
+            }
+        );
+        dialog.show(stage);
+    }
+
+    private void createUIComponents() {
+        mainTable = new Table();
+        mainTable.setFillParent(true);
+
+        // Buttons
+        TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
+        buttonStyle.up = skin.getDrawable("button");
+        buttonStyle.down = skin.getDrawable("button-pressed");
+        buttonStyle.over = skin.getDrawable("button-over");
+        buttonStyle.font = skin.getFont("default-font");
+
+        loginButton = new TextButton("Login", buttonStyle);
+        registerButton = new TextButton("Register", buttonStyle);
+        backButton = new TextButton("Back", buttonStyle);
+
+        // TextField style
+        TextField.TextFieldStyle textFieldStyle = new TextField.TextFieldStyle(
+            skin.get(TextField.TextFieldStyle.class)
+        );
+        textFieldStyle.font = skin.getFont("default-font");
+        textFieldStyle.fontColor = Color.WHITE;
+        textFieldStyle.background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield"));
+        textFieldStyle.cursor = skin.getDrawable("cursor");
+        textFieldStyle.selection = skin.getDrawable("selection");
+        textFieldStyle.messageFontColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+
+        // Input fields
+        usernameField = new TextField("", textFieldStyle);
+        usernameField.setMessageText("Enter username");
+        passwordField = new TextField("", textFieldStyle);
+        passwordField.setMessageText("Enter password");
+        passwordField.setPasswordMode(true);
+        passwordField.setPasswordCharacter('*');
+
+        // Remember-me
+        rememberMeBox = new CheckBox(" Remember Me", skin);
+
+        // Labels
+        feedbackLabel = new Label("", skin);
+        feedbackLabel.setWrap(true);
+
+        statusLabel = new Label("", skin);
+        statusLabel.setWrap(true);
+
+        // Progress bar
+        ProgressBar.ProgressBarStyle progressStyle = new ProgressBar.ProgressBarStyle();
+        progressStyle.background = skin.getDrawable("progress-bar-bg");
+        progressStyle.knob = skin.getDrawable("progress-bar-knob");
+        progressStyle.knobBefore = skin.getDrawable("progress-bar-bg");
+        connectionProgress = new ProgressBar(0, 1, 0.01f, false, progressStyle);
+        connectionProgress.setVisible(false);
+
+        // Server list + scrollpane
+        serverListScrollPane = createServerList();// Create new buttons for editing/deleting the selected server.
+        editServerButton = new TextButton("Edit Server", buttonStyle);
+        deleteServerButton = new TextButton("Delete Server", buttonStyle);
+
+        editServerButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                if (selectedServer != null) {
+                    showServerDialog(selectedServer);
+                } else {
+                    showError("No server selected.");
+                }
+            }
+        });
+
+        deleteServerButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                if (selectedServer != null) {
+                    deleteServer(selectedServer);
+                } else {
+                    showError("No server selected.");
+                }
+            }
+        });
+
+    }
+
+    private void updateServerSelection(Table selectedEntry) {
+        for (Cell<?> cell : serverListTable.getCells()) {
+            Actor actor = cell.getActor();
+            if (actor instanceof Table) {
+                Table entry = (Table) actor;
+                if (entry == selectedEntry) {
+                    entry.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("textfield-active")));
+                } else {
+                    entry.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("textfield")));
+                }
+            }
+        }
+    }
+
 
     private ServerConnectionConfig getSelectedServerConfig() {
         return selectedServer != null ? selectedServer : ServerConfigManager.getDefaultServerConfig();
@@ -1517,6 +1774,4 @@ public class LoginScreen implements Screen {
             this.iconPath = iconPath;
         }
     }
-
-
 }

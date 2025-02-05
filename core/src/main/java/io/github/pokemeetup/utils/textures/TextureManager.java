@@ -27,10 +27,16 @@
         private static final Map<Pokemon.PokemonType, Color> TYPE_COLORS = new HashMap<>();
         private static final Map<StatusCondition, Color> STATUS_COLORS = new HashMap<>();
         public static TextureAtlas ui;
+
+        public static TextureAtlas getGirl() {
+            return girl;
+        }
+
         public static TextureAtlas pokemonback;
         public static TextureAtlas buildings;
         public static TextureAtlas pokemonfront;
         public static TextureAtlas pokemonicon;
+        public static TextureAtlas girl;
         public static TextureAtlas pokemonoverworld;
         public static TextureAtlas items;
         public static TextureAtlas boy;
@@ -320,7 +326,7 @@
                                       TextureAtlas pokemonback, TextureAtlas pokemonfront, TextureAtlas pokemonicon,
                                       TextureAtlas pokemonoverworld, TextureAtlas items, TextureAtlas boy,
                                       TextureAtlas tiles, TextureAtlas effects, TextureAtlas mountains
-            , TextureAtlas blocks, TextureAtlas characters, TextureAtlas clothing, TextureAtlas hairstyles, TextureAtlas buildings) {
+            , TextureAtlas blocks, TextureAtlas characters, TextureAtlas clothing, TextureAtlas hairstyles, TextureAtlas buildings, TextureAtlas girl) {
 
             TextureManager.effects = effects;
             TextureManager.battlebacks = battlebacks;
@@ -339,6 +345,7 @@
             TextureManager.hairstyles = hairstyles;
             TextureManager.buildings = buildings;
 
+            TextureManager.girl = girl;
             // Create white pixel texture
             Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
             pixmap.setColor(Color.WHITE);
@@ -350,12 +357,6 @@
             loadTypeAndStatusIcons();
             loadCentralTileTextures();
 
-            GameLogger.info("=== Initializing Texture Manager ===");
-            debugAtlas("tiles", tiles);
-            debugAtlas("ui", ui);
-            debugAtlas("boy", boy);
-            debugAtlas("effects", effects);
-            GameLogger.info("=== Texture Manager Initialization Complete ===");
 
         }
 
