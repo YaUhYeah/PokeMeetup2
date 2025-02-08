@@ -1,7 +1,6 @@
 package io.github.pokemeetup.system.gameplay.overworld;
 
-import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Rectangle;
 import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.managers.BiomeTransitionResult;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
@@ -13,13 +12,11 @@ import io.github.pokemeetup.utils.OpenSimplex2;
 import io.github.pokemeetup.utils.textures.TileType;
 
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.stream.IntStream;
 
 public class UnifiedWorldGenerator {
 
     public static final int CHUNK_SIZE = 16; // Must match Chunk.CHUNK_SIZE
-    private static final int BIOME_SAMPLE_RESOLUTION = 4; // How many tiles between biome samples
+    private static final int BIOME_SAMPLE_RESOLUTION = 1; // How many tiles between biome samples
     private static final int TEMP_SIZE = CHUNK_SIZE;  // Used for smoothing arrays
 
     private static final ThreadLocal<int[][]> smoothingTemp = ThreadLocal.withInitial(() -> {
@@ -97,7 +94,7 @@ public class UnifiedWorldGenerator {
         chunk.setDirty(true);
 
         // Generate world objects (e.g., trees, rocks).
-        List<WorldObject> objects = WorldObjectGenerator.generateWorldObjects(chunk, biomeManager, worldSeed);
+        List<WorldObject> objects = WorldObjectGenerator.generateWorldObjects(chunk, worldSeed);
         chunk.setWorldObjects(objects);
     }
 
@@ -109,6 +106,16 @@ public class UnifiedWorldGenerator {
     }
 
     // ─── NESTED HELPER CLASSES FOR ORGANIZATION ──────────────────────────────
+
+    private static boolean collidesWithAny(WorldObject candidate, List<WorldObject> existingObjects) {
+        Rectangle candidateBounds = candidate.getBoundingBox();
+        for (WorldObject other : existingObjects) {
+            if (candidateBounds.overlaps(other.getBoundingBox())) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * Handles sampling of biome data over a chunk.
@@ -142,7 +149,8 @@ public class UnifiedWorldGenerator {
             int size = tiles.length;
             int cacheWidth = biomeCache.length;
             int cacheHeight = biomeCache[0].length;
-            IntStream.range(0, size).parallel().forEach(lx -> {
+            // Use a simple nested loop instead of a parallel stream.
+            for (int lx = 0; lx < size; lx++) {
                 for (int ly = 0; ly < size; ly++) {
                     int cacheX = Math.min(lx / (size / cacheWidth), cacheWidth - 1);
                     int cacheY = Math.min(ly / (size / cacheHeight), cacheHeight - 1);
@@ -151,7 +159,7 @@ public class UnifiedWorldGenerator {
                         (baseX + lx) * tileSize, (baseY + ly) * tileSize, worldSeed, rand);
                     tiles[lx][ly] = tileType;
                 }
-            });
+            }
         }
 
         private static int determineTileTypeForTransition(BiomeTransitionResult transition,
@@ -248,7 +256,7 @@ public class UnifiedWorldGenerator {
             if (r < baseChance) return 0;
             if (r < baseChance + 0.10f) return 1;
             if (r < baseChance + 0.14f) return 2;
-            return 3;
+            return 0;
         }
 
         public static void generateMountainShape(int maxLayers, Random rand,
@@ -595,8 +603,7 @@ public class UnifiedWorldGenerator {
             if (bands[x][y] != fromBand) return false;
             if (!isCliffTile(tiles[x][y])) return false;
             if (!hasAdjacentBand(x, y, toBand, bands)) return false;
-            if (hasNearbyStairs(x, y, tiles, 3)) return false;
-            return true;
+            return !hasNearbyStairs(x, y, tiles, 3);
         }
 
         private static boolean hasAdjacentBand(int x, int y, int targetBand, int[][] bands) {
@@ -728,31 +735,52 @@ public class UnifiedWorldGenerator {
             autoTileSystem.applyAutotiling(chunk, waterMap);
         }
     }
-
-    /**
-     * Handles the placement of world objects (trees, rocks, etc.) based on biome settings.
-     */
     private static class WorldObjectGenerator {
-        public static List<WorldObject> generateWorldObjects(Chunk chunk, BiomeManager biomeManager, long worldSeed) {
+        public static List<WorldObject> generateWorldObjects(Chunk chunk, long worldSeed) {
             List<WorldObject> objects = new ArrayList<>();
+            Random random = new Random(worldSeed + chunk.getChunkX() * 31L + chunk.getChunkY());
             Biome biome = chunk.getBiome();
             List<WorldObject.ObjectType> spawnable = biome.getSpawnableObjects();
-            int size = CHUNK_SIZE;
-            long chunkSeed = generateChunkSeed(worldSeed, chunk.getChunkX(), chunk.getChunkY());
-            Random localRand = new Random(chunkSeed + 1234);
+
+            if (spawnable == null || spawnable.isEmpty()) {
+                return objects;
+            }
+
+            // Global multiplier to reduce overall spawn rates.
+            // Adjust this value as needed.
+            final double GLOBAL_SPAWN_MULTIPLIER = 0.1;
+
             for (WorldObject.ObjectType type : spawnable) {
-                double baseChance = biome.getSpawnChanceForObject(type);
-                for (int lx = 0; lx < size; lx++) {
-                    for (int ly = 0; ly < size; ly++) {
-                        int tileType = chunk.getTileType(lx, ly);
-                        if (!biome.getAllowedTileTypes().contains(tileType)) continue;
-                        if (localRand.nextDouble() < baseChance * 0.095) {
-                            int worldTileX = chunk.getChunkX() * size + lx;
-                            int worldTileY = chunk.getChunkY() * size + ly;
-                            WorldObject obj = new WorldObject(worldTileX, worldTileY, null, type);
-                            obj.ensureTexture();
-                            objects.add(obj);
-                        }
+                // Get the base spawn chance from the biome (loaded from biomes.json)
+                double baseSpawnChance = biome.getSpawnChanceForObject(type);
+                // Apply the global multiplier to reduce the chance
+                double spawnChance = baseSpawnChance * GLOBAL_SPAWN_MULTIPLIER;
+
+                // (Optional) If you want to enforce a minimum chance even if the JSON value is very low:
+                // spawnChance = Math.max(spawnChance, 0.001);
+
+                // Determine the number of attempts based on the chunk size
+                int attempts = (int) (CHUNK_SIZE * CHUNK_SIZE * spawnChance);
+                for (int i = 0; i < attempts; i++) {
+                    int lx = random.nextInt(CHUNK_SIZE);
+                    int ly = random.nextInt(CHUNK_SIZE);
+
+                    // Ensure the tile is valid for object placement (check allowed tile types, passability, etc.)
+                    int tileType = chunk.getTileType(lx, ly);
+                    if (!biome.getAllowedTileTypes().contains(tileType)) continue;
+                    if (!chunk.isPassable(lx, ly)) continue;
+
+                    // Convert local chunk coordinates to world coordinates
+                    int worldTileX = chunk.getChunkX() * CHUNK_SIZE + lx;
+                    int worldTileY = chunk.getChunkY() * CHUNK_SIZE + ly;
+
+                    // Create the world object candidate
+                    WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, type);
+                    candidate.ensureTexture();
+
+                    // Only add the candidate if it does not collide with an already spawned object
+                    if (!collidesWithAny(candidate, objects)) {
+                        objects.add(candidate);
                     }
                 }
             }
@@ -760,10 +788,11 @@ public class UnifiedWorldGenerator {
         }
     }
 
-    // ─── HELPER CLASS FOR POINTS (e.g. mountain peaks) ─────────────────────────────
+        // ─── HELPER CLASS FOR POINTS (e.g. mountain peaks) ─────────────────────────────
 
     private static class Point {
         int x, y;
+
         Point(int x, int y) {
             this.x = x;
             this.y = y;

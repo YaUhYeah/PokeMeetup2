@@ -64,7 +64,7 @@ public class Lwjgl3Launcher {
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
         Lwjgl3ApplicationConfiguration configuration = new Lwjgl3ApplicationConfiguration();
-        configuration.setTitle("PokeMeetup");
+        configuration.setTitle("Capsule Story");
         configuration.useVsync(true);
 
         // Set the foreground FPS to the monitor's refresh rate + 1 for smoother rendering

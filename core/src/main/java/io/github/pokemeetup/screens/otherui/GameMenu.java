@@ -1,5 +1,6 @@
 package io.github.pokemeetup.screens.otherui;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
@@ -21,6 +22,7 @@ import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
+import io.github.pokemeetup.system.keybinds.KeyBindsDialog;
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -128,10 +130,6 @@ public class GameMenu extends Actor {
                         try {
                             // In multiplayer, simply send the player state to the server.
                             GameClient client = GameContext.get().getGameClient();
-                            Player player = GameContext.get().getPlayer();
-                            if (client != null && player != null) {
-                                client.saveState(player.getPlayerData());
-                            }
                             // Dispose the client
                             if (client != null) {
                                 client.dispose();
@@ -372,6 +370,18 @@ public class GameMenu extends Actor {
         soundEnabled.setChecked(AudioManager.getInstance().isSoundEnabled());
 
         setupAudioListeners();
+        if (Gdx.app.getType() == Application.ApplicationType.Desktop) {
+            TextButton keyBindsButton = new TextButton("Key Bindings", skin);
+            keyBindsButton.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    KeyBindsDialog dialog = new KeyBindsDialog(skin);
+                    dialog.show(stage);
+                }
+            });
+
+            optionsTable.add(keyBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(20).row();
+        }
         setupSaveButton(optionsTable); // Pass optionsTable to add the Save button
         setupCancelButton(optionsTable); // Optionally add a Cancel button
 
@@ -462,7 +472,7 @@ public class GameMenu extends Actor {
                 hide();
             }
         };
-        dialog.text("Audio settings have been saved.");
+        dialog.text("Settings have been saved.");
         dialog.button("OK");
         dialog.show(stage);
     }

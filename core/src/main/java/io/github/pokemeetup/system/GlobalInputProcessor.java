@@ -14,7 +14,6 @@ public class GlobalInputProcessor extends InputAdapter {
     @Override
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
-        GameLogger.info("GlobalInputProcessor keyDown: keycode=" + keycode + ", currentState=" + currentState);
 
         // Handle ESCAPE key to toggle game menu
         if (keycode == Input.Keys.ESCAPE) {

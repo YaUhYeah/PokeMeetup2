@@ -27,6 +27,7 @@ import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -924,31 +925,43 @@ public class WorldSelectionScreen implements Screen {
         }
         return flipped;
     }
-
-    /**
-     * Creates a temporary local World to generate the thumbnail image.
-     */
     private World initializeWorldDirectly(WorldData worldData) throws IOException {
         if (worldData == null) {
             throw new IOException("WorldData cannot be null");
         }
-        long seed = worldData.getConfig() != null ? worldData.getConfig().getSeed() : System.currentTimeMillis();
+        long seed = (worldData.getConfig() != null)
+            ? worldData.getConfig().getSeed()
+            : System.currentTimeMillis();
         BiomeManager biomeManager = new BiomeManager(seed);
         World world = new World(worldData.getName(), seed, biomeManager);
-        world.loadChunksAroundPositionSynchronously(
-            new Vector2(World.DEFAULT_X_POSITION, World.DEFAULT_Y_POSITION),
-            INITIAL_LOAD_RADIUS
-        );
-        // minimal dummy player
-        Player tempPlayer = new Player(
-            World.DEFAULT_X_POSITION,
-            World.DEFAULT_Y_POSITION,
-            world,
-            "ThumbnailGen"
-        );
+        // Create and set a dummy player first.
+        Player tempPlayer = new Player(World.DEFAULT_X_POSITION, World.DEFAULT_Y_POSITION, world, "ThumbnailGen");
         world.setPlayer(tempPlayer);
+        // **NEW: Set the temporary world into the GameContext**
+        GameContext.get().setWorld(world);
+
+        // Synchronously load/generate chunks around the player's tile position.
+        int radius = INITIAL_LOAD_RADIUS;
+        int playerTileX = tempPlayer.getTileX();
+        int playerTileY = tempPlayer.getTileY();
+        int chunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
+        int chunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
+        GameLogger.info("Synchronously loading chunks around (" + playerTileX + "," + playerTileY + ")");
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                Vector2 chunkPos = new Vector2(chunkX + dx, chunkY + dy);
+                // Directly generate (or load from disk) the chunk
+                Chunk chunk = world.loadOrGenerateChunk(chunkPos);
+                if (chunk != null) {
+                    world.chunks.put(chunkPos, chunk);
+                } else {
+                    GameLogger.error("Failed to load/generate chunk at " + chunkPos);
+                }
+            }
+        }
         return world;
     }
+
 
     private void showError(String message) {
         Dialog dialog = new Dialog("Error", skin);

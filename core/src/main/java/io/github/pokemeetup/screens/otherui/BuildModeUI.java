@@ -717,7 +717,7 @@ public class BuildModeUI extends Group {
                 }
 
                 boolean placed = GameContext.get().getWorld().getBlockManager()
-                    .placeBlockFromPlayer(blockType, GameContext.get().getPlayer(), GameContext.get().getWorld());
+                    .placeBlockFromPlayer(blockType);
 
                 if (placed) {
                     if (inventoryItem.getCount() > 1) {

@@ -1,48 +1,17 @@
-// Move android block before project block
+// Apply the Android plugin at the top
+apply plugin: "com.android.application"
 
-
-// Project configuration
-project(":android") {
-  apply plugin: "com.android.application"
-
-  configurations {
-    configureEach {
-      exclude group: 'javax.activation', module: 'activation'
-      exclude group: 'org.mongodb', module: 'bson-record-codec'
-    }
-    natives
-  }
-}
-
-dependencies {
-  implementation project(":core")
-
-  implementation 'androidx.core:core-ktx:1.7.0'
-  // LibGDX dependencies
-  implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
-  implementation "com.badlogicgames.gdx:gdx:$gdxVersion"
-
-  // Native libraries
-  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
-  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
-  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
-  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
-
-  // Android support
-  implementation 'androidx.multidex:multidex:2.0.1'
-  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.2'
-}
-
+// Android configuration MUST come first so that tasks are registered correctly
 android {
   namespace 'io.github.pokemeetup'
-  compileSdkVersion 33
+  compileSdkVersion 34
 
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
-    // Enable desugaring
-    coreLibraryDesugaringEnabled true
   }
+
+
   packagingOptions {
     exclude 'META-INF/robovm/ios/robovm.xml'
     exclude 'META-INF/DEPENDENCIES.txt'
@@ -67,6 +36,8 @@ android {
     pickFirst 'META-INF/gdx.gwt.xml'
   }
 
+
+
   defaultConfig {
     applicationId "io.github.pokemeetup"
     minSdkVersion 33
@@ -82,21 +53,49 @@ android {
   sourceSets {
     main {
       manifest.srcFile 'AndroidManifest.xml'
-      java.srcDirs = ['src']  // Changed from src/main/java
+      java.srcDirs = ['src']       // Changed from src/main/java
       aidl.srcDirs = ['src']
       renderscript.srcDirs = ['src']
       res.srcDirs = ['res']
-      assets.srcDirs = ['../assets']  // Point to root assets folder
+      assets.srcDirs = ['../assets']  // Points to the root assets folder
       jniLibs.srcDirs = ['libs']
     }
   }
+
   aaptOptions {
     ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
-    noCompress "json"  // Add this line to prevent json compression
+    noCompress "json"
   }
 }
 
+// Define configurations at the top level (outside any project block)
+configurations {
+  configureEach {
+    exclude group: 'javax.activation', module: 'activation'
+    exclude group: 'org.mongodb', module: 'bson-record-codec'
+  }
+  natives
+}
 
+dependencies {
+  implementation project(":core")
+
+  implementation 'androidx.core:core-ktx:1.7.0'
+  // LibGDX dependencies
+  implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+  implementation "com.badlogicgames.gdx:gdx:$gdxVersion"
+
+  // Native libraries
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
+
+  // Android support
+  implementation 'androidx.multidex:multidex:2.0.1'
+}
+
+// Tasks to copy native libraries
 tasks.register('copyAndroidNatives') {
   doFirst {
     file("libs/armeabi-v7a/").mkdirs()

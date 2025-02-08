@@ -1,12 +1,18 @@
-// A list of which subprojects to load as part of the same larger project.
-// You can remove Strings from the list and reload the Gradle project
-// if you want to temporarily disable a subproject.
+pluginManagement {
+  repositories {
+    maven { url "https://plugins.gradle.org/m2/" }
+    gradlePluginPortal()
+  }
+}
+
+rootProject.name = 'PokeMeetup'
+include ':core', ':ServerCore', ':lwjgl3'
+
 include 'lwjgl3', 'core'
 include 'android'
 include 'android', 'core'
 
 include 'android', 'core'
-rootProject.name = "PokeMeetup"
 include 'TexturePacking'
 include 'ServerCore'
 

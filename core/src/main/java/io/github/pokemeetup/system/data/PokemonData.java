@@ -50,7 +50,7 @@ public class PokemonData {
     private float height;
     private List<LearnableMove> learnableMoves;
     private List<String> tmMoves;
-    private HashMap<UUID, WildPokemonData> wildPokemon;
+    private final HashMap<UUID, WildPokemonData> wildPokemon;
     public PokemonData() {
         this.uuid = UUID.randomUUID();
         this.learnableMoves = new ArrayList<>();

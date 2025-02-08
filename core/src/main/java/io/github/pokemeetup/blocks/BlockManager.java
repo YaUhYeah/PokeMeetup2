@@ -14,40 +14,38 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.BlockTextureManager;
 
 public class BlockManager {
-    private final World world;
     private boolean initialized = false;
 
 
-    public BlockManager(World world) {
-        this.world = world;
+    public BlockManager() {
         GameLogger.info("Initialized BlockManager");
     }
 
-    public boolean placeBlockFromPlayer(PlaceableBlock.BlockType type, Player player, World world) {
-        if (type == null || player == null || world == null) {
+    public boolean placeBlockFromPlayer(PlaceableBlock.BlockType type) {
+        if (type == null || GameContext.get().getPlayer() == null || GameContext.get().getWorld() == null) {
             GameLogger.error("Invalid parameters for player block placement");
             return false;
         }
 
-        Vector2 targetPos = calculateTargetPosition(player);
+        Vector2 targetPos = calculateTargetPosition(GameContext.get().getPlayer());
         int targetX = (int) targetPos.x;
         int targetY = (int) targetPos.y;
 
-        GameLogger.info("Checking placement - Player(" + player.getTileX() + "," + player.getTileY() +
-            ") Target(" + targetX + "," + targetY + ") Dir:" + player.getDirection());
+        GameLogger.info("Checking placement - Player(" + GameContext.get().getPlayer().getTileX() + "," + GameContext.get().getPlayer().getTileY() +
+            ") Target(" + targetX + "," + targetY + ") Dir:" + GameContext.get().getPlayer().getDirection());
 
-        if (!isValidPlacement(targetX, targetY, world)) {
+        if (!isValidPlacement(targetX, targetY, GameContext.get().getWorld())) {
             return false;
         }
 
-        if (world.getGameClient() != null && GameContext.get().isMultiplayer()) {
+        if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
             NetworkProtocol.BlockPlacement placement = new NetworkProtocol.BlockPlacement();
-            placement.username = player.getUsername();
+            placement.username = GameContext.get().getPlayer().getUsername();
             placement.blockTypeId = type.id;
             placement.tileX = targetX;
             placement.tileY = targetY;
             placement.action = NetworkProtocol.BlockAction.PLACE;
-            world.getGameClient().sendBlockPlacement(placement);
+            GameContext.get().getGameClient().sendBlockPlacement(placement);
         }
         return placeBlock(type, targetX, targetY);
     }
@@ -76,7 +74,7 @@ public class BlockManager {
 
 
     public PlaceableBlock getBlockAt(int worldX, int worldY) {
-        Chunk chunk = world.getChunkAtPosition(worldX, worldY);
+        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(worldX, worldY);
         if (chunk == null) return null;
         Vector2 blockPos = new Vector2(worldX, worldY);
         return chunk.getBlock(blockPos);
@@ -99,10 +97,10 @@ public class BlockManager {
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
 
         // Get or load the chunk
-        Chunk chunk = world.getChunkAtPosition(tileX, tileY);
+        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(tileX, tileY);
         if (chunk == null) {
-            chunk = world.loadOrGenerateChunk(chunkPos);
-            world.getChunks().put(chunkPos, chunk);
+            chunk = GameContext.get().getWorld().loadOrGenerateChunk(chunkPos);
+            GameContext.get().getWorld().getChunks().put(chunkPos, chunk);
         }
 
         // Check if there's already a block at this position
@@ -134,7 +132,7 @@ public class BlockManager {
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
 
         // Get the chunk
-        Chunk chunk = world.getChunkAtPosition(tileX, tileY);
+        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(tileX, tileY);
         if (chunk == null) {
             GameLogger.info("Chunk not loaded at position: " + chunkPos);
             return;
@@ -166,7 +164,7 @@ public class BlockManager {
     }
 
     public void render(SpriteBatch batch, double worldTimeInMinutes) {
-        for (Chunk chunk : world.getChunks().values()) {
+        for (Chunk chunk : GameContext.get().getWorld().getChunks().values()) {
             for (PlaceableBlock block : chunk.getBlocks().values()) {
                 TextureRegion currentFrame = BlockTextureManager.getBlockFrame(
                     block, (float) worldTimeInMinutes
@@ -184,16 +182,16 @@ public class BlockManager {
 
                     // Get light level for this block's position
                     Vector2 tilePos = block.getPosition();
-                    Float lightLevel = world.getLightLevelAtTile(tilePos);
+                    Float lightLevel = GameContext.get().getWorld().getLightLevelAtTile(tilePos);
 
                     // Apply light level if it exists
                     if (lightLevel != null && lightLevel > 0) {
                         Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
-                        Color baseColor = world.getCurrentWorldColor().cpy();
+                        Color baseColor = GameContext.get().getWorld().getCurrentWorldColor().cpy();
                         baseColor.lerp(lightColor, lightLevel * 0.7f);
                         batch.setColor(baseColor);
                     } else {
-                        batch.setColor(world.getCurrentWorldColor());
+                        batch.setColor(GameContext.get().getWorld().getCurrentWorldColor());
                     }
 
                     // Handle flipped rendering
@@ -218,12 +216,6 @@ public class BlockManager {
                 }
             }
         }
-    }
-
-    public String getChunkKey(int tileX, int tileY) {
-        int chunkX = tileX / World.CHUNK_SIZE;
-        int chunkY = tileY / World.CHUNK_SIZE;
-        return chunkX + "," + chunkY;
     }
 
 

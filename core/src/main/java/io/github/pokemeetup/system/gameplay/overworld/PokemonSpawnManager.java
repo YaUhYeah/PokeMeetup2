@@ -87,7 +87,6 @@ public class PokemonSpawnManager {
 
             // Validate spawn position
             if (isValidSpawnPosition(spawnPixelX, spawnPixelY)) {
-                GameLogger.error("Valid spawn position found, spawning Pokemon");
                 spawnPokemon(spawnPixelX, spawnPixelY, chunkPos);
                 break;
             } else {
@@ -148,29 +147,19 @@ public class PokemonSpawnManager {
         List<WildPokemon> inRange = new ArrayList<>();
         float rangeSquared = rangePixels * rangePixels;
 
-        // Get relevant chunks
-        int chunkRadius = (int)Math.ceil(rangePixels / (World.CHUNK_SIZE * World.TILE_SIZE)) + 1;
-        Vector2 centerChunk = getChunkPosition(centerPixelX, centerPixelY);
+        // Iterate through all Pokémon in the global pokemonById map
+        for (WildPokemon pokemon : pokemonById.values()) {
+            float dx = pokemon.getX() - centerPixelX;
+            float dy = pokemon.getY() - centerPixelY;
 
-        for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
-            for (int dy = -chunkRadius; dy <= chunkRadius; dy++) {
-                Vector2 checkChunk = new Vector2(centerChunk.x + dx, centerChunk.y + dy);
-                List<WildPokemon> pokemonInChunk = pokemonByChunk.get(checkChunk);
-
-                if (pokemonInChunk != null) {
-                    for (WildPokemon pokemon : pokemonInChunk) {
-                        float dx2 = pokemon.getX() - centerPixelX;
-                        float dy2 = pokemon.getY() - centerPixelY;
-                        if (dx2 * dx2 + dy2 * dy2 <= rangeSquared) {
-                            inRange.add(pokemon);
-                        }
-                    }
-                }
+            if (dx * dx + dy * dy <= rangeSquared) {
+                inRange.add(pokemon);
             }
         }
 
         return inRange;
     }
+
 
     private void spawnPokemon(float pixelX, float pixelY, Vector2 chunkPos) {
         try {
@@ -218,13 +207,13 @@ public class PokemonSpawnManager {
 
     public void update(float delta, Vector2 playerPosition) {
         spawnTimer += delta;
-        if (spawnTimer >= SPAWN_CHECK_INTERVAL) {
-            spawnTimer = 0;
-            checkSpawns(playerPosition);
-            removeExpiredPokemon();
+        if (!GameContext.get().isMultiplayer()) {
+            if (spawnTimer >= SPAWN_CHECK_INTERVAL) {
+                spawnTimer = 0;
+                checkSpawns(playerPosition);
+                removeExpiredPokemon();
+            }
         }
-
-        // Update existing Pokemon
         for (WildPokemon pokemon : pokemonById.values()) {
             try {
                 pokemon.update(delta, GameContext.get().getWorld());
@@ -299,38 +288,6 @@ public class PokemonSpawnManager {
         );
     }
 
-    private void updateNetworkedPokemon(WildPokemon pokemon, NetworkSyncData syncData, float delta) {
-        // Simple linear interpolation to target position
-        if (syncData.isMoving && syncData.targetPosition != null) {
-            Vector2 currentPos = new Vector2(pokemon.getX(), pokemon.getY());
-            Vector2 targetPos = syncData.targetPosition;
-
-            // Calculate interpolation
-            float interpolationSpeed = 5f; // Adjust as needed
-            float newX = MathUtils.lerp(currentPos.x, targetPos.x, delta * interpolationSpeed);
-            float newY = MathUtils.lerp(currentPos.y, targetPos.y, delta * interpolationSpeed);
-
-            // Update position
-            pokemon.setX(newX);
-            pokemon.setY(newY);
-            pokemon.updateBoundingBox();
-        }
-
-        // Update animation state
-        pokemon.setMoving(syncData.isMoving);
-        pokemon.setDirection(syncData.direction);
-    }
-
-    private void sendPokemonUpdate(WildPokemon pokemon) {
-        NetworkProtocol.PokemonUpdate update = new NetworkProtocol.PokemonUpdate();
-        update.uuid = pokemon.getUuid();
-        update.x = pokemon.getX();
-        update.y = pokemon.getY();
-        update.direction = pokemon.getDirection();
-        update.isMoving = pokemon.isMoving();
-
-        GameContext.get().getGameClient().sendPokemonUpdate(update);
-    }
 
     private String selectPokemonForBiome(Biome biome) {
         GameLogger.info("Selecting Pokemon for biome: " + biome.getType());
@@ -484,91 +441,6 @@ public class PokemonSpawnManager {
         }
     }
 
-    // Add network update methods
-    public void handleNetworkUpdate(NetworkProtocol.PokemonUpdate update) {
-        WildPokemon pokemon = pokemonById.get(update.uuid);
-        if (pokemon != null) {
-            // Update Pokemon state from network data
-            pokemon.setDirection(update.direction);
-            pokemon.setMoving(update.isMoving);
-
-            // Update sync data
-            NetworkSyncData syncData = syncedPokemon.computeIfAbsent(
-                update.uuid, k -> new NetworkSyncData());
-            syncData.lastUpdateTime = System.currentTimeMillis();
-            syncData.targetPosition = new Vector2(update.x, update.y);
-            syncData.direction = update.direction;
-            syncData.isMoving = update.isMoving;
-
-            GameLogger.info("Received network update for Pokemon: " + pokemon.getName());
-        }
-    }
-
-    public void handleNetworkDespawn(UUID pokemonId) {
-        WildPokemon pokemon = pokemonById.remove(pokemonId);
-        if (pokemon != null) {
-            Vector2 chunkPos = getChunkPosition(pokemon.getX(), pokemon.getY());
-            List<WildPokemon> pokemonList = pokemonByChunk.get(chunkPos);
-            if (pokemonList != null) {
-                pokemonList.remove(pokemon);
-                GameLogger.info("Removed network-despawned Pokemon: " + pokemon.getName());
-            }
-        }
-    }
-
-    public void despawnPokemon(UUID pokemonId) {
-        WildPokemon pokemon = pokemonById.get(pokemonId);
-        if (pokemon != null && !pokemon.isDespawning()) {
-            pokemon.startDespawnAnimation();
-
-            // Send despawn update in multiplayer immediately
-            // so other clients can show the animation too
-            if (!GameContext.get().getGameClient().isSinglePlayer()) {
-                GameContext.get().getGameClient().sendPokemonDespawn(pokemonId);
-            }
-
-            // The pokemon will be removed from collections when animation completes
-            // via the normal update cycle checking isExpired()
-        }
-    }
-
-    private WildPokemon createWildPokemon(Vector2 chunkPos, Biome biome) {
-        int attempts = 10;
-        while (attempts > 0) {
-            int localX = random.nextInt(Chunk.CHUNK_SIZE);
-            int localY = random.nextInt(Chunk.CHUNK_SIZE);
-
-            int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE) + localX;
-            int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE) + localY;
-
-            if (GameContext.get().getWorld().isPassable(worldTileX, worldTileY)) {
-                // Select Pokemon based on biome
-                String pokemonName = selectPokemonForBiome(biome);
-                if (pokemonName != null) {
-                    TextureRegion overworldSprite = atlas.findRegion(pokemonName.toUpperCase() + "_overworld");
-                    if (overworldSprite != null) {
-                        float pixelX = worldTileX * World.TILE_SIZE;
-                        float pixelY = worldTileY * World.TILE_SIZE;
-
-                        // Snap to grid
-                        float snappedX = Math.round(pixelX / World.TILE_SIZE) * World.TILE_SIZE;
-                        float snappedY = Math.round(pixelY / World.TILE_SIZE) * World.TILE_SIZE;
-
-                        return new WildPokemon(pokemonName, random.nextInt(22) + 1, (int) snappedX, (int) snappedY, overworldSprite);
-                    }
-                }
-            }
-            attempts--;
-        }
-        return null;
-    }
-
-    private boolean isSpecialSpawnTime(float hourOfDay) {
-        // Dawn (5-7 AM) and Dusk (6-8 PM) have special spawns
-        return (hourOfDay >= 5 && hourOfDay <= 7) ||
-            (hourOfDay >= 18 && hourOfDay <= 20);
-    }
-
     private String getDefaultPokemon(TimeOfDay timeOfDay) {
         return timeOfDay == TimeOfDay.DAY ? "Rattata" : "Hoothoot";
     }
@@ -579,43 +451,26 @@ public class PokemonSpawnManager {
     }
 
 
-
-    private void sendSpawnUpdate(WildPokemon pokemon) {
-        NetworkProtocol.WildPokemonSpawn spawnUpdate = new NetworkProtocol.WildPokemonSpawn();
-        spawnUpdate.uuid = pokemon.getUuid();
-        spawnUpdate.x = pokemon.getX();
-        spawnUpdate.y = pokemon.getY();
-        spawnUpdate.timestamp = System.currentTimeMillis();
-        GameContext.get().getGameClient().sendPokemonSpawn(spawnUpdate);
-    }
-
-    private void sendDespawnUpdate(UUID pokemonId) {
-        NetworkProtocol.PokemonDespawn despawnUpdate = new NetworkProtocol.PokemonDespawn();
-        despawnUpdate.uuid = pokemonId;
-        GameContext.get().getGameClient().sendPokemonDespawn(despawnUpdate.uuid);
-    }
-
-    public Map<UUID, WildPokemon> getPokemonById() {
-        return pokemonById;
-    }
-
-    private void updatePokemonMovements(float delta) {
-        for (List<WildPokemon> pokemonList : pokemonByChunk.values()) {
-            for (WildPokemon pokemon : pokemonList) {
-                pokemon.update(delta);
-            }
-        }
-    }
     public void addPokemonToChunk(WildPokemon pokemon, Vector2 chunkPos) {
         try {
+            // Initialize the list for the chunk if it doesn't already exist
             List<WildPokemon> pokemonList = pokemonByChunk.computeIfAbsent(chunkPos, k -> new ArrayList<>());
-            pokemonList.add(pokemon);
-            pokemonById.put(pokemon.getUuid(), pokemon);
+
+            // Ensure the Pokémon is not already added to the chunk
+            if (!pokemonList.contains(pokemon)) {
+                pokemonList.add(pokemon);  // Add the Pokémon to the chunk
+                pokemonById.put(pokemon.getUuid(), pokemon);  // Add to the global list
+                GameLogger.info("Added Pokémon " + pokemon.getName() + " to chunk at " + chunkPos);
+            } else {
+                GameLogger.info("Pokémon " + pokemon.getName() + " is already in chunk " + chunkPos);
+            }
         } catch (Exception e) {
-            GameLogger.error("Error adding Pokemon to chunk: " + e.getMessage());
+            GameLogger.error("Error adding Pokémon to chunk at " + chunkPos + ": " + e.getMessage());
+            e.printStackTrace();
         }
     }
-    private enum TimeOfDay {
+
+    public enum TimeOfDay {
         DAY,
         NIGHT
     }

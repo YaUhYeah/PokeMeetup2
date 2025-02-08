@@ -62,7 +62,7 @@ public class ServerLauncher {
             // Initialize ServerGameContext first!
             ServerWorldObjectManager worldObjectManager = new ServerWorldObjectManager();
             worldObjectManager.initializeWorld(MULTIPLAYER_WORLD_NAME);
-            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager(), new ServerBlockManager());
+            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager(), new ServerBlockManager(), null);
             logger.info("Server game context initialized");
 
             // In your ServerLauncher (or similar startup routine):
@@ -80,6 +80,7 @@ public class ServerLauncher {
             // Start game server
             GameServer server = new GameServer(config);
             server.start();
+            ServerGameContext.get().setGameServer(server);
             logger.info("Game server started successfully");
 
             // Add shutdown hook
@@ -135,8 +136,6 @@ public class ServerLauncher {
                                 obj.getType(), obj.getTileX(), obj.getTileY()));
                         }
                     }
-                } else {
-                    logger.warning(String.format("No objects found in chunk (%d, %d)", x, y));
                 }
             }
         }

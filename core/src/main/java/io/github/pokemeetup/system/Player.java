@@ -35,29 +35,30 @@ import java.util.*;
 import static io.github.pokemeetup.system.gameplay.overworld.World.INTERACTION_RANGE;
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
-public class Player implements Positionable  {
-    private float walkStepDuration = 0.3f; // Duration (in seconds) to move one tile when walking
-    private float runStepDuration  = 0.2f;
+public class Player implements Positionable {
+    // Constants
     public static final int FRAME_WIDTH = 32;
     public static final int FRAME_HEIGHT = 48;
     private static final float COLLISION_BOX_WIDTH_RATIO = 0.6f;
     private static final float COLLISION_BOX_HEIGHT_RATIO = 0.4f;
-    private static final float TILE_TRANSITION_TIME = 0.2f;
-    public static final float RUN_SPEED_MULTIPLIER = 1.5f;
     private static final float COLLISION_BUFFER = 4f;
     private static final long VALIDATION_INTERVAL = 1000;
     private static final float PICKUP_RANGE = 48f;
     private static final float INPUT_BUFFER_TIME = 0.1f;
+    private static final float BUFFER_WINDOW = 0.15f;
+    // Synchronization locks and layout
     private final Object movementLock = new Object();
     private final Object resourceLock = new Object();
     private final Object fontLock = new Object();
     private final Object inventoryLock = new Object();
     private final GlyphLayout layout = new GlyphLayout();
+    // Player state variables
     public volatile boolean initialized = false;
+    private float walkStepDuration = PlayerAnimations.SLOW_WALK_ANIMATION_DURATION;
+    private float runStepDuration = PlayerAnimations.SLOW_RUN_ANIMATION_DURATION;
     private PlayerAnimations animations;
     private String username;
     private World world;
-    private float inputBufferTimer = 0f;
     private String bufferedDirection = null;
     private Vector2 position = new Vector2();
     private Rectangle collisionBox;
@@ -85,12 +86,15 @@ public class Player implements Positionable  {
     private boolean resourcesInitialized = false;
     private long lastValidationTime = 0;
     private volatile boolean disposed = false;
-    private float diagonalMoveTimer = 0f;
     private volatile boolean fontInitialized = false;
     private Skin skin;
     private Stage stage;
     private HotbarSystem hotbarSystem;
-
+    private float bufferedTime = 0f;
+    private float animationTime = 0f;
+    private float animationSpeedMultiplier = 0.75f;
+    private boolean inputHeld = false;
+    // Constructors
     public Player(int startTileX, int startTileY, World world) {
         this(startTileX, startTileY, world, "Player");
         this.playerData = new PlayerData("Player");
@@ -101,7 +105,6 @@ public class Player implements Positionable  {
     public Player(String username, World world) {
         this(0, 0, world, username);
         GameLogger.info("Creating new player: " + username);
-        // Initialize animations using the current character type
         this.animations = new PlayerAnimations(getCharacterType());
         this.world = world;
         this.position = new Vector2(0, 0);
@@ -124,8 +127,6 @@ public class Player implements Positionable  {
 
         initFont();
         initializeBuildInventory();
-
-        // Post a runnable to initialize graphics on the GL thread.
         Gdx.app.postRunnable(this::initializeGLResources);
         GameLogger.info("Player initialized: " + username + " at (0,0)");
     }
@@ -136,12 +137,9 @@ public class Player implements Positionable  {
 
         float boxWidth = FRAME_WIDTH * COLLISION_BOX_WIDTH_RATIO;
         float boxHeight = FRAME_HEIGHT * COLLISION_BOX_HEIGHT_RATIO;
-
         this.collisionBox = new Rectangle(0, 0, boxWidth, boxHeight);
         this.nextPositionBox = new Rectangle(0, 0, boxWidth, boxHeight);
-
         initializePosition(startTileX, startTileY);
-
         this.playerData = new PlayerData("Player");
         initFont();
         this.direction = "down";
@@ -153,21 +151,18 @@ public class Player implements Positionable  {
         initializeFromSavedState();
         this.renderPosition = new Vector2(x, y);
         this.lastPosition = new Vector2(x, y);
-        // Initialize GL resources (which now includes animations based on character type)
         Gdx.app.postRunnable(this::initializeGLResources);
     }
 
-    // New helper method to retrieve the character type from PlayerData.
+    // Utility methods
     public String getCharacterType() {
         return (playerData != null && playerData.getCharacterType() != null) ? playerData.getCharacterType() : "boy";
     }
 
-    // Setter for character type so that other code (or UI) can change it.
     public void setCharacterType(String characterType) {
         if (playerData != null) {
             playerData.setCharacterType(characterType);
         }
-        // Optionally, recreate animations with the new type:
         if (animations != null) {
             animations.dispose();
         }
@@ -175,8 +170,30 @@ public class Player implements Positionable  {
     }
 
     public HotbarSystem getHotbarSystem() {
+        if (hotbarSystem == null) {
+            Stage stage = GameContext.get().getUiStage();
+            if (stage == null) {
+                GameLogger.error("UI Stage is null in getHotbarSystem()!");
+                return null;
+            }
+            // Use the skin stored in GameContext if available.
+            Skin hotbarSkin = GameContext.get().getSkin() != null ? GameContext.get().getSkin() : skin;
+            hotbarSystem = new HotbarSystem(stage, hotbarSkin);
+            GameLogger.info("HotbarSystem successfully initialized synchronously.");
+        }
         return hotbarSystem;
     }
+
+    public void setHotbarSystem(HotbarSystem newHotbarSystem) {
+        if (this.hotbarSystem != null) {
+            // Remove the old hotbar actor so that it no longer receives input or is drawn.
+            this.hotbarSystem.getHotbarTable().remove();
+        }
+        this.hotbarSystem = newHotbarSystem;
+    }
+
+
+
 
     public PlayerAnimations getAnimations() {
         return animations;
@@ -189,7 +206,6 @@ public class Player implements Positionable  {
             this.font = new BitmapFont(Gdx.files.internal("Skins/default.fnt"));
             font.getData().setScale(0.8f);
             font.setColor(Color.WHITE);
-            // Create animations using the current character type
             this.animations = new PlayerAnimations(getCharacterType());
             this.initialized = true;
             fontInitialized = true;
@@ -215,13 +231,19 @@ public class Player implements Positionable  {
         GameLogger.info("Player initialized in world: " + username);
     }
 
+    public void setBufferedDirection(String direction) {
+        synchronized (movementLock) {
+            bufferedDirection = direction;
+            bufferedTime = 0f;
+        }
+    }
+
     public void updateFromPlayerData(PlayerData data) {
         if (data == null) return;
         this.playerData = data;
-        // 1) Reset / Overwrite Pokemon Party
         this.pokemonParty = new PokemonParty();
         if (data.getPartyPokemon() != null) {
-            for (PokemonData pData : data.getPartyPokemon()) {
+            for (var pData : data.getPartyPokemon()) {
                 if (pData != null) {
                     Pokemon p = pData.toPokemon();
                     if (p != null) {
@@ -230,7 +252,6 @@ public class Player implements Positionable  {
                 }
             }
         }
-        // 2) Reset / Overwrite Inventory
         this.inventory = new Inventory();
         if (data.getInventoryItems() != null) {
             for (ItemData item : data.getInventoryItems()) {
@@ -239,24 +260,18 @@ public class Player implements Positionable  {
                 }
             }
         }
-        // 3) Apply position, direction, etc.
         this.setX(data.getX());
         this.setY(data.getY());
         this.setDirection(data.getDirection());
         this.setMoving(data.isMoving());
         this.setRunning(data.isWantsToRun());
-        // Also update the character type!
         this.setCharacterType(data.getCharacterType());
-
-        GameLogger.info("Updated player '" + username + "' from PlayerData. Items: "
-            + this.inventory.getAllItems().size()
-            + ", Party Pokemon: " + this.pokemonParty.getSize());
+        GameLogger.info("Updated player '" + username + "' from PlayerData.");
     }
 
     private void initializeBuildInventory() {
-        // Add default blocks to build inventory
         for (PlaceableBlock.BlockType blockType : PlaceableBlock.BlockType.values()) {
-            ItemData blockItem = new ItemData(blockType.getId(), 64); // Give a stack of blocks
+            ItemData blockItem = new ItemData(blockType.getId(), 64);
             buildInventory.addItem(blockItem);
         }
     }
@@ -334,6 +349,9 @@ public class Player implements Positionable  {
 
     public void setMoving(boolean moving) {
         isMoving = moving;
+        if (!moving) {
+            stateTime = 0f;
+        }
     }
 
     public boolean isRunning() {
@@ -369,16 +387,14 @@ public class Player implements Positionable  {
                 return;
             }
             if (this.inventory != null) {
-                List<ItemData> oldItems = this.inventory.getAllItems();
-                for (ItemData item : oldItems) {
+                for (ItemData item : this.inventory.getAllItems()) {
                     if (item != null) {
                         inv.addItem(item.copy());
                     }
                 }
             }
             this.inventory = inv;
-            GameLogger.info("Set player inventory with " +
-                inv.getAllItems().stream().filter(Objects::nonNull).count() + " items");
+            GameLogger.info("Set player inventory.");
         }
     }
 
@@ -436,34 +452,69 @@ public class Player implements Positionable  {
         this.skin = skin;
     }
 
-    // --- Movement, rendering, etc. remain unchanged ---
+    // The update method—modified for maximum responsiveness.
     public void update(float deltaTime) {
         if (!resourcesInitialized || disposed || animations == null || animations.isDisposed()) {
             initializeResources();
         }
         synchronized (movementLock) {
-            if (diagonalMoveTimer > 0) {
-                diagonalMoveTimer -= deltaTime;
-            }
-            if (inputBufferTimer > 0) {
-                inputBufferTimer -= deltaTime;
-                if (inputBufferTimer <= 0 && bufferedDirection != null) {
-                    move(bufferedDirection);
+            // Update buffered input timer if any buffered direction exists.
+            if (bufferedDirection != null) {
+                bufferedTime += deltaTime;
+                if (bufferedTime > BUFFER_WINDOW) {
                     bufferedDirection = null;
+                    bufferedTime = 0f;
                 }
             }
-            if (isMoving) {
-                // Use the configurable duration based on whether the player is running.
+
+            // Highest priority: action animations (chop/punch)
+            if (animations.isChopping() || animations.isPunching()) {
+                stateTime += deltaTime;
+                currentFrame = animations.getCurrentFrame(direction, true, isRunning, stateTime);
+            }
+            // When moving:
+            else if (isMoving) {
                 float currentDuration = isRunning ? runStepDuration : walkStepDuration;
-                movementProgress += deltaTime / currentDuration;
+                float progressIncrement = deltaTime / currentDuration;
+                movementProgress += progressIncrement;
+                if (movementProgress > 1.0f) {
+                    movementProgress = 1.0f;
+                }
+                updatePosition(movementProgress);
+                // Update animationTime for frame selection.
+                animationTime += deltaTime * animationSpeedMultiplier;
+
+                // As soon as the tile's position is reached, complete the movement immediately.
                 if (movementProgress >= 1.0f) {
                     completeMovement();
+                    // Immediately start a new move if a buffered direction exists...
+                    if (bufferedDirection != null) {
+                        move(bufferedDirection);
+                        bufferedDirection = null;
+                        bufferedTime = 0f;
+                    }
+                    // ...or if the movement key is still held.
+                    else if (isInputHeld()) {
+                        move(direction);
+                    }
+                    // Otherwise, reset and display the standing frame.
+                    else {
+                        animationTime = 0f;
+                        currentFrame = animations.getStandingFrame(direction);
+                    }
                 } else {
-                    updatePosition(movementProgress);
+                    currentFrame = animations.getCurrentFrame(direction, true, isRunning, animationTime);
                 }
             }
-            ItemEntity nearbyItem = world.getItemEntityManager()
-                .getClosestPickableItem(x, y, PICKUP_RANGE);
+            // Not moving – show standing frame.
+            else {
+                stateTime = 0f;
+                animationTime = 0f;
+                currentFrame = animations.getStandingFrame(direction);
+            }
+
+            // Existing item pickup logic.
+            ItemEntity nearbyItem = world.getItemEntityManager().getClosestPickableItem(x, y, PICKUP_RANGE);
             if (nearbyItem != null) {
                 if (inventory.addItem(nearbyItem.getItemData())) {
                     world.getItemEntityManager().removeItemEntity(nearbyItem.getEntityId());
@@ -477,8 +528,27 @@ public class Player implements Positionable  {
                     GameContext.get().getGameClient().sendItemPickup(pickup);
                 }
             }
-            stateTime += deltaTime;
-            currentFrame = animations.getCurrentFrame(direction, isMoving, isRunning, stateTime);
+        }
+    }
+
+    private void completeMovement() {
+        x = targetPosition.x;
+        y = targetPosition.y;
+        tileX = targetTileX;
+        tileY = targetTileY;
+        position.set(x, y);
+        renderPosition.set(x, y);
+        isMoving = false;
+        movementProgress = 0f;
+        stateTime = 0f; // Reset timer for the next move.
+
+        int tileType = GameContext.get().getWorld().getTileTypeAt(getTileX(), getTileY());
+        if (tileType == TileType.SAND || tileType == TileType.SNOW ||
+            tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND ||
+            tileType == TileType.SNOW_2 || tileType == TileType.SNOW_3 ||
+            tileType == TileType.SNOW_TALL_GRASS) {
+            GameContext.get().getWorld().getFootstepEffectManager()
+                .addEffect(new FootstepEffect(new Vector2(x, y), direction, 1.0f));
         }
     }
 
@@ -500,71 +570,69 @@ public class Player implements Positionable  {
         x = MathUtils.clamp(x, 0f, 1f);
         return x * x * (3 - 2 * x);
     }
+
+    // The move method – if already moving, buffer the new direction; otherwise start immediately.
     public void move(String newDirection) {
         synchronized (movementLock) {
-            // If a movement is already in progress, buffer the new input immediately.
             if (isMoving) {
+                if (!newDirection.equals(direction)) {
+                    direction = newDirection;
+                }
                 bufferedDirection = newDirection;
-                inputBufferTimer = INPUT_BUFFER_TIME;
+                bufferedTime = 0f;
                 return;
             }
-            // Set the current direction immediately.
             direction = newDirection;
             if (world == null) {
                 GameLogger.error("Cannot move - world is null! Player: " + getUsername());
                 return;
             }
-            // Determine new tile coordinates based on the direction.
             int newTileX = getTileX();
             int newTileY = getTileY();
             switch (newDirection) {
                 case "up":
-                    newTileY += 1;
+                    newTileY++;
                     break;
                 case "down":
-                    newTileY -= 1;
+                    newTileY--;
                     break;
                 case "left":
-                    newTileX -= 1;
+                    newTileX--;
                     break;
                 case "right":
-                    newTileX += 1;
+                    newTileX++;
                     break;
                 default:
                     return;
             }
-            // Only initiate movement if the target tile is passable.
             if (world.isPassable(newTileX, newTileY)) {
                 targetTileX = newTileX;
                 targetTileY = newTileY;
                 targetPosition.set(tileToPixelX(newTileX), tileToPixelY(newTileY));
                 startPosition.set(x, y);
-                // You might also update lastPosition here if needed.
                 isMoving = true;
                 movementProgress = 0f;
+                bufferedDirection = null;
+                bufferedTime = 0f;
             }
         }
     }
-    private void completeMovement() {
-        x = targetPosition.x;
-        y = targetPosition.y;
-        tileX = targetTileX;
-        tileY = targetTileY;
-        position.set(x, y);
-        renderPosition.set(x, y);
-        isMoving = false;
-        movementProgress = 0f;
-        if (bufferedDirection != null) {
-            String nextDirection = bufferedDirection;
+
+    public boolean isInputHeld() {
+        return inputHeld;
+    }
+
+    public void setInputHeld(boolean held) {
+        inputHeld = held;
+    }
+
+    public void clearBufferedDirection() {
+        synchronized (movementLock) {
             bufferedDirection = null;
-            move(nextDirection);
-        }int tileType = GameContext.get().getWorld().getTileTypeAt(getTileX(), getTileY()); // Implement a helper in World
-        if (tileType == TileType.SAND || tileType == TileType.SNOW || tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND || tileType == TileType.SNOW_2  || tileType == TileType.SNOW_3 || tileType == TileType.SNOW_TALL_GRASS) {
-            // Spawn a footstep effect at the current (or adjusted) position.
-            // You might want to adjust the effect position relative to your sprite’s anchor.
-            GameContext.get().getWorld().getFootstepEffectManager().addEffect(new FootstepEffect(new Vector2(x, y), direction, 0.5f));
+            bufferedTime = 0f;
         }
     }
+
     public void render(SpriteBatch batch) {
         synchronized (resourceLock) {
             if (!initialized) return;
@@ -581,7 +649,6 @@ public class Player implements Positionable  {
                     Color baseColor = world.getCurrentWorldColor();
                     batch.setColor(baseColor);
                 }
-                // Determine scale factor – double the size for the girl character only.
                 float scale = 1f;
                 if (getCharacterType().equalsIgnoreCase("girl")) {
                     scale = 2f;
@@ -592,9 +659,7 @@ public class Player implements Positionable  {
                 float drawY = renderPosition.y;
                 batch.draw(currentFrame, drawX, drawY, regionW, regionH);
                 batch.setColor(originalColor);
-                // (Optional) Draw the username above the sprite as before.
-                if (username != null && !username.isEmpty() &&
-                    !username.equals("Player") && font != null) {
+                if (username != null && !username.isEmpty() && !username.equals("Player") && font != null) {
                     layout.setText(font, username);
                     float textWidth = layout.width;
                     float nameX = drawX + (regionW - textWidth) / 2f;
@@ -604,7 +669,6 @@ public class Player implements Positionable  {
             }
         }
     }
-
 
     public void setRenderPosition(Vector2 renderPosition) {
         this.renderPosition = renderPosition;
@@ -681,9 +745,9 @@ public class Player implements Positionable  {
         playerData.setMoving(isMoving);
         playerData.setWantsToRun(isRunning);
         playerData.setInventoryItems(inventory.getAllItems());
-        List<PokemonData> partyData = new ArrayList<>(Collections.nCopies(PokemonParty.MAX_PARTY_SIZE, null));
+        var partyData = new java.util.ArrayList<PokemonData>(Collections.nCopies(PokemonParty.MAX_PARTY_SIZE, null));
         synchronized (pokemonParty.partyLock) {
-            List<Pokemon> currentParty = pokemonParty.getParty();
+            var currentParty = pokemonParty.getParty();
             GameLogger.info("Converting party of size " + currentParty.size() + " to PokemonData");
             for (int i = 0; i < PokemonParty.MAX_PARTY_SIZE; i++) {
                 Pokemon pokemon = i < currentParty.size() ? currentParty.get(i) : null;
@@ -708,8 +772,7 @@ public class Player implements Positionable  {
             GameLogger.error("No valid Pokemon found in party data!");
         }
         playerData.setPartyPokemon(partyData);
-        GameLogger.info("Updated player data with " +
-            partyData.stream().filter(Objects::nonNull).count() + " Pokemon in party");
+        GameLogger.info("Updated player data with party info.");
     }
 
     public void initializeResources() {

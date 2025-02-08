@@ -566,19 +566,14 @@ public class LoginScreen implements Screen {
             // Create new client
             GameContext.get().setGameClient(new GameClient(selectedServer));
 
-            // Set up response handlers
             GameContext.get().getGameClient().setLoginResponseListener(response -> {
                 if (loginCompleted.get()) {
                     return; // Prevent duplicate processing
                 }
                 loginCompleted.set(true);
-
                 Gdx.app.postRunnable(() -> {
-                    if (response.success) {
-                        handleSuccessfulLogin(response, transitionStarted);
-                    } else {
-                        handleLoginFailure(response.message);
-                    }
+                    // Call our unified login response handler
+                    handleLoginResponse(response);
                 });
             });
 
@@ -639,44 +634,6 @@ public class LoginScreen implements Screen {
         dialog.show(stage);
     }
 
-    private void handleSuccessfulLogin(NetworkProtocol.LoginResponse response, AtomicBoolean transitionStarted) {
-        if (transitionStarted.get()) {
-            return;
-        }
-        transitionStarted.set(true);
-
-        try {
-            // Update progress
-            connectionProgress.setValue(0.95f);
-            statusLabel.setText("Loading world...");
-
-            // Create loading screen
-            LoadingScreen loadingScreen = new LoadingScreen(game, null);
-            game.setScreen(loadingScreen);
-
-            GameContext.get().setGameScreen(new GameScreen(
-                game,
-                response.username,
-                GameContext.get().getGameClient()
-            ));
-
-            // Update loading screen target
-            loadingScreen.setNextScreen(GameContext.get().getGameScreen());
-
-            // Save credentials if needed
-            if (rememberMeBox.isChecked()) {
-                saveCredentials(usernameField.getText(), passwordField.getText());
-            }
-
-            // Clean up
-            dispose();
-
-        } catch (Exception e) {
-            transitionStarted.set(false);
-            handleGameCreationError(e);
-        }
-    }
-
     private void showMultiplayerCharacterSelectionDialog(final NetworkProtocol.LoginResponse response,
                                                          final Runnable onComplete) {
         final Dialog dialog = new Dialog("Choose Your Character", skin) {
@@ -692,7 +649,6 @@ public class LoginScreen implements Screen {
             }
         };
 
-// Add buttons with their result values.
         dialog.button("Boy", "boy");
         dialog.button("Girl", "girl");
 
@@ -708,16 +664,15 @@ public class LoginScreen implements Screen {
     private void handleLoginResponse(NetworkProtocol.LoginResponse response) {
         isConnecting = false;
         if (response.success) {
-            // Mark as authenticated and store the username.
-            // In multiplayer, check whether the returned PlayerData indicates a new player.
+            // Check for missing character type in multiplayer
             if (GameContext.get().isMultiplayer() &&
                 (response.playerData.getCharacterType() == null || response.playerData.getCharacterType().isEmpty())) {
-                // Prompt character selection before proceeding.
+                // Prompt for character selection before proceeding.
                 showMultiplayerCharacterSelectionDialog(response, () -> {
                     proceedToGameAfterCharacterSelection(response);
                 });
             } else {
-                // Otherwise, simply continue.
+                // Otherwise, continue normally.
                 proceedToGameAfterCharacterSelection(response);
             }
         } else {
@@ -725,6 +680,7 @@ public class LoginScreen implements Screen {
             setUIEnabled(true);
         }
     }
+
 
     private void proceedToGameAfterCharacterSelection(NetworkProtocol.LoginResponse response) {
         try {
@@ -739,6 +695,7 @@ public class LoginScreen implements Screen {
                 response.username,
                 GameContext.get().getGameClient()
             );
+            GameContext.get().setGameScreen(gameScreen);
             // Tell the loading screen which screen to switch to
             loadingScreen.setNextScreen(gameScreen);
 
@@ -756,89 +713,6 @@ public class LoginScreen implements Screen {
     }
 
 
-    private void forceRelogin() {
-        if (GameContext.get().getGameClient() != null) {
-            GameContext.get().getGameClient().dispose();
-        }
-
-        String username = usernameField.getText().trim();
-        String password = passwordField.getText().trim();
-
-        // Show reconnecting status
-        statusLabel.setText("Reconnecting...");
-        setUIEnabled(false);
-        connectionProgress.setVisible(true);
-        connectionProgress.setValue(0);
-
-        // Create new client with force login flag
-        try {
-            GameContext.get().setGameClient(new GameClient(selectedServer));
-            GameContext.get().setMultiplayer(true);
-
-            // Set login response listener
-            GameContext.get().getGameClient().setLoginResponseListener(this::handleForceLoginResponse);
-
-            // Set force login flag and credentials
-            GameContext.get().getGameClient().setPendingCredentials(username, password);
-            GameContext.get().getGameClient().connect();
-
-        } catch (Exception e) {
-            GameLogger.error("Force relogin failed: " + e.getMessage());
-            handleLoginFailure("Failed to reconnect: " + e.getMessage());
-        }
-    }
-
-    private void handleForceLoginResponse(NetworkProtocol.LoginResponse response) {
-        Gdx.app.postRunnable(() -> {
-            if (response.success) {
-                // Successfully forced login
-                handleSuccessfulLoginAttempt(response);
-            } else {
-                // Failed to force login
-                handleLoginFailure(response.message);
-            }
-        });
-    }
-
-    private void handleSuccessfulLoginAttempt(NetworkProtocol.LoginResponse response) {
-        // Disable UI during transition
-        setUIEnabled(false);
-        statusLabel.setText("Initializing game...");
-        connectionProgress.setValue(0.9f);
-
-        try {
-            // Validate game client state
-            if (GameContext.get().getGameClient() == null || !GameContext.get().getGameClient().isConnected()) {
-                throw new IllegalStateException("Invalid game client state");
-            }
-
-            // Create loading screen
-            LoadingScreen loadingScreen = new LoadingScreen(game, null);
-            game.setScreen(loadingScreen);
-
-            // Initialize game screen
-            GameScreen gameScreen = new GameScreen(
-                game,
-                response.username,
-                GameContext.get().getGameClient()
-            );
-
-            // Update loading screen target
-            loadingScreen.setNextScreen(gameScreen);
-
-            // Save credentials if needed
-            if (rememberMeBox.isChecked()) {
-                saveCredentials(usernameField.getText(), passwordField.getText());
-            }
-
-            // Clean up login screen
-            dispose();
-
-        } catch (Exception e) {
-            GameLogger.error("Error during game initialization: " + e.getMessage());
-            handleGameCreationError(e);
-        }
-    }
 
     private void handleGameCreationError(Exception e) {
         Gdx.app.postRunnable(() -> {
@@ -883,7 +757,7 @@ public class LoginScreen implements Screen {
 
         // Update game client if exists
         if (GameContext.get().getGameClient() != null) {
-            GameContext.get().getGameClient().tick(delta);
+            GameContext.get().getGameClient().tick();
         }
     }
 
@@ -1039,12 +913,11 @@ public class LoginScreen implements Screen {
         transitionStarted.set(true);
 
         try {
-            validateGameClient();
-            GameScreen gameScreen = createGameScreen();
+            validateGameClient();createGameScreen();
 
-            if (gameScreen != null) {
+            if (GameContext.get().getGameScreen() != null) {
                 // Create and show loading screen
-                LoadingScreen loadingScreen = new LoadingScreen(game, gameScreen);
+                LoadingScreen loadingScreen = new LoadingScreen(game, GameContext.get().getGameScreen());
                 game.setScreen(loadingScreen);
 
                 // Save credentials if needed
@@ -1242,7 +1115,6 @@ public class LoginScreen implements Screen {
             GameLogger.info("No saved credentials found");
         }
     }
-
     private void attemptRegistration() {
         String username = usernameField.getText().trim();
         String password = passwordField.getText().trim();
@@ -1267,24 +1139,34 @@ public class LoginScreen implements Screen {
 
         CompletableFuture.runAsync(() -> {
             try {
+                // Dispose of any existing client instance
                 if (GameContext.get().getGameClient() != null) {
                     GameContext.get().getGameClient().dispose();
                     GameClientSingleton.resetInstance();
                 }
 
+                // Create and set up a new client instance
                 GameContext.get().setGameClient(new GameClient(selectedServer));
                 GameContext.get().setMultiplayer(true);
 
+                // Set up the registration response listener
                 GameContext.get().getGameClient().setRegistrationResponseListener(response -> {
-                    Gdx.app.postRunnable(() -> {
-                        handleRegistrationResponse(response);
-                    });
+                    Gdx.app.postRunnable(() -> handleRegistrationResponse(response));
                 });
 
+                // Begin connection
                 GameContext.get().getGameClient().connect();
 
-                Thread.sleep(100);
+                // Wait until the client is connected, but no longer than 5 seconds
+                long startTime = System.currentTimeMillis();
+                while (!GameContext.get().getGameClient().isConnected()) {
+                    Thread.sleep(10);
+                    if (System.currentTimeMillis() - startTime > 5000) { // 5-second timeout
+                        throw new Exception("Connection timed out during registration");
+                    }
+                }
 
+                // Once connected, send the registration request immediately
                 GameContext.get().getGameClient().sendRegisterRequest(username, password);
 
             } catch (Exception e) {
@@ -1292,10 +1174,9 @@ public class LoginScreen implements Screen {
             }
         });
 
-        // Start progress animation
+        // Start progress animation (capped at 0.9; the registration response will set it to 1)
         Timer.schedule(new Timer.Task() {
             float progress = 0;
-
             @Override
             public void run() {
                 if (!isConnecting) {

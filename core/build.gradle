@@ -29,9 +29,9 @@ dependencies {
   implementation group: 'org.lz4', name: 'lz4-java', version: '1.8.0'
   api "com.badlogicgames.gdx:gdx-tools:$gdxVersion"
   implementation 'com.h2database:h2:2.1.214'
-    implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'org.slf4j:slf4j-api:2.0.9'
-    implementation 'ch.qos.logback:logback-classic:1.4.11'
+  implementation 'com.google.code.gson:gson:2.10.1'
+  implementation 'org.slf4j:slf4j-api:2.0.9'
+  implementation 'ch.qos.logback:logback-classic:1.4.11'
   implementation "com.esotericsoftware:kryonet:2.22.0-RC1"
   implementation "com.esotericsoftware.kryo:kryo:2.24.0"
   implementation "net.java.dev.jna:jna:5.13.0"
@@ -44,8 +44,8 @@ dependencies {
 
 
   implementation("at.favre.lib:bcrypt:0.10.2")
-    implementation 'androidx.games:games-activity:3.0.5'
-    if(enableGraalNative == 'true') {
+  implementation 'androidx.games:games-activity:3.0.5'
+  if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
 }

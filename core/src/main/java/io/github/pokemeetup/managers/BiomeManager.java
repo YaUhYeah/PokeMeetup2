@@ -1,8 +1,5 @@
 package io.github.pokemeetup.managers;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.files.FileHandle;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.google.gson.*;
@@ -16,7 +13,6 @@ import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.OpenSimplex2;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
-import io.github.pokemeetup.utils.textures.TileType;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -60,7 +56,6 @@ public class BiomeManager {
     private static final float MOUNTAIN_THRESHOLD = 0.85f;
     private static final int BIOME_DOWNSAMPLE = 1;
     private static final float BIOME_JITTER_FACTOR = 0.2f;
-    private static final float NOISE_OFFSET = 10000f;
 
     // -------------------------------
     // Voronoi Site Data for Fallback
@@ -114,6 +109,9 @@ public class BiomeManager {
         GameLogger.info("BiomeManager - Generated " + biomeSites.size() + " Voronoi sites for domain-warped transitions.");
     }
 
+    private static float quinticSmoothStep(float t) {
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
     // -------------------------------
     // Public Biome Sampling Methods
     // -------------------------------
@@ -144,37 +142,38 @@ public class BiomeManager {
      * Returns a biome transition result for the given world coordinates using a low–resolution biome matrix.
      * This version blends four nearby samples to yield a smoother transition.
      */
+
     public BiomeTransitionResult getBiomeAtCached(float worldX, float worldY) {
         int chunkX = (int) Math.floor(worldX / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
         int chunkY = (int) Math.floor(worldY / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
         BiomeTransitionResult[][] matrix = computeBiomeMatrixForChunk(chunkX, chunkY);
-        // Compute local coordinates within the chunk
-        float baseWorldX = chunkX * Chunk.CHUNK_SIZE * World.TILE_SIZE;
-        float baseWorldY = chunkY * Chunk.CHUNK_SIZE * World.TILE_SIZE;
+        int size = Chunk.CHUNK_SIZE;
+        float baseWorldX = chunkX * size * World.TILE_SIZE;
+        float baseWorldY = chunkY * size * World.TILE_SIZE;
         float localX = worldX - baseWorldX;
         float localY = worldY - baseWorldY;
-        int gridWidth = matrix.length;
-        int gridHeight = matrix[0].length;
-        float gridSpacingX = (Chunk.CHUNK_SIZE * World.TILE_SIZE) / (gridWidth - 1);
-        float gridSpacingY = (Chunk.CHUNK_SIZE * World.TILE_SIZE) / (gridHeight - 1);
-        // Compute “grid coordinates” for blending
+        // With (size+1) samples, grid spacing equals:
+        float gridSpacingX = (Chunk.CHUNK_SIZE * World.TILE_SIZE) / (float) size; // equals World.TILE_SIZE
+        float gridSpacingY = (Chunk.CHUNK_SIZE * World.TILE_SIZE) / (float) size; // equals World.TILE_SIZE
+        // Map the local coordinates into grid space.
         float gx = localX / gridSpacingX;
         float gy = localY / gridSpacingY;
-        return blendBiomeSamples(matrix, gx, gy);
+        return blendBiomeSamplesBicubic(matrix, gx, gy);
     }
-
     /**
      * Computes a low–resolution biome matrix for the specified chunk.
      * Each sample is jittered slightly (via BIOME_JITTER_FACTOR) so that boundaries are less grid–like.
      */
+
     private BiomeTransitionResult[][] computeBiomeMatrixForChunk(int chunkX, int chunkY) {
         Vector2 key = new Vector2(chunkX, chunkY);
         if (chunkBiomeCache.containsKey(key)) {
             return chunkBiomeCache.get(key);
         }
-        int size = Chunk.CHUNK_SIZE;
-        int outWidth = (size + BIOME_DOWNSAMPLE - 1) / BIOME_DOWNSAMPLE;
-        int outHeight = (size + BIOME_DOWNSAMPLE - 1) / BIOME_DOWNSAMPLE;
+        int size = Chunk.CHUNK_SIZE; // e.g., 16
+        // Create one sample per tile boundary (thus, size+1 samples)
+        int outWidth = size + 1;
+        int outHeight = size + 1;
         BiomeTransitionResult[][] matrix = new BiomeTransitionResult[outWidth][outHeight];
         float baseWorldX = chunkX * size * World.TILE_SIZE;
         float baseWorldY = chunkY * size * World.TILE_SIZE;
@@ -182,12 +181,13 @@ public class BiomeManager {
             for (int by = 0; by < outHeight; by++) {
                 float gridSampleX = baseWorldX + bx * World.TILE_SIZE;
                 float gridSampleY = baseWorldY + by * World.TILE_SIZE;
-                // Add a small jitter to each sample
-                float jitterX = (float) (OpenSimplex2.noise2(baseSeed + 123, gridSampleX * 0.01f, gridSampleY * 0.01f) * (World.TILE_SIZE * BIOME_JITTER_FACTOR));
-                float jitterY = (float) (OpenSimplex2.noise2(baseSeed + 456, gridSampleX * 0.01f, gridSampleY * 0.01f) * (World.TILE_SIZE * BIOME_JITTER_FACTOR));
+                // (Optionally, you can adjust or reduce jitter for smoother results.)
+                float jitterX = (float) (OpenSimplex2.noise2(baseSeed + 123, gridSampleX * 0.01f, gridSampleY * 0.01f)
+                    * (World.TILE_SIZE * BIOME_JITTER_FACTOR));
+                float jitterY = (float) (OpenSimplex2.noise2(baseSeed + 456, gridSampleX * 0.01f, gridSampleY * 0.01f)
+                    * (World.TILE_SIZE * BIOME_JITTER_FACTOR));
                 float sampleX = gridSampleX + jitterX;
                 float sampleY = gridSampleY + jitterY;
-                // Use the fallback biome sampling (which blends via domain warp & Voronoi) for each sample
                 matrix[bx][by] = fallbackNoiseBiome(sampleX, sampleY);
             }
         }
@@ -195,96 +195,75 @@ public class BiomeManager {
         return matrix;
     }
 
-    /**
-     * Blends four adjacent biome samples (from the low–res matrix) using bilinear weights.
-     * The result is a smooth biome transition based on weighted “votes” for each biome.
-     */
-    private BiomeTransitionResult blendBiomeSamples(BiomeTransitionResult[][] matrix, float gx, float gy) {
+
+    private BiomeTransitionResult blendBiomeSamplesBicubic(BiomeTransitionResult[][] matrix, float gx, float gy) {
         int gridWidth = matrix.length;
         int gridHeight = matrix[0].length;
         int ix = MathUtils.floor(gx);
         int iy = MathUtils.floor(gy);
-        ix = MathUtils.clamp(ix, 0, gridWidth - 2);
-        iy = MathUtils.clamp(iy, 0, gridHeight - 2);
-        float fx = gx - ix;
-        float fy = gy - iy;
-        float w00 = (1 - fx) * (1 - fy);
-        float w10 = fx * (1 - fy);
-        float w01 = (1 - fx) * fy;
-        float w11 = fx * fy;
+        // Use a 4x4 neighborhood: indices from (ix-1) to (ix+2)
+        int iStart = MathUtils.clamp(ix - 1, 0, gridWidth - 1);
+        int iEnd = MathUtils.clamp(ix + 2, 0, gridWidth - 1);
+        int jStart = MathUtils.clamp(iy - 1, 0, gridHeight - 1);
+        int jEnd = MathUtils.clamp(iy + 2, 0, gridHeight - 1);
 
-        // Use weighted voting for primary and secondary biome “votes”
-        Map<Biome, Float> primaryWeights = new HashMap<>();
-        Map<Biome, Float> secondaryWeights = new HashMap<>();
-
-        BiomeTransitionResult[] samples = new BiomeTransitionResult[]{
-            matrix[ix][iy],
-            matrix[ix + 1][iy],
-            matrix[ix][iy + 1],
-            matrix[ix + 1][iy + 1]
-        };
-        float[] weights = new float[]{w00, w10, w01, w11};
-
-        for (int i = 0; i < 4; i++) {
-            BiomeTransitionResult btr = samples[i];
-            float w = weights[i];
-            // btr.getTransitionFactor() is defined as: 1 = fully primary; 0 = fully secondary.
-            if (btr.getPrimaryBiome() != null) {
-                float pWeight = w * btr.getTransitionFactor();
-                primaryWeights.merge(btr.getPrimaryBiome(), pWeight, Float::sum);
-            }
-            if (btr.getSecondaryBiome() != null) {
-                float sWeight = w * (1 - btr.getTransitionFactor());
-                secondaryWeights.merge(btr.getSecondaryBiome(), sWeight, Float::sum);
-            } else {
-                // If no secondary exists, add the full weight to primary.
+        Map<Biome, Float> biomeWeights = new HashMap<>();
+        for (int i = iStart; i <= iEnd; i++) {
+            float wx = cubicWeight(gx - i);
+            for (int j = jStart; j <= jEnd; j++) {
+                float wy = cubicWeight(gy - j);
+                float weight = wx * wy;
+                BiomeTransitionResult btr = matrix[i][j];
+                if (btr == null) continue;
+                // Each sample “votes” for its primary biome weighted by its transition factor,
+                // and for its secondary biome weighted by (1 - transition factor).
+                float primaryContribution = weight * btr.getTransitionFactor();
+                float secondaryContribution = weight * (1 - btr.getTransitionFactor());
+                if (btr.getPrimaryBiome() != null) {
+                    biomeWeights.merge(btr.getPrimaryBiome(), primaryContribution, Float::sum);
+                }
+                if (btr.getSecondaryBiome() != null) {
+                    biomeWeights.merge(btr.getSecondaryBiome(), secondaryContribution, Float::sum);
+                } else if (btr.getPrimaryBiome() != null) {
+                    biomeWeights.merge(btr.getPrimaryBiome(), weight, Float::sum);
+                }
             }
         }
-
-        // Combine votes from primary and secondary into a total weight per biome.
-        Map<Biome, Float> totalWeights = new HashMap<>();
-        for (Map.Entry<Biome, Float> entry : primaryWeights.entrySet()) {
-            totalWeights.put(entry.getKey(), entry.getValue());
-        }
-        for (Map.Entry<Biome, Float> entry : secondaryWeights.entrySet()) {
-            totalWeights.merge(entry.getKey(), entry.getValue(), Float::sum);
-        }
-
-        // Determine dominant (highest vote) biome.
+        // Determine the dominant biome and the next highest biome.
         Biome dominant = null;
-        float dominantWeight = 0;
-        for (Map.Entry<Biome, Float> entry : totalWeights.entrySet()) {
+        float dominantWeight = 0f;
+        for (Map.Entry<Biome, Float> entry : biomeWeights.entrySet()) {
             if (entry.getValue() > dominantWeight) {
                 dominant = entry.getKey();
                 dominantWeight = entry.getValue();
             }
         }
-        // Sum weights for all other biomes.
-        float otherWeight = 0;
-        for (Map.Entry<Biome, Float> entry : totalWeights.entrySet()) {
-            if (!entry.getKey().equals(dominant)) {
-                otherWeight += entry.getValue();
-            }
-        }
-        // If no other biome contributes, the cell is fully the dominant biome.
-        if (otherWeight == 0) {
-            return new BiomeTransitionResult(dominant, null, 1f);
-        }
-        // Otherwise, choose the secondary biome as the one with the highest weight among non–dominant ones.
         Biome secondary = null;
-        float secondaryWeight = 0;
-        for (Map.Entry<Biome, Float> entry : totalWeights.entrySet()) {
+        float secondaryWeight = 0f;
+        for (Map.Entry<Biome, Float> entry : biomeWeights.entrySet()) {
             if (!entry.getKey().equals(dominant) && entry.getValue() > secondaryWeight) {
                 secondary = entry.getKey();
                 secondaryWeight = entry.getValue();
             }
         }
-        // Compute a blended transition factor (0 means fully secondary, 1 fully dominant)
+        if (secondary == null) {
+            return new BiomeTransitionResult(dominant, null, 1f);
+        }
         float t = dominantWeight / (dominantWeight + secondaryWeight);
-        t = smoothStep(t); // apply a smoothing curve to further ease transitions
+        t = quinticSmoothStep(t);
         return new BiomeTransitionResult(dominant, secondary, t);
     }
 
+    private static float cubicWeight(float x) {
+        x = Math.abs(x);
+        if (x <= 1) {
+            return (1.5f * x * x * x) - (2.5f * x * x) + 1;
+        } else if (x < 2) {
+            return (-0.5f * x * x * x) + (2.5f * x * x) - (4 * x) + 2;
+        } else {
+            return 0f;
+        }
+    }
     /**
      * Fallback method: computes a biome transition result at (worldX, worldY) using a domain–warped noise approach
      * and a set of Voronoi sites. (This is used both for each low–res sample and when no chunk exists.)

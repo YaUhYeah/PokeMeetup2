@@ -22,7 +22,6 @@ public class PlayerData {
     private List<ItemData> inventoryItems;
     private List<PokemonData> partyPokemon;
 
-    // New field: characterType ("boy" or "girl")
     private String characterType = "boy";
 
     public PlayerData() {

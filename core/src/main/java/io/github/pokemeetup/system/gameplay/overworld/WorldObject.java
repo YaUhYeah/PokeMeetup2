@@ -78,6 +78,7 @@ public class WorldObject {
                     textureCache.put(ObjectType.SMALL_HAUNTED_TREE, atlas.findRegion("small_haunted_tree"));
                     textureCache.put(ObjectType.RUIN_POLE, atlas.findRegion("ruins_pole"));
                     textureCache.put(ObjectType.RUINS_TREE, atlas.findRegion("ruins_tree"));
+                    textureCache.put(ObjectType.RAIN_TREE, atlas.findRegion("rain_tree"));
                     textureCache.put(ObjectType.APRICORN_TREE, atlas.findRegion("apricorn_tree_grown"));
                     textureCache.put(ObjectType.CHERRY_TREE, atlas.findRegion("CherryTree"));
                     // Add other object types as needed
@@ -174,10 +175,7 @@ public class WorldObject {
         HashMap<String, Object> data = new HashMap<>();
         data.put("tileX", tileX);
         data.put("tileY", tileY);
-        if (type == null) {
-            GameLogger.error("WorldObject " + id + " has null type; defaulting to TREE_0.");
-            type = ObjectType.TREE_0;
-        }
+
         data.put("type", type.name());
         data.put("spawnTime", spawnTime);
         data.put("isCollidable", isCollidable);
@@ -421,6 +419,10 @@ public class WorldObject {
         private final Map<ObjectType, TextureRegion> objectTextures;
         private final long worldSeed;
         private final ConcurrentLinkedQueue<WorldObjectOperation> operationQueue = new ConcurrentLinkedQueue<>();
+        private Set<String> removedObjectIds = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        // New: a set to track removed objects by their base tile coordinate
+        private Set<Vector2> removedObjectTiles = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
 
         public WorldObjectManager(long seed) {
             this.worldSeed = seed;
@@ -460,47 +462,32 @@ public class WorldObject {
             }
         }
 
-        public void removeObjectFromChunk(Vector2 chunkPos, String objectId) {
-            try {
-                List<WorldObject> objects = objectsByChunk.get(chunkPos);
-                if (objects != null) {
-                    boolean removed = objects.removeIf(obj -> obj.getId().equals(objectId));
-
-                    if (removed) {
-                        // Ensure we're using CopyOnWriteArrayList for thread safety
-                        objectsByChunk.put(chunkPos, new CopyOnWriteArrayList<>(objects));
-
-                        // Notify server in multiplayer
-                        if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
-                            NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
-                            update.objectId = objectId;
-                            WorldObject o = null;
-                            for (WorldObject obj : objects) {
-                                if (Objects.equals(obj.id, update.objectId)) {
-                                    o = obj;
-                                }
-                            }
-                            if (o != null) {
-                                update.data = o.getSerializableData();
-                            }
-                            update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-                            GameContext.get().getGameClient().getClient().sendTCP(update);
-                        }
-
-                        GameLogger.info("Removed object " + objectId + " from chunk " + chunkPos);
-                    }
-                }
-            } catch (Exception e) {
-                GameLogger.error("Error removing object from chunk: " + e.getMessage());
+        public void removeObjectFromChunk(Vector2 chunkPos, String objectId, int tileX, int tileY) {
+            // Record that this object (at this tile) was removed.
+            removedObjectIds.add(objectId);
+            removedObjectTiles.add(new Vector2(tileX, tileY));
+            List<WorldObject> objects = objectsByChunk.get(chunkPos);
+            if (objects != null) {
+                objects.removeIf(obj -> obj.getId().equals(objectId));
             }
         }
 
+        public boolean isRemovedTile(int tileX, int tileY) {
+            return removedObjectTiles.contains(new Vector2(tileX, tileY));
+        }
+
+        /**
+         * Record that an object was removed at the given tile coordinate.
+         */
+        public void recordRemovedTile(int tileX, int tileY) {
+            removedObjectTiles.add(new Vector2(tileX, tileY));
+        }
 
         public void generateObjectsForChunk(Vector2 chunkPos, Chunk chunk, Biome biome) {
             List<WorldObject> objects = new CopyOnWriteArrayList<>();
 
             if (objectsByChunk.containsKey(chunkPos)) {
-                objectsByChunk.get(chunkPos);
+                // Chunk already generated
                 return;
             }
 
@@ -511,9 +498,22 @@ public class WorldObject {
                     double spawnChance = biome.getSpawnChanceForObject(objectType);
                     int attempts = (int) (Chunk.CHUNK_SIZE * Chunk.CHUNK_SIZE * spawnChance);
 
+
                     for (int i = 0; i < attempts; i++) {
                         int x = random.nextInt(Chunk.CHUNK_SIZE);
                         int y = random.nextInt(Chunk.CHUNK_SIZE);
+
+                        // Convert to world tile coordinates.
+                        int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + x);
+                        int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + y);
+                        // For tree objects, compute the canonical spawn coordinate.
+                        if (isTreeType(objectType)) {
+                            int baseTileX = worldTileX - 1;  // same as in serialization
+                            int baseTileY = worldTileY;
+                            if (isRemovedTile(baseTileX, baseTileY)) {
+                                continue;
+                            }
+                        }
 
                         if (canPlaceObject(chunk, x, y, objects, biome, objectType)) {
                             TextureRegion texture = objectTextures.get(objectType);
@@ -527,30 +527,51 @@ public class WorldObject {
                     }
                 }
 
-                // Store generated objects
-                objectsByChunk.put(chunkPos, objects);
+                // Store generated objects (note: these objects have new UUIDs).
+                setObjectsForChunk(chunkPos, objects);
 
-                // Sync to server in multiplayer
-                if (
-                    GameContext.get().getGameClient() != null && !
-                        GameContext.get().getGameClient().isSinglePlayer()) {
+                // In multiplayer, sync to server.
+                if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
                     sendChunkObjectSync(objects);
                 }
-
             } catch (Exception e) {
                 GameLogger.error("Error generating chunk objects: " + e.getMessage());
             }
         }
 
+        public void addObjectToChunk(WorldObject object) {
+            int actualChunkX = (int) Math.floor(object.getPixelX() / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
+            int actualChunkY = (int) Math.floor(object.getPixelY() / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
+            Vector2 actualChunkPos = new Vector2(actualChunkX, actualChunkY);
+            if (removedObjectIds.contains(object.getId())) {
+                return;
+            }
+            objectsByChunk.computeIfAbsent(actualChunkPos, k -> new CopyOnWriteArrayList<>()).add(object);
+        }
+
+        public void setObjectsForChunk(Vector2 chunkPos, List<WorldObject> objects) {
+            if (objects == null) {
+                objectsByChunk.remove(chunkPos);
+            } else {
+                List<WorldObject> filtered = new ArrayList<>();
+                for (WorldObject obj : objects) {
+                    if (!removedObjectIds.contains(obj.getId())) {
+                        filtered.add(obj);
+                    }
+                }
+                objectsByChunk.put(chunkPos, new CopyOnWriteArrayList<>(filtered));
+            }
+        }
 
         private WorldObject createObject(ObjectType type, int localX, int localY, Vector2 chunkPos) {
             try {
                 int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + localX);
                 int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + localY);
-
                 TextureRegion texture = objectTextures.get(type);
                 if (texture != null) {
                     WorldObject object = new WorldObject(worldTileX, worldTileY, texture, type);
+                    // IMPORTANT: When creating the object we generate a new UUID.
+                    // (This is why tracking by removed tile is necessary.)
                     object.setId(UUID.randomUUID().toString());
                     return object;
                 }
@@ -635,6 +656,7 @@ public class WorldObject {
                 height
             );
         }
+
         private boolean boundsOverlapWithPadding(Rectangle bounds1, Rectangle bounds2, int spacing) {
             // Use the full spacing value so that trees (and other objects) have enough room
             float padding = World.TILE_SIZE * spacing;
@@ -824,37 +846,6 @@ public class WorldObject {
             }
         }
 
-        public void setObjectsForChunk(Vector2 chunkPos, List<WorldObject> objects) {
-            try {
-                if (objects == null) {
-                    objectsByChunk.remove(chunkPos);
-                    return;
-                }
-
-                // Create thread-safe copy of objects
-                List<WorldObject> safeObjects = new CopyOnWriteArrayList<>();
-                for (WorldObject obj : objects) {
-                    if (obj != null) {
-                        // Ensure ID exists
-                        if (obj.getId() == null || obj.getId().isEmpty()) {
-                            obj.setId(UUID.randomUUID().toString());
-                        }
-                        // Ensure texture is loaded
-                        obj.ensureTexture();
-                        safeObjects.add(obj);
-                    }
-                }
-
-                // Update local cache
-                objectsByChunk.put(chunkPos, safeObjects);
-
-                GameLogger.info("Updated chunk " + chunkPos + " with " +
-                    safeObjects.size() + " objects");
-
-            } catch (Exception e) {
-                GameLogger.error("Error setting chunk objects: " + e.getMessage());
-            }
-        }
         public List<WorldObject> getObjectsNearPosition(float x, float y) {
             List<WorldObject> nearbyObjects = new ArrayList<>();
             int searchRadius = 2; // Search in nearby chunks
@@ -894,32 +885,12 @@ public class WorldObject {
             }
         }
 
-        public void removeObjectById(String objectId) {
-            for (Map.Entry<Vector2, List<WorldObject>> entry : objectsByChunk.entrySet()) {
-                List<WorldObject> list = entry.getValue();
-                boolean changed = list.removeIf(obj -> obj.getId().equals(objectId));
-                if (changed) {
-                    GameLogger.info("Removed object '" + objectId +
-                        "' from chunk at " + entry.getKey());
-                }
-            }
-        }
-
 
         public List<WorldObject> getObjectsForChunk(Vector2 chunkPos) {
             List<WorldObject> objects = objectsByChunk.get(chunkPos);
             return objects != null ? objects : Collections.emptyList();
         }
 
-        public void addObjectToChunk(WorldObject object) {
-            int actualChunkX = (int) Math.floor(object.getPixelX() / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
-            int actualChunkY = (int) Math.floor(object.getPixelY() / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
-            Vector2 actualChunkPos = new Vector2(actualChunkX, actualChunkY);
-
-            List<WorldObject> objects = objectsByChunk.computeIfAbsent(actualChunkPos, k -> new CopyOnWriteArrayList<>());
-            objects.add(object);
-
-        }
 
         private void handlePokeballSpawning(Vector2 chunkPos, Chunk chunk) {
             // Get or create the chunk's object list
@@ -968,8 +939,7 @@ public class WorldObject {
 
                                 // Send network update in multiplayer
                                 if (
-                                    GameContext.get().getGameClient() != null && !
-                                        GameContext.get().getGameClient().isSinglePlayer()) {
+                                    GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
                                     NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
                                     update.objectId = pokeball.getId();
                                     update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
@@ -1001,7 +971,7 @@ public class WorldObject {
                                 removeList.removeIf(obj -> obj.getId().equals(removeOp.objectId));
                                 objectsByChunk.put(removeOp.chunkPos, new CopyOnWriteArrayList<>(removeList));
 
-                                if (!GameContext.get().getGameClient().isSinglePlayer()) {
+                                if (GameContext.get().isMultiplayer()) {
                                     if (
                                         GameContext.get().getGameClient() != null &&
                                             GameContext.get().getGameClient().getCurrentWorld() != null) {
@@ -1152,8 +1122,7 @@ public class WorldObject {
 
         private void sendObjectSpawn(WorldObject object) {
             if (
-                GameContext.get().getGameClient() == null ||
-                    GameContext.get().getGameClient().isSinglePlayer()) return;
+                GameContext.get().getGameClient() == null || !GameContext.get().isMultiplayer()) return;
 
             NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
             update.objectId = object.getId();

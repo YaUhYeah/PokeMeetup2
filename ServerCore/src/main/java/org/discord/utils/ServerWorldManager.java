@@ -149,7 +149,6 @@ public class ServerWorldManager {
     // ------------------------------------------------------------------------------------
 
 
-
     // The new load–or–generate method for the server.
     public Chunk loadChunk(String worldName, int chunkX, int chunkY) {
         // First, ensure the world is loaded.
@@ -288,14 +287,27 @@ public class ServerWorldManager {
             GameLogger.error("Failed to process block data: " + e.getMessage());
         }
     }
-
-    public Chunk generateNewChunk(WorldData wd, int chunkX, int chunkY) {
-        Chunk newChunk = UnifiedWorldGenerator.generateChunk(chunkX, chunkY, wd.getConfig().getSeed(), biomeManager);
-        Vector2 pos = new Vector2(chunkX, chunkY);
-        if (newChunk.getWorldObjects() != null && !newChunk.getWorldObjects().isEmpty()) {
-            wd.getChunkObjects().put(pos, newChunk.getWorldObjects());
+    /**
+     * Returns a map of all currently loaded chunks (as Chunk objects)
+     * for the given world name. This is used by the server to determine
+     * which chunks are active so that wild Pokémon can be spawned in them.
+     *
+     * @param worldName The name (ID) of the world.
+     * @return A Map keyed by chunk position (Vector2) to the loaded Chunk.
+     */
+    public Map<Vector2, Chunk> getLoadedChunks(String worldName) {
+        Map<Vector2, TimedChunk> cache = chunkCache.get(worldName);
+        Map<Vector2, Chunk> loadedChunks = new HashMap<>();
+        if (cache != null) {
+            for (Map.Entry<Vector2, TimedChunk> entry : cache.entrySet()) {
+                if (entry.getValue().chunk != null) {
+                    // Update last access time
+                    entry.getValue().lastAccess = System.currentTimeMillis();
+                    loadedChunks.put(entry.getKey(), entry.getValue().chunk);
+                }
+            }
         }
-        return newChunk;
+        return loadedChunks;
     }
 
 
@@ -309,27 +321,27 @@ public class ServerWorldManager {
     }
 
 
-    // ------------------------------------------------------------------------------------
-    // CHUNK SAVING
-    // ------------------------------------------------------------------------------------
-
     public void saveChunk(String worldName, Chunk chunk) {
         if (chunk == null) return;
         try {
+            // Determine the file path for the chunk data.
             Path chunkPath = getChunkFilePath(worldName, chunk.getChunkX(), chunk.getChunkY());
             Path chunksDir = chunkPath.getParent();
             if (chunksDir != null) {
                 storageSystem.getFileSystem().createDirectory(chunksDir.toString());
             }
+
+            // Prepare the ChunkData object.
             ChunkData cd = new ChunkData();
             cd.chunkX = chunk.getChunkX();
             cd.chunkY = chunk.getChunkY();
             cd.biomeType = chunk.getBiome().getType();
             cd.tileData = chunk.getTileData().clone();
             cd.blockData = new ArrayList<>(chunk.getBlockDataForSave());
-            cd.generationSeed = chunk.getGenerationSeed();
-            List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(worldName,
-                new Vector2(chunk.getChunkX(), chunk.getChunkY()));
+
+            // Get the current world objects from the object manager.
+            List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
+                .getObjectsForChunk(worldName, new Vector2(chunk.getChunkX(), chunk.getChunkY()));
             if (objects != null) {
                 cd.worldObjects = new ArrayList<>();
                 for (WorldObject obj : objects) {
@@ -341,16 +353,38 @@ public class ServerWorldManager {
                     }
                 }
             }
+
+            // Serialize and write the chunk data to disk.
             Json json = JsonConfig.getInstance();
             json.setOutputType(JsonWriter.OutputType.json);
             String jsonData = json.prettyPrint(cd);
             storageSystem.getFileSystem().writeString(chunkPath.toString(), jsonData);
+
             // Mark the chunk as clean.
             chunk.setDirty(false);
+
+            // --- NEW CODE: Update the persistent WorldData ---
+            // Retrieve the current WorldData for this world.
+            WorldData wd = loadWorld(worldName);
+            if (wd != null) {
+                Vector2 chunkKey = new Vector2(chunk.getChunkX(), chunk.getChunkY());
+                // Update the chunk in the world data.
+                wd.getChunks().put(chunkKey, chunk);
+                // Update the world objects for that chunk.
+                wd.addChunkObjects(chunkKey, objects);
+                wd.setDirty(true);
+                // Save the updated world data.
+                saveWorld(wd);
+            } else {
+                GameLogger.error("Could not load WorldData for " + worldName + " to update chunk " + chunk.getChunkX() + "," + chunk.getChunkY());
+            }
+
+            GameLogger.info("Chunk saved successfully for chunk " + new Vector2(chunk.getChunkX(), chunk.getChunkY()));
         } catch (Exception e) {
             GameLogger.error("Failed to save chunk: " + e.getMessage());
         }
     }
+
     // ------------------------------------------------------------------------------------
     // CHUNK EVICTION
     // ------------------------------------------------------------------------------------

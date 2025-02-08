@@ -37,12 +37,6 @@ public class BattleTable extends Table {
     private static final float HP_BAR_WIDTH = 100f;
     private static final float ANIMATION_DURATION = 0.5f;
     private static final float DAMAGE_FLASH_DURATION = 0.1f;
-    private static final float HP_UPDATE_DURATION = 0.5f;
-    private static final float PLATFORM_SHAKE_DECAY = 0.9f;
-    private static final float MIN_SHAKE_INTENSITY = 0.1f;
-    private static final float PLATFORM_VERTICAL_OFFSET = 20f;
-    private static final float POKEMON_SCALE = 1.5f;
-    private static final int MAX_TURN_COUNT = 20;
     private static final HashMap<Pokemon.PokemonType, Color> TYPE_COLORS = new HashMap<Pokemon.PokemonType, Color>() {{
         put(Pokemon.PokemonType.FIRE, new Color(1, 0.3f, 0.3f, 1));
         put(Pokemon.PokemonType.WATER, new Color(0.2f, 0.6f, 1, 1));
@@ -632,7 +626,6 @@ public class BattleTable extends Table {
         pixmap.dispose();
         return new TextureRegionDrawable(region);
     }
-
     private void setupContainer() {
         Table mainContainer = new Table();
         mainContainer.setFillParent(true);
@@ -641,7 +634,9 @@ public class BattleTable extends Table {
 
         // Enemy section.
         Table enemySection = new Table();
-        enemySection.add(new Label(enemyPokemon.getName(), skin)).expandX().right().pad(10).row();
+        // Create a label that shows the enemy’s name and level (for example: "Pikachu Lv. 5")
+        Label enemyInfoLabel = new Label(enemyPokemon.getName() + " Lv. " + enemyPokemon.getLevel(), skin);
+        enemySection.add(enemyInfoLabel).expandX().right().pad(10).row();
         enemySection.add(enemyHPBar).expandX().right().pad(10).row();
         Stack enemyStack = new Stack();
         enemyStack.add(enemyPlatform);
@@ -650,7 +645,13 @@ public class BattleTable extends Table {
 
         // Player section.
         Table playerSection = new Table();
-        playerSection.add(new Label(playerPokemon.getName(), skin)).expandX().left().pad(10).row();
+        // Create a label that shows the player's Pokémon name, level, and current HP/total HP.
+        // For example: "Charmander Lv. 7 (18/39)"
+        Label playerInfoLabel = new Label(
+            playerPokemon.getName() + " Lv. " + playerPokemon.getLevel() +
+                " (" + playerPokemon.getCurrentHp() + "/" + playerPokemon.getStats().getHp() + ")",
+            skin);
+        playerSection.add(playerInfoLabel).expandX().left().pad(10).row();
         playerSection.add(playerHPBar).expandX().left().pad(10).row();
         Stack playerStack = new Stack();
         playerStack.add(playerPlatform);

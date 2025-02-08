@@ -178,7 +178,6 @@ public class ChatSystem extends Table {
         if (!GameContext.get().isMultiplayer()) {
             handleIncomingMessage(chatMessage);
         } else {
-            handleIncomingMessage(chatMessage);
             gameClient.sendMessage(chatMessage);
         }
     }

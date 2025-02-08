@@ -15,6 +15,7 @@ import io.github.pokemeetup.screens.otherui.BattleTable;
 import io.github.pokemeetup.screens.otherui.BuildModeUI;
 import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.screens.otherui.GameMenu;
+import io.github.pokemeetup.screens.otherui.HotbarSystem;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.battle.BattleSystemHandler;
 import io.github.pokemeetup.system.gameplay.overworld.World;
@@ -24,12 +25,13 @@ public final class GameContext {
 
     private static GameContext instance;
     private final CreatureCaptureGame game;
-    private ChatSystem chatSystem;
     private final BattleSystemHandler battleSystem;
+    private ChatSystem chatSystem;
     private BattleTable battleTable;
     private boolean isMultiplayer;
     private GameClient gameClient;
     private World world;
+    private HotbarSystem hotbarSystem;
     private Player player;
     private SpriteBatch batch;
     private SpriteBatch uiBatch;
@@ -45,7 +47,6 @@ public final class GameContext {
     private GameScreen gameScreen;
     private DisconnectionManager disconnectionManager;
     private UIManager uiManager;
-
     /**
      * Private constructor to enforce singleton usage.
      */
@@ -62,7 +63,7 @@ public final class GameContext {
         BattleSystemHandler battleSystem,
         InventoryScreen inventoryScreen,
         BuildModeUI buildModeUI,
-        CraftingTableScreen craftingScreen,
+        CraftingTableScreen craftingScreen, HotbarSystem hotbarSystem,
         GameMenu gameMenu,
         ChestScreen chestScreen, WorldManager worldManager,
         GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable
@@ -80,6 +81,7 @@ public final class GameContext {
         this.battleSystem = battleSystem;
         this.inventoryScreen = inventoryScreen;
         this.buildModeUI = buildModeUI;
+        this.hotbarSystem = hotbarSystem;
         this.craftingScreen = craftingScreen;
         this.gameMenu = gameMenu;
         this.chestScreen = chestScreen;
@@ -106,7 +108,7 @@ public final class GameContext {
         BuildModeUI buildModeUI,
         CraftingTableScreen craftingScreen,
         GameMenu gameMenu,
-        ChestScreen chestScreen, WorldManager worldManager,
+        ChestScreen chestScreen, WorldManager worldManager, HotbarSystem hotbarSystem,
         GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable
     ) {
         if (instance != null) {
@@ -125,7 +127,7 @@ public final class GameContext {
             battleSystem,
             inventoryScreen,
             buildModeUI,
-            craftingScreen,
+            craftingScreen, hotbarSystem,
             gameMenu,
             chestScreen, worldManager, gameScreen, disconnectionManager, isMultiplayer, skin, uiManager, battleTable
         );
@@ -142,12 +144,16 @@ public final class GameContext {
         return instance;
     }
 
-    public BattleTable getBattleTable() {
-        return battleTable;
+    public HotbarSystem getHotbarSystem() {
+        return hotbarSystem;
     }
 
-    public void setChatSystem(ChatSystem chatSystem) {
-        this.chatSystem = chatSystem;
+    public void setHotbarSystem(HotbarSystem hotbarSystem) {
+        this.hotbarSystem = hotbarSystem;
+    }
+
+    public BattleTable getBattleTable() {
+        return battleTable;
     }
 
     public void setBattleTable(BattleTable battleTable) {
@@ -280,6 +286,10 @@ public final class GameContext {
 
     public ChatSystem getChatSystem() {
         return chatSystem;
+    }
+
+    public void setChatSystem(ChatSystem chatSystem) {
+        this.chatSystem = chatSystem;
     }
 
     public BattleSystemHandler getBattleSystem() {

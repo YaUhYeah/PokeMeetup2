@@ -107,7 +107,7 @@ public class ModeSelectionScreen implements Screen {
         stage.addActor(rootTable);
 
         // Title Label
-        Label titleLabel = new Label("MineMon", skin);
+        Label titleLabel = new Label("Capsule Story", skin);
         titleLabel.setFontScale(1.5f);
 
         // Version Label

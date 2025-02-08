@@ -29,7 +29,7 @@ import static io.github.pokemeetup.system.gameplay.PokemonAnimations.IDLE_BOUNCE
 public class WildPokemon extends Pokemon {
     private static final float SCALE = 2.0f;
     private static final float TILE_SIZE = 32f;
-    private static final float MOVEMENT_DURATION = 0.75f;  // Slower, smoother movement
+    private static final float MOVEMENT_DURATION = 0.75f;
     private static final float RENDER_SCALE = 1.5f;
     private static final float COLLISION_SCALE = 0.8f;
 
@@ -37,19 +37,17 @@ public class WildPokemon extends Pokemon {
     private static final float FRAME_HEIGHT = World.TILE_SIZE;
     private static final float IDLE_BOUNCE_HEIGHT = 2f;
     private final PokemonAnimations animations;
-    private final float width;
-    private final float height;
+    private float width;
+    private float height;
     private final Rectangle boundingBox;
     private float pixelX;
     private float pixelY;
     private World world;
-    private int gridX;
     private boolean isMoving;
     private Vector2 startPosition;
     private Vector2 targetPosition;
     private float movementProgress;
     private PokemonAI ai;
-    private int gridY;
     private float x;
     private float y;
     private long spawnTime;
@@ -57,7 +55,6 @@ public class WildPokemon extends Pokemon {
     private boolean isExpired = false;
     private boolean isAddedToParty = false;
     private boolean isDespawning = false;
-    private float elapsedMovementTime = 0f;
     private PokemonDespawnAnimation despawnAnimation;
     private float idleTimer = 0f;
     private float idleAnimationTime = 0;
@@ -67,7 +64,6 @@ public class WildPokemon extends Pokemon {
     private float lastUpdateX;
     private float lastUpdateY;
     public WildPokemon(String name, int level) {
-        // Initialize with default/dummy values
         super(name, level);
         this.pixelX = 0;
         this.pixelY = 0;
@@ -82,6 +78,69 @@ public class WildPokemon extends Pokemon {
         this.boundingBox = new Rectangle(0, 0, 0, 0);
         this.animations = null;
     }
+    public WildPokemon(String name, int level, int pixelX, int pixelY, boolean noTexture) {
+        super(noTexture);
+        // --- SNAP THE POSITION TO THE TILE GRID ---
+        // Convert the incoming pixel coordinates to tile coordinates.
+        int tileX = MathUtils.floor((float) pixelX / World.TILE_SIZE);
+        int tileY = MathUtils.floor((float) pixelY / World.TILE_SIZE);
+        // Now snap: assign x and y to the top–left corner of that tile.
+        this.pixelX = tileX * World.TILE_SIZE;
+        this.pixelY = tileY * World.TILE_SIZE;
+        this.x = this.pixelX;
+        this.y = this.pixelY;
+        // ----------------------------------------
+
+        this.name = name; // Ensure the Pokémon's name is set.
+        // We skip sprite/animation initialization since this is a server–logic (noTexture) instance.
+        this.animations = null;
+
+        // Set the spawn time in seconds.
+        setSpawnTime(System.currentTimeMillis() / 1000L);
+
+        // If a template exists, initialize stats and moves.
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null) {
+            setPrimaryType(template.primaryType);
+            setSecondaryType(template.secondaryType);
+
+            // Calculate base stats from the template.
+            int baseHp    = template.baseStats.baseHp;
+            int baseAtk   = template.baseStats.baseAttack;
+            int baseDef   = template.baseStats.baseDefense;
+            int baseSpAtk = template.baseStats.baseSpAtk;
+            int baseSpDef = template.baseStats.baseSpDef;
+            int baseSpd   = template.baseStats.baseSpeed;
+
+            Stats stats = getStats();
+            stats.setHp(calculateStat(baseHp, stats.ivs[0], stats.evs[0]));
+            stats.setAttack(calculateStat(baseAtk, stats.ivs[1], stats.evs[1]));
+            stats.setDefense(calculateStat(baseDef, stats.ivs[2], stats.evs[2]));
+            stats.setSpecialAttack(calculateStat(baseSpAtk, stats.ivs[3], stats.evs[3]));
+            stats.setSpecialDefense(calculateStat(baseSpDef, stats.ivs[4], stats.evs[4]));
+            stats.setSpeed(calculateStat(baseSpd, stats.ivs[5], stats.evs[5]));
+
+            // Set current HP to the maximum.
+            setCurrentHp(stats.getHp());
+
+            // Initialize moves (if applicable).
+            initializeMovesForLevel(template.moves, level);
+        }
+
+        // --- Initialize the collision bounding box ---
+        // Use the World.TILE_SIZE and collision scale to compute width and height.
+        float collisionWidth = World.TILE_SIZE * COLLISION_SCALE;   // For example, 32 * 0.8 = 25.6
+        float collisionHeight = World.TILE_SIZE * COLLISION_SCALE;
+        // Center the collision box within the tile.
+        float bboxX = this.pixelX + (World.TILE_SIZE - collisionWidth) / 2f;
+        float bboxY = this.pixelY + (World.TILE_SIZE - collisionHeight) / 2f;
+        this.boundingBox = new Rectangle(bboxX, bboxY, collisionWidth, collisionHeight);
+        // ----------------------------------------------
+
+        this.direction = "down";
+        this.isMoving = false;
+    }
+
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, TextureRegion overworldSprite) {
         super(name, level);
@@ -109,7 +168,8 @@ public class WildPokemon extends Pokemon {
             // Set base stats from template
             this.setPrimaryType(template.primaryType);
             this.setSecondaryType(template.secondaryType);
-
+            this.width *= template.width;
+            this.height *= template.height;
             // Calculate and set stats based on level
             int baseHp = template.baseStats.baseHp;
             int baseAtk = template.baseStats.baseAttack;
@@ -163,32 +223,6 @@ public class WildPokemon extends Pokemon {
         this.world = world;
     }
 
-    public void updateFromNetworkUpdate(NetworkProtocol.PokemonUpdate update) {
-        if (update == null) {
-            GameLogger.error("Received null PokemonUpdate in updateFromNetworkUpdate");
-            return;
-        }
-
-        // Update position
-        this.x = update.x * World.TILE_SIZE + (World.TILE_SIZE - this.width) / 2f;
-        this.y = update.y * World.TILE_SIZE + (World.TILE_SIZE - this.height) / 2f;
-        updateBoundingBox();
-
-        // Update level if it has changed
-        if (this.getLevel() != update.level) {
-            this.setLevel(update.level);
-            GameLogger.info(getName() + " leveled up to " + this.getLevel());
-        }
-
-        // Update other attributes as needed
-        // Assuming NetworkProtocol.PokemonUpdate has fields like currentHp, statusEffects, etc.
-
-        if (update.currentHp != -1) { // Assuming -1 signifies no update
-            setCurrentHp(update.currentHp);
-            GameLogger.info(getName() + " HP updated to " + update.currentHp);
-        }
-
-    }
 
 
     private int calculateStat(int base, int iv, int ev, int level, boolean isHp) {
@@ -245,20 +279,18 @@ public class WildPokemon extends Pokemon {
     public void setMoving(boolean moving) {
         this.isMoving = moving;
     }
-
     public void updateBoundingBox() {
         if (boundingBox != null) {
             float collisionWidth = World.TILE_SIZE * COLLISION_SCALE;
             float collisionHeight = World.TILE_SIZE * COLLISION_SCALE;
-
-            // Center the collision box regardless of render size
-            boundingBox.setPosition(
-                x + (World.TILE_SIZE - collisionWidth) / 2f,
-                y + (World.TILE_SIZE - collisionHeight) / 2f
-            );
+            // Align to the tile grid
+            float newX = x + (World.TILE_SIZE - collisionWidth) / 2f;
+            float newY = y + (World.TILE_SIZE - collisionHeight) / 2f;
+            boundingBox.setPosition(newX, newY);
             boundingBox.setSize(collisionWidth, collisionHeight);
         }
     }
+
 
     public TextureRegion getCurrentFrame() {
         if (animations != null) {
@@ -329,6 +361,7 @@ public class WildPokemon extends Pokemon {
                 }
             }
         }
+        updateBoundingBox();
     }
 
     private float calculateSmoothProgress(float progress) {

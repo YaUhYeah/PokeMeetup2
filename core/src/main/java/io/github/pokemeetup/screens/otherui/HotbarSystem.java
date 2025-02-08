@@ -1,19 +1,18 @@
 package io.github.pokemeetup.screens.otherui;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Skin;
-import com.badlogic.gdx.scenes.scene2d.ui.Table;
+import com.badlogic.gdx.scenes.scene2d.ui.*;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
+
 public class HotbarSystem {
     private static final int HOTBAR_SIZE = 9;
     private static final float SLOT_SIZE = 40f;
-    private static final float VERTICAL_OFFSET = 30f; // Increased from 10f for better visibility
+    private static final float VERTICAL_OFFSET = 30f;
     private final Table hotbarTable;
     private final Skin skin;
     private int selectedSlot = 0;
@@ -23,7 +22,7 @@ public class HotbarSystem {
         this.hotbarTable = new Table();
         this.skin = skin;
 
-        // Create container table for centered positioning
+        // Create a container table for centered positioning at the bottom.
         Table containerTable = new Table();
         containerTable.setFillParent(true);
         containerTable.bottom().padBottom(VERTICAL_OFFSET);
@@ -36,39 +35,37 @@ public class HotbarSystem {
             hotbarTable.setBackground(new TextureRegionDrawable(hotbarBg));
         }
 
-        // Add hotbar to centered container
         containerTable.add(hotbarTable).center();
         stage.addActor(containerTable);
 
         updateHotbar();
     }
 
-    public void setSelectedSlot(int slot) {
-        if (slot >= 0 && slot < HOTBAR_SIZE) {
-            this.selectedSlot = slot;
-            updateHotbar();
-        }
+    public Table getHotbarTable() {
+        return hotbarTable;
     }
 
     public void updateHotbar() {
         hotbarTable.clear();
         hotbarTable.defaults().size(SLOT_SIZE).space(2f);
-
-        // Create row for slots
         for (int i = 0; i < HOTBAR_SIZE; i++) {
-            boolean isSelected = i == selectedSlot;
+            boolean isSelected = (i == selectedSlot);
             HotbarSlot slot = new HotbarSlot(isSelected, skin);
-
+            // Get the item from the player’s inventory.
             ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null) {
                 slot.setItem(item);
             }
-
             hotbarTable.add(slot);
         }
-
-        // Force layout update
         hotbarTable.pack();
+    }
+
+    public void setSelectedSlot(int slot) {
+        if (slot >= 0 && slot < HOTBAR_SIZE) {
+            selectedSlot = slot;
+            updateHotbar();
+        }
     }
 
     public int getSelectedSlot() {
@@ -80,7 +77,7 @@ public class HotbarSystem {
     }
 
     public void resize(int width, int height) {
-        // No need to manually position since we're using Table layout
-        hotbarTable.invalidate();
+        float yPosition = 10f;
+        hotbarTable.setPosition(width / 2f - (HOTBAR_SIZE * SLOT_SIZE) / 2f, yPosition);
     }
 }

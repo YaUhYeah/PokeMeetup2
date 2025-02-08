@@ -3,6 +3,8 @@ package io.github.pokemeetup;
 import android.AndroidFileSystemDelegate;
 import android.os.Bundle;
 import android.util.Log;
+import com.badlogic.gdx.Application;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import io.github.pokemeetup.utils.GameLogger;
@@ -73,11 +75,11 @@ public class AndroidLauncher extends AndroidApplication {
             // Try both Data and data directories
             String[] dataFiles = null;
             try {
-                dataFiles = getAssets().list("data");
+                dataFiles = getAssets().list("Data");
                 Log.d("AndroidLauncher", "Files in Data/: " + Arrays.toString(dataFiles));
             } catch (IOException e) {
                 try {
-                    dataFiles = getAssets().list("data");
+                    dataFiles = getAssets().list("Data");
                     Log.d("AndroidLauncher", "Files in data/: " + Arrays.toString(dataFiles));
                 } catch (IOException e2) {
                     Log.e("AndroidLauncher", "Could not find Data or data directory");
@@ -87,8 +89,8 @@ public class AndroidLauncher extends AndroidApplication {
             // Specifically verify biomes.json
             boolean biomesFound = false;
             String[] biomePaths = {
-                    "data/biomes.json",
-                    "data/biomes.json",
+                    "Data/biomes.json",
+                    "Data/biomes.json",
                 "biomes.json"
             };
 
@@ -116,7 +118,7 @@ public class AndroidLauncher extends AndroidApplication {
             path,
             path.toLowerCase(),
             "assets/" + path,
-            path.replace("data/", "data/")
+            path.replace("Data/", "Data/")
         };
 
         boolean found = false;

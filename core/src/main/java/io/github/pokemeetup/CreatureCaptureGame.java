@@ -6,11 +6,14 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.assets.AssetManager;
 import com.badlogic.gdx.assets.loaders.TextureAtlasLoader;
 import com.badlogic.gdx.assets.loaders.resolvers.InternalFileHandleResolver;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.BiomeManager;
@@ -22,6 +25,7 @@ import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.pokemon.data.PokemonDatabase;
 import io.github.pokemeetup.screens.*;
+import io.github.pokemeetup.screens.otherui.HotbarSystem;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
@@ -63,6 +67,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
     @Override
     public void create() {
+        GameLogger.error("Working directory: " + System.getProperty("user.dir"));
 
 
         assetManager = new AssetManager();
@@ -74,13 +79,14 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
         setScreen(new ModeSelectionScreen(this));
 
+        Gdx.app.setLogLevel(Application.LOG_INFO);
         GameLogger.info("Game initialization complete");
     }
 
     public void saveAndDispose() {
         try {
             GameLogger.info("Starting game state save...");
-            if (GameContext.get().isMultiplayer()){
+            if (GameContext.get().isMultiplayer()) {
                 return;
             }
             World world = GameContext.get().getWorld();
@@ -111,24 +117,53 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     }
     public void reinitializeGame() {
         try {
-            // Reinitialize world manager and biome manager.
+            // Reinitialize managers, etc.
             GameContext.get().setWorldManager(WorldManager.getInstance());
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
             GameContext.get().getWorldManager().init();
 
-            // Ensure the GameClient is set for singleplayer mode.
-            if (GameContext.get().getGameClient() == null ||
-                !GameContext.get().isMultiplayer()) {
-                // In singleplayer mode, if the client is null or not set for singleplayer, reinitialize it.
+            // Reinitialize the GameClient for singleplayer if needed.
+            if (GameContext.get().getGameClient() == null || !GameContext.get().isMultiplayer()) {
                 GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance());
                 GameLogger.info("Reinitialized singleplayer GameClient in reinitializeGame()");
             }
+
+            // Dispose of the old UI stage
+            Stage oldStage = GameContext.get().getUiStage();
+            if (oldStage != null) {
+                oldStage.clear();
+                oldStage.dispose();
+            }
+
+            // Create a new UI stage and update input processor
+            Stage newUiStage = new Stage(new ScreenViewport(), new SpriteBatch());
+            GameContext.get().setUiStage(newUiStage);
+            Gdx.input.setInputProcessor(newUiStage);
+
+            // Ensure skin is available.
+            Skin skin = GameContext.get().getSkin();
+            if (skin == null) {
+                skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
+                GameContext.get().setSkin(skin);
+            }
+
+            // Reinitialize the player's hotbar system.
+            if (GameContext.get().getPlayer() != null) {
+                GameContext.get().getPlayer().setHotbarSystem(null);
+                HotbarSystem newHotbar = new HotbarSystem(newUiStage, skin);
+                GameContext.get().getPlayer().setHotbarSystem(newHotbar);
+                GameLogger.info("Hotbar system reinitialized on the new UI stage");
+            }
+
+            // (Optionally update input processors in your InputManager)
+            // GameContext.get().getGameScreen().getInputManager().updateInputProcessors();
 
             GameLogger.info("Game state reinitialized");
         } catch (Exception e) {
             GameLogger.error("Failed to reinitialize game: " + e.getMessage());
         }
     }
+
 
 
     public void shutdown() {
@@ -296,13 +331,17 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
     private void verifyDataFileExists(String path) {
         try {
-            String content = GameFileSystem.getInstance().getDelegate().readString(path);
+            FileHandle fileHandle = Gdx.files.internal(path);
+            if (!fileHandle.exists()) {
+                throw new RuntimeException("Data file not found: " + path);
+            }
+            String content = fileHandle.readString();
             if (content == null || content.isEmpty()) {
                 throw new RuntimeException("Empty data file: " + path);
             }
             GameLogger.info("Successfully verified data file: " + path);
         } catch (Exception e) {
-            GameLogger.error("Failed to verify data file: " + path);
+            GameLogger.error("Failed to verify data file: " + path + " - " + e.getMessage());
             throw new RuntimeException("Required data file missing: " + path, e);
         }
     }
@@ -404,7 +443,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             SpriteBatch uiBatch = new SpriteBatch();
             Stage uiStage = new Stage();
             Stage battleStage = new Stage();
-            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null,WorldManager.getInstance(), null, new DisconnectionManager(this), false,null, null,null);
+            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null, WorldManager.getInstance(), null, null, new DisconnectionManager(this), false, null, null, null);
 
             this.biomeManager = new BiomeManager(System.currentTimeMillis());
             GameContext.get().getWorldManager().init();

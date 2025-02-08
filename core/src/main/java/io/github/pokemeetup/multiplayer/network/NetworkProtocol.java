@@ -180,6 +180,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(WildPokemonDespawn.class);
         kryo.register(PokemonData.class);
         kryo.register(Pokemon.Stats.class);
+        kryo.register(PokemonBatchUpdate.class);
         kryo.register(Pokemon.PokemonType.class);
         kryo.register(ArrayList.class);
         kryo.register(int[].class);
@@ -192,7 +193,9 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         CHEST_CLOSE,
         PUNCH_START,
         PUNCH_STOP,
-        PICKUP_ITEM
+        PICKUP_ITEM,
+        CHOP_COMPLETE,
+        PUNCH_COMPLETE
     }
 
     public enum BlockAction {
@@ -679,6 +682,10 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public Map<String, Object> data;
     }
 
+    public static class PokemonBatchUpdate {
+        // A list of update objects, each containing the state for one wild Pokémon.
+        public List<PokemonUpdate> updates;
+    }
     // World State Classes
     public static class WorldState {
         public long timestamp;

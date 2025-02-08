@@ -9,7 +9,6 @@ public class DayNightCycle {
     private static final float DAY_START = 6.0f;     // 6:00 AM
     private static final float DAY_END = 18.0f;      // 6:00 PM
     private static final float DUSK_START = 18.0f;   // 6:00 PM
-    private static final float DUSK_END = 19.0f;     // 7:00 PM
     private static final float NIGHT_START = 19.0f;  // 7:00 PM
 
     // Base colors with proper ambient lighting

@@ -29,7 +29,6 @@ public class InputManager {
     public void setUIState(UIState newState) {
         if (currentState != newState) {
             currentState = newState;
-            GameLogger.info("Switching UI state to: " + currentState);
             handleUIStateChange();
             updateInputProcessors();
         }

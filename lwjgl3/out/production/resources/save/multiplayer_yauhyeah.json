@@ -1,9 +1,0 @@
-{
-    username: yauhyeah,
-    x: 0,
-    y: 0,
-    direction: 1,
-    isMoving: false,
-    wantsToRun: false,
-    inventoryItemNames: null
-}

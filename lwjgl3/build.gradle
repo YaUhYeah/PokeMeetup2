@@ -1,138 +1,207 @@
-// LWJGL3 build.gradle
-
-buildscript {
-  repositories {
-    gradlePluginPortal()
-    mavenCentral()
-  }
-  dependencies {
-    if (enableGraalNative == 'true') {
-      classpath "org.graalvm.buildtools.native:org.graalvm.buildtools.native.gradle.plugin:0.9.28"
-    }
-  }
-}
-
+// --- Standard buildscript and plugin configuration for desktop
 plugins {
-  id "io.github.fourlastor.construo" version "1.4.1"
-  id "application"
+  id 'application'
   id 'java'
   id 'distribution'
+  // Shadow plugin to create a fat jar.
+  id 'com.github.johnrengelman.shadow' version '8.1.1'
+  // (Optional) Construo plugin.
+  id "io.github.fourlastor.construo" version "1.4.1"
 }
 
-sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
+System.setProperty("xstream.allowTypesByWildcard", "net.sf.launch4j.**")
 
-mainClassName = 'io.github.pokemeetup.lwjgl3.Lwjgl3Launcher'
-application.setMainClass(mainClassName)
+group = 'io.github.pokemeetup'
+version = '1.0.0'
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  // --- Desktop client dependencies: include your shared core project.
+  implementation project(':core')
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-desktop:${project.findProperty('gdxControllersVersion') ?: '2.2.3'}"
+  implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:${project.findProperty('gdxVersion') ?: '1.13.0'}"
+  implementation "com.badlogicgames.gdx:gdx-box2d-platform:${project.findProperty('gdxVersion') ?: '1.13.0'}:natives-desktop"
+  implementation "com.badlogicgames.gdx:gdx-platform:${project.findProperty('gdxVersion') ?: '1.13.0'}:natives-desktop"
+}
+
+application {
+  // The main class for your desktop client launcher.
+  mainClass = 'io.github.pokemeetup.lwjgl3.Lwjgl3Launcher'
+}
+
 java {
   sourceCompatibility = JavaVersion.VERSION_11
   targetCompatibility = JavaVersion.VERSION_11
 }
 
-
-dependencies {
-  // Client dependencies
-  implementation project(':core')
-  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-desktop:$gdxControllersVersion"
-  implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
-  implementation "com.badlogicgames.gdx:gdx-box2d-platform:$gdxVersion:natives-desktop"
-  implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
-
-  if (enableGraalNative == 'true') {
-    implementation "io.github.berstanio:gdx-svmhelper-backend-lwjgl3:$graalHelperVersion"
-    implementation "io.github.berstanio:gdx-svmhelper-extension-box2d:$graalHelperVersion"
-  }
-}
-
 def os = System.properties['os.name'].toLowerCase()
-
 run {
-  workingDir = rootProject.file('assets').path
+  // For development, set the working directory to the project root
+  // so that the "assets" folder is available as "assets/..."
+  workingDir = rootProject.projectDir
   setIgnoreExitValue(true)
-
   if (os.contains('mac')) {
     jvmArgs += "-XstartOnFirstThread"
   }
 }
 
-// Ensure the core project is built first
-tasks.register('buildCore', GradleBuild) {
-  group = 'build'
-  description = 'Builds the core project'
-
-  dir = project(':core').projectDir
-  tasks = ['jar']
+// --- Use the Shadow plugin to create a fat jar.
+shadowJar {
+  archiveFileName = "${project.name}-${version}-all.jar"
+  mergeServiceFiles()
 }
-// Ensure the server project is built first
+
+// --- Server Build Task (for your maintained server jar)
 tasks.register('buildServer', GradleBuild) {
   group = 'build'
   description = 'Builds the server project'
-
   dir = project(':ServerCore').projectDir
-  tasks = ['shadowJar'] // Change this line
+  tasks = ['shadowJar']
 }
 
+// --- Task: Create a minimal JRE using jlink.
+tasks.register('createMinimalJRE', Exec) {
+  def jdkPath = "C:/Program Files/Java/jdk-17"  // MODIFY this path as needed.
+  doFirst {
+    def minimalJREDir = file("${buildDir}/minimalJRE")
+    if (minimalJREDir.exists()) {
+      logger.lifecycle("Deleting existing minimalJRE directory: ${minimalJREDir}")
+      minimalJREDir.deleteDir()
+    }
+  }
+  commandLine "${jdkPath}/bin/jlink",
+    "--module-path", "${jdkPath}/jmods",
+    "--add-modules", "java.base,java.desktop",
+    "--compress", "2",
+    "--strip-debug",
+    "--no-header-files",
+    "--no-man-pages",
+    "--output", "${buildDir}/minimalJRE"
+}
 
-// Task to deploy the server
+// --- Task: Copy the contents of the assets folder for Packr packaging
+tasks.register('copyAssetsForPackr', Copy) {
+  group = 'distribution'
+  description = 'Copies the contents of the assets folder for inclusion in the Packr distribution'
+  // IMPORTANT: The trailing slash copies only the *contents* of the folder.
+  from "${rootProject.projectDir}/assets/"
+  into "${buildDir}/packr_resources"
+  doLast {
+    logger.lifecycle("packr_resources contains:")
+    fileTree("${buildDir}/packr_resources").visit { fileDetails ->
+      logger.lifecycle("  " + fileDetails.relativePath)
+    }
+  }
+}
+
+// --- Task: Run Packr to Package the Client
+tasks.register('runPackr', Exec) {
+  dependsOn 'shadowJar', 'copyAssetsForPackr'
+  def packrJar = rootProject.file("tools/packr.jar")
+  if (!packrJar.exists()) {
+    throw new GradleException("packr.jar not found in tools/; please download it from https://github.com/libgdx/packr/releases")
+  }
+  doFirst {
+    def outputDir = file("${buildDir}/packr")
+    if (outputDir.exists()) {
+      logger.lifecycle("Deleting existing Packr output directory: ${outputDir}")
+      outputDir.deleteDir()
+    }
+  }
+  // Pass the resources folder that now contains the *contents* of assets.
+  commandLine "java", "-jar", packrJar,
+    "--platform", "windows64",
+    "--jdk", "${buildDir}/minimalJRE",
+    "--executable", "PokeMeetup",
+    "--classpath", file("build/libs/${project.name}-${version}-all.jar").absolutePath,
+    "--mainclass", application.mainClass,
+    "--resources", "${buildDir}/packr_resources",
+    "--output", "${buildDir}/packr",
+    "--verbose"
+  doLast {
+    logger.lifecycle("Final Packr output directory contains:")
+    fileTree("${buildDir}/packr").visit { fileDetails ->
+      logger.lifecycle("  " + fileDetails.relativePath)
+    }
+  }
+}
+
+// --- Fallback Task: Copy assets from packr_resources into the final output folder
+// (This ensures that if Packr did not merge resources properly, the assets appear at the root.)
+tasks.register('copyFinalAssets', Copy) {
+  group = 'distribution'
+  description = 'Copies assets from packr_resources into the final output folder'
+  from "${buildDir}/packr_resources"
+  into "${buildDir}/packr"
+}
+
+// --- Task: Package the Desktop Client using Packr
+tasks.register('packClient') {
+  group = 'distribution'
+  description = 'Packages the desktop client as a portable executable using Packr'
+  // Run packClient then copyFinalAssets to force the assets into the output folder.
+  dependsOn 'shadowJar', 'createMinimalJRE', 'copyAssetsForPackr', 'runPackr'
+  finalizedBy 'copyFinalAssets'
+}
+
+// --- Server Deployment Task (for the server jar)
 tasks.register('deployServer', Copy) {
   group = 'deployment'
   description = 'Creates a complete server deployment'
-
-  dependsOn 'buildServer'
-
-  from("${project(':ServerCore').buildDir}/libs/server.jar") // Use the JAR from ServerCore
+  dependsOn tasks.named("buildServer")
+  from("${project(':ServerCore').buildDir}/libs/server.jar")
   into("${buildDir}/deploy")
-
   doLast {
     def deployDir = file("${buildDir}/deploy")
-
-    // Create start scripts
     new File(deployDir, 'start.bat').text = '''@echo off
 java -Xms1G -Xmx4G -jar server.jar
 pause
 '''
-
     def shFile = new File(deployDir, 'start.sh')
     shFile.text = '''#!/bin/bash
 java -Xms1G -Xmx4G -jar server.jar
 '''
     shFile.setExecutable(true, false)
-
-    // Create needed directories
     file("${deployDir}/logs").mkdirs()
     file("${deployDir}/plugins").mkdirs()
     file("${deployDir}/worlds").mkdirs()
     file("${deployDir}/config").mkdirs()
-
     println """
-        Server deployed to: ${deployDir}
-        To start the server:
-        - Windows: Run start.bat
-        - Linux/Mac: Run ./start.sh
-        """
+Server deployed to: ${deployDir}
+To start the server:
+  - Windows: Run start.bat
+  - Linux/Mac: Run ./start.sh
+"""
   }
 }
 
-// Jar task for LWJGL3 (client) application
-jar {
-  archiveFileName = "${appName}-${projectVersion}.jar"
-  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-  from {
-    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    project(':core').tasks.named('jar').get().archiveFile
+// --- Combined Distribution Task
+tasks.register('distAll', Zip) {
+  group = 'distribution'
+  description = 'Packages both the desktop client and server deployments into a single ZIP file.'
+  dependsOn 'packClient', 'deployServer'
+  from("${buildDir}/packr") {
+    include "**"
+    into 'client'
   }
-
-  manifest {
-    attributes 'Main-Class': project.mainClassName
+  from("${buildDir}/deploy") {
+    into 'server'
   }
-
-  exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
+  archiveFileName = "PokeMeetup_All_${version}.zip"
+  destinationDirectory = file("${buildDir}/distributions")
 }
 
-tasks.register('dist') {
-  dependsOn 'jar'
+// --- Optional: Fat JAR Distribution Alternative
+tasks.register('distJar', Zip) {
+  dependsOn 'shadowJar'
+  from(rootProject.file("build/libs/${project.name}-${version}-all.jar"))
+  archiveFileName = "${project.name}-${version}_fat.jar.zip"
+  destinationDirectory = file("${buildDir}/distributions")
 }
 
-if (enableGraalNative == 'true') {
+if (project.hasProperty('enableGraalNative') && enableGraalNative == 'true') {
   apply from: file("nativeimage.gradle")
 }

@@ -1,5 +1,6 @@
 package io.github.pokemeetup.system;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.math.Rectangle;
@@ -13,18 +14,22 @@ import io.github.pokemeetup.screens.otherui.BuildModeUI;
 import io.github.pokemeetup.system.battle.BattleInitiationHandler;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
+import io.github.pokemeetup.system.gameplay.PlayerAnimations;
 import io.github.pokemeetup.system.gameplay.inventory.ChestInteractionHandler;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
+import io.github.pokemeetup.system.keybinds.KeyBinds;
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.List;
 import java.util.UUID;
 
 public class InputHandler extends InputAdapter {
+
+    // Constants for chopping / swinging
     private static final float SWING_INTERVAL = 0.5f;
     private static final int DURABILITY_LOSS_PER_SWING = 1;
     private static final float TREE_CHOP_WITH_AXE_TIME = 2.0f;
@@ -32,18 +37,22 @@ public class InputHandler extends InputAdapter {
     private static final float CHOP_SOUND_INTERVAL_WITH_AXE = 0.6f;
     private static final float CHOP_SOUND_INTERVAL_WITHOUT_AXE = 0.6f;
 
+    // References to other systems
     private final PickupActionHandler pickupHandler;
     private final BattleInitiationHandler battleInitiationHandler;
     private final GameScreen gameScreen;
     private final ChestInteractionHandler chestHandler;
     private final InputManager inputManager;
 
+    // Movement key flags
     private boolean upPressed, downPressed, leftPressed, rightPressed;
 
-    // Chopping/punching states
-    private boolean isChopping = false;         // are we actively chopping a tree?
-    private boolean isPunching = false;         // are we actively punching (no axe found)?
-    private boolean isBreaking = false;         // are we actively breaking a block?
+    // Chopping / punching / breaking flags and progress
+    private boolean isChopping = false;    // true while a chop action is underway
+    private boolean isPunching = false;    // true if punching (when no axe)
+    private boolean isBreaking = false;    // for block breaking
+    // New flag to mark that the chopping action has reached the required progress
+    private boolean chopComplete = false;
 
     private float chopProgress = 0f;
     private float breakProgress = 0f;
@@ -51,23 +60,24 @@ public class InputHandler extends InputAdapter {
     private float lastChopSoundTime = 0f;
     private float lastBreakSoundTime = 0f;
 
-    private boolean hasAxe = false;             // do we have a wooden axe?
+    private boolean hasAxe = false; // do we have a wooden axe?
 
-    private WorldObject targetObject = null;    // the tree / object being chopped
-    private PlaceableBlock targetBlock = null;  // the block being broken
+    // The current target for chopping (e.g. a tree) or breaking
+    private WorldObject targetObject = null;
+    private PlaceableBlock targetBlock = null;
 
     public InputHandler(
         PickupActionHandler pickupHandler,
         BattleInitiationHandler battleInitiationHandler,
         GameScreen gameScreen,
-        ChestInteractionHandler handler,
-        InputManager uiControlManager
+        ChestInteractionHandler chestHandler,
+        InputManager inputManager
     ) {
         this.pickupHandler = pickupHandler;
-        this.inputManager = uiControlManager;
         this.battleInitiationHandler = battleInitiationHandler;
         this.gameScreen = gameScreen;
-        this.chestHandler = handler;
+        this.chestHandler = chestHandler;
+        this.inputManager = inputManager;
     }
 
     /************************************************************************
@@ -75,38 +85,27 @@ public class InputHandler extends InputAdapter {
      ************************************************************************/
     public void handleInteraction() {
         GameLogger.info("handleInteraction() called");
-
-        // Check if chest is open
         if (chestHandler.isChestOpen()) {
             GameLogger.info("Chest is already open");
             return;
         }
-
-        // Chest
         if (chestHandler.canInteractWithChest()) {
             GameLogger.info("Interacting with chest");
             handleChestInteraction();
             return;
         }
-
-        // Build mode
         if (GameContext.get().getPlayer().isBuildMode()) {
             GameLogger.info("Player is in build mode, handling block placement");
             handleBlockPlacement();
             return;
         }
-
-        // Crafting table
         if (canInteractWithCraftingTable()) {
             GameLogger.info("Interacting with crafting table");
             handleCraftingTableInteraction();
             return;
         }
-
-        // If none of the above => pick up items or initiate a battle
         GameLogger.info("Handling pickup action");
         pickupHandler.handlePickupAction();
-
         GameLogger.info("Attempting to initiate battle");
         battleInitiationHandler.handleBattleInitiation();
     }
@@ -116,16 +115,15 @@ public class InputHandler extends InputAdapter {
             GameLogger.info("Chest is already open, not handling interaction");
             return;
         }
-
         if (chestHandler.canInteractWithChest()) {
             Vector2 chestPos = chestHandler.getCurrentChestPosition();
             PlaceableBlock chestBlock = GameContext.get().getWorld().getBlockManager()
                 .getBlockAt((int) chestPos.x, (int) chestPos.y);
-
             if (chestBlock != null && chestBlock.getType() == PlaceableBlock.BlockType.CHEST) {
                 chestBlock.setChestOpen(true);
                 ChestData chestData = chestBlock.getChestData();
                 chestHandler.setChestOpen(true);
+
                 GameContext.get().getGameScreen().openChestScreen(chestPos, chestData);
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_OPEN);
             } else {
@@ -151,7 +149,6 @@ public class InputHandler extends InputAdapter {
                 targetX++;
                 break;
         }
-
         BuildModeUI buildUI = GameContext.get().getBuildModeUI();
         if (buildUI.isInBuildingMode()) {
             if (buildUI.tryPlaceBuilding(targetX, targetY)) {
@@ -188,7 +185,6 @@ public class InputHandler extends InputAdapter {
                 targetX++;
                 break;
         }
-
         PlaceableBlock block = GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(targetX, targetY);
         return (block != null && block.getType() == PlaceableBlock.BlockType.CRAFTINGTABLE);
     }
@@ -236,11 +232,18 @@ public class InputHandler extends InputAdapter {
     /************************************************************************
      *  KeyDown / KeyUp
      ************************************************************************/
+    // Replace the keyDown method in InputHandler with this updated version:
+
     @Override
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
 
-        // Number keys 1-9 for hotbar selection
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP) ||
+            keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN) ||
+            keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT) ||
+            keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
+            GameContext.get().getPlayer().setInputHeld(true);}
+        // Hotbar selection via number keys
         if (keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
             int slot = keycode - Input.Keys.NUM_1;
             GameContext.get().getPlayer().getHotbarSystem().setSelectedSlot(slot);
@@ -249,12 +252,19 @@ public class InputHandler extends InputAdapter {
 
         if (keycode == Input.Keys.O && !isChopping && !isPunching) {
             ItemData selectedItem = GameContext.get().getPlayer().getHotbarSystem().getSelectedItem();
-            if (selectedItem != null) {
-                dropItem(selectedItem);
-            }
+            if (selectedItem != null) dropItem(selectedItem);
             return true;
         }
-        // If in BUILD_MODE, handle block flipping if R is pressed
+        if (keycode == Input.Keys.G) {
+            // Only toggle building mode if the player is already in build mode.
+            if (GameContext.get().getPlayer().isBuildMode()) {
+                // Toggle the building mode inside the BuildModeUI
+                GameContext.get().getBuildModeUI().toggleBuildingMode();
+                return true;
+            }
+        }
+
+        // In build mode, handle block flipping with R
         if (currentState == InputManager.UIState.BUILD_MODE) {
             if (keycode == Input.Keys.R) {
                 handleBlockFlip();
@@ -262,77 +272,108 @@ public class InputHandler extends InputAdapter {
             }
         }
 
-        // Only process input in NORMAL and BUILD_MODE
+        // Only process input in NORMAL or BUILD_MODE
         if (currentState != InputManager.UIState.NORMAL &&
             currentState != InputManager.UIState.BUILD_MODE) {
             return false;
         }
 
-        // Interaction
-        if (keycode == Input.Keys.X) {
+        // Handle customizable inputs
+        if (keycode == KeyBinds.getBinding(KeyBinds.INTERACT)) {
             handleInteraction();
             return true;
         }
 
-        // Movement / actions
-        switch (keycode) {
-            case Input.Keys.G:
-                if (GameContext.get().getBuildModeUI() != null) {
-                    GameContext.get().getBuildModeUI().toggleBuildingMode();
-                }
-                return true;
-
-            case Input.Keys.W:
-            case Input.Keys.UP:
-                moveUp(true);
-                return true;
-
-            case Input.Keys.S:
-            case Input.Keys.DOWN:
-                moveDown(true);
-                return true;
-
-            case Input.Keys.A:
-            case Input.Keys.LEFT:
-                moveLeft(true);
-                return true;
-
-            case Input.Keys.D:
-            case Input.Keys.RIGHT:
-                moveRight(true);
-                return true;
-
-            case Input.Keys.Z: // run
-                GameContext.get().getPlayer().setRunning(true);
-                return true;
-
-            case Input.Keys.Q: // Chop or punch
-                startChopOrPunch();
-                return true;
-
-            case Input.Keys.B: // build mode
-                toggleBuildMode();
-                return true;
-
-            default:
-                if (currentState == InputManager.UIState.BUILD_MODE &&
-                    keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
-                    int slot = (keycode - Input.Keys.NUM_1);
-                    GameContext.get().getBuildModeUI().selectSlot(slot);
-                    GameLogger.info("Hotbar Slot Selected: " + slot);
-                    return true;
-                }
-                return false;
+        if (keycode == KeyBinds.getBinding(KeyBinds.BUILD_MODE)) {
+            toggleBuildMode();
+            return true;
         }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP)) {
+            moveUp(true);
+            return true;
+        }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN)) {
+            moveDown(true);
+            return true;
+        }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT)) {
+            moveLeft(true);
+            return true;
+        }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
+            moveRight(true);
+            return true;
+        }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.SPRINT)) {
+            GameContext.get().getPlayer().setRunning(true);
+            return true;
+        }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.ACTION)) {
+            startChopOrPunch();
+            return true;
+        }
+
+        if (currentState == InputManager.UIState.BUILD_MODE &&
+            keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
+            int slot = keycode - Input.Keys.NUM_1;
+            GameContext.get().getBuildModeUI().selectSlot(slot);
+            GameLogger.info("Hotbar Slot Selected: " + slot);
+            return true;
+        }
+
+        return false;
+    }
+
+    // Similarly update keyUp to use KeyBinds:
+    @Override
+    public boolean keyUp(int keycode) {
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP) ||
+            keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN) ||
+            keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT) ||
+            keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
+            GameContext.get().getPlayer().setInputHeld(false);
+            GameContext.get().getPlayer().clearBufferedDirection();
+        }
+        InputManager.UIState currentState = inputManager.getCurrentState();
+        if (currentState != InputManager.UIState.NORMAL &&
+            currentState != InputManager.UIState.BUILD_MODE) {
+            return false;
+        }
+
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP)) {
+            moveUp(false);
+            return true;
+        }
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN)) {
+            moveDown(false);
+
+            return true;
+        }
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT)) {
+            moveLeft(false);
+            return true;
+        }
+        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
+            moveRight(false);
+            return true;
+        }
+        if (keycode == KeyBinds.getBinding(KeyBinds.SPRINT)) {
+            GameContext.get().getPlayer().setRunning(false);
+            return true;
+        }
+        return keycode == KeyBinds.getBinding(KeyBinds.ACTION); // Action key up is handled elsewhere
     }
 
     private void dropItem(ItemData itemData) {
         if (itemData == null) return;
-
         Player player = GameContext.get().getPlayer();
         if (player == null) return;
-
-        // Calculate drop position in front of player
         float dropX = player.getX();
         float dropY = player.getY();
         switch (player.getDirection()) {
@@ -349,102 +390,81 @@ public class InputHandler extends InputAdapter {
                 dropX += 32;
                 break;
         }
-
-        // Remove item from inventory and spawn entity
         if (player.getInventory().removeItem(itemData)) {
             player.getHotbarSystem().updateHotbar();
-
             if (GameContext.get().isMultiplayer()) {
-                GameContext.get().getGameClient().sendItemDrop(
-                    itemData, new Vector2(dropX, dropY)
-                );
+                GameContext.get().getGameClient().sendItemDrop(itemData, new Vector2(dropX, dropY));
             } else {
-                GameContext.get().getWorld().getItemEntityManager()
-                    .spawnItemEntity(itemData, dropX, dropY);
+                GameContext.get().getWorld().getItemEntityManager().spawnItemEntity(itemData, dropX, dropY);
             }
-
-            // Play drop sound
             AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
         }
     }
 
-    @Override
-    public boolean keyUp(int keycode) {
-        InputManager.UIState currentState = inputManager.getCurrentState();
-
-        if (currentState != InputManager.UIState.NORMAL &&
-            currentState != InputManager.UIState.BUILD_MODE) {
-            return false;
-        }
-
-        switch (keycode) {
-            case Input.Keys.W:
-            case Input.Keys.UP:
-                moveUp(false);
-                return true;
-            case Input.Keys.S:
-            case Input.Keys.DOWN:
-                moveDown(false);
-                return true;
-            case Input.Keys.A:
-            case Input.Keys.LEFT:
-                moveLeft(false);
-                return true;
-            case Input.Keys.D:
-            case Input.Keys.RIGHT:
-                moveRight(false);
-                return true;
-            case Input.Keys.Z:
-                GameContext.get().getPlayer().setRunning(false);
-                GameLogger.info("Running Stopped");
-                return true;
-            case Input.Keys.Q:
-                stopChopOrPunch();
-                return true;
-        }
-        return false;
-    }
 
     public void toggleBuildMode() {
+        // Switch the UI state between NORMAL and BUILD_MODE
         if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
             inputManager.setUIState(InputManager.UIState.NORMAL);
             GameContext.get().getPlayer().setBuildMode(false);
-            if (GameContext.get().getGameScreen().getHouseToggleButton() != null) {
-                GameContext.get().getGameScreen().getHouseToggleButton().setVisible(false);
+            if (gameScreen.getHouseToggleButton() != null) {
+                gameScreen.getHouseToggleButton().setVisible(false);
             }
         } else {
             inputManager.setUIState(InputManager.UIState.BUILD_MODE);
             GameContext.get().getPlayer().setBuildMode(true);
-            if (GameContext.get().getGameScreen().getHouseToggleButton() != null) {
-                GameContext.get().getGameScreen().getHouseToggleButton().setVisible(true);
+            if (gameScreen.getHouseToggleButton() != null) {
+                gameScreen.getHouseToggleButton().setVisible(true);
             }
         }
     }
 
     public void startChopOrPunch() {
-        // If already chopping, breaking, or punching, do nothing.
-        if (isChopping || isBreaking || isPunching) return;
+        // Query the current action state from PlayerAnimations.
+        PlayerAnimations anim = GameContext.get().getPlayer().getAnimations();
+        if (anim.isChopping() || anim.isPunching()) {
+            // An action is already in progress—do not restart.
+            return;
+        }
+        // Reset local action flags.
+        isChopping = false;
+        isPunching = false;
+        isBreaking = false;
+        chopComplete = false;
 
-        checkForAxe(); // sets hasAxe true if a wooden axe is found
+        // Check if the player has a wooden axe.
+        checkForAxe();
 
-        // Try to find a choppable world object (i.e. tree) in front of the player.
+        // Try to find a choppable world object.
         targetObject = findChoppableObject();
+        // Also try to find a breakable block.
+        PlaceableBlock breakableBlock = findBreakableBlock();
+
+        // If neither a valid world object nor a breakable block is found, cancel the action.
+        if (targetObject == null && breakableBlock == null) {
+            GameLogger.info("No valid target for chop/punch found. Aborting action.");
+            // Ensure animations are not set.
+            anim.stopChopping();
+            anim.stopPunching();
+            return;
+        }
+
+        // Prioritize world objects over blocks.
         if (targetObject != null) {
-            // Begin chopping locally.
             isChopping = true;
             chopProgress = 0f;
             swingTimer = 0f;
             lastChopSoundTime = 0f;
             if (hasAxe) {
-                GameContext.get().getPlayer().getAnimations().startChopping();
+                anim.startChopping();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
             } else {
-                GameContext.get().getPlayer().getAnimations().startPunching();
+                isPunching = true;
+                anim.startPunching();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
             }
-            // If we’re in multiplayer, also send a CHOP_START/PUNCH_START network action for immediate feedback.
             boolean isMultiplayer = (GameContext.get().getGameClient() != null
-                && !GameContext.get().getGameClient().isSinglePlayer());
+                && GameContext.get().isMultiplayer());
             if (isMultiplayer) {
                 NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
                 action.playerId = GameContext.get().getPlayer().getUsername();
@@ -475,52 +495,17 @@ public class InputHandler extends InputAdapter {
                 GameContext.get().getGameClient().sendPlayerAction(action);
             }
         } else {
-            // No choppable world object found. Fallback: try to break a block.
+            // If no choppable object, try breaking a block.
             PlaceableBlock block = findBreakableBlock();
             if (block != null) {
                 startBreaking(block);
             } else {
-                // Fallback to punching with no object.
                 isPunching = true;
-                GameContext.get().getPlayer().getAnimations().startPunching();
+                anim.startPunching();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
             }
         }
     }
-
-    public void stopChopOrPunch() {
-        // If we were chopping or breaking, stop and reset progress.
-        if (isChopping || isBreaking) {
-            isChopping = false;
-            isBreaking = false;
-            chopProgress = 0f;
-            breakProgress = 0f;
-            targetObject = null;
-            targetBlock = null;
-            GameContext.get().getPlayer().getAnimations().stopChopping();
-            GameContext.get().getPlayer().getAnimations().stopPunching();
-
-            // Send CHOP_STOP in multiplayer mode.
-            if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
-                NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
-                action.playerId = GameContext.get().getPlayer().getUsername();
-                action.actionType = NetworkProtocol.ActionType.CHOP_STOP;
-                GameContext.get().getGameClient().sendPlayerAction(action);
-            }
-        } else if (isPunching) {
-            isPunching = false;
-            GameContext.get().getPlayer().getAnimations().stopPunching();
-
-            // Send PUNCH_STOP in multiplayer.
-            if (GameContext.get().getGameClient() != null && !GameContext.get().getGameClient().isSinglePlayer()) {
-                NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
-                action.playerId = GameContext.get().getPlayer().getUsername();
-                action.actionType = NetworkProtocol.ActionType.PUNCH_STOP;
-                GameContext.get().getGameClient().sendPlayerAction(action);
-            }
-        }
-    }
-
 
     /************************************************************************
      *  Block flipping (in build mode)
@@ -576,49 +561,41 @@ public class InputHandler extends InputAdapter {
         }
     }
 
-    /************************************************************************
-     *  Update method called each frame
-     ************************************************************************/
-    public void update(float deltaTime) {
-        // If we are actively chopping, punching, or breaking a block => handle progress
-        if (isChopping && targetObject != null) {
-            updateChopping(deltaTime);
-        }
-        if (isBreaking && targetBlock != null) {
-            updateBreaking(deltaTime);
-        }
-        // (If isPunching with no block or object, we do not have a “progress.”
-        //  So punching is purely an animation until user releases Q.)
-
-        // Movement
-        if (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
-            inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
-            if (upPressed) GameContext.get().getPlayer().move("up");
-            if (downPressed) GameContext.get().getPlayer().move("down");
-            if (leftPressed) GameContext.get().getPlayer().move("left");
-            if (rightPressed) GameContext.get().getPlayer().move("right");
+    public void stopChopOrPunch() {
+        // Stop all chop/punch/break actions and reset progress.
+        isChopping = false;
+        isBreaking = false;
+        isPunching = false;
+        chopProgress = 0f;
+        breakProgress = 0f;
+        targetObject = null;
+        targetBlock = null;
+        GameContext.get().getPlayer().getAnimations().stopChopping();
+        GameContext.get().getPlayer().getAnimations().stopPunching();
+        if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
+            NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
+            action.playerId = GameContext.get().getPlayer().getUsername();
+            action.actionType = NetworkProtocol.ActionType.PUNCH_STOP;
+            GameContext.get().getGameClient().sendPlayerAction(action);
         }
     }
 
-    /************************************************************************
-     *  Chopping logic
-     ************************************************************************/
+    // This method updates the chopping progress. It now waits for an additional delay equal to the full chop animation duration
+    // before calling stopChopOrPunch(), ensuring the full 4-frame chop animation is shown.
     private void updateChopping(float deltaTime) {
         if (!isValidTarget(targetObject)) {
             stopChopOrPunch();
             return;
         }
-
         chopProgress += deltaTime;
         lastChopSoundTime += deltaTime;
         swingTimer += deltaTime;
 
-        // If we have an actual wooden axe item => faster chop times
+        // Determine chop time based on whether the player has an axe.
         ItemData axeItem = hasAxe ? findAxeInInventory() : null;
         float chopTime = (hasAxe && axeItem != null) ? TREE_CHOP_WITH_AXE_TIME : TREE_CHOP_WITHOUT_AXE_TIME;
         float soundInterval = hasAxe ? CHOP_SOUND_INTERVAL_WITH_AXE : CHOP_SOUND_INTERVAL_WITHOUT_AXE;
 
-        // Play repeated chop/punch sounds
         if (lastChopSoundTime >= soundInterval) {
             if (hasAxe && axeItem != null) {
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
@@ -632,24 +609,28 @@ public class InputHandler extends InputAdapter {
             lastChopSoundTime = 0f;
         }
 
-        // If we have chopped long enough => remove object
+        // Once chopProgress reaches the required chop time, mark the chop as complete
         if (chopProgress >= chopTime) {
-            GameLogger.info("Tree chopped down! " + (hasAxe ? "(with axe)" : "(without axe)"));
-            destroyObject(targetObject);
-            stopChopOrPunch();
+            if (!chopComplete) {
+                GameLogger.info("Tree chopped down! " + (hasAxe ? "(with axe)" : "(without axe)"));
+                destroyObject(targetObject);
+                chopComplete = true;
+            }
+            // Wait until an additional duration equal to CHOP_ANIMATION_DURATION has elapsed before stopping.
+            if (chopProgress >= (chopTime + PlayerAnimations.CHOP_ANIMATION_DURATION)) {
+                stopChopOrPunch();
+                chopComplete = false;
+            }
         }
     }
 
-    // degrade the axe by 1 per swing
+    // degrade the axe durability per swing
     private void handleToolDurabilityPerSwing(ItemData axeItem) {
         if (axeItem == null) return;
         axeItem.updateDurability(-DURABILITY_LOSS_PER_SWING);
-
         GameContext.get().getPlayer().getInventory().notifyObservers();
-
         if (axeItem.isBroken()) {
             playToolBreakEffect();
-            // Remove broken axe
             for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
                 ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
                 if (item != null && item.getUuid().equals(axeItem.getUuid())) {
@@ -670,8 +651,7 @@ public class InputHandler extends InputAdapter {
     private void playToolBreakEffect() {
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.TOOL_BREAK);
-
-        // Switch from chop anim to "punch" anim
+        // Switch from chop anim to punch anim
         GameContext.get().getPlayer().getAnimations().stopChopping();
         GameContext.get().getPlayer().getAnimations().startPunching();
     }
@@ -681,26 +661,22 @@ public class InputHandler extends InputAdapter {
             GameContext.get().getPlayer().getWorld() == null) {
             return false;
         }
-
         float playerCenterX = GameContext.get().getPlayer().getTileX() * World.TILE_SIZE + (World.TILE_SIZE / 2f);
         float playerCenterY = GameContext.get().getPlayer().getTileY() * World.TILE_SIZE + (World.TILE_SIZE / 2f);
         Rectangle treeBox = obj.getCollisionBox();
         if (treeBox == null) return false;
-
         float treeCenterX = treeBox.x + treeBox.width / 2f;
         float treeCenterY = treeBox.y + treeBox.height / 2f;
         float distance = Vector2.dst(playerCenterX, playerCenterY, treeCenterX, treeCenterY);
-
         float maxRange = World.TILE_SIZE * 2.5f;
         Vector2 chunkPos = new Vector2(
             (int) Math.floor(obj.getPixelX() / (World.CHUNK_SIZE * World.TILE_SIZE)),
             (int) Math.floor(obj.getPixelY() / (World.CHUNK_SIZE * World.TILE_SIZE))
         );
-
         return GameContext.get().getPlayer().getWorld().getChunks().containsKey(chunkPos) && distance <= maxRange;
     }
 
-    // Check if a world object is "choppable" (tree, etc.)
+    // Returns true if the world object is a choppable type (e.g. a tree)
     private boolean isChoppable(WorldObject obj) {
         return obj.getType() == WorldObject.ObjectType.TREE_0 ||
             obj.getType() == WorldObject.ObjectType.TREE_1 ||
@@ -716,12 +692,9 @@ public class InputHandler extends InputAdapter {
             GameContext.get().getPlayer().getWorld() == null) {
             return null;
         }
-
         float playerCenterX = (GameContext.get().getPlayer().getTileX() + 0.5f) * World.TILE_SIZE;
         float playerCenterY = (GameContext.get().getPlayer().getTileY() + 0.5f) * World.TILE_SIZE;
         String direction = GameContext.get().getPlayer().getDirection();
-
-        // A small offset in front of the player
         float dirOffset = World.TILE_SIZE;
         float interactX = playerCenterX, interactY = playerCenterY;
         switch (direction) {
@@ -738,42 +711,30 @@ public class InputHandler extends InputAdapter {
                 interactX += dirOffset;
                 break;
         }
-
-        // Our search area
         Rectangle searchArea = new Rectangle(
             interactX - World.TILE_SIZE * 1.5f,
             interactY - World.TILE_SIZE * 1.5f,
             World.TILE_SIZE * 3,
             World.TILE_SIZE * 3
         );
-
-        // Grab objects near that point
         List<WorldObject> nearby = GameContext.get().getPlayer().getWorld().getObjectManager()
             .getObjectsNearPosition(interactX, interactY);
-
         WorldObject bestObj = null;
         float bestDist = Float.MAX_VALUE;
-
         for (WorldObject obj : nearby) {
             if (!isChoppable(obj)) continue;
             Rectangle objBox = obj.getCollisionBox();
             if (objBox == null) continue;
-
             if (objBox.overlaps(searchArea)) {
-                // measure distance
                 float cx = objBox.x + objBox.width / 2f;
                 float cy = objBox.y + objBox.height / 2f;
                 float dist = Vector2.dst(interactX, interactY, cx, cy);
-
-                // optionally weigh direction
                 if (dist < bestDist) {
                     bestDist = dist;
                     bestObj = obj;
                 }
             }
         }
-
-        // Only return if we are within 2.5 tiles
         return (bestDist <= World.TILE_SIZE * 2.5f) ? bestObj : null;
     }
 
@@ -819,13 +780,11 @@ public class InputHandler extends InputAdapter {
 
     private void startBreaking(PlaceableBlock block) {
         if (isBreaking) return;
-
         checkForAxe();
         isBreaking = true;
         targetBlock = block;
         breakProgress = 0f;
         lastBreakSoundTime = 0f;
-
         if (hasAxe) {
             GameContext.get().getPlayer().getAnimations().startChopping();
             AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
@@ -842,10 +801,8 @@ public class InputHandler extends InputAdapter {
             }
             return;
         }
-
         breakProgress += deltaTime;
         lastBreakSoundTime += deltaTime;
-
         float breakInterval = hasAxe ? CHOP_SOUND_INTERVAL_WITH_AXE : CHOP_SOUND_INTERVAL_WITHOUT_AXE;
         if (lastBreakSoundTime >= breakInterval) {
             if (hasAxe) {
@@ -855,27 +812,22 @@ public class InputHandler extends InputAdapter {
             }
             lastBreakSoundTime = 0f;
         }
-
         float needed = targetBlock.getType().getBreakTime(hasAxe);
         if (breakProgress >= needed) {
             destroyBlock(targetBlock);
-            stopChopOrPunch(); // stop break
+            stopChopOrPunch();
         }
     }
 
     private void destroyBlock(PlaceableBlock block) {
         if (block == null) return;
-
         try {
             World world = GameContext.get().getPlayer().getWorld();
             if (world == null) return;
-
             Vector2 pos = block.getPosition();
             Chunk chunk = world.getChunkAtPosition(pos.x, pos.y);
             if (chunk != null) {
                 chunk.removeBlock(pos);
-
-                // If multiplayer => send block remove
                 if (GameContext.get().getGameClient() != null &&
                     !GameContext.get().getGameClient().isSinglePlayer()) {
                     NetworkProtocol.BlockPlacement removal = new NetworkProtocol.BlockPlacement();
@@ -886,34 +838,23 @@ public class InputHandler extends InputAdapter {
                     removal.action = NetworkProtocol.BlockAction.REMOVE;
                     GameContext.get().getGameClient().sendBlockPlacement(removal);
                 }
-
-                // Give item to player
                 String itemId = block.getType().itemId;
                 if (itemId != null) {
-                    ItemData blockItem = new ItemData(
-                        itemId, 1, UUID.randomUUID()
-                    );
+                    ItemData blockItem = new ItemData(itemId, 1, UUID.randomUUID());
                     GameContext.get().getPlayer().getInventory().addItem(blockItem);
                     GameLogger.info("Added item to inventory: " + itemId);
                 } else {
                     GameLogger.error("No item ID found for block type: " + block.getType().id);
                 }
-
-                // break sound
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
-
                 if (block.getType() == PlaceableBlock.BlockType.CHEST) {
                     ChestData chestData = block.getChestData();
                     if (chestData != null) {
                         GameContext.get().getWorld().getItemEntityManager()
-                            .spawnItemsFromChest(chestData,
-                                pos.x * World.TILE_SIZE,
-                                pos.y * World.TILE_SIZE);
+                            .spawnItemsFromChest(chestData, pos.x * World.TILE_SIZE, pos.y * World.TILE_SIZE);
                         chestData.items.clear();
-
                     }
                 }
-                // Save chunk
                 Vector2 chunkPos = new Vector2(
                     (int) Math.floor(pos.x / World.CHUNK_SIZE),
                     (int) Math.floor(pos.y / World.CHUNK_SIZE)
@@ -930,54 +871,107 @@ public class InputHandler extends InputAdapter {
      ************************************************************************/
     private void destroyObject(WorldObject obj) {
         if (obj == null) return;
-
         try {
-            World w = GameContext.get().getPlayer().getWorld();
-            if (w == null) return;
-
-            WorldObject.WorldObjectManager manager = w.getObjectManager();
+            World world = GameContext.get().getPlayer().getWorld();
+            if (world == null) return;
+            WorldObject.WorldObjectManager manager = world.getObjectManager();
             if (manager == null) return;
 
-            // play break sound
+            // Play the appropriate sound
             if (hasAxe) {
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
             } else {
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
             }
 
+            // Compute the chunk in which the object resides.
             Vector2 chunkPos = new Vector2(
                 (int) Math.floor(obj.getPixelX() / (World.CHUNK_SIZE * World.TILE_SIZE)),
                 (int) Math.floor(obj.getPixelY() / (World.CHUNK_SIZE * World.TILE_SIZE))
             );
 
-            // remove object locally
-            manager.removeObjectFromChunk(chunkPos, obj.getId());
-
-            // If multiplayer => broadcast removal
-            if (GameContext.get().getGameClient() != null &&
-                !GameContext.get().getGameClient().isSinglePlayer()) {
+            // If we’re in multiplayer, send the removal update.
+            if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
                 NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
                 update.objectId = obj.getId();
                 update.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-                update.data = obj.getSerializableData();
+                update.data = obj.getSerializableData();  // This now contains the canonical coordinates.
                 GameContext.get().getGameClient().sendWorldObjectUpdate(update);
             }
 
-            // Drop items
+            // IMPORTANT: Remove using the canonical coordinates!
+            int removalTileX = obj.getTileX();
+            int removalTileY = obj.getTileY();
+            // For tree objects, our serialization subtracts 1 from tileX.
+            if (obj.getType() == WorldObject.ObjectType.TREE_0 ||
+                obj.getType() == WorldObject.ObjectType.TREE_1 ||
+                obj.getType() == WorldObject.ObjectType.SNOW_TREE ||
+                obj.getType() == WorldObject.ObjectType.HAUNTED_TREE ||
+                obj.getType() == WorldObject.ObjectType.RUINS_TREE ||
+                obj.getType() == WorldObject.ObjectType.RAIN_TREE) {
+                removalTileX = removalTileX - 1;
+            }
+            manager.removeObjectFromChunk(chunkPos, obj.getId(), removalTileX, removalTileY);
+
+            // Award resources (e.g. wood planks)
             int planks = hasAxe ? 4 : 1;
             ItemData woodPlanks = new ItemData("wooden_planks", planks, UUID.randomUUID());
             GameContext.get().getPlayer().getInventory().addItem(woodPlanks);
 
-            // Save chunk
-            Chunk chunk = w.getChunkAtPosition(chunkPos.x * Chunk.CHUNK_SIZE, chunkPos.y * Chunk.CHUNK_SIZE);
+            // Save the chunk if available.
+            Chunk chunk = world.getChunkAtPosition(chunkPos.x * Chunk.CHUNK_SIZE, chunkPos.y * Chunk.CHUNK_SIZE);
             if (chunk != null) {
-                w.saveChunkData(chunkPos, chunk);
+                world.saveChunkData(chunkPos, chunk);
             }
         } catch (Exception e) {
             GameLogger.error("Failed to destroy object: " + e.getMessage());
             stopChopOrPunch();
         }
     }
+
+    /************************************************************************
+     *  Update method called each frame
+     ************************************************************************/
+    public void update(float deltaTime) {
+        // Update any chopping/punching progress first.
+        if (isChopping && targetObject != null) {
+            updateChopping(deltaTime);
+        }
+        if (isBreaking && targetBlock != null) {
+            updateBreaking(deltaTime);
+        }
+
+        // Process movement only if in a valid state.
+        if (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
+            inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
+
+            Player player = GameContext.get().getPlayer();
+            // If the player is not already moving, start a move based on key input.
+            if (!player.isMoving()) {
+                if (upPressed) {
+                    player.move("up");
+                } else if (downPressed) {
+                    player.move("down");
+                } else if (leftPressed) {
+                    player.move("left");
+                } else if (rightPressed) {
+                    player.move("right");
+                }
+            } else {
+                // If the player is moving and a key is still held, buffer that direction.
+                if (upPressed) {
+                    player.setBufferedDirection("up");
+                } else if (downPressed) {
+                    player.setBufferedDirection("down");
+                } else if (leftPressed) {
+                    player.setBufferedDirection("left");
+                } else if (rightPressed) {
+                    player.setBufferedDirection("right");
+                }
+            }
+        }
+    }
+
 
     /************************************************************************
      *  Utility

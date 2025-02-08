@@ -108,7 +108,6 @@ public class Biome {
             distribution = normalizedDist;
         }
 
-        // Store the normalized distribution
         this.tileDistribution = new HashMap<>(distribution);
 
     }

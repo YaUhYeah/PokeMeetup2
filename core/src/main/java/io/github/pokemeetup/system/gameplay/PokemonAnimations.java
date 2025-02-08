@@ -11,7 +11,6 @@ import java.util.Random;
 
 public class PokemonAnimations {
     public static final float IDLE_BOUNCE_DURATION = 1.0f;
-    private static final float IDLE_BOUNCE_HEIGHT = 2f;
     private static final float IDLE_ANIMATION_CHANCE = 0.01f; // Chance to start idle animation per frame
 
     private float idleTime = 0f;
@@ -179,7 +178,6 @@ public class PokemonAnimations {
         if (!isMoving || !direction.equals(currentDirection)) {
             this.isMoving = true;
             this.currentDirection = direction;
-            // Don't reset stateTime to keep animations smooth
         }
     }
 

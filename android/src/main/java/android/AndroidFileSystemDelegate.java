@@ -142,8 +142,8 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
         String[] variants = {
             path,
             path.toLowerCase(),
-            path.replace("data/", "data/"),
-            path.replace("/data/", "/data/"),
+            path.replace("Data/", "Data/"),
+            path.replace("/Data/", "/Data/"),
             path.substring(path.lastIndexOf("/") + 1)
         };
 
@@ -165,8 +165,8 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
 
     private String readBiomesJson() throws IOException {
         String[] biomePaths = {
-                "data/biomes.json",
-                "data/biomes.json",
+                "Data/biomes.json",
+                "Data/biomes.json",
             "biomes.json",
             "assets/Data/biomes.json"
         };
@@ -204,8 +204,8 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
             .replaceFirst("^assets/", "");
 
         // Handle special directories like "Data"
-        if (path.startsWith("data/")) {
-            path = "data/" + path.substring(5);
+        if (path.startsWith("Data/")) {
+            path = "Data/" + path.substring(5);
         }
 
         return path;
@@ -281,8 +281,8 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
             assetPath,
             assetPath.toLowerCase(),
             "assets/" + assetPath,
-            assetPath.replace("data/", "data/"),
-            assetPath.replace("data/", "data/")
+            assetPath.replace("Data/", "Data/"),
+            assetPath.replace("Data/", "Data/")
         };
 
         for (String tryPath : possiblePaths) {

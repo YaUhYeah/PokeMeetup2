@@ -99,6 +99,22 @@ public class Pokemon {
         this.currentHp = stats.getHp();
     }
 
+    protected Pokemon(boolean noTexture) {
+        // We assume 'noTexture' is true
+        this.uuid = UUID.randomUUID();
+        this.name = "";         // Will be set later by the subclass
+        this.level = 1;         // Will be overwritten later
+        this.nature = generateNature();
+        this.isShiny = calculateShinyStatus();
+        this.stats = new Stats();
+        this.moves = new ArrayList<>();
+        this.growthRate = "Medium Fast"; // default (or you can load from the database if needed)
+        this.position = new Vector2();
+        this.direction = "down";
+        this.isMoving = false;
+        this.currentHp = 0; // will be set later
+    }
+
     public Pokemon(String name, int level) {
         this(name, level,
             getBaseStat(name, "hp"),
@@ -107,6 +123,22 @@ public class Pokemon {
             getBaseStat(name, "spAtk"),
             getBaseStat(name, "spDef"),
             getBaseStat(name, "speed"));
+    }
+
+    public static Pokemon createServerPokemon(String name, int level) {
+        Pokemon p = new Pokemon(true);
+        p.name = name;
+        p.level = level;
+        // Optionally, if you want to load base stats from your database template:
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null) {
+            p.growthRate = template.growthRate != null ? template.growthRate : "Medium Fast";
+            // You might assign speciesBase* values here if needed.
+        }
+        // Then calculate stats:
+        p.calculateStats();
+        p.currentHp = p.stats.getHp();
+        return p;
     }
 
     /**
@@ -369,6 +401,7 @@ public class Pokemon {
             expNeeded = getExperienceForNextLevel();
         }
     }
+
     public void addExperience(int exp) {
         currentExperience += exp;
         checkLevelUp();
@@ -406,7 +439,6 @@ public class Pokemon {
         // Check for new moves
         learnNewMovesAtLevel(level);
     }
-
 
 
     public int getBaseExperience() {
@@ -706,7 +738,7 @@ public class Pokemon {
     }
 
 
-    private int calculateStat(int base, int iv, int ev) {
+    int calculateStat(int base, int iv, int ev) {
         // Example uses a nature modifier with ±10% random variation.
         float natureModifier = 1.0f + (new Random().nextFloat() * 0.2f - 0.1f);
         return (int) (((2 * base + iv + (float) ev / 4) * level / 100f + 5) * natureModifier);

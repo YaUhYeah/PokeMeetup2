@@ -220,9 +220,8 @@ public class GameClient {
             client.sendTCP(spawnData);
 
             // Track locally
-            if (!trackedWildPokemon.containsKey(spawnData.uuid)) {
-                // Create local Pokemon instance
-                TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
+            if (!trackedWildPokemon.containsKey(spawnData.uuid)) {TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
+
                 if (overworldSprite != null) {
                     WildPokemon pokemon = new WildPokemon(
                         spawnData.data.getName(),
@@ -654,7 +653,8 @@ public class GameClient {
         if (message == null || message.content == null) {
             return;
         }
-        chatMessageQueue.offer(message);
+        chatMessageQueue.offer(message);GameLogger.info("Client enqueued chat message: " + message.sender + ": " + message.content);
+
     }
 
     public String getLocalUsername() {
@@ -917,7 +917,14 @@ public class GameClient {
                 handleBlockPlacement((NetworkProtocol.BlockPlacement) object);
             } else if (object instanceof NetworkProtocol.PlayerAction) {
                 handlePlayerAction((NetworkProtocol.PlayerAction) object);
+            }if (object instanceof NetworkProtocol.PokemonBatchUpdate) {
+                NetworkProtocol.PokemonBatchUpdate batchUpdate = (NetworkProtocol.PokemonBatchUpdate) object;
+                for (NetworkProtocol.PokemonUpdate update : batchUpdate.updates) {
+                    handlePokemonUpdate(update);
+                }
+                return;
             }
+
         } catch (Exception e) {
             GameLogger.error("Error handling network message: " + e.getMessage());
         }
@@ -1108,13 +1115,10 @@ public class GameClient {
         });
     }
 
-    public void tick(float deltaTime) {
+    public void tick() {
         if (!isConnected() || isSinglePlayer) return;
         if (isInitialized && !processingMessages) {
             processQueuedMessages();
-        }
-        if (isInitialized && GameContext.get().getPlayer() != null) {
-            update(deltaTime);
         }
     }
 
@@ -1235,9 +1239,7 @@ public class GameClient {
             GameLogger.error("Failed to request chunk: " + e.getMessage());
             pendingChunks.remove(chunkPos);
         }
-    }
-
-    private void handleWorldObjectUpdate(NetworkProtocol.WorldObjectUpdate update) {
+    }private void handleWorldObjectUpdate(NetworkProtocol.WorldObjectUpdate update) {
         if (update == null || GameContext.get().getWorld() == null) {
             return;
         }
@@ -1247,21 +1249,55 @@ public class GameClient {
                 WorldObject.WorldObjectManager objectManager = GameContext.get().getWorld().getObjectManager();
                 switch (update.type) {
                     case ADD:
+                        // Create and add new object from update data.
                         WorldObject newObj = new WorldObject();
                         newObj.updateFromData(update.data);
                         objectManager.addObjectToChunk(newObj);
                         break;
 
                     case REMOVE:
-                        objectManager.removeObjectById(update.objectId);
+                        // Ensure tile coordinates are present in the update.
+                        if (update.data == null || !update.data.containsKey("tileX") || !update.data.containsKey("tileY")) {
+                            GameLogger.error("Client: WorldObjectUpdate REMOVE missing tile position data.");
+                            return;
+                        }
+                        // Parse the canonical tile coordinates.
+                        int baseTileX = Integer.parseInt(update.data.get("tileX").toString());
+                        int baseTileY = Integer.parseInt(update.data.get("tileY").toString());
+                        // Use Math.floorDiv to compute the chunk coordinates reliably.
+                        int chunkX = Math.floorDiv(baseTileX, Chunk.CHUNK_SIZE);
+                        int chunkY = Math.floorDiv(baseTileY, Chunk.CHUNK_SIZE);
+                        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+                        // Remove the object from the WorldObjectManager.
+                        objectManager.removeObjectFromChunk(chunkPos, update.objectId, baseTileX, baseTileY);
+
+                        // **New Code:** Also update the local world's chunk.
+                        World world = GameContext.get().getWorld();
+                        if (world != null) {
+                            // Here we assume that the world's chunk retrieval uses the same coordinate system.
+                            // (If your chunk lookup method expects pixel coordinates, adjust accordingly.)
+                            Chunk chunk = world.getChunkAtPosition(baseTileX * World.TILE_SIZE, baseTileY * World.TILE_SIZE);
+                            if (chunk != null) {
+                                // Remove the world object from the chunk's internal list.
+                                // (If you don’t already have a helper method, you can iterate through the chunk’s object list.)
+                                chunk.getWorldObjects().removeIf(obj -> obj.getId().equals(update.objectId));
+                                // Mark the chunk as dirty so that it will be re–rendered.
+                                chunk.setDirty(true);
+                            }
+                        }
                         break;
 
                     case UPDATE:
                         objectManager.updateObject(update);
                         break;
+
+                    default:
+                        GameLogger.error("Client: Unknown world object update type: " + update.type);
+                        break;
                 }
             } catch (Exception e) {
-                GameLogger.error("Error processing world object update: " + e.getMessage());
+                GameLogger.error("Error processing world object update on client: " + e.getMessage());
             }
         });
     }
@@ -1323,6 +1359,7 @@ public class GameClient {
                         update.x,
                         update.y
                     );
+                    otherPlayer.setWantsToRun(update.wantsToRun);
                     otherPlayers.put(update.username, otherPlayer);
                     GameLogger.info("Created new player: " + update.username);
                 }
@@ -1432,8 +1469,8 @@ public class GameClient {
                 if (trackedWildPokemon.containsKey(spawnData.uuid)) {
                     return;
                 }
-
                 TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
+
                 if (overworldSprite == null) {
                     GameLogger.error("Could not load sprite for Pokemon: " + spawnData.data.getName());
                     return;
