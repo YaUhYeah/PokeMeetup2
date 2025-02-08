@@ -68,7 +68,6 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.INITIAL_LOAD_
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class GameScreen implements Screen, PickupActionHandler, BattleInitiationHandler {
-    public static final boolean DEBUG_MODE = false;
     private static final float TARGET_VIEWPORT_WIDTH_TILES = 24f;
     private static final float UPDATE_INTERVAL = 0.1f;
     private static final float CAMERA_LERP = 5.0f;
@@ -318,6 +317,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         inputManager.setUIState(InputManager.UIState.CHEST_SCREEN);
     }
 
+
     public void closeChestScreen() {
         if (chestScreen != null) {
             chestScreen.hide();
@@ -419,18 +419,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             return;
         }
 
-        Stage newStage = new Stage(new ScreenViewport());
-        GameContext.get().setUiStage(newStage);
-        Gdx.input.setInputProcessor(newStage);
-        GameLogger.info("UI Stage reinitialized after relog.");
-        Player player = GameContext.get().getPlayer();
-        if (player != null) {
-            // Clear any previous hotbar instance
-            player.setHotbarSystem(null);
-            // Calling getHotbarSystem() will now create a new hotbar attached to the new stage.
-            HotbarSystem hotbar = player.getHotbarSystem();
-            GameLogger.info("Hotbar system reinitialized after relog.");
-        }
         inputManager.updateInputProcessors();
         if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
             Vector2 playerPos = new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY());
@@ -1314,6 +1302,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         return message;
     }
 
+
     private void setupCamera() {
         if (camera == null) {
             camera = new OrthographicCamera();
@@ -1362,7 +1351,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             (float) Gdx.graphics.getHeight() / 2);
         GameContext.get().getBatch().end();
     }
-
+    public static final boolean DEBUG_MODE = false;
     @Override
     public void render(float delta) {
 
@@ -1436,6 +1425,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameContext.get().getBatch().setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
             GameContext.get().getWorld().render(GameContext.get().getBatch(), viewBounds, GameContext.get().getPlayer(), this);
+
+
 
 
         }
@@ -2007,8 +1998,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 // Then save the entire world
                 GameContext.get().getWorld().save();
                 GameLogger.info("Singleplayer final save complete for " + username);
-            }
-            if (GameContext.get().getUiStage() != null) {
+            }  if (GameContext.get().getUiStage() != null) {
                 GameContext.get().getUiStage().clear();
                 GameContext.get().getUiStage().dispose();
                 GameContext.get().setUiStage(null);
@@ -2029,6 +2019,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                         pokemonPartyStage.dispose();
                         pokemonPartyStage = null;
                     }
+
 
 
                     if (GameContext.get().getBatch() != null) {
