@@ -103,8 +103,7 @@ public class DisconnectionScreen implements Screen {
     }
 
     private Label.LabelStyle createLabelStyle() {
-        Label.LabelStyle style = new Label.LabelStyle(skin.getFont("default-font"), Color.WHITE);
-        return style;
+        return new Label.LabelStyle(skin.getFont("default-font"), Color.WHITE);
     }
 
     private TextButton createButton(String text, Color color) {

@@ -1,5 +1,6 @@
 package io.github.pokemeetup.multiplayer.client;
 
+import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -20,6 +21,7 @@ import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.screens.ChestScreen;
+import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
@@ -43,6 +45,7 @@ import java.util.function.Consumer;
 
 
 public class GameClient {
+    private static final long CONNECTION_TIMEOUT_MS = 5000;
     private static final long CONNECTION_TIMEOUT = 45000;
     private static final long RECONNECT_DELAY = 3000;
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
@@ -55,6 +58,7 @@ public class GameClient {
     private static final int INCREASED_BUFFER = 65536;
     private static final int CHUNK_LOAD_RADIUS = 3;
     private static final long PING_INTERVAL = 5000; // 5 seconds
+    private static final int CONNECT_TIMEOUT_MS = 45000; // unify to 45s
     private final DisconnectionManager disconnectHandler;
     private final PlayerDataResponseHandler playerDataHandler = new PlayerDataResponseHandler();
     private final Queue<Vector2> chunkRequestQueue = new ConcurrentLinkedQueue<>();
@@ -77,6 +81,9 @@ public class GameClient {
     private final Set<String> recentJoinEvents = Collections.synchronizedSet(new HashSet<>());
     private final ConcurrentHashMap<String, Integer> playerPingMap = new ConcurrentHashMap<>();
     public AtomicBoolean shouldReconnect = new AtomicBoolean(true);
+    private volatile boolean connecting = false;
+    private volatile boolean connected = false;
+    private boolean disposing = false;
     private boolean isSinglePlayer;
     private int reconnectAttempts = 0;
     private volatile boolean isInitializing = false;
@@ -84,8 +91,6 @@ public class GameClient {
     private float syncTimer = 0;
     private PlayerData lastKnownState;
     private Consumer<NetworkProtocol.ChatMessage> chatMessageHandler;
-    private LoginResponseListener loginResponseListener;
-    private RegistrationResponseListener registrationResponseListener;
     private PokemonUpdateHandler pokemonUpdateHandler;
     private WorldData worldData;
     private float updateAccumulator = 0;
@@ -107,6 +112,7 @@ public class GameClient {
     private ReconnectionListener reconnectionListener;
     private int localPing;
     private long lastPingTime = 0;
+    private Consumer<NetworkProtocol.LoginResponse> loginResponseListener;
 
     public GameClient(ServerConnectionConfig config) {
 
@@ -135,6 +141,71 @@ public class GameClient {
             client.getKryo().setReferences(false);
         }
     }
+
+    public void connectIfNeeded(Runnable onSuccess, Consumer<String> onError, long timeoutMs) {
+        // 1) If client is already connected, just callback success
+        if (client != null && client.isConnected()) {
+            Gdx.app.postRunnable(onSuccess);
+            return;
+        }
+        // 2) If we are in the middle of connecting, do not connect again.
+        if (!isConnecting.compareAndSet(false, true)) {
+            // means isConnecting was already true
+            Gdx.app.postRunnable(() -> onError.accept("Already connecting..."));
+            return;
+        }
+
+        // 3) Not connected, not connecting => proceed with new connection
+        client = new Client(65536, 65536);
+        NetworkProtocol.registerClasses(client.getKryo());
+
+        client.addListener(new Listener() {
+            @Override
+            public void connected(Connection connection) {
+                // Mark as connected on the main thread:
+                Gdx.app.postRunnable(() -> {
+                    isConnecting.set(false);
+                    // Mark the connection state as CONNECTED and set the isConnected flag.
+                    connectionState = ConnectionState.CONNECTED;
+                    isConnected.set(true);
+                    isAuthenticated.set(false);
+                    onSuccess.run();
+                });
+            }
+
+            @Override
+            public void disconnected(Connection connection) {
+                if (!isDisposing.get()) {
+                    if (!suppressDisconnectHandling) {
+                        handleDisconnect("Disconnected from server");
+                    } else {
+                        // Optionally log that disconnect handling is suppressed.
+                        GameLogger.info("Disconnect occurred while in registration mode – not triggering disconnect screen.");
+                    }
+                }
+            }
+
+
+            @Override
+            public void received(Connection connection, Object object) {
+                handleReceivedMessage(object);
+            }
+        });
+
+        client.start();
+        new Thread(() -> {
+            try {
+                client.connect((int)timeoutMs,
+                    serverConfig.getServerIP(),
+                    serverConfig.getTcpPort(),
+                    serverConfig.getUdpPort());
+            } catch (Exception e) {
+                isConnecting.set(false);
+                Gdx.app.postRunnable(() -> onError.accept("Connection failed: " + e.getMessage()));
+            }
+        }).start();
+    }private static final long REGISTRATION_CONNECT_TIMEOUT_MS = 10000; // 10 seconds
+
 
     public void sendBuildingPlacement(NetworkProtocol.BuildingPlacement bp) {
         client.sendTCP(bp);
@@ -190,7 +261,7 @@ public class GameClient {
 
     private void handlePingResponse(NetworkProtocol.PingResponse response) {
         long now = System.currentTimeMillis();
-        localPing = (int)(now - response.timestamp);
+        localPing = (int) (now - response.timestamp);
 
         // Now send our updated info to the server:
         NetworkProtocol.PlayerInfoUpdate update = new NetworkProtocol.PlayerInfoUpdate();
@@ -198,7 +269,6 @@ public class GameClient {
         update.ping = localPing;
         client.sendTCP(update);
     }
-
 
     public void sendPokemonSpawn(NetworkProtocol.WildPokemonSpawn spawnData) {
         if (!isConnected() || !isAuthenticated() || isSinglePlayer) {
@@ -220,7 +290,8 @@ public class GameClient {
             client.sendTCP(spawnData);
 
             // Track locally
-            if (!trackedWildPokemon.containsKey(spawnData.uuid)) {TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
+            if (!trackedWildPokemon.containsKey(spawnData.uuid)) {
+                TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
 
                 if (overworldSprite != null) {
                     WildPokemon pokemon = new WildPokemon(
@@ -284,13 +355,6 @@ public class GameClient {
         }
     }
 
-    public void setInitializationListener(InitializationListener listener) {
-        this.initializationListener = listener;
-        if (isInitialized()) {
-            Gdx.app.postRunnable(() -> listener.onInitializationComplete(true));
-        }
-    }
-
     private void loadSavedCredentials() {
         try {
             String savedUsername = credentials.getString("username", "");
@@ -314,116 +378,34 @@ public class GameClient {
         }
     }
 
-    public void connect() {
-        if (isConnecting.get() || isConnected()) {
-            GameLogger.info("Already connecting or connected");
+    public void sendLoginRequest(String username, String password,
+                                 Consumer<NetworkProtocol.LoginResponse> onResponse,
+                                 Consumer<String> onError) {
+        if (client == null || !client.isConnected()) {
+            onError.accept("Not connected to server for login");
             return;
         }
 
-        synchronized (connectionLock) {
-            try {
-                isConnecting.set(true);
-                cleanupExistingConnection();
-
-                client = new Client(BUFFER_SIZE, BUFFER_SIZE);
-                Kryo kryo = client.getKryo();
-                kryo.setReferences(false);
-                NetworkProtocol.registerClasses(kryo);
-
-                client.addListener(new Listener() {
-                    @Override
-                    public void connected(Connection connection) {
-                        GameLogger.info("Connected to server");
-                        connectionState = ConnectionState.CONNECTED;
-                        isConnected.set(true);
-                        isConnecting.set(false);
-                        reconnectAttempts = 0;
-                        if (reconnectionListener != null) {
-                            reconnectionListener.onReconnectionSuccess();
-                        }
-                        if (pendingUsername != null && pendingPassword != null) {
-                            com.badlogic.gdx.utils.Timer.schedule(new com.badlogic.gdx.utils.Timer.Task() {
-                                @Override
-                                public void run() {
-                                    sendLoginRequest(pendingUsername, pendingPassword);
-                                }
-                            }, 0.5f);
-                        } else {
-                            GameLogger.error("No credentials available. Cannot authenticate.");
-                            handleConnectionFailure(new Exception("Missing credentials"));
-                        }
-                    }
-
-                    @Override
-                    public void received(Connection connection, Object object) {
-                        if (object instanceof NetworkProtocol.GetPlayerDataResponse ||
-                            object instanceof NetworkProtocol.SavePlayerDataResponse) {
-                            handlePlayerDataResponse(object);
-                            return;
-                        }
-                        handleReceivedMessage(object);
-                    }
-
-                    @Override
-                    public void disconnected(Connection connection) {
-                        handleDisconnect("Connection lost");
-                    }
-                });
-
-                client.start();
-
-                GameLogger.info("Connecting to " + serverConfig.getServerIP() + ":" + serverConfig.getTcpPort());
-                client.connect((int) CONNECTION_TIMEOUT, serverConfig.getServerIP(),
-                    serverConfig.getTcpPort(), serverConfig.getUdpPort());
-
-            } catch (Exception e) {
-                GameLogger.error("Connection failed: " + e.getMessage());
-                handleConnectionFailure(e);
-                isConnecting.set(false);
-                if (reconnectionListener != null) {
-                    reconnectionListener.onReconnectionFailure(e.getMessage());
-                }
-            }
-        }
-    }
-
-    private void sendLoginRequest(String username, String password) {
-        if (!isConnected() || client == null) {
-            GameLogger.error("Cannot send login - not connected");
+        if (username == null || username.trim().isEmpty() ||
+            password == null || password.trim().isEmpty()) {
+            onError.accept("Username/password cannot be empty.");
             return;
         }
-
-        try {
-            if (username == null || username.trim().isEmpty() ||
-                password == null || password.trim().isEmpty()) {
-                GameLogger.error("Username or password is empty");
-                handleLoginFailure("Invalid credentials");
-                return;
-            }
-
-            NetworkProtocol.LoginRequest request = new NetworkProtocol.LoginRequest();
-            request.username = username.trim();
-            request.password = password.trim();
-            request.timestamp = System.currentTimeMillis();
-
-            GameLogger.info("Sending login request for: " + username);
-            loginRequestSent = true;
-            client.sendTCP(request);
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to send login request: " + e.getMessage());
-            handleConnectionFailure(e);
-        }
+        NetworkProtocol.LoginRequest request = new NetworkProtocol.LoginRequest();
+        request.username = username.trim();
+        request.password = password.trim();
+        request.timestamp = System.currentTimeMillis();
+        GameLogger.info("Sending login request for: " + username);
+        this.loginResponseListener = onResponse;
+        client.sendTCP(request);
     }
 
     private void handleConnectionFailure(Exception e) {
         GameLogger.error("Connection failure: " + e.getMessage());
-
         synchronized (connectionLock) {
             connectionState = ConnectionState.DISCONNECTED;
             isConnected.set(false);
             isAuthenticated.set(false);
-
             cleanupExistingConnection();
             isConnecting.set(false);
             if (loginResponseListener != null) {
@@ -431,7 +413,7 @@ public class GameClient {
                     NetworkProtocol.LoginResponse response = new NetworkProtocol.LoginResponse();
                     response.success = false;
                     response.message = "Connection failed: " + e.getMessage();
-                    loginResponseListener.onResponse(response);
+                    loginResponseListener.accept(response);
                 });
             }
         }
@@ -446,13 +428,22 @@ public class GameClient {
                 if (client.isConnected()) {
                     client.close();
                 }
-                client.stop();
-                isSinglePlayer = false;
             } catch (Exception e) {
                 GameLogger.error("Error cleaning up connection: " + e.getMessage());
+            } finally {
+                try {
+                    if (client != null) {
+                        client.stop();
+                    }
+                } catch (Exception ex) {
+                    GameLogger.error("Error stopping client: " + ex.getMessage());
+                }
+                client = null;
+                isSinglePlayer = false;
             }
         }
     }
+
 
     public void sendItemDrop(ItemData itemData, Vector2 position) {
         NetworkProtocol.ItemDrop drop = new NetworkProtocol.ItemDrop();
@@ -484,6 +475,7 @@ public class GameClient {
         update.username = getLocalUsername();
         update.x = playerX;
         update.y = playerY;
+        update.wantsToRun = GameContext.get().getPlayer().isRunning();
         update.direction = GameContext.get().getPlayer().getDirection();
         update.isMoving = GameContext.get().getPlayer().isMoving();
         update.inventoryItems = GameContext.get().getPlayer().getInventory().getAllItems().toArray(new ItemData[0]);
@@ -653,7 +645,8 @@ public class GameClient {
         if (message == null || message.content == null) {
             return;
         }
-        chatMessageQueue.offer(message);GameLogger.info("Client enqueued chat message: " + message.sender + ": " + message.content);
+        chatMessageQueue.offer(message);
+        GameLogger.info("Client enqueued chat message: " + message.sender + ": " + message.content);
 
     }
 
@@ -712,7 +705,15 @@ public class GameClient {
             }
 
             reconnectAttempts++;
-            connect();
+            connectIfNeeded(() -> {
+                // Successfully connected
+                reconnectAttempts = 0;
+                GameLogger.info("Successfully reconnected to server");
+            }, (errorMsg) -> {
+                // Failed to connect
+                reconnectAttempts++;
+                GameLogger.error("Failed to reconnect to server: " + errorMsg);
+            }, REGISTRATION_CONNECT_TIMEOUT_MS);
         }
     }
 
@@ -882,6 +883,7 @@ public class GameClient {
                     // chestScreen.updateChestData(updatedChestData);
                     // (if you choose to construct an updated ChestData from update)
                     chestScreen.updateUI();
+                    GameContext.get().getGameScreen().setChestScreen(chestScreen);
                 }
                 return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {
@@ -917,12 +919,12 @@ public class GameClient {
                 handleBlockPlacement((NetworkProtocol.BlockPlacement) object);
             } else if (object instanceof NetworkProtocol.PlayerAction) {
                 handlePlayerAction((NetworkProtocol.PlayerAction) object);
-            }if (object instanceof NetworkProtocol.PokemonBatchUpdate) {
+            }
+            if (object instanceof NetworkProtocol.PokemonBatchUpdate) {
                 NetworkProtocol.PokemonBatchUpdate batchUpdate = (NetworkProtocol.PokemonBatchUpdate) object;
                 for (NetworkProtocol.PokemonUpdate update : batchUpdate.updates) {
                     handlePokemonUpdate(update);
                 }
-                return;
             }
 
         } catch (Exception e) {
@@ -1034,17 +1036,6 @@ public class GameClient {
         });
     }
 
-    private void handlePlayerDataResponse(Object object) {
-        try {
-            if (object instanceof NetworkProtocol.GetPlayerDataResponse) {
-                playerDataHandler.handleGetResponse((NetworkProtocol.GetPlayerDataResponse) object);
-            } else if (object instanceof NetworkProtocol.SavePlayerDataResponse) {
-                playerDataHandler.handleSaveResponse((NetworkProtocol.SavePlayerDataResponse) object);
-            }
-        } catch (Exception e) {
-            GameLogger.error("Error handling player data response: " + e.getMessage());
-        }
-    }
 
 
     public void handleDisconnect(String reason) {
@@ -1122,62 +1113,30 @@ public class GameClient {
         }
     }
 
-    public void sendRegisterRequest(String username, String password) {
-        if (isSinglePlayer) {
+
+    public void sendRegisterRequest(String username, String password,
+                                    Consumer<NetworkProtocol.RegisterResponse> onResponse,
+                                    Consumer<String> onError) {
+        if (!GameContext.get().isMultiplayer()) {
             GameLogger.info("Registration not needed in single player mode");
             return;
         }
-        if (!isConnected() || client == null) {
-            GameLogger.info("Client not connected - attempting to connect before registration");
-            connect();
-
-            pendingRegistrationUsername = username;
-            pendingRegistrationPassword = password;
+        if (!isConnected.get() || client == null) {
+            onError.accept("Not connected to server for registration");
             return;
         }
-        try {
-            if (username == null || username.trim().isEmpty() ||
-                password == null || password.trim().isEmpty()) {
-                handleRegistrationFailure("Username and password are required");
-                return;
-            }
-
-            String secureUsername = username.trim();
-            String securePassword = password.trim();
-
-            NetworkProtocol.RegisterRequest request = new NetworkProtocol.RegisterRequest();
-            request.username = secureUsername;
-            request.password = securePassword;
-
-            GameLogger.info("Sending registration request for: " + secureUsername);
-            client.sendTCP(request);
-
-            this.localUsername = secureUsername;
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to send registration request: " + e.getMessage());
-            handleRegistrationFailure("Failed to send registration request: " + e.getMessage());
+        if (username == null || username.trim().isEmpty() ||
+            password == null || password.trim().isEmpty()) {
+            onError.accept("Username and password are required");
+            return;
         }
-    }
-
-    private void handleRegistrationFailure(String message) {
-        String failedUsername = pendingRegistrationUsername;
-
-        pendingRegistrationUsername = null;
-        pendingRegistrationPassword = null;
-
-        if (registrationResponseListener != null) {
-            NetworkProtocol.RegisterResponse response = new NetworkProtocol.RegisterResponse();
-            response.success = false;
-            response.message = message;
-            response.username = failedUsername;
-
-            Gdx.app.postRunnable(() -> {
-                registrationResponseListener.onResponse(response);
-            });
-        }
-
-        GameLogger.error("Registration failed for " + failedUsername + ": " + message);
+        String secureUsername = username.trim();
+        String securePassword = password.trim();
+        NetworkProtocol.RegisterRequest request = new NetworkProtocol.RegisterRequest();
+        request.username = secureUsername;
+        request.password = securePassword;
+        GameLogger.info("Sending registration request for: " + secureUsername);
+        client.sendTCP(request);
     }
 
     private void processChatMessages() {
@@ -1239,7 +1198,9 @@ public class GameClient {
             GameLogger.error("Failed to request chunk: " + e.getMessage());
             pendingChunks.remove(chunkPos);
         }
-    }private void handleWorldObjectUpdate(NetworkProtocol.WorldObjectUpdate update) {
+    }
+
+    private void handleWorldObjectUpdate(NetworkProtocol.WorldObjectUpdate update) {
         if (update == null || GameContext.get().getWorld() == null) {
             return;
         }
@@ -1302,7 +1263,6 @@ public class GameClient {
         });
     }
 
-
     public Player getActivePlayer() {
         return GameContext.get().getPlayer();
     }
@@ -1344,8 +1304,8 @@ public class GameClient {
         }
     }
 
-
     private void handlePlayerUpdate(NetworkProtocol.PlayerUpdate update) {
+        // Ignore our own update.
         if (update == null || update.username == null || update.username.equals(localUsername)) {
             return;
         }
@@ -1354,21 +1314,21 @@ public class GameClient {
             synchronized (otherPlayers) {
                 OtherPlayer otherPlayer = otherPlayers.get(update.username);
                 if (otherPlayer == null) {
-                    otherPlayer = new OtherPlayer(
-                        update.username,
-                        update.x,
-                        update.y
-                    );
+                    // Create a new OtherPlayer if one does not exist yet.
+                    otherPlayer = new OtherPlayer(update.username, update.x, update.y);
+                    // Set the run flag for the new player:
                     otherPlayer.setWantsToRun(update.wantsToRun);
                     otherPlayers.put(update.username, otherPlayer);
-                    GameLogger.info("Created new player: " + update.username);
+                    GameLogger.info("Created new OtherPlayer: " + update.username);
                 }
-
+                // Always update the remote player’s data:
+                otherPlayer.setWantsToRun(update.wantsToRun);
                 otherPlayer.updateFromNetwork(update);
                 playerUpdates.put(update.username, update);
             }
         });
     }
+
 
     private void handlePlayerJoined(NetworkProtocol.PlayerJoined joinMsg) {
         final String joinKey = joinMsg.username + "_" + joinMsg.timestamp;
@@ -1431,6 +1391,7 @@ public class GameClient {
             GameLogger.error("Failed to send block placement: " + e.getMessage());
         }
     }
+
     private void handlePlayerLeft(NetworkProtocol.PlayerLeft leftMsg) {
         Gdx.app.postRunnable(() -> {
             // Remove the OtherPlayer instance
@@ -1456,7 +1417,6 @@ public class GameClient {
             }
         });
     }
-
 
     private void handlePokemonSpawn(NetworkProtocol.WildPokemonSpawn spawnData) {
         if (spawnData == null || spawnData.uuid == null || spawnData.data == null) {
@@ -1520,6 +1480,11 @@ public class GameClient {
                     com.badlogic.gdx.utils.Timer.schedule(new com.badlogic.gdx.utils.Timer.Task() {
                         @Override
                         public void run() {
+                            if (GameContext.get().getWorld() == null || GameContext.get().getWorld().getPokemonSpawnManager() == null) {
+                                GameLogger.error("World or its PokemonSpawnManager is null; cannot remove spawned Pokémon.");
+                                return;
+                            }
+
                             GameContext.get().getWorld().getPokemonSpawnManager()
                                 .removePokemon(despawnData.uuid);
                         }
@@ -1654,14 +1619,6 @@ public class GameClient {
         this.chatMessageHandler = handler;
     }
 
-    public void setLoginResponseListener(LoginResponseListener listener) {
-        this.loginResponseListener = listener;
-    }
-
-    public void setRegistrationResponseListener(RegistrationResponseListener listener) {
-        this.registrationResponseListener = listener;
-    }
-
     public Map<String, OtherPlayer> getOtherPlayers() {
         return new HashMap<>(otherPlayers);
     }
@@ -1672,8 +1629,11 @@ public class GameClient {
 
     public boolean isConnected() {
         return connectionState == ConnectionState.CONNECTED || connectionState == ConnectionState.AUTHENTICATED;
-    }
+    }private boolean suppressDisconnectHandling = false;
 
+    public void setSuppressDisconnectHandling(boolean suppress) {
+        this.suppressDisconnectHandling = suppress;
+    }
 
     private void handleLoginResponse(NetworkProtocol.LoginResponse response) {
         if (response.success) {
@@ -1681,7 +1641,15 @@ public class GameClient {
             localUsername = response.username;
 
             try {
+                // Initialize basic world settings from the server response.
                 initializeWorldBasic(response.seed, response.worldTimeInMinutes, response.dayLength);
+
+                // **FIX:** If the world is null (for example, because the previous world was disposed),
+                // force a reinitialization of the world.
+                if (GameContext.get().getWorld() == null) {
+                    GameContext.get().setWorld(new World(worldData));
+                    GameLogger.info("Reinitialized world for multiplayer session.");
+                }
 
                 Gdx.app.postRunnable(() -> {
                     if (GameContext.get().getPlayer() == null) {
@@ -1693,14 +1661,12 @@ public class GameClient {
                     GameContext.get().getPlayer().setY(response.y);
                     GameContext.get().getPlayer().setPlayerData(response.playerData);
                     GameContext.get().getPlayer().updateFromPlayerData(response.playerData);
-
                     processQueuedMessages();
 
                     if (loginResponseListener != null) {
-                        loginResponseListener.onResponse(response);
+                        loginResponseListener.accept(response);
                     }
                 });
-
             } catch (Exception e) {
                 GameLogger.error("Initial world setup failed: " + e.getMessage());
                 handleLoginFailure("World initialization failed: " + e.getMessage());
@@ -1715,25 +1681,14 @@ public class GameClient {
         GameLogger.error("Login failed: " + message);
 
         if (loginResponseListener != null) {
-            NetworkProtocol.LoginResponse failResponse = new NetworkProtocol.LoginResponse();
-            failResponse.success = false;
-            failResponse.message = message;
-            Gdx.app.postRunnable(() -> loginResponseListener.onResponse(failResponse));
-        }
-    }
-
-    public void setPendingCredentials(String username, String password) {
-        if (username == null || password == null) {
-            GameLogger.error("Cannot set null credentials");
-            return;
+            Gdx.app.postRunnable(() -> {
+                NetworkProtocol.LoginResponse response = new NetworkProtocol.LoginResponse();
+                response.success = false;
+                response.message = "Connection failed: " + message;
+                loginResponseListener.accept(response);
+            });
         }
 
-        GameLogger.info("Setting pending credentials for: " + username);
-        this.pendingUsername = username.trim();
-        this.pendingPassword = password.trim();
-        if (isConnected() && !isAuthenticated.get() && !loginRequestSent) {
-            sendLoginRequest(username, password);
-        }
     }
 
     private void initializeWorldBasic(long seed, double worldTimeInMinutes, float dayLength) {
@@ -1770,6 +1725,15 @@ public class GameClient {
         AUTHENTICATED
     }
 
+    public interface LoginResponseListener {
+        void onResponse(NetworkProtocol.LoginResponse response);
+    }
+
+
+    public interface RegistrationResponseListener {
+        void onResponse(NetworkProtocol.RegisterResponse response);
+    }
+
     public interface ReconnectionListener {
         void onReconnectionSuccess();
 
@@ -1780,13 +1744,6 @@ public class GameClient {
         void onInitializationComplete(boolean success);
     }
 
-    public interface LoginResponseListener {
-        void onResponse(NetworkProtocol.LoginResponse response);
-    }
-
-    public interface RegistrationResponseListener {
-        void onResponse(NetworkProtocol.RegisterResponse response);
-    }
 
     public interface PokemonUpdateHandler {
         void onUpdate(NetworkProtocol.PokemonUpdate update);

@@ -381,6 +381,7 @@ public class World {
                 block.setChestData(bd.chestData.copy());
             }
 
+
             chunk.addBlock(block);
         }
     }

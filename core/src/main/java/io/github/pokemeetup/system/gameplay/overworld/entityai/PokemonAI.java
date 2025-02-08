@@ -2,6 +2,7 @@ package io.github.pokemeetup.system.gameplay.overworld.entityai;
 
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
@@ -10,19 +11,14 @@ import io.github.pokemeetup.utils.GameLogger;
 import java.util.Collection;
 
 public class PokemonAI {
-    private boolean isPaused = false;
-
-    public void setPaused(boolean paused) {
-        this.isPaused = paused;
-    }
     private static final float DECISION_INTERVAL = 2.0f;
     private static final float IDLE_MIN_DURATION = 1.5f;
     private static final float IDLE_MAX_DURATION = 4.0f;
     private static final float MOVEMENT_CHANCE = 0.6f;
     private static final float FLEE_RANGE = 150f;
     private static final float MIN_DISTANCE_TO_OTHERS = World.TILE_SIZE * 2;
-
     private final WildPokemon pokemon;
+    private boolean isPaused = false;
     private float decisionTimer = 0;
     private float stateTimer = 0;
     private float idleDuration = 0;
@@ -30,6 +26,10 @@ public class PokemonAI {
 
     public PokemonAI(WildPokemon pokemon) {
         this.pokemon = pokemon;
+    }
+
+    public void setPaused(boolean paused) {
+        this.isPaused = paused;
     }
 
     public void update(float delta, World world) {
@@ -56,9 +56,7 @@ public class PokemonAI {
                 }
             }
         }
-
-        // Check player proximity
-        Player player = world.getPlayer();
+        Player player = GameContext.get().getPlayer();
         if (player != null) {
             float dist = Vector2.dst(
                 pokemon.getX(), pokemon.getY(),
@@ -76,8 +74,8 @@ public class PokemonAI {
             return;
         }
 
-        int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
-        int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
+        int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
+        int currentTileY = (int) (pokemon.getY() / World.TILE_SIZE);
         // Try all directions systematically
         int[] dx = {0, 0, -1, 1};
         int[] dy = {1, -1, 0, 0};
@@ -98,7 +96,6 @@ public class PokemonAI {
         GameLogger.error("No valid moves found - entering idle state");
         enterIdleState();
     }
-
 
 
     private boolean isValidMove(int tileX, int tileY, World world) {
@@ -133,14 +130,14 @@ public class PokemonAI {
     }
 
     private void enterFleeingState(World world) {
-        Player player = world.getPlayer();
+        Player player = GameContext.get().getPlayer();
         if (player == null) return;
 
         // Calculate direction away from player in tile coordinates
-        int pokemonTileX = (int)(pokemon.getX() / World.TILE_SIZE);
-        int pokemonTileY = (int)(pokemon.getY() / World.TILE_SIZE);
-        int playerTileX = (int)(player.getX());
-        int playerTileY = (int)(player.getY());
+        int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);
+        int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
+        int playerTileX = (int) (player.getX());
+        int playerTileY = (int) (player.getY());
 
         // Determine escape direction
         int dx = pokemonTileX - playerTileX;

@@ -6,10 +6,6 @@ import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryonet.FrameworkMessage;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.managers.BiomeManager;
-import io.github.pokemeetup.multiplayer.server.entity.CreatureEntity;
-import io.github.pokemeetup.multiplayer.server.entity.Entity;
-import io.github.pokemeetup.multiplayer.server.entity.EntityType;
-import io.github.pokemeetup.multiplayer.server.entity.PokeballEntity;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.system.data.BlockSaveData;
 import io.github.pokemeetup.system.data.ItemData;
@@ -57,7 +53,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
 
         // Enums
         kryo.register(NetworkObjectUpdateType.class);
-        kryo.register(NetworkedWorldObject.ObjectType.class);
         kryo.register(ChatType.class);
         kryo.register(ForceDisconnect.class);
 
@@ -90,14 +85,9 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(ChunkUpdate.class);
         kryo.register(ChunkRequest.class);
         kryo.register(EntityUpdate.class);
-        kryo.register(Entity.class);
-        kryo.register(EntityType.class);
         registerPokemonClasses(kryo);
         // Networked entities
-        kryo.register(NetworkedWorldObject.class);
-        kryo.register(NetworkedTree.class);
         kryo.register(WorldStateUpdate.class);
-        kryo.register(NetworkedPokeball.class);
         kryo.register(ConnectionResponse.class);
         kryo.register(ConnectionRequest.class);
         kryo.register(PokemonData.class);
@@ -141,10 +131,8 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(WorldObject.class);
         kryo.register(PlayerList.class);
         kryo.register(WorldObject.ObjectType.class);
-        kryo.register(CreatureEntity.class);
         kryo.register(ItemEntity.class);
         kryo.register(ItemEntityRemove.class);
-        kryo.register(PokeballEntity.class);
         kryo.register(ForceDisconnect.class);
         kryo.register(ForceLogout.class);
         kryo.register(Object.class);
@@ -489,7 +477,8 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     public static class PlayerUpdate {
         public String username;
         public float x;
-        public float y;
+        public float y;public String characterType; // "boy", "girl", etc.
+
         public String direction;
         public List<PokemonData> partyPokemon;
         public boolean isMoving;
@@ -678,7 +667,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public float x;
         public float y;
         public String textureName;
-        public NetworkedWorldObject.ObjectType objectType;
         public Map<String, Object> data;
     }
 

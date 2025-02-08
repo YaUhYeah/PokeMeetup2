@@ -378,4 +378,8 @@ public class PlayerAnimations {
     public boolean isDisposed() {
         return isDisposed;
     }
+
+    public String getCharacterType() {
+        return characterType;
+    }
 }

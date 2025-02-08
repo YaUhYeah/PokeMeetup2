@@ -56,7 +56,7 @@ public class GameServer {
     private static final int WRITE_BUFFER = 65536;
     private static final int OBJECT_BUFFER = 65536;
     private static final int SCHEDULER_POOL_SIZE = 3;
-    private static final long AUTH_TIMEOUT = 10000;
+    private static final long AUTH_TIMEOUT = 15000;
     private static final long SAVE_INTERVAL = 300000;
     private static final ConcurrentHashMap<UUID, Object> chestLocks = new ConcurrentHashMap<>();
     private final Server networkServer;

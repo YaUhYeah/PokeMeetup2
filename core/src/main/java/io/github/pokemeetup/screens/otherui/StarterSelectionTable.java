@@ -17,51 +17,63 @@ import io.github.pokemeetup.utils.ResponsiveLayout;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class StarterSelectionTable extends Table {
-    private static final float BASE_TITLE_SCALE = 2.0f;
-    private final Label pokemonInfoLabel;
-    private final TextButton confirmButton;
+    // Use a static instance variable to enforce one instance at a time.
+    private static StarterSelectionTable instance = null;
+
+    // UI elements and fields (non‑final so they can be initialized in every run)
+    private Label pokemonInfoLabel;
+    private TextButton confirmButton;
     private Pokemon selectedStarter;
     private Table selectedCell = null;
     private SelectionListener selectionListener;
     private boolean selectionMade = false;
 
+    private Skin skin;
+    private Label titleLabel;
+    private Table starters;  // Container for starter options
 
-    private final Skin skin;
-    private final Label titleLabel;
+    // Base constants for layout
+    private static final float BASE_TITLE_SCALE = 2.0f;
+    private static final float BASE_PADDING = 20f;
+    private static final float BASE_BUTTON_WIDTH = 300f;
+    private static final float BASE_BUTTON_HEIGHT = 80f;
+
+    // Private constructor
     public StarterSelectionTable(Skin skin) {
         this.skin = skin;
         GameLogger.info("Creating StarterSelectionTable");
+
+        // (Optional) Adjust window size for testing.
         Gdx.graphics.setWindowedMode(
             Math.max(800, Gdx.graphics.getWidth()),
             Math.max(600, Gdx.graphics.getHeight())
         );
-        // Setup main table properties
+
+        // Setup this table
         setFillParent(true);
         setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("starter-bg")));
         setTouchable(Touchable.enabled);
+
         Table mainContainer = new Table();
         mainContainer.center();
         mainContainer.defaults().center().pad(20);
 
-        // Add top spacing for vertical centering
+        // Top spacer for vertical centering
         mainContainer.add().expandY().row();
 
-        // Title
+        // Title label
         titleLabel = new Label("Choose Your First Partner!", skin);
         titleLabel.setFontScale(BASE_TITLE_SCALE);
         titleLabel.setAlignment(Align.center);
         mainContainer.add(titleLabel).expandX().center().padBottom(40).row();
 
-        // Pokemon selection area
+        // Starter options container
         starters = new Table();
         starters.defaults().pad(BASE_PADDING).space(40);
         starters.center();
-
-        // Add starter options
         addStarterOption(starters, "BULBASAUR", "A reliable grass-type partner with a mysterious bulb.");
         addStarterOption(starters, "CHARMANDER", "A fierce fire-type partner with a burning tail.");
         addStarterOption(starters, "SQUIRTLE", "A sturdy water-type partner with a protective shell.");
-
         mainContainer.add(starters).expandX().center().padBottom(40).row();
 
         // Info label
@@ -69,7 +81,6 @@ public class StarterSelectionTable extends Table {
         pokemonInfoLabel.setWrap(true);
         pokemonInfoLabel.setAlignment(Align.center);
         pokemonInfoLabel.setFontScale(1.3f);
-
         Table infoContainer = new Table();
         infoContainer.add(pokemonInfoLabel).width(Gdx.graphics.getWidth() * 0.6f).pad(30);
         mainContainer.add(infoContainer).expandX().center().padBottom(30).row();
@@ -86,42 +97,56 @@ public class StarterSelectionTable extends Table {
                 }
             }
         });
-
         mainContainer.add(confirmButton).size(BASE_BUTTON_WIDTH, BASE_BUTTON_HEIGHT).padBottom(40).row();
 
-        // Add bottom spacing for vertical centering
+        // Bottom spacer for vertical centering
         mainContainer.add().expandY().row();
 
-        // Add main container to this table
         add(mainContainer).expand().fill();
 
         GameLogger.info("StarterSelectionTable setup complete");
     }
 
+    /**
+     * Static factory method – returns the current instance if available;
+     * otherwise creates a new one.
+     */
+    public static StarterSelectionTable getInstance(Skin skin) {
+        if (instance == null) {
+            instance = new StarterSelectionTable(skin);
+        } else {
+            GameLogger.info("Returning existing StarterSelectionTable instance.");
+        }
+        return instance;
+    }
 
-private void addStarterOption(Table container, String pokemonName, String description) {
+    @Override
+    public boolean remove() {
+        instance = null; // allow a new instance next time
+        return super.remove();
+    }
+
+    private void addStarterOption(Table container, String pokemonName, String description) {
         Table cell = new Table();
         cell.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("slot_normal")));
-        cell.center(); // Center contents of the cell
+        cell.center();
 
-        // Pokemon sprite
+        // Add Pokemon sprite
         TextureRegion sprite = TextureManager.getPokemonfront().findRegion(pokemonName + "_front");
         if (sprite != null) {
             Image image = new Image(sprite);
             image.setScaling(Scaling.fit);
             Vector2 imageSize = ResponsiveLayout.getElementSize(120, 120);
-            cell.add(image).size(imageSize.x, imageSize.y)
-                .center() // Center the image
-                .pad(ResponsiveLayout.getPadding())
-                .row();
+            cell.add(image)
+                .size(imageSize.x, imageSize.y)
+                .center().pad(ResponsiveLayout.getPadding()).row();
         }
-
-        // Pokemon name
+        // Add Pokemon name label
         Label nameLabel = new Label(pokemonName, skin);
         nameLabel.setFontScale(ResponsiveLayout.getFontScale());
         cell.add(nameLabel).center().pad(ResponsiveLayout.getPadding());
 
-        // Click listener
+        // Add click listener
         cell.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -129,7 +154,7 @@ private void addStarterOption(Table container, String pokemonName, String descri
             }
         });
 
-        // Add cell to container with proper sizing
+        // Add the cell with fixed size
         Vector2 cellSize = ResponsiveLayout.getElementSize(180, 200);
         container.add(cell).size(cellSize.x, cellSize.y).center();
     }
@@ -144,7 +169,6 @@ private void addStarterOption(Table container, String pokemonName, String descri
                 starter.setLevel(5);
                 starter.setCurrentHp(starter.getStats().getHp());
                 break;
-
             case "CHARMANDER":
                 starter.setPrimaryType(Pokemon.PokemonType.FIRE);
                 starter.getMoves().add(PokemonDatabase.getMoveByName("Tackle"));
@@ -152,16 +176,14 @@ private void addStarterOption(Table container, String pokemonName, String descri
                 starter.setLevel(5);
                 starter.setCurrentHp(starter.getStats().getHp());
                 break;
-
             case "SQUIRTLE":
                 starter.setPrimaryType(Pokemon.PokemonType.WATER);
                 starter.getMoves().add(PokemonDatabase.getMoveByName("Tackle"));
                 starter.getMoves().add(PokemonDatabase.getMoveByName("Withdraw"));
-                starter.setCurrentHp(starter.getStats().getHp());
                 starter.setLevel(5);
+                starter.setCurrentHp(starter.getStats().getHp());
                 break;
         }
-
         // Set base stats for all starters
         Pokemon.Stats stats = starter.getStats();
         stats.setHp(20);
@@ -172,6 +194,7 @@ private void addStarterOption(Table container, String pokemonName, String descri
         stats.setSpeed(12);
         starter.setCurrentHp(stats.getHp());
     }
+
     private void selectStarter(String pokemonName, String description, Table pokemonCell) {
         if (selectionMade) return;
 
@@ -183,7 +206,6 @@ private void addStarterOption(Table container, String pokemonName, String descri
             selectedCell.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("slot_normal")));
             selectedCell.setColor(1, 1, 1, 1);
         }
-
         pokemonCell.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("slot_selected")));
         selectedCell = pokemonCell;
 
@@ -202,12 +224,6 @@ private void addStarterOption(Table container, String pokemonName, String descri
             selectionListener.onStarterSelected(selectedStarter);
         }
     }
-    private final Table starters;  // Table containing Pokemon options
-
-    private static final float BASE_POKEMON_SIZE = 160f;
-    private static final float BASE_PADDING = 20f;
-    private static final float BASE_BUTTON_WIDTH = 300f;
-    private static final float BASE_BUTTON_HEIGHT = 80f;
 
     public void setSelectionListener(SelectionListener listener) {
         this.selectionListener = listener;
@@ -215,52 +231,32 @@ private void addStarterOption(Table container, String pokemonName, String descri
 
     public void resize(int width, int height) {
         GameLogger.info("Resizing StarterSelectionTable to: " + width + "x" + height);
-
-        // Calculate scale based on screen size
         float scaleFactor = Math.min(width / 1920f, height / 1080f);
         scaleFactor = Math.max(scaleFactor, 0.3f);
         float buttonWidth = BASE_BUTTON_WIDTH * scaleFactor;
         float buttonHeight = BASE_BUTTON_HEIGHT * scaleFactor;
         float padding = BASE_PADDING * scaleFactor;
 
-        // Update font scales
         titleLabel.setFontScale(BASE_TITLE_SCALE * scaleFactor);
         pokemonInfoLabel.setFontScale(1.3f * scaleFactor);
         confirmButton.getLabel().setFontScale(1.5f * scaleFactor);
 
-        // Update Pokemon container
         starters.clear();
         starters.defaults().pad(padding).space(padding * 2);
-
-        // Recreate Pokemon options with new sizes
         addStarterOption(starters, "BULBASAUR", "A reliable grass-type partner with a mysterious bulb.");
         addStarterOption(starters, "CHARMANDER", "A fierce fire-type partner with a burning tail.");
         addStarterOption(starters, "SQUIRTLE", "A sturdy water-type partner with a protective shell.");
 
-        // Update info label width
         pokemonInfoLabel.setWidth(width * 0.6f);
-
-        // Update button size
         confirmButton.setSize(buttonWidth, buttonHeight);
-
-        // Force layout update
         invalidateHierarchy();
         validate();
-
-        // Center the table
         setPosition((width - getWidth()) / 2, (height - getHeight()) / 2);
-
         GameLogger.info("StarterSelectionTable resize complete - Scale factor: " + scaleFactor);
     }
 
-
-
-
-
     public interface SelectionListener {
         void onStarterSelected(Pokemon starter);
-
         void onSelectionStart();
     }
-
 }

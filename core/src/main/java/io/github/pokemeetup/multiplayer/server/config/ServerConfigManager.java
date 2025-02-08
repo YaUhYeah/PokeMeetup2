@@ -1,4 +1,3 @@
-// ServerConfigManager.java
 package io.github.pokemeetup.multiplayer.server.config;
 
 import com.badlogic.gdx.Gdx;

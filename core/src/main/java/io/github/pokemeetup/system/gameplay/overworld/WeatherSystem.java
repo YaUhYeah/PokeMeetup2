@@ -13,17 +13,13 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 import static com.badlogic.gdx.math.MathUtils.random;
-import static io.github.pokemeetup.system.gameplay.overworld.WeatherSystem.WeatherType.HEAVY_RAIN;
-import static io.github.pokemeetup.system.gameplay.overworld.WeatherSystem.WeatherType.RAIN;
-
 
 public class WeatherSystem {
     private static final float SPAWN_MARGIN = 150f;
     private static final int MAX_PARTICLES = 300;
-    private static final float MAX_PARTICLE_SPAWN_RATE = 300f; // Adjust as needed
+    private static final float MAX_PARTICLE_SPAWN_RATE = 300f;
     private static final float PARTICLE_DESPAWN_MARGIN = 150f;
     private static final float RAIN_SPEED = 800f;
     private static final float RAIN_ANGLE = 75f;
@@ -32,6 +28,7 @@ public class WeatherSystem {
     private static final float SNOW_SPEED = 300f;
     private static final float SAND_SPEED = 500f;
     private static final float WEATHER_CHECK_INTERVAL = 10f;
+
     private final List<WeatherParticle> particles;
     private final TextureRegion rainDrop;
     private final TextureRegion snowflake;
@@ -44,6 +41,9 @@ public class WeatherSystem {
     private float accumulation;
     private float weatherCheckTimer = 0f;
 
+    // NEW: Manual override timer – when greater than 0, biome updates are skipped.
+    private float manualOverrideTimer = 0f;
+
     public WeatherSystem() {
         this.particles = new ArrayList<>();
         this.currentWeather = WeatherType.CLEAR;
@@ -54,74 +54,89 @@ public class WeatherSystem {
         this.sandParticle = TextureManager.effects.findRegion("sand_particle");
     }
 
-    public List<WeatherParticle> getParticles() {
-        return particles;
+    // (Other methods remain unchanged.)
+
+    /**
+     * Sets a manual override duration (in seconds) for the weather.
+     * While manualOverrideTimer > 0, automatic weather updates from biome changes are skipped.
+     */
+    public void setManualOverrideTimer(float duration) {
+        this.manualOverrideTimer = duration;
     }
 
+    /**
+     * Overhauled weather decision logic – now using biome, temperature, and time-of-day.
+     */
     private void updateWeatherType(BiomeTransitionResult biomeTransition, float temperature, float timeOfDay) {
-        Random random = new Random();
-        float baseChance = random.nextFloat();
-
-        if (baseChance > 0.3f) {
-            switch (biomeTransition.getPrimaryBiome().getType()) {
-                case RAIN_FOREST:
+        float randomValue = MathUtils.random();
+        switch (biomeTransition.getPrimaryBiome().getType()) {
+            case RAIN_FOREST:
+                if (randomValue < 0.75f) {
                     setWeather(WeatherType.HEAVY_RAIN, 0.8f);
-                    break;
-
-                case HAUNTED:
-                    if (random.nextFloat() < 0.9f) {
-                        setWeather(WeatherType.FOG, 0.9f);
+                } else {
+                    setWeather(WeatherType.RAIN, 0.6f);
+                }
+                break;
+            case HAUNTED:
+                if (timeOfDay >= 18 || timeOfDay < 6) {
+                    if (randomValue < 0.7f) {
+                        setWeather(WeatherType.FOG, 0.8f);
                     } else {
                         setWeather(WeatherType.THUNDERSTORM, 0.9f);
                     }
-                    break;
-
-
-                case SNOW:
-                    setWeather(temperature < 0 ? WeatherType.BLIZZARD : WeatherType.SNOW, 0.6f);
-                    break;
-
-                case DESERT:
-                    if (temperature > 25) {
-                        setWeather(WeatherType.SANDSTORM, 0.7f);
+                } else {
+                    if (randomValue < 0.5f) {
+                        setWeather(WeatherType.FOG, 0.6f);
+                    } else {
+                        setWeather(WeatherType.THUNDERSTORM, 0.7f);
                     }
-                    break;
-
-                case FOREST:
-                    if (random.nextFloat() > 0.5f) {
-                        setWeather(WeatherType.RAIN, 0.5f);
-                    }
-                    break;
-
-                default:
-                    if (random.nextFloat() > 0.7f) {
-                        setWeather(WeatherType.RAIN, 0.3f);
-                    }
-                    break;
-            }
-        } else {
-            setWeather(WeatherType.CLEAR, 0f);
+                }
+                break;
+            case SNOW:
+                if (temperature < 0) {
+                    setWeather(WeatherType.BLIZZARD, 0.7f);
+                } else {
+                    setWeather(WeatherType.SNOW, 0.5f);
+                }
+                break;
+            case DESERT:
+                if (temperature > 35 && randomValue < 0.4f) {
+                    setWeather(WeatherType.SANDSTORM, 0.7f);
+                } else {
+                    setWeather(WeatherType.CLEAR, 0f);
+                }
+                break;
+            case FOREST:
+                if (randomValue < 0.4f) {
+                    setWeather(WeatherType.RAIN, 0.4f);
+                } else {
+                    setWeather(WeatherType.CLEAR, 0f);
+                }
+                break;
+            default:
+                setWeather(WeatherType.CLEAR, 0f);
+                break;
         }
     }
 
+    /**
+     * Modified update: If a manual override is active, skip biome weather updates.
+     */
     public void update(float delta, BiomeTransitionResult biomeTransition, float temperature, float timeOfDay, GameScreen gameScreen) {
-        weatherCheckTimer += delta;
-
-        if (weatherCheckTimer >= WEATHER_CHECK_INTERVAL) {
-            updateWeatherType(biomeTransition, temperature, timeOfDay);
-            weatherCheckTimer = 0f;
-
-            GameLogger.info(String.format(
-                "Weather Updated - Type: %s, Intensity: %.2f, Temperature: %.1f",
-                currentWeather, intensity, temperature
-            ));
+        // If manual override is active, decrement its timer.
+        if (manualOverrideTimer > 0) {
+            manualOverrideTimer -= delta;
+        } else {
+            weatherCheckTimer += delta;
+            if (weatherCheckTimer >= WEATHER_CHECK_INTERVAL) {
+                updateWeatherType(biomeTransition, temperature, timeOfDay);
+                weatherCheckTimer = 0f;
+                GameLogger.info(String.format("Weather Updated - Type: %s, Intensity: %.2f, Temperature: %.1f",
+                    currentWeather, intensity, temperature));
+            }
         }
-
         updateParticles(delta, gameScreen.getCamera());
-
-
         generateParticles(delta, gameScreen);
-
         updateAccumulation(delta);
         if (currentWeather == WeatherType.FOG) {
             float fogSpeedX = 20f;
@@ -131,24 +146,47 @@ public class WeatherSystem {
         }
     }
 
+    // (The rest of the WeatherSystem code – particle generation, rendering, etc. – remains unchanged.)
+
+    /**
+     * Set new weather. If the weather type is changing, clear existing particles for a smooth transition.
+     */
+    public void setWeather(WeatherType type, float intensity) {
+        if (this.currentWeather != type) {
+            particles.clear();
+        }
+        this.currentWeather = type;
+        this.intensity = intensity;
+    }
+
+    public WeatherType getCurrentWeather() {
+        return currentWeather;
+    }
+
+    public void updateParticles(float delta, OrthographicCamera camera) {
+        float left = camera.position.x - (camera.viewportWidth / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
+        float right = camera.position.x + (camera.viewportWidth / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
+        float bottom = camera.position.y - (camera.viewportHeight / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
+        float top = camera.position.y + (camera.viewportHeight / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
+        particles.removeIf(particle -> {
+            particle.update(delta);
+            return particle.isOutOfBounds(left, right, bottom, top);
+        });
+    }
+
     private void generateParticles(float delta, GameScreen gameScreen) {
         if (currentWeather == WeatherType.CLEAR || currentWeather == WeatherType.FOG) {
             return;
         }
 
         float particleSpawnRate = intensity * MAX_PARTICLE_SPAWN_RATE;
-
-        // Adjust spawn rate for heavy rain
+        // Adjust spawn rate for heavy weather types
         if (currentWeather == WeatherType.HEAVY_RAIN || currentWeather == WeatherType.THUNDERSTORM) {
             particleSpawnRate *= 1.5f;
         }
-
         particleSpawnAccumulator += delta * particleSpawnRate;
-
         int particlesToGenerate = (int) particleSpawnAccumulator;
         particleSpawnAccumulator -= particlesToGenerate;
-
-        // Limit the maximum number of particles to prevent exceeding MAX_PARTICLES
         particlesToGenerate = Math.min(particlesToGenerate, MAX_PARTICLES - particles.size());
 
         for (int i = 0; i < particlesToGenerate; i++) {
@@ -165,80 +203,42 @@ public class WeatherSystem {
         float cameraY = camera.position.y;
         float viewWidth = camera.viewportWidth * camera.zoom;
         float viewHeight = camera.viewportHeight * camera.zoom;
-
         float spawnX, spawnY;
+
         if (currentWeather == WeatherType.RAIN ||
             currentWeather == WeatherType.HEAVY_RAIN ||
             currentWeather == WeatherType.THUNDERSTORM) {
-
-
-            spawnX = MathUtils.random(
-                cameraX - viewWidth / 2 - SPAWN_MARGIN,
-                cameraX + viewWidth / 2 + SPAWN_MARGIN
-            );
+            spawnX = MathUtils.random(cameraX - viewWidth / 2 - SPAWN_MARGIN,
+                cameraX + viewWidth / 2 + SPAWN_MARGIN);
             spawnY = cameraY + viewHeight / 2 + SPAWN_MARGIN;
-
-            // Calculate rain velocity using consistent angle
             float speed = RAIN_SPEED * (currentWeather == WeatherType.HEAVY_RAIN ? 1.2f : 1f);
             float velocityX = -speed * MathUtils.cosDeg(RAIN_ANGLE);
             float velocityY = -speed * MathUtils.sinDeg(RAIN_ANGLE);
-
-            return new WeatherParticle(
-                spawnX, spawnY,
-                velocityX, velocityY,
-                rainDrop,
-                false,
-                RAIN_SCALE
-            );
-        }
-        // Other weather types
-        else {
+            return new WeatherParticle(spawnX, spawnY, velocityX, velocityY,
+                rainDrop, false, RAIN_SCALE);
+        } else {
+            // Other weather types
             spawnX = cameraX + MathUtils.random(-viewWidth / 2 - SPAWN_MARGIN, viewWidth / 2 + SPAWN_MARGIN);
             spawnY = cameraY + viewHeight / 2 + SPAWN_MARGIN;
-
             switch (currentWeather) {
                 case SNOW:
                 case BLIZZARD:
-                    return new WeatherParticle(
-                        spawnX, spawnY,
-                        MathUtils.random(-50, 50),
-                        -SNOW_SPEED - MathUtils.random(0, 50),
-                        snowflake,
-                        true,
-                        0.6f + MathUtils.random() * 0.8f
-                    );
-
+                    return new WeatherParticle(spawnX, spawnY,
+                        random(-50, 50),
+                        -SNOW_SPEED - random(0, 50),
+                        snowflake, true, 0.6f + random() * 0.8f);
                 case SANDSTORM:
                     spawnX = cameraX + viewWidth / 2 + SPAWN_MARGIN;
                     spawnY = cameraY + MathUtils.random(-viewHeight / 2 - SPAWN_MARGIN, viewHeight / 2 + SPAWN_MARGIN);
-                    return new WeatherParticle(
-                        spawnX, spawnY,
-                        -SAND_SPEED - MathUtils.random(0, 100),
-                        MathUtils.random(-60, 60),
-                        sandParticle,
-                        true,
-                        0.7f + MathUtils.random() * 0.6f
-                    );
-
+                    return new WeatherParticle(spawnX, spawnY,
+                        -SAND_SPEED - random(0, 100),
+                        random(-60, 60),
+                        sandParticle, true, 0.7f + random() * 0.6f);
                 default:
                     return null;
             }
         }
     }
-
-    public void updateParticles(float delta, OrthographicCamera camera) {
-        float left = camera.position.x - (camera.viewportWidth / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
-        float right = camera.position.x + (camera.viewportWidth / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
-        float bottom = camera.position.y - (camera.viewportHeight / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
-        float top = camera.position.y + (camera.viewportHeight / 2 + PARTICLE_DESPAWN_MARGIN) * camera.zoom;
-
-        particles.removeIf(particle -> {
-            particle.update(delta);
-            return particle.isOutOfBounds(left, right, bottom, top);
-        });
-    }
-
-
     public void render(SpriteBatch batch, OrthographicCamera camera) {
         if (currentWeather == WeatherType.CLEAR) return;
 
@@ -249,80 +249,55 @@ public class WeatherSystem {
         if (currentWeather == WeatherType.RAIN ||
             currentWeather == WeatherType.HEAVY_RAIN ||
             currentWeather == WeatherType.THUNDERSTORM) {
-
             batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
             batch.setColor(1, 1, 1, RAIN_BASE_ALPHA * intensity);
         } else {
             batch.setColor(1, 1, 1, intensity);
         }
 
-        // Render all particles
         for (WeatherParticle particle : particles) {
             particle.render(batch);
         }
 
-        // Restore batch state
         batch.setBlendFunction(prevSrcFunc, prevDstFunc);
         batch.setColor(prevColor);
 
-        // Render fog if applicable
         if (currentWeather == WeatherType.FOG) {
             renderFog(batch,
                 camera.position.x - camera.viewportWidth / 2,
                 camera.position.y - camera.viewportHeight / 2,
                 camera.viewportWidth,
-                camera.viewportHeight
-            );
+                camera.viewportHeight);
         }
     }
 
     private void renderFog(SpriteBatch batch, float x, float y, float width, float height) {
         batch.setColor(1, 1, 1, 0.3f * intensity);
-
         TextureRegion fogTexture = TextureManager.effects.findRegion("fog");
         float fogTextureWidth = fogTexture.getRegionWidth();
         float fogTextureHeight = fogTexture.getRegionHeight();
-
-        float startX = x - (fogOffsetX % (fogTextureWidth)) - fogTextureWidth;
-        float startY = y - (fogOffsetY % (fogTextureHeight)) - fogTextureHeight;
+        float startX = x - (fogOffsetX % fogTextureWidth) - fogTextureWidth;
+        float startY = y - (fogOffsetY % fogTextureHeight) - fogTextureHeight;
         for (float posX = startX; posX < x + width; posX += fogTextureWidth) {
             for (float posY = startY; posY < y + height; posY += fogTextureHeight) {
-                batch.draw(
-                    fogTexture,
-                    posX,
-                    posY,
-                    fogTextureWidth,
-                    fogTextureHeight
-                );
+                batch.draw(fogTexture, posX, posY, fogTextureWidth, fogTextureHeight);
             }
         }
-
         batch.setColor(1, 1, 1, 1);
     }
 
     private void updateAccumulation(float delta) {
         float accumulationRate;
-
         if (currentWeather == WeatherType.SNOW || currentWeather == WeatherType.BLIZZARD) {
             accumulationRate = 0.1f * intensity;
-        } else if (currentWeather.equals(RAIN)) {
+        } else if (currentWeather == WeatherType.RAIN) {
             accumulationRate = 0.05f * intensity;
-        } else if (currentWeather == HEAVY_RAIN || currentWeather == WeatherType.THUNDERSTORM) {
+        } else if (currentWeather == WeatherType.HEAVY_RAIN || currentWeather == WeatherType.THUNDERSTORM) {
             accumulationRate = 0.15f * intensity;
         } else {
             accumulationRate = -0.05f;
         }
-
         accumulation = MathUtils.clamp(accumulation + accumulationRate * delta, 0, 1);
-    }
-
-    public void setWeather(WeatherType type, float intensity) {
-        this.currentWeather = type;
-        this.intensity = intensity;
-    }
-
-    public WeatherType getCurrentWeather() {
-        return currentWeather;
     }
 
     public float getIntensity() {
@@ -343,75 +318,59 @@ public class WeatherSystem {
         FOG,
         THUNDERSTORM
     }
-}
 
-class WeatherParticle {
-    private final TextureRegion texture;
-    private float x, y;
-    private float velocityX, velocityY;
-    private float rotation;
-    private float rotationSpeed;
-    private float scale;
-    private boolean rotating;
-    public WeatherParticle(float x, float y, float velocityX, float velocityY,
-                           TextureRegion texture, boolean rotating, float scale) {
-        this.x = x;
-        this.y = y;
-        this.velocityX = velocityX;
-        this.velocityY = velocityY;
-        this.texture = texture;
-        this.rotating = rotating;
-        this.scale = scale;
-        this.rotation = 0f;
-    }
+    public static class WeatherParticle {
+        private final TextureRegion texture;
+        private float x, y;
+        private float velocityX, velocityY;
+        private float rotation;
+        private float rotationSpeed;
+        private float scale;
+        private boolean rotating;
 
-    public float getX() {
-        return x;
-    }
-
-    public float getY() {
-        return y;
-    }
-
-    public void update(float delta) {
-        x += velocityX * delta;
-        y += velocityY * delta;
-
-        if (rotating) {
-            rotation += rotationSpeed * delta;
+        public WeatherParticle(float x, float y, float velocityX, float velocityY,
+                               TextureRegion texture, boolean rotating, float scale) {
+            this.x = x;
+            this.y = y;
+            this.velocityX = velocityX;
+            this.velocityY = velocityY;
+            this.texture = texture;
+            this.rotating = rotating;
+            this.scale = scale;
+            this.rotation = 0f;
+            // If rotating, assign a random rotation speed for a more dynamic effect.
+            this.rotationSpeed = rotating ? (float) (20 + Math.random() * 80) : 0f;
         }
-    }
 
-    public void render(SpriteBatch batch) {
-        if (rotating) {
-            batch.draw(
-                texture,
-                x, y,
-                texture.getRegionWidth() / 2f,
-                texture.getRegionHeight() / 2f,
-                texture.getRegionWidth(),
-                texture.getRegionHeight(),
-                scale, scale,
-                rotation
-            );
-        } else {
-            batch.draw(
-                texture,
-                x, y,
-                texture.getRegionWidth() * scale,
-                texture.getRegionHeight() * scale
-            );
+        public void update(float delta) {
+            x += velocityX * delta;
+            y += velocityY * delta;
+            if (rotating) {
+                rotation += rotationSpeed * delta;
+            }
         }
-    }
 
-    public boolean isOutOfBounds(float left, float right, float bottom, float top) {
-        return x < left || x > right || y < bottom || y > top;
-    }
+        public void render(SpriteBatch batch) {
+            if (rotating) {
+                batch.draw(texture,
+                    x, y,
+                    texture.getRegionWidth() / 2f,
+                    texture.getRegionHeight() / 2f,
+                    texture.getRegionWidth(),
+                    texture.getRegionHeight(),
+                    scale, scale,
+                    rotation);
+            } else {
+                batch.draw(texture,
+                    x, y,
+                    texture.getRegionWidth() * scale,
+                    texture.getRegionHeight() * scale);
+            }
+        }
 
-    public boolean isInView(float left, float right, float bottom, float top) {
-        float margin = 100;
-        return x >= left - margin && x <= right + margin &&
-            y >= bottom - margin && y <= top + margin;
+        public boolean isOutOfBounds(float left, float right, float bottom, float top) {
+            return x < left || x > right || y < bottom || y > top;
+        }
     }
 
 }

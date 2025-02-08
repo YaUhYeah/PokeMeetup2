@@ -128,53 +128,89 @@ public class InputManager {
     }
 
     public void updateInputProcessors() {
+        // Clear any previously added processors.
         inputMultiplexer.clear();
 
+        // 1) ChatSystem first, if it exists and has a Stage
+        if (GameContext.get().getChatSystem() != null &&
+            GameContext.get().getChatSystem().getStage() != null) {
+            inputMultiplexer.addProcessor(
+                GameContext.get().getChatSystem().getStage()
+            );
+        }
+
+        // 2) The main UI Stage (HUD, overlays, etc.)
         if (GameContext.get().getUiStage() != null) {
             inputMultiplexer.addProcessor(GameContext.get().getUiStage());
         }
 
+        // 3) Add the Stage relevant to our current UI state
         switch (currentState) {
             case STARTER_SELECTION:
+                // If you have a separate Stage for starter UI, add it here.
+                // Otherwise, your starter selection is already a table in the UiStage, so do nothing.
                 break;
+
             case INVENTORY:
                 if (GameContext.get().getInventoryScreen() != null) {
-                    inputMultiplexer.addProcessor(GameContext.get().getInventoryScreen().getStage());
+                    inputMultiplexer.addProcessor(
+                        GameContext.get().getInventoryScreen().getStage()
+                    );
                 }
                 break;
+
             case CRAFTING:
-                if (GameContext.get().getCraftingScreen() != null && GameContext.get().getCraftingScreen().getStage() != null) {
-                    inputMultiplexer.addProcessor(GameContext.get().getCraftingScreen().getStage());
+                if (GameContext.get().getCraftingScreen() != null &&
+                    GameContext.get().getCraftingScreen().getStage() != null) {
+                    inputMultiplexer.addProcessor(
+                        GameContext.get().getCraftingScreen().getStage()
+                    );
                 }
                 break;
+
             case MENU:
-                if (GameContext.get().getGameMenu() != null && GameContext.get().getGameMenu().getStage() != null) {
-                    inputMultiplexer.addProcessor(GameContext.get().getGameMenu().getStage());
+                // If your GameMenu has its own Stage:
+                if (GameContext.get().getGameMenu() != null &&
+                    GameContext.get().getGameMenu().getStage() != null) {
+                    inputMultiplexer.addProcessor(
+                        GameContext.get().getGameMenu().getStage()
+                    );
                 }
                 break;
+
             case CHEST_SCREEN:
-                if (gameScreen.getChestScreen() != null && gameScreen.getChestScreen().getStage() != null) {
-                    inputMultiplexer.addProcessor(gameScreen.getChestScreen().getStage());
+                if (gameScreen.getChestScreen() != null &&
+                    gameScreen.getChestScreen().getStage() != null) {
+                    inputMultiplexer.addProcessor(
+                        gameScreen.getChestScreen().getStage()
+                    );
                 }
                 break;
+
             case BATTLE:
                 if (gameScreen.getBattleStage() != null) {
                     inputMultiplexer.addProcessor(gameScreen.getBattleStage());
                 }
                 break;
+
             case NORMAL:
             case BUILD_MODE:
+                // Nothing special to add here.
                 break;
         }
 
+        // 4) The main in‑game InputHandler (movement, chop/punch, etc.)
         if (gameScreen.getInputHandler() != null) {
             inputMultiplexer.addProcessor(gameScreen.getInputHandler());
         }
 
+        // 5) GlobalInputProcessor last (for ESC key, or “always-listen” input)
         inputMultiplexer.addProcessor(globalInputProcessor);
 
+        // Finally, set this multiplexer as the active input processor
         Gdx.input.setInputProcessor(inputMultiplexer);
     }
+
 
 
     public enum UIState {

@@ -95,7 +95,13 @@ public class DisconnectionManager {
             GameContext.get().setGameClient(null);
             try {
                 Thread.sleep(RECONNECT_DELAY);
-                client.connect();
+                client.connectIfNeeded(() -> {
+                    // Successfully connected
+                    GameLogger.info("Successfully reconnected to server");
+                }, (errorMsg) -> {
+                    // Failed to connect
+                    GameLogger.error("Failed to reconnect to server: " + errorMsg);
+                },REGISTRATION_CONNECT_TIMEOUT_MS);
             } catch (Exception e) {
                 GameLogger.error("Reconnection attempt failed: " + e.getMessage());
                 handleReconnectFailure();
@@ -104,6 +110,7 @@ public class DisconnectionManager {
             exitToLogin("Game client is null");
         }
     }
+    private static final long REGISTRATION_CONNECT_TIMEOUT_MS = 10000; // 10 seconds
 
     private void handleReconnectFailure() {
         if (reconnectAttempts.get() < MAX_RECONNECT_ATTEMPTS) {

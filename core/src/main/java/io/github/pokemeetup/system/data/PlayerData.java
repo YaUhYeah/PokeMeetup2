@@ -86,12 +86,6 @@ public class PlayerData {
         }
     }
 
-    public int getValidItemCount() {
-        if (inventoryItems == null) return 0;
-        return (int) inventoryItems.stream()
-            .filter(item -> item != null && item.isValid())
-            .count();
-    }
 
     public boolean validateAndRepairState() {
         boolean wasRepaired = false;
@@ -136,12 +130,6 @@ public class PlayerData {
         return true;
     }
 
-    public int getValidPokemonCount() {
-        if (partyPokemon == null) return 0;
-        return (int) partyPokemon.stream()
-            .filter(pokemon -> pokemon != null && pokemon.verifyIntegrity())
-            .count();
-    }
 
     /**
      * Applies this saved state to the given player.
