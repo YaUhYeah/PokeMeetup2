@@ -29,6 +29,7 @@ import io.github.pokemeetup.chat.commands.GiveCommand;
 import io.github.pokemeetup.chat.commands.SetWorldSpawnCommand;
 import io.github.pokemeetup.chat.commands.SpawnCommand;
 import io.github.pokemeetup.chat.commands.TeleportPositionCommand;
+import io.github.pokemeetup.chat.commands.TimeCommand;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.context.UIManager;
 import io.github.pokemeetup.managers.BiomeManager;
@@ -435,6 +436,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         commandManager.registerCommand(new SpawnCommand());
         commandManager.registerCommand(new SetWorldSpawnCommand());
         commandManager.registerCommand(new TeleportPositionCommand());
+        commandManager.registerCommand(new TimeCommand());
     }
 
     private void completeInitialization() {
