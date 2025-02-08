@@ -24,6 +24,7 @@ import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
+import io.github.pokemeetup.screens.otherui.CharacterPreviewDialog;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
@@ -593,29 +594,26 @@ public class WorldSelectionScreen implements Screen {
         }
         return config.getSeed();
     }
-
     private void showCreateWorldDialog() {
+        CharacterPreviewDialog characterDialog = new CharacterPreviewDialog(stage, skin,
+            (selectedCharacterType) -> {
+                // Show the world creation dialog after character selection
+                showWorldCreationDialog(selectedCharacterType);
+            });
+        characterDialog.show(stage);
+    }
+
+    private void showWorldCreationDialog(String characterType) {
         Dialog dialog = new Dialog("Create New World", skin) {
             @Override
             protected void result(Object object) {
                 if ((Boolean) object) {
-                    // Retrieve all the fields
                     TextField nameField = findActor("nameField");
                     CheckBox cheatsAllowed = findActor("cheatsAllowed");
                     TextField seedField = findActor("seedField");
                     TextField dialogUsernameField = findActor("usernameField");
-                    // Get the character selection buttons
-                    TextButton boyButton = findActor("boyButton");
-                    TextButton girlButton = findActor("girlButton");
-                    // Determine the chosen character type (default "boy")
-                    String selectedCharacterType = "boy";
-                    if (girlButton != null && girlButton.isChecked()) {
-                        selectedCharacterType = "girl";
-                    }
 
                     boolean commandsEnabled = cheatsAllowed != null && cheatsAllowed.isChecked();
-                    GameLogger.info("Create world dialog - Commands enabled checkbox: " + commandsEnabled);
-
                     String worldName = nameField.getText().trim();
                     String seedText = seedField.getText().trim();
                     String username = dialogUsernameField.getText().trim();
@@ -640,13 +638,12 @@ public class WorldSelectionScreen implements Screen {
                         }
                     }
 
-                    // Pass the chosen character type to createNewWorld
-                    createNewWorld(worldName, seed, username, commandsEnabled, selectedCharacterType);
+                    createNewWorld(worldName, seed, username, commandsEnabled, characterType);
                 }
             }
         };
 
-        // Create the basic input fields as before…
+        // Create input fields
         TextField nameField = new TextField("", skin);
         nameField.setName("nameField");
         nameField.setMessageText("World name");
@@ -663,20 +660,7 @@ public class WorldSelectionScreen implements Screen {
         dialogUsernameField.setName("usernameField");
         dialogUsernameField.setMessageText("Your username (optional)");
 
-        // *** NEW: Create character selection UI ***
-        Label characterLabel = new Label("Choose Character:", skin);
-        TextButton boyButton = new TextButton("Boy", skin);
-        boyButton.setName("boyButton");
-        TextButton girlButton = new TextButton("Girl", skin);
-        girlButton.setName("girlButton");
-        ButtonGroup<TextButton> characterGroup = new ButtonGroup<>(boyButton, girlButton);
-        characterGroup.setMinCheckCount(1);
-        characterGroup.setMaxCheckCount(1);
-        characterGroup.setUncheckLast(true);
-        // Default to boy
-        boyButton.setChecked(true);
-
-        // Add all fields to the dialog content
+        // Add fields to dialog
         dialog.getContentTable().add(new Label("World Name:", skin)).left().padBottom(5);
         dialog.getContentTable().row();
         dialog.getContentTable().add(nameField).width(300).padBottom(15);
@@ -689,22 +673,12 @@ public class WorldSelectionScreen implements Screen {
         dialog.getContentTable().row();
         dialog.getContentTable().add(dialogUsernameField).width(300).padBottom(15);
         dialog.getContentTable().row();
-        // Add the character selection elements
-        dialog.getContentTable().add(characterLabel).left().padBottom(5);
-        dialog.getContentTable().row();
-        Table characterTable = new Table();
-        characterTable.add(boyButton).pad(5);
-        characterTable.add(girlButton).pad(5);
-        dialog.getContentTable().add(characterTable).width(300).padBottom(15);
-        dialog.getContentTable().row();
         dialog.getContentTable().add(cheatsAllowed).left().padBottom(15);
 
         dialog.button("Create", true);
         dialog.button("Cancel", false);
         dialog.show(stage);
     }
-
-
     private void showDeleteConfirmDialog() {
         Dialog dialog = new Dialog("Delete World", skin) {
             @Override
