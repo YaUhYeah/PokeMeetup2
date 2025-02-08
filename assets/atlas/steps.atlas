@@ -1,0 +1,11 @@
+steps.png
+size:256,64
+repeat:none
+stepsDown
+bounds:70,2,32,32
+stepsLeft
+bounds:2,2,32,32
+stepsRight
+bounds:104,2,32,32
+stepsUp
+bounds:36,2,32,32
