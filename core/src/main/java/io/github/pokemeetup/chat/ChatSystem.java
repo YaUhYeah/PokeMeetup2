@@ -14,6 +14,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
+import io.github.pokemeetup.system.InputManager;  // <--- For setUIState
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.TimeUtils;
 
@@ -29,6 +30,8 @@ public class ChatSystem extends Table {
     private static final int MAX_MESSAGES = 50;
     private static final float MESSAGE_FADE_TIME = 10f;
     private static final Color WINDOW_BACKGROUND = new Color(0, 0, 0, 0.8f);
+
+    // Some color array, etc...
     private static final Color[] CHAT_COLORS = {
         new Color(0.8f, 0.3f, 0.3f, 1), // Red
         new Color(0.3f, 0.8f, 0.3f, 1), // Green
@@ -47,8 +50,9 @@ public class ChatSystem extends Table {
     private final String username;
     private final Queue<ChatMessage> messages;
     private final CommandManager commandManager;
-    boolean commandsEnabled;
-    private int messageHistoryIndex = -1; // -1 indicates no history selected
+    private boolean commandsEnabled;
+
+    private int messageHistoryIndex = -1; // -1 => no history selected
     private Table chatWindow;
     private ScrollPane messageScroll;
     private Table messageTable;
@@ -67,7 +71,7 @@ public class ChatSystem extends Table {
         this.commandsEnabled = commandsEnabled;
         this.commandManager = commandManager;
 
-        // Set this ChatSystem’s alignment to top so its children are laid out from the top down
+        // top alignment
         this.top();
 
         createChatUI();
@@ -83,13 +87,11 @@ public class ChatSystem extends Table {
 
     @Override
     public void setSize(float width, float height) {
-        // Set our size and update our internal chatWindow
         super.setSize(width, height);
         if (chatWindow != null) {
             chatWindow.setSize(width, height);
             if (messageScroll != null) {
-                // Reserve about 40 pixels for the input field
-                messageScroll.setSize(width, height - 40);
+                messageScroll.setSize(width, height - 40); // reserve input field space
             }
             chatWindow.invalidateHierarchy();
         }
@@ -103,12 +105,11 @@ public class ChatSystem extends Table {
         }
     }
 
-    // Here we use 25% of the screen width so it doesn't cover too much.
     public void resize(int width, int height) {
         float chatWidth = Math.max(MIN_CHAT_WIDTH, width * 0.25f);
         float chatHeight = Math.max(MIN_CHAT_HEIGHT, height * 0.3f);
         setSize(chatWidth, chatHeight);
-        // Position in the top left (remember: Stage origin is bottom left)
+        // Place near top-left
         setPosition(CHAT_PADDING, height - chatHeight - CHAT_PADDING);
     }
 
@@ -123,49 +124,45 @@ public class ChatSystem extends Table {
     public void sendMessage(String content) {
         GameLogger.info("sendMessage called with content: " + content);
         if (content.isEmpty()) return;
+
+        // store in local message history if not duplicate
         if (messageHistory.isEmpty() || !content.equals(messageHistory.get(messageHistory.size() - 1))) {
             messageHistory.add(content);
             messageHistoryIndex = messageHistory.size();
-            GameLogger.info("Added message to history. Size: " + messageHistory.size() +
-                ", Index: " + messageHistoryIndex);
         }
+
+        // handle commands:
         if (content.startsWith("/")) {
-            GameLogger.info("Command detected. Commands enabled: " + commandsEnabled);
             if (commandsEnabled || GameContext.get().isMultiplayer()) {
                 String command = content.substring(1);
                 String[] parts = command.split(" ", 2);
                 String commandName = parts[0].toLowerCase();
                 String args = parts.length > 1 ? parts[1] : "";
-                GameLogger.info("Processing command: " + commandName + " with args: " + args);
                 if (commandManager != null) {
                     Command cmd = commandManager.getCommand(commandName);
                     if (cmd != null) {
                         try {
-                            GameLogger.info("Executing command: " + commandName);
                             cmd.execute(args, gameClient, this);
                             return;
                         } catch (Exception e) {
-                            GameLogger.error("Command execution failed: " + e.getMessage());
                             addSystemMessage("Error executing command: " + e.getMessage());
                             return;
                         }
                     } else {
-                        GameLogger.info("Unknown command: " + commandName);
                         addSystemMessage("Unknown command: " + commandName);
                         return;
                     }
                 } else {
-                    GameLogger.error("CommandManager is null!");
                     addSystemMessage("Command system not initialized!");
                     return;
                 }
             } else {
-                GameLogger.info("Commands are disabled!");
                 addSystemMessage("Commands are currently disabled.");
                 return;
             }
         }
 
+        // normal chat
         NetworkProtocol.ChatMessage chatMessage = new NetworkProtocol.ChatMessage();
         chatMessage.sender = username;
         chatMessage.content = content;
@@ -199,36 +196,44 @@ public class ChatSystem extends Table {
         messageHistoryIndex = messageHistory.size();
         inactiveTimer = 0;
         chatWindow.getColor().a = 1f;
+
+        // set keyboard focus to inputField
         Gdx.app.postRunnable(() -> {
             stage.setKeyboardFocus(inputField);
-            GameLogger.info("Chat activated: Keyboard focus set to inputField");
         });
     }
 
-    /**
-     * When deactivating chat (via ENTER or ESCAPE), we ensure that the input
-     * returns to normal so that movement keys work again.
-     */
     public void deactivateChat() {
         isActive = false;
         inputField.setVisible(false);
         stage.setKeyboardFocus(null);
+
+        // Hide on-screen keyboard on mobile
         if (Gdx.app.getType() == Application.ApplicationType.Android) {
             Gdx.input.setOnscreenKeyboardVisible(false);
         }
-        // Restore normal movement by resetting movement flags on the InputHandler.
+
+        // Restore normal movement or “UIState.NORMAL”
+        if (GameContext.get().getGameScreen() != null &&
+            GameContext.get().getGameScreen().getInputManager() != null) {
+            // This line is crucial: forcibly set the game’s InputManager to NORMAL
+            GameContext.get().getGameScreen().getInputManager()
+                .setUIState(InputManager.UIState.NORMAL);
+        }
+
+        // Optionally reset movement flags to be safe
         if (GameContext.get().getGameScreen() != null &&
             GameContext.get().getGameScreen().getInputHandler() != null) {
             GameContext.get().getGameScreen().getInputHandler().resetMovementFlags();
         }
-        GameLogger.info("Chat deactivated");
     }
 
     private void update(float delta) {
         if (!isActive) {
             inactiveTimer += delta;
             if (inactiveTimer > MESSAGE_FADE_TIME) {
-                chatWindow.getColor().a = Math.max(0.3f, 1 - (inactiveTimer - MESSAGE_FADE_TIME) / 2f);
+                chatWindow.getColor().a =
+                    Math.max(0.3f, 1 - (inactiveTimer - MESSAGE_FADE_TIME) / 2f);
             }
         }
         while (messages.size() > MAX_MESSAGES) {
@@ -242,93 +247,100 @@ public class ChatSystem extends Table {
             return;
         }
         chatWindow = new Table();
-        chatWindow.top(); // Lay out children from the top
-        // Create background
+        chatWindow.top();
+        // Background
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(WINDOW_BACKGROUND);
         pixmap.fill();
         TextureRegion bgTexture = new TextureRegion(new Texture(pixmap));
         pixmap.dispose();
         chatWindow.setBackground(new TextureRegionDrawable(bgTexture));
-        // Create content table with padding
+
         Table contentTable = new Table();
         contentTable.pad(10);
-        // Create message area
+
+        // message area
         messageTable = new Table();
         messageScroll = new ScrollPane(messageTable, skin);
         messageScroll.setFadeScrollBars(false);
         messageScroll.setScrollingDisabled(true, false);
         contentTable.add(messageScroll).expand().fill().padBottom(5).row();
-        // Create input field
-        TextField.TextFieldStyle textFieldStyle = new TextField.TextFieldStyle(skin.get(TextField.TextFieldStyle.class));
+
+        // input field
+        TextField.TextFieldStyle textFieldStyle =
+            new TextField.TextFieldStyle(skin.get(TextField.TextFieldStyle.class));
         textFieldStyle.background = skin.newDrawable("white", new Color(0.2f, 0.2f, 0.2f, 0.8f));
         textFieldStyle.fontColor = Color.WHITE;
         textFieldStyle.cursor = skin.newDrawable("white", Color.WHITE);
+
         inputField = new TextField("", textFieldStyle);
         inputField.setMessageText("Press T to chat...");
         inputField.setTouchable(Touchable.enabled);
-        // Add a capture listener for key input for history and sending messages
+
+        // Add capture listener for key input
         inputField.addCaptureListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
-                if (!isActive) return false;
-                GameLogger.info("Chat input keyDown captured: " + Input.Keys.toString(keycode));
+                if (!isActive) return false; // Only intercept if chat is active.
+
                 switch (keycode) {
                     case Input.Keys.UP:
                         if (!messageHistory.isEmpty() && messageHistoryIndex > 0) {
                             messageHistoryIndex--;
-                            String message = messageHistory.get(messageHistoryIndex);
-                            inputField.setText(message);
-                            inputField.setCursorPosition(message.length());
-                            GameLogger.info("Up pressed - Showing message: " + message +
-                                " (index: " + messageHistoryIndex + ")");
+                            String upMsg = messageHistory.get(messageHistoryIndex);
+                            inputField.setText(upMsg);
+                            inputField.setCursorPosition(upMsg.length());
                         }
-                        event.stop();
+                        // **Notice we do NOT call event.stop()** so other input
+                        // processors can see keyUp if needed. We'll just return true.
                         return true;
+
                     case Input.Keys.DOWN:
                         if (!messageHistory.isEmpty()) {
                             if (messageHistoryIndex < messageHistory.size() - 1) {
                                 messageHistoryIndex++;
-                                String message = messageHistory.get(messageHistoryIndex);
-                                inputField.setText(message);
-                                inputField.setCursorPosition(message.length());
-                                GameLogger.info("Down pressed - Showing message: " + message +
-                                    " (index: " + messageHistoryIndex + ")");
+                                String downMsg = messageHistory.get(messageHistoryIndex);
+                                inputField.setText(downMsg);
+                                inputField.setCursorPosition(downMsg.length());
                             } else {
                                 messageHistoryIndex = messageHistory.size();
                                 inputField.setText("");
-                                GameLogger.info("Down pressed - End of history, clearing input");
                             }
                         }
-                        event.stop();
                         return true;
+
                     case Input.Keys.ENTER:
+                        // Send chat, then deactivate
                         String content = inputField.getText().trim();
                         if (!content.isEmpty()) {
                             sendMessage(content);
                             inputField.setText("");
                         }
-                        // When a message is entered, deactivate chat so movement works normally.
                         deactivateChat();
-                        event.stop();
+
+                        // DO NOT call event.stop() here. Let the event pass through
+                        // so other input can see it if needed
                         return true;
+
                     case Input.Keys.ESCAPE:
-                        // On escape, simply deactivate chat.
+                        // Esc just deactivates chat
                         deactivateChat();
-                        event.stop();
                         return true;
                 }
                 return false;
             }
+
             @Override
             public boolean keyTyped(InputEvent event, char character) {
+                // If user typed something, set messageHistoryIndex to end
                 if (character != '\0' && character != '\r' && character != '\n') {
                     messageHistoryIndex = messageHistory.size();
                 }
                 return false;
             }
         });
-        // Add a click listener for mobile devices to activate chat when tapped
+
+        // For mobile: if user taps chat window, we show onscreen keyboard
         chatWindow.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -338,143 +350,86 @@ public class ChatSystem extends Table {
                 }
             }
         });
-        // Add the input field to the content table
+
         contentTable.add(inputField).expandX().fillX().height(30);
-        // Add the content table to the chatWindow
         chatWindow.add(contentTable).expand().fill();
-        // Add chatWindow as a child of this ChatSystem
         this.add(chatWindow).expand().fill();
+
         inputField.setVisible(false);
         isInitialized = true;
     }
 
     private Color getSenderColor(String sender) {
-        int colorIndex = Math.abs(sender.hashCode()) % CHAT_COLORS.length;
-        return CHAT_COLORS[colorIndex];
+        int index = Math.abs(sender.hashCode()) % CHAT_COLORS.length;
+        return CHAT_COLORS[index];
     }
 
     private void addMessageToChat(NetworkProtocol.ChatMessage message) {
         Table messageEntry = new Table();
         messageEntry.pad(5);
+
         Label.LabelStyle timeStyle = new Label.LabelStyle(skin.get(Label.LabelStyle.class));
         timeStyle.fontColor = Color.GRAY;
+        Label timeLabel = new Label(TimeUtils.formatTime(message.timestamp), timeStyle);
+
         Label.LabelStyle nameStyle = new Label.LabelStyle(skin.get(Label.LabelStyle.class));
         nameStyle.fontColor = getSenderColor(message.sender);
+        Label nameLabel = new Label(message.sender + ": ", nameStyle);
+
         Label.LabelStyle contentStyle = new Label.LabelStyle(skin.get(Label.LabelStyle.class));
         contentStyle.fontColor = Color.WHITE;
-        Label timeLabel = new Label(TimeUtils.formatTime(message.timestamp), timeStyle);
-        Label nameLabel = new Label(message.sender + ": ", nameStyle);
         Label contentLabel = new Label(message.content, contentStyle);
         contentLabel.setWrap(true);
+
         messageEntry.add(timeLabel).padRight(5);
         messageEntry.add(nameLabel).padRight(5);
         messageEntry.add(contentLabel).expandX().fillX();
+
         messages.add(new ChatMessage(message));
         messageTable.add(messageEntry).expandX().fillX().padBottom(2).row();
         messageScroll.scrollTo(0, 0, 0, 0);
+
         chatWindow.getColor().a = 1f;
         inactiveTimer = 0;
     }
 
     private void setupInputHandling() {
+        // We attach a general listener to the entire stage to open chat if T or slash
         stage.addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
-                // If chat is active, allow history navigation here.
-                if (isActive) {
-                    if (keycode == Input.Keys.UP) {
-                        navigateMessageHistory(-1);
-                        return true;
-                    } else if (keycode == Input.Keys.DOWN) {
-                        navigateMessageHistory(1);
-                        return true;
-                    }
-                }
-                // Activate chat on T or SLASH if not already active.
+                // if chat is active, we handle it in inputField. If not active, check for T or slash
                 if (!isActive && (keycode == Input.Keys.T || keycode == Input.Keys.SLASH)) {
                     activateChat();
                     if (keycode == Input.Keys.SLASH) {
                         inputField.setText("/");
                         inputField.setCursorPosition(1);
                     }
-                    event.cancel();
-                    GameLogger.info("Chat activation key pressed: " + Input.Keys.toString(keycode));
+                    // Here we do NOT call event.stop(). We just return true so other
+                    // processors know we've handled T or slash, but not forcibly stopping.
                     return true;
                 }
-                // Allow ESCAPE to cancel chat.
+                // If chat is active and ESC pressed, we want to deactivate
                 if (isActive && keycode == Input.Keys.ESCAPE) {
                     deactivateChat();
-                    event.cancel();
-                    GameLogger.info("Chat deactivation key pressed: ESCAPE");
                     return true;
                 }
                 return false;
             }
         });
-        inputField.addListener(new InputListener() {
-            @Override
-            public boolean keyDown(InputEvent event, int keycode) {
-                if (keycode == Input.Keys.UP) {
-                    navigateMessageHistory(-1);
-                    return true;
-                } else if (keycode == Input.Keys.DOWN) {
-                    navigateMessageHistory(1);
-                    return true;
-                }
-                return false;
-            }
-            @Override
-            public boolean keyTyped(InputEvent event, char character) {
-                if (character != '\0' && character != '\r' && character != '\n') {
-                    messageHistoryIndex = messageHistory.size();
-                }
-                return false;
-            }
-        });
-        chatWindow.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                if (Gdx.app.getType() == Application.ApplicationType.Android && !isActive) {
-                    activateChat();
-                    Gdx.input.setOnscreenKeyboardVisible(true);
-                }
-            }
-        });
-    }
-
-    private void navigateMessageHistory(int direction) {
-        if (messageHistory.isEmpty()) {
-            return;
-        }
-        if (messageHistoryIndex == messageHistory.size() && direction < 0) {
-            String currentInput = inputField.getText();
-            if (!currentInput.isEmpty()) {
-                messageHistory.add(currentInput);
-            }
-        }
-        messageHistoryIndex += direction;
-        if (messageHistoryIndex < 0) {
-            messageHistoryIndex = 0;
-        } else if (messageHistoryIndex >= messageHistory.size()) {
-            messageHistoryIndex = messageHistory.size();
-            inputField.setText("");
-            return;
-        }
-        String historicalMessage = messageHistory.get(messageHistoryIndex);
-        inputField.setText(historicalMessage);
-        inputField.setCursorPosition(historicalMessage.length());
-        GameLogger.info("Navigating message history: index=" + messageHistoryIndex +
-            ", total messages=" + messageHistory.size());
+        // Also re‑attach the same capturing logic to inputField if you want
+        // That’s already done above in createChatUI() for ENTER, ESC, etc.
     }
 
     private static class ChatMessage {
         public final String sender;
         public final String content;
         public final long timestamp;
-        public ChatMessage(NetworkProtocol.ChatMessage message) {
-            this.sender = message.sender;
-            this.content = message.content;
-            this.timestamp = message.timestamp;
+
+        public ChatMessage(NetworkProtocol.ChatMessage msg) {
+            this.sender = msg.sender;
+            this.content = msg.content;
+            this.timestamp = msg.timestamp;
         }
     }
 }
