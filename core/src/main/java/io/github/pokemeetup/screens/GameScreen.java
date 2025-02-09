@@ -617,11 +617,12 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     private void initializeChatSystem() {
         if (GameContext.get().getChatSystem() != null) {
-            return; // Already init
+            return; // Already initialized
         }
 
         float screenW = Gdx.graphics.getWidth();
         float screenH = Gdx.graphics.getHeight();
+        // Use 25% of the screen width for the chat so it doesn't overlap the Pokémon party display.
         float chatWidth = Math.max(ChatSystem.MIN_CHAT_WIDTH, screenW * 0.25f);
         float chatHeight = Math.max(ChatSystem.MIN_CHAT_HEIGHT, screenH * 0.3f);
 
@@ -634,6 +635,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             commandsEnabled
         );
         chatSystem.setSize(chatWidth, chatHeight);
+        // Position the chat in the top left corner (origin is bottom left)
         chatSystem.setPosition(
             ChatSystem.CHAT_PADDING,
             screenH - chatHeight - ChatSystem.CHAT_PADDING
@@ -645,6 +647,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameContext.get().setChatSystem(chatSystem);
         GameLogger.info("ChatSystem created at: " + chatSystem.getX() + ", " + chatSystem.getY());
     }
+
 
     private void initializeWorldAndPlayer(String worldName) {
         GameLogger.info("Initializing world and player");
@@ -1452,10 +1455,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             }
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.F3)) {
-            GameContext.get().getWorld().getBiomeManager().debugBiomeDistribution(10000);
-            GameContext.get().getWorld().getBiomeManager().debugNoiseDistribution(10000);
-        }
         if (GameContext.get().getWorld() == null) {
             return;
         }

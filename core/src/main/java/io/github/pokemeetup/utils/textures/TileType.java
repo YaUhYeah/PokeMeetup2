@@ -108,6 +108,8 @@ public class TileType {
     public static final int MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT = 214;
     public static final int MOUNTAIN_TILE_CONNECTING_CORNER_TOP_LEFT = 215;
     public static final int MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT = 216;
+    public static final int FAIRY_ROCK = 217;
+    public static final int CRYSTAL_ROCK = 218;
 
     public static final int CAVE_ENTRANCE = 149;
 
@@ -202,6 +204,8 @@ public class TileType {
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT, "MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT");
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_LEFT, "MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_LEFT");
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT, "MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT");
+        tileTypeNames.put(FAIRY_ROCK, "fairy_rock");
+        tileTypeNames.put(CRYSTAL_ROCK, "crystal");
 
 
         // Add mountain tiles to main tile names

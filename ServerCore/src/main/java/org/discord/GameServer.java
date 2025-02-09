@@ -900,7 +900,7 @@ public class GameServer {
 
             // (6) Mark the chunk as dirty and force–save it so that the updated chest data is persisted.
             chunk.setDirty(true);
-            ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
+            ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
 
             // (7) Broadcast the chest update to all connected clients.
             networkServer.sendToAllTCP(update);
@@ -1390,7 +1390,8 @@ public class GameServer {
             type == WorldObject.ObjectType.HAUNTED_TREE ||
             type == WorldObject.ObjectType.RAIN_TREE ||
             type == WorldObject.ObjectType.APRICORN_TREE ||
-            type == WorldObject.ObjectType.RUINS_TREE;
+            type == WorldObject.ObjectType.RUINS_TREE ||
+            type == WorldObject.ObjectType.CHERRY_TREE;
     }
 
     private void handleBlockPlacement(Connection connection, NetworkProtocol.BlockPlacement placement) {

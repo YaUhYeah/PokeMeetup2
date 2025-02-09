@@ -8,5 +8,6 @@ public enum BiomeType {
     DESERT,
     RAIN_FOREST,
     BIG_MOUNTAINS,
-    RUINS
+    RUINS,
+    CHERRY_GROVE
 }

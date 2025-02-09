@@ -111,9 +111,22 @@
     "name": "Rain Forest",
     "type": "RAIN_FOREST",
     "allowedTileTypes": [
-
-      13, 14, 1, 20, 10, 21, 24,
-      140, 141, 142, 143, 144, 145, 146, 147, 148
+      13,
+      14,
+      1,
+      20,
+      10,
+      21,
+      24,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148
     ],
     "tileDistribution": {
       "13": 40.0,
@@ -227,6 +240,28 @@
     "spawnChances": {
       "RUINS_TREE": 0.4,
       "RUIN_POLE": 0.3
+    }
+  },
+  {
+    "name": "Cherry Grove",
+    "type": "CHERRY_GROVE",
+    "allowedTileTypes": [
+      217,
+      218,
+      11,
+      1
+    ],
+    "tileDistribution": {
+      "217": 5.0,
+      "218": 5.0,
+      "11": 65.0,
+      "1": 25.0
+    },
+    "spawnableObjects": [
+      "CHERRY_TREE"
+    ],
+    "spawnChances": {
+      "CHERRY_TREE": 0.5
     }
   }
 ]

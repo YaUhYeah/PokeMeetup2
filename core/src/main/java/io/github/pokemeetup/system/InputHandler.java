@@ -676,7 +676,6 @@ public class InputHandler extends InputAdapter {
         return GameContext.get().getPlayer().getWorld().getChunks().containsKey(chunkPos) && distance <= maxRange;
     }
 
-    // Returns true if the world object is a choppable type (e.g. a tree)
     private boolean isChoppable(WorldObject obj) {
         return obj.getType() == WorldObject.ObjectType.TREE_0 ||
             obj.getType() == WorldObject.ObjectType.TREE_1 ||
@@ -684,7 +683,8 @@ public class InputHandler extends InputAdapter {
             obj.getType() == WorldObject.ObjectType.HAUNTED_TREE ||
             obj.getType() == WorldObject.ObjectType.RAIN_TREE ||
             obj.getType() == WorldObject.ObjectType.APRICORN_TREE ||
-            obj.getType() == WorldObject.ObjectType.RUINS_TREE;
+            obj.getType() == WorldObject.ObjectType.RUINS_TREE ||
+            obj.getType() == WorldObject.ObjectType.CHERRY_TREE;
     }
 
     private WorldObject findChoppableObject() {
@@ -908,7 +908,8 @@ public class InputHandler extends InputAdapter {
                 obj.getType() == WorldObject.ObjectType.SNOW_TREE ||
                 obj.getType() == WorldObject.ObjectType.HAUNTED_TREE ||
                 obj.getType() == WorldObject.ObjectType.RUINS_TREE ||
-                obj.getType() == WorldObject.ObjectType.RAIN_TREE) {
+                obj.getType() == WorldObject.ObjectType.RAIN_TREE ||
+                obj.getType() == WorldObject.ObjectType.CHERRY_TREE) {
                 removalTileX = removalTileX - 1;
             }
             manager.removeObjectFromChunk(chunkPos, obj.getId(), removalTileX, removalTileY);

@@ -108,44 +108,6 @@
             }
         }
 
-        public static TextureRegion getTextureForObjectType(WorldObject.ObjectType objectType) {
-            switch (objectType) {
-                case TREE_0:
-                    return tiles.findRegion("treeONE");
-                case TREE_1:
-                    return tiles.findRegion("treeTWO");
-                case SNOW_TREE:
-                    return tiles.findRegion("snow_tree");
-                case HAUNTED_TREE:
-                    return tiles.findRegion("haunted_tree");
-                case POKEBALL:
-                    return items.findRegion("pokeball");
-                case CACTUS:
-                    return tiles.findRegion("desert_cactus");
-                case SUNFLOWER:
-                    return tiles.findRegion("sunflower");
-                case VINES:
-                    return tiles.findRegion("vines");
-                case RAIN_TREE:
-                    return tiles.findRegion("rain_tree");
-                case BUSH:
-                    return tiles.findRegion("bush");
-                case DEAD_TREE:
-                    return tiles.findRegion("dead_tree");
-                case SMALL_HAUNTED_TREE:
-                    return tiles.findRegion("small_haunted_tree");
-                case RUINS_TREE:
-                    return tiles.findRegion("ruins_tree");
-                case RUIN_POLE:
-                    return tiles.findRegion("ruins_pole");
-                case APRICORN_TREE:
-                    return tiles.findRegion("apricorn_tree_grown");
-                default:
-                    GameLogger.error("Missing texture for object type: " + objectType);
-                    return null;
-            }
-        }
-
         private static TextureRegion createColoredIcon(Color color, int width, int height) {
             Pixmap pixmap = new Pixmap(width, height, Pixmap.Format.RGBA8888);
             pixmap.setColor(color);
@@ -446,6 +408,8 @@
             tileTextures.put(MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT, tiles.findRegion("MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT"));
             tileTextures.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_LEFT, tiles.findRegion("MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_LEFT"));
             tileTextures.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT, tiles.findRegion("MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT"));
+            tileTextures.put(FAIRY_ROCK, tiles.findRegion("fairy_rock"));
+            tileTextures.put(CRYSTAL_ROCK, tiles.findRegion("crystal"));
 
             // Add other tile types as needed
             for (TextureRegion texture : tileTextures.values()) {

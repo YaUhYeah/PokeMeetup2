@@ -334,7 +334,7 @@ public class WorldObject {
                 World.TILE_SIZE,      // 32px wide, one tile
                 World.TILE_SIZE * 2   // 64px tall, two tiles high
             );
-        } else if (type == ObjectType.RUINS_TREE) {
+        } else if (type == ObjectType.RUINS_TREE || type == ObjectType.CHERRY_TREE) {
             // 2x2 collision as before
             float treeBaseX = pixelX - World.TILE_SIZE;
             float treeBaseY = pixelY;
@@ -677,7 +677,7 @@ public class WorldObject {
                 type == ObjectType.HAUNTED_TREE ||
                 type == ObjectType.RUINS_TREE ||
                 type == ObjectType.APRICORN_TREE ||
-                type == ObjectType.RAIN_TREE;
+                type == ObjectType.RAIN_TREE || type == ObjectType.CHERRY_TREE;
         }
 
         private int getRequiredSpacing(ObjectType type) {
@@ -689,6 +689,7 @@ public class WorldObject {
                 case SNOW_TREE:
                 case HAUNTED_TREE:
                 case RAIN_TREE:
+                case CHERRY_TREE:
                 case RUINS_TREE:
                     return 2; // More strict than before for large trees
                 default:

@@ -27,12 +27,10 @@ import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntityManager;
-import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
-import io.github.pokemeetup.utils.PerformanceProfiler;
 import io.github.pokemeetup.utils.storage.JsonConfig;
 import io.github.pokemeetup.utils.textures.BlockTextureManager;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -43,14 +41,17 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public class World {
-    public static final int INITIAL_LOAD_RADIUS = 1;
+    public static final int INITIAL_LOAD_RADIUS = 3;
     public static final int WORLD_SIZE = 100000;
     public static final int TILE_SIZE = 32;
     public static final int CHUNK_SIZE = 16;
     public static final float INTERACTION_RANGE = TILE_SIZE * 1.6f;
     public static final int HALF_WORLD_SIZE = WORLD_SIZE / 2;
     private static final float COLOR_TRANSITION_SPEED = 2.0f;
-    private static final int MAX_CHUNK_LOAD_RADIUS = 8;  // or 10, adjust as needed
+    private static final int MAX_CHUNK_LOAD_RADIUS = 16;  // or 10, adjust as needed
+    private static final int MAX_LOADED_CHUNKS = 200;         // or whatever limit you want
+    private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000; // how long to keep an unused chunk
+    private static final long CRITICAL_TIMEOUT_MS = 50; // lower timeout for in–view chunks
     public static int DEFAULT_X_POSITION = 0;
     public static int DEFAULT_Y_POSITION = 0;
     private final Map<Vector2, Long> lastChunkAccess = new ConcurrentHashMap<>();
@@ -241,6 +242,7 @@ public class World {
     public WeatherSystem getWeatherSystem() {
         return weatherSystem;
     }
+
     public void requestInitialChunks(Vector2 playerPosition) {
         // In multiplayer, use the flag to avoid duplicate requests.
         // In singleplayer, we always want to request any missing chunks.
@@ -642,38 +644,90 @@ public class World {
         }
     }
 
+    /**
+     * Unloads any chunks that are far away and old, or if we exceed budget.
+     */
     private void unloadDistantChunks(int playerChunkX, int playerChunkY) {
-        // The distance in chunk-coords at which we unload:
+        if (chunks.isEmpty()) return;
+
+        long now = System.currentTimeMillis();
+
+        // 1) Build a list of all loaded chunks along with how far and how "old" they are.
+        List<Vector2> candidates = new ArrayList<>(chunks.keySet());
+
+        // We’ll sort by distance first:
+        candidates.sort(Comparator.comparingDouble(
+            cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
+        ));
+
+        // 2) We'll keep track of chunks that are beyond maxRadius
+        //    AND haven't been accessed in UNLOAD_IDLE_THRESHOLD_MS.
+        List<Vector2> toUnload = new ArrayList<>();
+
         int maxRadius = MAX_CHUNK_LOAD_RADIUS;
 
-        // Build a list of keys to remove
-        List<Vector2> toRemove = new ArrayList<>();
-        for (Vector2 chunkPos : chunks.keySet()) {
-            float dist = Vector2.dst2(chunkPos.x, chunkPos.y, playerChunkX, playerChunkY);
-            // Compare squared distance to squared radius
-            if (dist > (maxRadius * maxRadius)) {
-                toRemove.add(chunkPos);
+        for (Vector2 chunkPos : candidates) {
+            float dist2 = Vector2.dst2(chunkPos.x, chunkPos.y, playerChunkX, playerChunkY);
+            Long lastAccessTime = lastChunkAccess.getOrDefault(chunkPos, 0L);
+            long idleTime = now - lastAccessTime;
+
+            boolean beyondDistance = dist2 > (maxRadius * maxRadius);
+            boolean oldEnough = (idleTime >= UNLOAD_IDLE_THRESHOLD_MS);
+
+            // If chunk is both far AND old, we can unload it
+            if (beyondDistance && oldEnough) {
+                toUnload.add(chunkPos);
             }
         }
 
-        // Actually remove them, saving if needed (in singleplayer):
-        for (Vector2 chunkPos : toRemove) {
+        // 3) If we’re still above the chunk budget, we also pick extra chunks to unload
+        //    based on who’s oldest lastAccess, even if they’re within radius.
+        int currentCount = chunks.size();
+        if (currentCount > MAX_LOADED_CHUNKS) {
+            // Sort everything by last‐access time, oldest first:
+            candidates.sort((a, b) -> {
+                long aTime = lastChunkAccess.getOrDefault(a, 0L);
+                long bTime = lastChunkAccess.getOrDefault(b, 0L);
+                return Long.compare(aTime, bTime);
+            });
+
+            // Then keep removing oldest chunks until we’re under budget
+            // — but skip any chunk that is REALLY close to the player.
+            for (Vector2 chunkPos : candidates) {
+                if (currentCount <= MAX_LOADED_CHUNKS) break;
+
+                // Don’t remove if it’s inside MAX_CHUNK_LOAD_RADIUS
+                float dist2 = Vector2.dst2(chunkPos.x, chunkPos.y, playerChunkX, playerChunkY);
+                if (dist2 <= (maxRadius * maxRadius)) {
+                    continue;
+                }
+                // We’ve already included far + old chunks in 'toUnload'
+                // so only forcibly remove if we still need to free memory.
+                if (!toUnload.contains(chunkPos)) {
+                    toUnload.add(chunkPos);
+                    currentCount--;
+                }
+            }
+        }
+
+        // 4) Actually unload (and save if singleplayer).
+        for (Vector2 chunkPos : toUnload) {
             Chunk chunk = chunks.get(chunkPos);
             if (chunk != null) {
-                // If singleplayer, save if dirty
+                // Singleplayer: save if dirty
                 if (!GameContext.get().isMultiplayer() && chunk.isDirty()) {
                     saveChunkData(chunkPos, chunk);
                 }
             }
-            // remove from memory
             chunks.remove(chunkPos);
             biomeTransitions.remove(chunkPos);
-            // remove from loading if it was enqueued
             loadingChunks.remove(chunkPos);
+            lastChunkAccess.remove(chunkPos);
         }
 
-        if (!toRemove.isEmpty()) {
-            GameLogger.info("Unloaded " + toRemove.size() + " distant chunks");
+        if (!toUnload.isEmpty()) {
+            GameLogger.info("Unloaded " + toUnload.size() + " distant/old chunks. " +
+                "Remaining loaded: " + chunks.size());
         }
     }
 
@@ -1008,22 +1062,20 @@ public class World {
     }
 
     public Chunk loadOrGenerateChunk(Vector2 chunkPos) {
-        // Only if not in multiplayer mode do we generate chunks locally.
-        // (If you’re in multiplayer, you should be receiving chunks from the server.)
         if (GameContext.get().isMultiplayer()) {
-            // Optionally: log a warning and return null.
             GameLogger.error("Tried to generate a chunk in multiplayer mode at " + chunkPos);
             return null;
         }
         Chunk chunk = loadChunkData(chunkPos);
-        if (chunk == null) {
+        // NEW: Check if the loaded chunk is valid; if not, generate it.
+        if (!isChunkValid(chunk)) {
             int worldX = (int) (chunkPos.x * Chunk.CHUNK_SIZE);
             int worldY = (int) (chunkPos.y * Chunk.CHUNK_SIZE);
             BiomeTransitionResult biomeTransition = biomeManager.getBiomeAt(worldX * World.TILE_SIZE, worldY * World.TILE_SIZE);
             Biome biome = biomeTransition.getPrimaryBiome();
             if (biome == null) {
                 GameLogger.error("Null biome at " + worldX + "," + worldY);
-                biome = biomeManager.getBiome(BiomeType.PLAINS); // fallback
+                biome = biomeManager.getBiome(BiomeType.PLAINS);
             }
             chunk = UnifiedWorldGenerator.generateChunk((int) chunkPos.x, (int) chunkPos.y, worldSeed, biomeManager);
             objectManager.generateObjectsForChunk(chunkPos, chunk, biome);
@@ -1079,14 +1131,9 @@ public class World {
     }
 
     public void loadChunkAsync(Vector2 chunkPos) {
-        if (isDisposed) {
-            return;
-        }
+        if (isDisposed) return;
         try {
-            if (loadingChunks.containsKey(chunkPos)) {
-                return;
-            }
-
+            if (loadingChunks.containsKey(chunkPos)) return;
             CompletableFuture<Chunk> future = CompletableFuture.supplyAsync(() -> {
                 try {
                     return loadOrGenerateChunk(chunkPos);
@@ -1095,13 +1142,16 @@ public class World {
                     return null;
                 }
             }, chunkLoadExecutor).thenApplyAsync(chunk -> {
+                // NEW: If the chunk is not valid, force synchronous reload.
+                if (chunk != null && !isChunkValid(chunk)) {
+                    chunk = loadOrGenerateChunk(chunkPos);
+                }
                 if (chunk != null) {
                     chunks.put(chunkPos, chunk);
                     loadingChunks.remove(chunkPos);
                 }
                 return chunk;
             });
-
             loadingChunks.put(chunkPos, future);
         } catch (Exception e) {
             GameLogger.error("Error initiating chunk load: " + e.getMessage());
@@ -1148,7 +1198,7 @@ public class World {
 
         // Throttle chunk management (which uses a PriorityQueue) so that it runs every 0.2 seconds:
         manageChunksTimer += delta;
-        if (manageChunksTimer >= 0.2f) {
+        if (manageChunksTimer >= 0.1f) {
             int currentChunkX = GameContext.get().getPlayer().getTileX() / Chunk.CHUNK_SIZE;
             int currentChunkY = GameContext.get().getPlayer().getTileY() / Chunk.CHUNK_SIZE;
 
@@ -1199,7 +1249,6 @@ public class World {
 
     private void manageChunks(int playerChunkX, int playerChunkY) {
         int loadRadius = INITIAL_LOAD_RADIUS + 1;
-        // Priority queue: nearest chunks first
         PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(
             cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
         ));
@@ -1211,28 +1260,36 @@ public class World {
             }
         }
 
-        final int MAX_CHUNKS_PER_FRAME = 16;
+        final int MAX_CHUNKS_PER_FRAME = 32;
         int loadedThisFrame = 0;
+        long now = System.currentTimeMillis();
 
-        // 1. Load missing chunks near the player
         while (!chunkQueue.isEmpty() && loadedThisFrame < MAX_CHUNKS_PER_FRAME) {
             Vector2 chunkPos = chunkQueue.poll();
-            if (!chunks.containsKey(chunkPos) && !loadingChunks.containsKey(chunkPos)) {
-                if (GameContext.get().isMultiplayer()) {
-                    GameContext.get().getGameClient().requestChunk(chunkPos);
+            Chunk existing = chunks.get(chunkPos);
+            // If chunk is null or invalid…
+            if (!isChunkValid(existing)) {
+                // If the chunk is in view (or close) force a synchronous load if it’s been waiting too long
+                if (loadingChunks.containsKey(chunkPos)) {
+                    Long lastAccess = lastChunkAccess.get(chunkPos);
+                    if (lastAccess != null && (now - lastAccess) > CRITICAL_TIMEOUT_MS) {
+                        Chunk chunk = loadOrGenerateChunk(chunkPos);
+                        if (chunk != null) {
+                            chunks.put(chunkPos, chunk);
+                            loadingChunks.remove(chunkPos);
+                            GameLogger.info("Synchronously reloaded critical chunk at " + chunkPos);
+                        }
+                    }
                 } else {
                     loadChunkAsync(chunkPos);
                 }
                 loadedThisFrame++;
             }
-            lastChunkAccess.put(chunkPos, System.currentTimeMillis());
+            lastChunkAccess.put(chunkPos, now);
         }
-
-        // 2. Unload far-away chunks
-        //    i.e. anything more than MAX_CHUNK_LOAD_RADIUS from player's chunk
         unloadDistantChunks(playerChunkX, playerChunkY);
-
     }
+
 
     public PokemonSpawnManager getPokemonSpawnManager() {
         return pokemonSpawnManager;
@@ -1554,7 +1611,7 @@ public class World {
             obj.getType() == WorldObject.ObjectType.TREE_1 ||
             obj.getType() == WorldObject.ObjectType.SNOW_TREE ||
             obj.getType() == WorldObject.ObjectType.HAUNTED_TREE ||
-            obj.getType() == WorldObject.ObjectType.RAIN_TREE || obj.getType() == WorldObject.ObjectType.RUINS_TREE || obj.getType() == WorldObject.ObjectType.APRICORN_TREE;
+            obj.getType() == WorldObject.ObjectType.RAIN_TREE || obj.getType() == WorldObject.ObjectType.RUINS_TREE || obj.getType() == WorldObject.ObjectType.APRICORN_TREE || obj.getType() == WorldObject.ObjectType.CHERRY_TREE;
     }
 
     private void renderMidLayer(SpriteBatch batch, Player player, Rectangle expandedBounds) {
@@ -1943,10 +2000,29 @@ public class World {
         return baseTemp + timeVariation;
     }
 
+    private boolean isChunkValid(Chunk chunk) {
+        if (chunk == null) return false;
+        int[][] data = chunk.getTileData();
+        if (data == null || data.length != CHUNK_SIZE) return false;
+        for (int[] row : data) {
+            if (row == null || row.length != CHUNK_SIZE) return false;
+        }
+        return true;
+    }
+
     public Chunk getChunkAtPosition(float x, float y) {
         int chunkX = Math.floorDiv((int) x, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv((int) y, Chunk.CHUNK_SIZE);
-        return chunks.get(new Vector2(chunkX, chunkY));
+        Vector2 pos = new Vector2(chunkX, chunkY);
+        Chunk chunk = chunks.get(pos);
+        if (chunk != null && !isChunkValid(chunk)) {
+            GameLogger.info("Chunk at " + pos + " is invalid; forcing synchronous reload.");
+            chunk = loadOrGenerateChunk(pos);
+            if (chunk != null) {
+                chunks.put(pos, chunk);
+            }
+        }
+        return chunk;
     }
 
     public WorldObject getNearestPokeball() {

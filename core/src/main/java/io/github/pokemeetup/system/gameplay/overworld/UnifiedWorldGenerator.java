@@ -1,5 +1,6 @@
 package io.github.pokemeetup.system.gameplay.overworld;
 
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.managers.BiomeTransitionResult;
@@ -167,10 +168,12 @@ public class UnifiedWorldGenerator {
                                                           long worldSeed, Random rand) {
             Biome primary = transition.getPrimaryBiome();
             Biome secondary = transition.getSecondaryBiome();
-            // Use smoothstep to blend more naturally between biomes.
             float rawBlend = transition.getTransitionFactor();
-            float blend = smoothStep(rawBlend);
+            float blend = smoothStep(rawBlend);  // existing smoothing
 
+            // Add a high-frequency noise to perturb the final roll slightly.
+            double microNoise = OpenSimplex2.noise2(worldSeed + 9999, worldX * 0.2f, worldY * 0.2f) * 0.05;
+            blend = MathUtils.clamp(blend + (float)microNoise, 0f, 1f);
             if (secondary == null || blend >= 0.99f) {
                 return determineTileTypeForBiome(primary, worldX, worldY, worldSeed, rand);
             }
@@ -241,7 +244,7 @@ public class UnifiedWorldGenerator {
             float baseChance;
             switch (biomeType) {
                 case SNOW:
-                    baseChance = 0.70f;
+                    baseChance = 0.78f;
                     break;
                 case DESERT:
                     baseChance = 0.90f;

@@ -227,6 +227,7 @@ public class AudioManager {
             "music/Menu-Music-3.mp3",
             "music/Menu-Music-4.mp3"
         ));
+        loadBiomeMusic(BiomeType.CHERRY_GROVE, (Arrays.asList("music/CherryGrove-Biome-0.mp3", "music/CherryGrove-Biome-1.mp3", "music/CherryGrove-Biome-2.mp3")));
         loadBiomeMusic(BiomeType.RUINS, (Arrays.asList("music/Ruins-Biome-0.mp3", "music/Ruins-Biome-1.mp3")));
         loadBiomeMusic(BiomeType.FOREST, (Arrays.asList("music/Forest-Biome-0.mp3", "music/Forest-Biome-1.mp3", "music/Forest-Biome-2.mp3", "music/Forest-Biome-3.mp3")));
         loadBiomeMusic(BiomeType.SNOW, (Arrays.asList("music/Snow-Biome-0.mp3", "music/Snow-Biome-1.mp3", "music/Snow-Biome-2.mp3")));

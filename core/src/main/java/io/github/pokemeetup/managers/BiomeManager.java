@@ -158,7 +158,7 @@ public class BiomeManager {
         // Map the local coordinates into grid space.
         float gx = localX / gridSpacingX;
         float gy = localY / gridSpacingY;
-        return blendBiomeSamplesBicubic(matrix, gx, gy);
+        return enhancedBlendBiomeSamples(matrix, gx, gy);
     }
     /**
      * Computes a low–resolution biome matrix for the specified chunk.
@@ -195,64 +195,66 @@ public class BiomeManager {
         return matrix;
     }
 
-
-    private BiomeTransitionResult blendBiomeSamplesBicubic(BiomeTransitionResult[][] matrix, float gx, float gy) {
+    /**
+     * A more advanced blend that aggregates contributions from a 4x4 neighborhood.
+     * This version uses a quintic smoothstep for weighting and blends multiple biomes.
+     */
+    private static BiomeTransitionResult enhancedBlendBiomeSamples(BiomeTransitionResult[][] matrix, float gx, float gy) {
         int gridWidth = matrix.length;
         int gridHeight = matrix[0].length;
         int ix = MathUtils.floor(gx);
         int iy = MathUtils.floor(gy);
-        // Use a 4x4 neighborhood: indices from (ix-1) to (ix+2)
-        int iStart = MathUtils.clamp(ix - 1, 0, gridWidth - 1);
-        int iEnd = MathUtils.clamp(ix + 2, 0, gridWidth - 1);
-        int jStart = MathUtils.clamp(iy - 1, 0, gridHeight - 1);
-        int jEnd = MathUtils.clamp(iy + 2, 0, gridHeight - 1);
 
-        Map<Biome, Float> biomeWeights = new HashMap<>();
-        for (int i = iStart; i <= iEnd; i++) {
-            float wx = cubicWeight(gx - i);
-            for (int j = jStart; j <= jEnd; j++) {
-                float wy = cubicWeight(gy - j);
+        // Use a 4x4 neighborhood (from ix-1 to ix+2 and similarly for y)
+        Map<Biome, Float> contributions = new HashMap<>();
+        for (int i = Math.max(0, ix - 1); i < Math.min(gridWidth, ix + 3); i++) {
+            // Weight based on distance – use quintic smoothstep for even smoother interpolation.
+            float wx = quinticSmoothStep(1f - Math.abs(gx - i));
+            for (int j = Math.max(0, iy - 1); j < Math.min(gridHeight, iy + 3); j++) {
+                float wy = quinticSmoothStep(1f - Math.abs(gy - j));
                 float weight = wx * wy;
-                BiomeTransitionResult btr = matrix[i][j];
-                if (btr == null) continue;
-                // Each sample “votes” for its primary biome weighted by its transition factor,
-                // and for its secondary biome weighted by (1 - transition factor).
-                float primaryContribution = weight * btr.getTransitionFactor();
-                float secondaryContribution = weight * (1 - btr.getTransitionFactor());
-                if (btr.getPrimaryBiome() != null) {
-                    biomeWeights.merge(btr.getPrimaryBiome(), primaryContribution, Float::sum);
-                }
-                if (btr.getSecondaryBiome() != null) {
-                    biomeWeights.merge(btr.getSecondaryBiome(), secondaryContribution, Float::sum);
-                } else if (btr.getPrimaryBiome() != null) {
-                    biomeWeights.merge(btr.getPrimaryBiome(), weight, Float::sum);
+                BiomeTransitionResult sample = matrix[i][j];
+                if (sample == null) continue;
+                // Each sample “votes” for its primary biome weighted by its transition factor…
+                contributions.merge(sample.getPrimaryBiome(), weight * sample.getTransitionFactor(), Float::sum);
+                // …and for its secondary biome weighted by (1 - transition factor), if available.
+                if (sample.getSecondaryBiome() != null) {
+                    contributions.merge(sample.getSecondaryBiome(), weight * (1f - sample.getTransitionFactor()), Float::sum);
                 }
             }
         }
-        // Determine the dominant biome and the next highest biome.
+
+        // Determine dominant biome and compute a blended transition factor.
         Biome dominant = null;
         float dominantWeight = 0f;
-        for (Map.Entry<Biome, Float> entry : biomeWeights.entrySet()) {
+        for (Map.Entry<Biome, Float> entry : contributions.entrySet()) {
             if (entry.getValue() > dominantWeight) {
                 dominant = entry.getKey();
                 dominantWeight = entry.getValue();
             }
         }
+        // Compute total weight.
+        float totalWeight = 0f;
+        for (float w : contributions.values()) {
+            totalWeight += w;
+        }
+        // Calculate a smooth blend value.
+        float rawBlend = dominantWeight / totalWeight;
+        float smoothBlend = quinticSmoothStep(rawBlend);
+
+        // Optionally, pick a secondary biome (the next highest contribution) if available.
         Biome secondary = null;
         float secondaryWeight = 0f;
-        for (Map.Entry<Biome, Float> entry : biomeWeights.entrySet()) {
+        for (Map.Entry<Biome, Float> entry : contributions.entrySet()) {
             if (!entry.getKey().equals(dominant) && entry.getValue() > secondaryWeight) {
                 secondary = entry.getKey();
                 secondaryWeight = entry.getValue();
             }
         }
-        if (secondary == null) {
-            return new BiomeTransitionResult(dominant, null, 1f);
-        }
-        float t = dominantWeight / (dominantWeight + secondaryWeight);
-        t = quinticSmoothStep(t);
-        return new BiomeTransitionResult(dominant, secondary, t);
+
+        return new BiomeTransitionResult(dominant, secondary, smoothBlend);
     }
+
 
     private static float cubicWeight(float x) {
         x = Math.abs(x);
@@ -629,13 +631,17 @@ public class BiomeManager {
 
         private static BiomeType determineTemperateBiomes(double temp, double moist, long detailSeed) {
             double variety = OpenSimplex2.noise2(detailSeed + 1000, temp * 3, moist * 3) * 0.5 + 0.5;
-            if (moist > WET_THRESHOLD) {
+            // Example: if moisture is high and the noise value is low, pick CHERRY_GROVE.
+            if (moist > WET_THRESHOLD && variety < 0.4) {
+                return BiomeType.CHERRY_GROVE;
+            } else if (moist > WET_THRESHOLD) {
                 return variety > 0.5 ? BiomeType.RAIN_FOREST : BiomeType.FOREST;
             } else if (moist < DRY_THRESHOLD) {
                 return BiomeType.PLAINS;
             }
             return variety > 0.6 ? BiomeType.FOREST : (variety > 0.3 ? BiomeType.PLAINS : BiomeType.HAUNTED);
         }
+
 
         private static BiomeType determineColderBiomes(double moist, long detailSeed) {
             double variety = OpenSimplex2.noise2(detailSeed + 3000, moist * 4, moist * 4) * 0.5 + 0.5;
@@ -693,10 +699,11 @@ public class BiomeManager {
         BiomeType[] candidates = {
             BiomeType.PLAINS, BiomeType.DESERT, BiomeType.SNOW,
             BiomeType.FOREST, BiomeType.RAIN_FOREST, BiomeType.HAUNTED,
-            BiomeType.RUINS
+            BiomeType.RUINS, BiomeType.CHERRY_GROVE
         };
         return candidates[rng.nextInt(candidates.length)];
     }
+
 
     // -------------------------------
     // Inner Classes for Data Serialization
