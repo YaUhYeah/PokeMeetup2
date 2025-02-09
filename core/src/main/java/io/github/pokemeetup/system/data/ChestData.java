@@ -15,7 +15,7 @@ import java.util.UUID;
 
 public class ChestData implements Serializable, Json.Serializable,ItemContainer {
     public static final int CHEST_SIZE = 27;
-    private static final long serialVersionUID = 1L; // Add serialVersionUID
+    private static final long serialVersionUID = 1L;
     public UUID chestId;
     public List<ItemData> items;
     public Vector2 position;
@@ -170,83 +170,4 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         return sb.toString();
     }
 
-    public synchronized void validateAndRepair() {
-        try {
-            GameLogger.info("Starting chest validation for chest " + chestId);
-
-            // Ensure items list exists and has correct size
-            if (items == null) {
-                items = new ArrayList<>(CHEST_SIZE);
-                GameLogger.error("Items list was null, recreating");
-            }
-
-            // Ensure list has correct size
-            while (items.size() < CHEST_SIZE) {
-                items.add(null);
-                GameLogger.error("Added missing slot to chest");
-            }
-            while (items.size() > CHEST_SIZE) {
-                items.remove(items.size() - 1);
-                GameLogger.error("Removed excess slot from chest");
-            }
-
-            // Validate each item
-            for (int i = 0; i < items.size(); i++) {
-                ItemData item = items.get(i);
-                if (item != null) {
-                    boolean needsRepair = false;
-
-                    // Validate UUID
-                    if (item.getUuid() == null) {
-                        item.setUuid(UUID.randomUUID());
-                        needsRepair = true;
-                        GameLogger.error("Repaired null UUID for item in slot " + i);
-                    }
-
-                    // Validate item count
-                    if (item.getCount() <= 0) {
-                        items.set(i, null);
-                        GameLogger.error("Removed item with invalid count from slot " + i);
-                        continue;
-                    }
-
-                    // Validate durability
-                    if (item.getMaxDurability() > 0) {
-                        if (item.getDurability() <= 0) {
-                            items.set(i, null);
-                            GameLogger.error("Removed broken item from slot " + i);
-                            continue;
-                        }
-                        if (item.getDurability() > item.getMaxDurability()) {
-                            item.setDurability(item.getMaxDurability());
-                            needsRepair = true;
-                            GameLogger.error("Fixed excessive durability for item in slot " + i);
-                        }
-                    }
-
-                    // If item needed repairs, create a clean copy
-                    if (needsRepair) {
-                        items.set(i, item.copy());
-                    }
-                }
-            }
-
-            // Ensure slot data array is initialized
-            if (slotDataArray == null || slotDataArray.length != CHEST_SIZE) {
-                initializeSlotDataArray();
-                GameLogger.error("Reinitialized slot data array");
-            }
-
-            // Mark as needing save
-            isDirty = true;
-            GameLogger.info("Chest validation complete for chest " + chestId);
-
-        } catch (Exception e) {
-            GameLogger.error("Error during chest validation: " + e.getMessage());
-            e.printStackTrace();
-
-            // Try to recover to a safe state
-            initializeSlots();
-        }
-    }
 }

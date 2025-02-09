@@ -853,62 +853,58 @@ public class GameServer {
         // Broadcast the pickup to all other clients so they remove the item.
         networkServer.sendToAllExceptTCP(connection.getID(), pickup);
     }
-
     private void handleChestUpdate(Connection connection, NetworkProtocol.ChestUpdate update) {
-        // Validate sender...
+        // (1) Verify that the sender is authorized.
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(update.username)) {
             GameLogger.error("Unauthorized chest update from " + update.username);
             return;
         }
 
-        // 1) We must figure out which chunk the chest is on.
-        //    Typically, you do so by scanning placedBlocks or
-        //    storing a "chestId -> (x,y) position" map.
-        //    For example:
+        // (2) Find the chest position using a helper (for example, scanning placed blocks)
         Vector2 chestPos = findChestPositionInPlacedBlocks(update.chestId);
         if (chestPos == null) {
-            // If still not found, log or fail out
-            GameLogger.error("Could not find chestPos for chestId = " + update.chestId);
+            GameLogger.error("Could not find chest position for chestId = " + update.chestId);
             return;
         }
 
-        // 2) Force-load that chunk to ensure the block is in placedBlocks
-        int chunkX = chestPos.x >= 0 ? (int) (chestPos.x / World.CHUNK_SIZE) :
-            Math.floorDiv((int) chestPos.x, World.CHUNK_SIZE);
-        int chunkY = chestPos.y >= 0 ? (int) (chestPos.y / World.CHUNK_SIZE) :
-            Math.floorDiv((int) chestPos.y, World.CHUNK_SIZE);
+        // (3) Determine the chunk coordinates and force–load that chunk.
+        int chunkX = chestPos.x >= 0 ? (int)(chestPos.x / World.CHUNK_SIZE)
+            : Math.floorDiv((int)chestPos.x, World.CHUNK_SIZE);
+        int chunkY = chestPos.y >= 0 ? (int)(chestPos.y / World.CHUNK_SIZE)
+            : Math.floorDiv((int)chestPos.y, World.CHUNK_SIZE);
+        Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
 
-        Chunk chunk = ServerGameContext.get().getWorldManager()
-            .loadChunk("multiplayer_world", chunkX, chunkY);
-
-        // 3) Now find the chest in placedBlocks
-        PlaceableBlock chestBlock = ServerGameContext.get()
-            .getServerBlockManager().getChestBlock(update.chestId);
-
+        // (4) Get the chest block from the server’s block manager.
+        PlaceableBlock chestBlock = ServerGameContext.get().getServerBlockManager().getChestBlock(update.chestId);
         if (chestBlock == null) {
-            GameLogger.error("Chest block with id " + update.chestId + " not found, even after loading chunk");
+            GameLogger.error("Chest block with id " + update.chestId + " not found even after loading chunk");
             return;
         }
 
-        // 4) Synchronize & update
+        // (5) Synchronize updates on a per–chest lock so that concurrent updates won’t conflict.
         Object lock = chestLocks.computeIfAbsent(update.chestId, id -> new Object());
         synchronized (lock) {
+            // Retrieve the current chest data; if none exists, create one.
             ChestData currentChest = chestBlock.getChestData();
             if (currentChest == null) {
-                currentChest = new ChestData(
-                    (int) chestPos.x, (int) chestPos.y
-                );
+                currentChest = new ChestData((int)chestPos.x, (int)chestPos.y);
+                chestBlock.setChestData(currentChest);
             }
+
+            // **** FIX: Update the chest data in place (do not create a separate copy)
             currentChest.setItems(new ArrayList<>(update.items));
-            chestBlock.setChestData(currentChest.copy());
 
+
+            // Optionally, if you have other state (like “isOpen”) you might update that too.
+
+            // (6) Mark the chunk as dirty and force–save it so that the updated chest data is persisted.
             chunk.setDirty(true);
-            ServerGameContext.get().getWorldManager()
-                .saveChunk("multiplayer_world", chunk);
+            ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
 
+            // (7) Broadcast the chest update to all connected clients.
             networkServer.sendToAllTCP(update);
-            GameLogger.info("Processed chest update " + update.chestId + " from " + update.username);
+            GameLogger.info("Processed chest update for chestId " + update.chestId + " from " + update.username);
         }
     }
 
