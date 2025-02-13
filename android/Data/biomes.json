@@ -16,6 +16,10 @@
       "22": 3.0,
       "23": 3.0
     },
+    "transitionTileTypes": {
+      "1": 35.0,
+      "22": 10.0
+    },
     "spawnableObjects": [
       "TREE_0",
       "TREE_1",
@@ -46,6 +50,10 @@
       "10": 8.0,
       "20": 2.0
     },
+    "transitionTileTypes": {
+      "11": 15.0,
+      "1": 25.0
+    },
     "spawnableObjects": [
       "TREE_0",
       "TREE_1",
@@ -68,7 +76,13 @@
     "tileDistribution": {
       "4": 75.0,
       "6": 10.0,
-      "51": 15.0
+      "51": 10.0,
+      "219": 5.0
+    },
+    "transitionTileTypes": {
+      "4": 15.0,
+      "51": 10.0,
+      "219": 35.0
     },
     "spawnableObjects": [
       "SNOW_TREE"
@@ -94,6 +108,10 @@
       "9": 7.0,
       "1": 5.0
     },
+    "transitionTileTypes": {
+      "1": 50.0,
+      "11": 50.0
+    },
     "spawnableObjects": [
       "HAUNTED_TREE",
       "DEAD_TREE",
@@ -111,19 +129,34 @@
     "name": "Rain Forest",
     "type": "RAIN_FOREST",
     "allowedTileTypes": [
-
-      13, 14, 1, 20, 10, 21, 24,
-      140, 141, 142, 143, 144, 145, 146, 147, 148
+      13,
+      14,
+      1,
+      20,
+      10,
+      21,
+      24,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148
     ],
     "tileDistribution": {
       "13": 40.0,
-      "14": 25.0,
-      "1": 10.0,
-      "20": 5.0,
-      "10": 5.0,
+      "20": 30.0,
+      "10": 15.0,
       "21": 3.0,
       "24": 2.0,
       "140": 10.0
+    },
+    "transitionTileTypes": {
+      "13": 25.0,
+      "1": 5.0
     },
     "spawnableObjects": [
       "RAIN_TREE",
@@ -148,6 +181,11 @@
       "16": 10.0,
       "17": 10.0,
       "2": 15.0
+    },
+    "transitionTileTypes": {
+      "15": 25.0,
+      "16": 15.0,
+      "2": 10.0
     },
     "spawnableObjects": [
       "CACTUS",
@@ -200,10 +238,12 @@
       "49": 0.25,
       "50": 0.75
     },
-    "spawnableObjects": [
-    ],
-    "spawnChances": {
-    }
+    "transitionTileTypes": {
+      "25": 20.0,
+      "29": 10.0
+    },
+    "spawnableObjects": [],
+    "spawnChances": {}
   },
   {
     "name": "Ruins",
@@ -217,8 +257,13 @@
     "tileDistribution": {
       "53": 10.0,
       "54": 20.0,
-      "55": 10.0,
-      "56": 60.0
+      "14": 25.0,
+      "55": 5.0,
+      "56": 40.0
+    },
+    "transitionTileTypes": {
+      "53": 20.0,
+      "54": 10.0
     },
     "spawnableObjects": [
       "RUINS_TREE",
@@ -241,14 +286,61 @@
     "tileDistribution": {
       "217": 5.0,
       "218": 5.0,
-      "11": 25.0,
-      "1": 65.0
+      "11": 65.0,
+      "1": 25.0
+    },
+    "transitionTileTypes": {
+      "217": 5.0,
+      "11": 15.0,
+      "1": 5.0
     },
     "spawnableObjects": [
       "CHERRY_TREE"
     ],
     "spawnChances": {
       "CHERRY_TREE": 0.5
+    }
+  },
+  {
+    "name": "Beach",
+    "type": "BEACH",
+    "allowedTileTypes": [
+      220,
+      221,
+      222,
+      223,
+      224
+    ],
+    "tileDistribution": {
+      "220": 30.0,
+      "221": 20.0,
+      "222": 10.0,
+      "223": 25.0,
+      "224": 15.0
+    },
+    "transitionTileTypes": {
+    },
+    "spawnableObjects": [
+      "BEACH_TREE"
+    ],
+    "spawnChances": {
+      "BEACH_TREE": 0.2
+    }
+  },
+  {
+    "name": "Ocean",
+    "type": "OCEAN",
+    "allowedTileTypes": [
+      0
+    ],
+    "tileDistribution": {
+      "0": 100.0
+    },
+    "transitionTileTypes": {
+    },
+    "spawnableObjects": [
+    ],
+    "spawnChances": {
     }
   }
 ]

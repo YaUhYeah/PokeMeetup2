@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
+import io.github.pokemeetup.multiplayer.server.events.EventManager;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntityManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
@@ -62,7 +63,7 @@ public class ServerLauncher {
             // Initialize ServerGameContext first!
             ServerWorldObjectManager worldObjectManager = new ServerWorldObjectManager();
             worldObjectManager.initializeWorld(MULTIPLAYER_WORLD_NAME);
-            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager(), new ServerBlockManager(), null);
+            ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager(), new ServerBlockManager(), null, new EventManager());
             logger.info("Server game context initialized");
 
             // In your ServerLauncher (or similar startup routine):

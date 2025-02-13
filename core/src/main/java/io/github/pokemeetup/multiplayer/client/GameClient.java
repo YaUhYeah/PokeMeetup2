@@ -28,6 +28,7 @@ import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
@@ -101,8 +102,6 @@ public class GameClient {
     private String pendingPassword;
     private String currentPassword;
     private volatile boolean loginRequestSent = false;
-    private String pendingRegistrationUsername;
-    private String pendingRegistrationPassword;
     private volatile boolean processingMessages = false;
     private volatile ConnectionState connectionState = ConnectionState.DISCONNECTED;
     private volatile Client client;
@@ -120,7 +119,6 @@ public class GameClient {
         this.serverConfig = config;
         this.isSinglePlayer = !GameContext.get().isMultiplayer();
         this.lastKnownState = new PlayerData();
-        new BiomeManager(System.currentTimeMillis());
 
         this.credentials = Gdx.app.getPreferences("game-credentials");
         this.serverConfig = config;
@@ -547,21 +545,29 @@ public class GameClient {
     }
 
     private void handleWorldStateUpdate(NetworkProtocol.WorldStateUpdate update) {
-        if (update == null || update.worldData == null) return;
-
+        if (update == null) return;
+        // Ensure that updates happen on the rendering thread
         Gdx.app.postRunnable(() -> {
-            try {
-                GameContext.get().getWorld().setWorldData(update.worldData);
+            World world = GameContext.get().getWorld();
+            if (world == null) return;
+            // Update the local world data with the synchronized time and day length.
+            world.getWorldData().setWorldTimeInMinutes(update.worldTimeInMinutes);
+            world.getWorldData().setDayLength(update.dayLength);
+            // Optionally, update the seed if needed:
+            // world.getWorldData().getConfig().setSeed(update.seed);
 
-                GameContext.get().getWorld().initializeWorldFromData(update.worldData);
-
-                GameLogger.info("World state updated from server.");
-
-            } catch (Exception e) {
-                GameLogger.error("Error handling world state update: " + e.getMessage());
+            // Now update the weather system.
+            WeatherSystem weatherSystem = world.getWeatherSystem();
+            if (weatherSystem != null) {
+                // You can simply “force” the weather parameters that the server sent:
+                weatherSystem.setWeather(update.currentWeather, update.intensity);
+                weatherSystem.setAccumulation(update.accumulation);
             }
+            GameLogger.info("WorldStateUpdate applied: time " + update.worldTimeInMinutes +
+                ", weather " + update.currentWeather);
         });
     }
+
 
     private void setupReconnectionHandler() {
         scheduler.scheduleWithFixedDelay(() -> {
@@ -716,34 +722,38 @@ public class GameClient {
             }, REGISTRATION_CONNECT_TIMEOUT_MS);
         }
     }
-
     private void handleCompressedChunkData(NetworkProtocol.CompressedChunkData compressed) {
         try {
             LZ4Factory factory = LZ4Factory.fastestInstance();
             LZ4SafeDecompressor decompressor = factory.safeDecompressor();
+            // Allocate an array for the original uncompressed data.
             byte[] restored = new byte[compressed.originalLength];
             decompressor.decompress(compressed.data, 0, compressed.data.length, restored, 0);
 
+            // Deserialize the uncompressed data to a ChunkData object using Kryo.
             ByteArrayInputStream bais = new ByteArrayInputStream(restored);
             Input input = new Input(bais);
             Kryo kryo = new Kryo();
+            // IMPORTANT: Register all classes exactly as on the server!
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
             NetworkProtocol.ChunkData chunkData = kryo.readObject(input, NetworkProtocol.ChunkData.class);
             input.close();
             bais.close();
 
-            Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
+            final Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
             Gdx.app.postRunnable(() -> {
                 try {
                     World world = GameContext.get().getWorld();
                     if (world == null) return;
 
-                    // Update the world’s chunk map exclusively from server data.
+                    // Update the world’s chunk map from the received ChunkData.
                     world.processChunkData(chunkData);
+
+                    // Build a BiomeTransitionResult from the new biome info.
                     BiomeTransitionResult transition = new BiomeTransitionResult(
                         world.getBiomeManager().getBiome(chunkData.primaryBiomeType),
-                        chunkData.secondaryBiomeType != null ? world.getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null,
+                        (chunkData.secondaryBiomeType != null ? world.getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null),
                         chunkData.biomeTransitionFactor
                     );
                     world.storeBiomeTransition(chunkPos, transition);
@@ -754,11 +764,11 @@ public class GameClient {
                     GameLogger.error("Error processing chunk data: " + e.getMessage());
                 }
             });
-
         } catch (Exception e) {
             GameLogger.error("Error decompressing chunk data: " + e.getMessage());
         }
     }
+
 
     /**
      * Recalculate the sliding window of chunks based on the player's current chunk position.
@@ -1165,7 +1175,6 @@ public class GameClient {
 
     public void requestChunk(Vector2 chunkPos) {
         if (!isConnected() || !isAuthenticated()) {
-            GameLogger.error("Cannot request chunk - not connected/authenticated: " + chunkPos);
             return;
         }
 
@@ -1705,7 +1714,7 @@ public class GameClient {
             worldData.setDayLength(dayLength);
 
             this.worldSeed = seed;
-            new BiomeManager(seed);
+            GameContext.get().getBiomeManager().setBaseSeed(seed);
             if (GameContext.get().getWorld() == null) {
                 GameContext.get().setWorld(new World(worldData));
                 GameLogger.info("Basic world initialization complete");

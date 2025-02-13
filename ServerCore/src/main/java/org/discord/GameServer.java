@@ -2,6 +2,7 @@ package org.discord;
 
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.esotericsoftware.kryo.Kryo;
@@ -18,12 +19,15 @@ import io.github.pokemeetup.managers.DatabaseManager;
 import io.github.pokemeetup.multiplayer.PlayerManager;
 import io.github.pokemeetup.multiplayer.ServerPlayer;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
+import io.github.pokemeetup.multiplayer.server.events.blocks.BlockPlaceEvent;
+import io.github.pokemeetup.multiplayer.server.events.player.PlayerJoinEvent;
 import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
@@ -34,8 +38,6 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4Factory;
 import org.discord.context.ServerGameContext;
-import org.discord.utils.BiomeData;
-import org.discord.utils.ServerBiomeManager;
 import org.discord.utils.ServerPokemonSpawnManager;
 
 import java.io.ByteArrayOutputStream;
@@ -73,8 +75,9 @@ public class GameServer {
     private final PluginManager pluginManager;
     private final ConcurrentHashMap<String, Integer> playerPingMap = new ConcurrentHashMap<>();
     private final Map<String, Vector2> playerChunkMap = new ConcurrentHashMap<>();
+    private final ServerPokemonSpawnManager serverPokemonSpawnManager;
     private volatile boolean running;
-    private ServerPokemonSpawnManager serverPokemonSpawnManager;
+    private final WeatherSystem weatherSystem;
 
     public GameServer(ServerConnectionConfig config) {
         this.scheduler = Executors.newScheduledThreadPool(SCHEDULER_POOL_SIZE, r -> {
@@ -104,7 +107,7 @@ public class GameServer {
 
 
         try {
-            this.worldData = initializeMultiplayerWorld();
+            this.worldData = initializeMultiplayerWorld(); this.weatherSystem = new WeatherSystem();
             serverPokemonSpawnManager = new ServerPokemonSpawnManager(MULTIPLAYER_WORLD_NAME);
             setupNetworkListener();
             scheduler.scheduleAtFixedRate(() -> {
@@ -112,13 +115,27 @@ public class GameServer {
                 // First update wild Pokémon state, then broadcast updates.
                 serverPokemonSpawnManager.update(0.1f);
                 serverPokemonSpawnManager.broadcastPokemonUpdates();
-            }, 0, 100, TimeUnit.MILLISECONDS);
+            }, 0, 100, TimeUnit.MILLISECONDS);// In your GameServer constructor, after worldData is initialized:
+            scheduler.scheduleAtFixedRate(() -> {
+                // Update the world time by 1 second (real time)
+                worldData.updateTime(1.0f);
+            }, 0, 1, TimeUnit.SECONDS);
+
+            scheduler.scheduleAtFixedRate(() -> {
+                try {
+                    broadcastWorldState();
+                } catch (Exception e) {
+                    GameLogger.error("Error broadcasting world state: " + e.getMessage());
+                }
+            }, 1000, 1000, TimeUnit.MILLISECONDS); // every 1 second
+
             this.pluginManager = new PluginManager(worldData);
         } catch (Exception e) {
             GameLogger.error("Failed to initialize game world: " + e.getMessage());
             throw new RuntimeException("Failed to initialize server world", e);
         }
     }
+
     public Set<Vector2> getPlayerOccupiedChunks() {
         Set<Vector2> occupied = new HashSet<>();
         for (Map.Entry<String, Vector2> entry : playerChunkMap.entrySet()) {
@@ -326,8 +343,8 @@ public class GameServer {
             serverPlayer.setMoving(update.isMoving);
 
             // Convert pixel coords => chunk coords
-            int cX = (int)Math.floor(update.x / (World.CHUNK_SIZE * World.TILE_SIZE));
-            int cY = (int)Math.floor(update.y / (World.CHUNK_SIZE * World.TILE_SIZE));
+            int cX = (int) Math.floor(update.x / (World.CHUNK_SIZE * World.TILE_SIZE));
+            int cY = (int) Math.floor(update.y / (World.CHUNK_SIZE * World.TILE_SIZE));
             Vector2 chunkPos = new Vector2(cX, cY);
             // Store that in the map
             playerChunkMap.put(username, chunkPos);
@@ -539,8 +556,10 @@ public class GameServer {
                 joinedMsg.y = playerData.getY();     // similarly for Y
                 joinedMsg.timestamp = System.currentTimeMillis();
 
+                ServerGameContext.get().getEventManager().fireEvent(new PlayerJoinEvent(request.username, playerData));
                 // Send to everyone (including the newly joined player)
                 networkServer.sendToAllTCP(joinedMsg);
+                sendActivePokemonToConnection(connection);
 
                 GameLogger.info("Login successful for: " + request.username);
             }
@@ -571,7 +590,6 @@ public class GameServer {
 
     public void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
         Vector2 chunkPos = new Vector2(request.chunkX, request.chunkY);
-
         try {
             WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
             if (worldData == null) {
@@ -579,83 +597,228 @@ public class GameServer {
                 return;
             }
 
-            // Load or generate the chunk
+            // Load or generate the chunk.
             Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
             if (chunk == null) {
                 GameLogger.error("Failed to load/generate chunk at " + chunkPos);
                 return;
             }
 
-            // Ensure objects are populated
+            // Ensure that any world objects are generated.
             List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
                 .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
-
             if (objects == null || objects.isEmpty()) {
                 objects = ServerGameContext.get().getWorldObjectManager()
                     .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
             }
 
+            // Build a new ChunkData including the new biome info.
             NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
             chunkData.chunkX = request.chunkX;
             chunkData.chunkY = request.chunkY;
             chunkData.primaryBiomeType = chunk.getBiome().getType();
+            // If your system supports a secondary biome or a transition factor:
+            chunkData.secondaryBiomeType = null; // or assign if applicable
             chunkData.tileData = chunk.getTileData();
             chunkData.blockData = chunk.getBlockDataForSave();
+            chunkData.generationSeed = worldData.getConfig().getSeed();
             chunkData.timestamp = System.currentTimeMillis();
+            chunkData.biomeTransitionFactor = 1;
             chunkData.worldObjects = new ArrayList<>();
-
-            // Add all valid objects
             if (objects != null) {
                 for (WorldObject obj : objects) {
                     if (obj != null) {
-                        HashMap<String, Object> objData = obj.getSerializableData();
+                        Map<String, Object> objData = obj.getSerializableData();
                         if (objData != null) {
-                            chunkData.worldObjects.add(objData);
+                            chunkData.worldObjects.add(new HashMap<>(objData));
                         }
                     }
                 }
             }
 
+            // Compress the ChunkData.
             NetworkProtocol.CompressedChunkData compressed = compressChunkData(chunkData);
             if (compressed == null) {
                 GameLogger.error("Failed to compress chunk data for " + chunkPos);
                 return;
             }
 
-            // Send compressed chunk data
+            // Send the compressed chunk data to the client.
             connection.sendTCP(compressed);
-
         } catch (Exception e) {
             GameLogger.error("Error processing chunk request at " + chunkPos + ": " + e.getMessage());
             e.printStackTrace();
         }
     }
+    private void broadcastWorldState() {
+        // For each active player, compute personalized weather based on their position.
+        for (Map.Entry<String, ServerPlayer> entry : activePlayers.entrySet()) {
+            String username = entry.getKey();
+            ServerPlayer player = entry.getValue();
+            Vector2 pos = player.getPosition(); // player's position in pixels
+
+            // Retrieve the biome transition using the new method in ServerWorldManager.
+            BiomeTransitionResult biomeTransition =
+                ServerGameContext.get().getWorldManager().getBiomeTransitionAt(pos.x, pos.y);
+
+            // Use global world time for time-of–day.
+            double worldTime = worldData.getWorldTimeInMinutes();
+            // Compute a temperature based on the primary biome.
+            float temperature = computeTemperatureForBiome(biomeTransition.getPrimaryBiome().getType());
+
+            // Decide weather based on the primary biome type.
+            WeatherSystem.WeatherType weatherType;
+            float intensity;
+            float rand = MathUtils.random();
+            switch (biomeTransition.getPrimaryBiome().getType()) {
+                case RAIN_FOREST:
+                    if (rand < 0.75f) {
+                        weatherType = WeatherSystem.WeatherType.HEAVY_RAIN;
+                        intensity = 0.8f;
+                    } else {
+                        weatherType = WeatherSystem.WeatherType.RAIN;
+                        intensity = 0.6f;
+                    }
+                    break;
+                case HAUNTED:
+                    if (worldTime >= 18 || worldTime < 6) {
+                        if (rand < 0.7f) {
+                            weatherType = WeatherSystem.WeatherType.FOG;
+                            intensity = 0.8f;
+                        } else {
+                            weatherType = WeatherSystem.WeatherType.THUNDERSTORM;
+                            intensity = 0.9f;
+                        }
+                    } else {
+                        if (rand < 0.5f) {
+                            weatherType = WeatherSystem.WeatherType.FOG;
+                            intensity = 0.6f;
+                        } else {
+                            weatherType = WeatherSystem.WeatherType.THUNDERSTORM;
+                            intensity = 0.7f;
+                        }
+                    }
+                    break;
+                case SNOW:
+                    if (temperature < 0) {
+                        weatherType = WeatherSystem.WeatherType.BLIZZARD;
+                        intensity = 0.7f;
+                    } else {
+                        weatherType = WeatherSystem.WeatherType.SNOW;
+                        intensity = 0.5f;
+                    }
+                    break;
+                case DESERT:
+                    if (temperature > 35 && rand < 0.4f) {
+                        weatherType = WeatherSystem.WeatherType.SANDSTORM;
+                        intensity = 0.7f;
+                    } else {
+                        // Clear (sunny) conditions for desert when not stormy.
+                        weatherType = WeatherSystem.WeatherType.CLEAR;
+                        intensity = 0f;
+                    }
+                    break;
+                case PLAINS:
+                case BEACH:
+                    // For these biomes, use clear (sunny) weather.
+                    weatherType = WeatherSystem.WeatherType.CLEAR;
+                    intensity = 0f;
+                    break;
+                case FOREST:
+                    if (rand < 0.4f) {
+                        weatherType = WeatherSystem.WeatherType.RAIN;
+                        intensity = 0.4f;
+                    } else {
+                        weatherType = WeatherSystem.WeatherType.CLEAR;
+                        intensity = 0f;
+                    }
+                    break;
+                default:
+                    weatherType = WeatherSystem.WeatherType.CLEAR;
+                    intensity = 0f;
+                    break;
+            }
+
+            // Compute accumulation (for clear weather, accumulation is 0).
+            float accumulation;
+            if (weatherType == WeatherSystem.WeatherType.SNOW || weatherType == WeatherSystem.WeatherType.BLIZZARD) {
+                accumulation = 0.1f * intensity;
+            } else if (weatherType == WeatherSystem.WeatherType.RAIN) {
+                accumulation = 0.05f * intensity;
+            } else if (weatherType == WeatherSystem.WeatherType.HEAVY_RAIN || weatherType == WeatherSystem.WeatherType.THUNDERSTORM) {
+                accumulation = 0.15f * intensity;
+            } else {
+                accumulation = 0f;
+            }
+
+            // Build the personalized world state update message.
+            NetworkProtocol.WorldStateUpdate update = new NetworkProtocol.WorldStateUpdate();
+            update.seed = worldData.getConfig().getSeed();
+            update.worldTimeInMinutes = worldData.getWorldTimeInMinutes();
+            update.dayLength = worldData.getDayLength();
+            update.currentWeather = weatherType;
+            update.intensity = intensity;
+            update.accumulation = accumulation;
+            update.timestamp = System.currentTimeMillis();
+
+            // Send the update only to the connection associated with this player.
+            for (Connection conn : networkServer.getConnections()) {
+                if (username.equals(connectedPlayers.get(conn.getID()))) {
+                    conn.sendTCP(update);
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Example helper that computes a temperature (in °C) based on a given biome type.
+     */
+    private float computeTemperatureForBiome(BiomeType type) {
+        switch (type) {
+            case SNOW:
+                return 0f;
+            case DESERT:
+                return 40f;
+            case HAUNTED:
+                return 15f;
+            case RAIN_FOREST:
+                return 28f;
+            case FOREST:
+                return 22f;
+            case PLAINS:
+                return 25f;
+            case BEACH:
+                return 30f;
+            default:
+                return 20f;
+        }
+    }
 
     private NetworkProtocol.CompressedChunkData compressChunkData(NetworkProtocol.ChunkData chunkData) {
         try {
-            // First serialize the ChunkData to an uncompressed byte array using Kryo.
+            // Serialize ChunkData to an uncompressed byte array using Kryo.
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             int initialBufferSize = 16 * 1024;   // 16 KB
             int maxBufferSize = 256 * 1024;        // 256 KB
             Output output = new Output(initialBufferSize, maxBufferSize);
             output.setOutputStream(baos);
 
-
             Kryo kryo = new Kryo();
+            // Register all classes exactly as on the client!
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
             kryo.writeObject(output, chunkData);
             output.close();
             byte[] uncompressedData = baos.toByteArray();
 
-            // Compress using LZ4.
+            // Compress the uncompressed data using LZ4.
             LZ4Factory factory = LZ4Factory.fastestInstance();
             LZ4Compressor compressor = factory.fastCompressor();
             int maxCompressedLength = compressor.maxCompressedLength(uncompressedData.length);
             byte[] compressedBuffer = new byte[maxCompressedLength];
             int compressedLength = compressor.compress(uncompressedData, 0, uncompressedData.length,
                 compressedBuffer, 0, maxCompressedLength);
-            // Create a new array of the actual compressed size.
             byte[] finalCompressedData = Arrays.copyOf(compressedBuffer, compressedLength);
 
             // Build the compressed chunk message.
@@ -663,10 +826,10 @@ public class GameServer {
             compressed.chunkX = chunkData.chunkX;
             compressed.chunkY = chunkData.chunkY;
             compressed.primaryBiomeType = chunkData.primaryBiomeType;
-            compressed.secondaryBiomeType = chunkData.secondaryBiomeType; // if any
-            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor; // if any
+            compressed.secondaryBiomeType = chunkData.secondaryBiomeType; // may be null
+            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor; // may be 0
             compressed.generationSeed = worldData.getConfig().getSeed();
-            // New field: the original uncompressed length.
+            // Save the original (uncompressed) length.
             compressed.originalLength = uncompressedData.length;
             compressed.data = finalCompressedData;
             return compressed;
@@ -675,6 +838,7 @@ public class GameServer {
             return null;
         }
     }
+
 
     private void setupNetworkListener() {
         networkServer.addListener(new Listener() {
@@ -853,6 +1017,7 @@ public class GameServer {
         // Broadcast the pickup to all other clients so they remove the item.
         networkServer.sendToAllExceptTCP(connection.getID(), pickup);
     }
+
     private void handleChestUpdate(Connection connection, NetworkProtocol.ChestUpdate update) {
         // (1) Verify that the sender is authorized.
         String username = connectedPlayers.get(connection.getID());
@@ -869,10 +1034,10 @@ public class GameServer {
         }
 
         // (3) Determine the chunk coordinates and force–load that chunk.
-        int chunkX = chestPos.x >= 0 ? (int)(chestPos.x / World.CHUNK_SIZE)
-            : Math.floorDiv((int)chestPos.x, World.CHUNK_SIZE);
-        int chunkY = chestPos.y >= 0 ? (int)(chestPos.y / World.CHUNK_SIZE)
-            : Math.floorDiv((int)chestPos.y, World.CHUNK_SIZE);
+        int chunkX = chestPos.x >= 0 ? (int) (chestPos.x / World.CHUNK_SIZE)
+            : Math.floorDiv((int) chestPos.x, World.CHUNK_SIZE);
+        int chunkY = chestPos.y >= 0 ? (int) (chestPos.y / World.CHUNK_SIZE)
+            : Math.floorDiv((int) chestPos.y, World.CHUNK_SIZE);
         Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
 
         // (4) Get the chest block from the server’s block manager.
@@ -888,7 +1053,7 @@ public class GameServer {
             // Retrieve the current chest data; if none exists, create one.
             ChestData currentChest = chestBlock.getChestData();
             if (currentChest == null) {
-                currentChest = new ChestData((int)chestPos.x, (int)chestPos.y);
+                currentChest = new ChestData((int) chestPos.x, (int) chestPos.y);
                 chestBlock.setChestData(currentChest);
             }
 
@@ -1125,6 +1290,27 @@ public class GameServer {
         }
 
     }
+
+    public void sendActivePokemonToConnection(Connection connection) {
+        List<NetworkProtocol.PokemonUpdate> updates = new ArrayList<>();
+        for (WildPokemon pokemon : serverPokemonSpawnManager.getActivePokemon()) {
+            NetworkProtocol.PokemonUpdate update = new NetworkProtocol.PokemonUpdate();
+            update.uuid = pokemon.getUuid();
+            update.x = pokemon.getX();
+            update.y = pokemon.getY();
+            update.direction = pokemon.getDirection();
+            update.isMoving = pokemon.isMoving();
+            update.level = pokemon.getLevel();
+            update.timestamp = System.currentTimeMillis();
+            updates.add(update);
+        }
+        if (!updates.isEmpty()) {
+            NetworkProtocol.PokemonBatchUpdate batchUpdate = new NetworkProtocol.PokemonBatchUpdate();
+            batchUpdate.updates = updates;
+            connection.sendTCP(batchUpdate);
+        }
+    }
+
     private void handlePlayerAction(Connection connection, NetworkProtocol.PlayerAction action) {
         if (action == null || action.playerId == null) {
             GameLogger.error("Invalid player action received");
@@ -1422,7 +1608,9 @@ public class GameServer {
                             ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
                         }
                     }
-                    // Broadcast to other clients.
+                    ServerGameContext.get().getEventManager().fireEvent(
+                        new BlockPlaceEvent(placement.username, placement.tileX, placement.tileY, placement.blockTypeId)
+                    );
                     networkServer.sendToAllExceptTCP(connection.getID(), placement);
                 } else {
                     GameLogger.error("Failed to place block at (" + placement.tileX + ", " + placement.tileY + ")");

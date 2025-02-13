@@ -1,132 +1,254 @@
 package io.github.pokemeetup.system.gameplay.overworld.mechanics;
 
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.utils.textures.TileType;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * Pokémon Essentials–style “sand_shore” autotile:
+ * - Uses a 4-bit mask for Up/Right/Down/Left
+ * - Maps that bitmask to one of 47 mini-tiles in the RMXP format
+ * - Also applies "inside corner" overlays if needed
+ */
 public class AutoTileSystem {
-    private static final int N = 1;
-    private static final int S = 2;
-    private static final int E = 4;
-    private static final int W = 8;
-    private static final int NW = 16;
-    private static final int NE = 32;
-    private static final int SW = 64;
-    private static final int SE = 128;
-    private static final boolean[][] POND_3X3 = {
-        {true, true, true},
-        {true, true, true},
-        {true, true, true}
-    };
-
-    private final Map<Integer, Integer> tileMap = new HashMap<>();
-
-    public AutoTileSystem() {
-        initializeTileMap();
-    }
-
-    private void initializeTileMap() {
-        // Full center remains the same
-        tileMap.put(N | S | E | W | NW | NE | SW | SE, TileType.WATER_PUDDLE);
-
-        // Currently, your top edges use S-based patterns, but they should actually be bottom edges:
-        tileMap.put(S | E | W | SW | SE, TileType.WATER_PUDDLE_BOTTOM_MIDDLE);
-        tileMap.put(S | E | SE, TileType.WATER_PUDDLE_BOTTOM_RIGHT);
-        tileMap.put(S | W | SW, TileType.WATER_PUDDLE_BOTTOM_LEFT);
-
-        // Your bottom edges use N-based patterns, but they should actually be top edges:
-        tileMap.put(N | E | W | NW | NE, TileType.WATER_PUDDLE_TOP_MIDDLE);
-        tileMap.put(N | E | NE, TileType.WATER_PUDDLE_TOP_LEFT);
-        tileMap.put(N | W | NW, TileType.WATER_PUDDLE_TOP_RIGHT);
-
-        // Left and right edges can remain as they are unless you also find them inverted:
-        tileMap.put(N | S | E | NE | SE, TileType.WATER_PUDDLE_LEFT_MIDDLE);
-        tileMap.put(N | S | W | NW | SW, TileType.WATER_PUDDLE_RIGHT_MIDDLE);
-    }
-
 
     /**
-     * Instead of dynamically shaping ponds from scattered tiles, we now:
-     * 1. Check if there's any indication we should place a pond (e.g., from waterMap).
-     * 2. If so, we place a predefined pond shape (like a 3x3 pond) at a chosen location.
-     * <p>
-     * In this simplified approach, we:
-     * - Scan the waterMap for at least one water tile.
-     * - If found, place a 3x3 pond shape near the center of the chunk.
-     * <p>
-     * You can extend this logic to:
-     * - Choose random locations.
-     * - Select from multiple pond shapes.
-     * - Place multiple ponds per chunk.
+     * We do a 4-bit adjacency mask:
+     *   bit 1 => Up
+     *   bit 2 => Right
+     *   bit 4 => Down
+     *   bit 8 => Left
+     * Then pass that mask to TextureManager.getAutoTileRegion("sand_shore", mask, animFrame)
+     * which returns a 32×32 region scaled from the correct 16×16 piece.
      */
-    private boolean[][] placePredefinedPonds(boolean[][] waterMap) {
-        boolean[][] result = new boolean[Chunk.CHUNK_SIZE][Chunk.CHUNK_SIZE];
+    public void applyShorelineAutotiling(Chunk chunk, int animFrame) {
+        final int size = Chunk.CHUNK_SIZE;
+        int[][] tiles = chunk.getTileData();
 
-        // Check if we have any water tile. If yes, place a 3x3 pond in the center-ish
-        // For demonstration, we ignore the original distribution and just place the pond.
-        // You can refine the logic to ensure the chosen location coincides with where waterMap has water.
-        int startX = Chunk.CHUNK_SIZE / 2 - 1;
-        int startY = Chunk.CHUNK_SIZE / 2 - 1;
-
-        // Ensure the pond fits in the chunk:
-        if (startX >= 0 && startX + POND_3X3.length <= Chunk.CHUNK_SIZE &&
-            startY >= 0 && startY + POND_3X3[0].length <= Chunk.CHUNK_SIZE) {
-            for (int x = 0; x < POND_3X3.length; x++) {
-                for (int y = 0; y < POND_3X3[0].length; y++) {
-                    result[startX + x][startY + y] = POND_3X3[x][y];
+        // Step 1: Identify "beach" vs. "shore"
+        boolean[][] beachMap = new boolean[size][size];
+        boolean[][] shoreMap = new boolean[size][size];
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (isBeach(tiles[x][y])) {
+                    beachMap[x][y] = true;
+                    if (hasWaterNeighbor(tiles, x, y)) {
+                        shoreMap[x][y] = true;
+                    }
                 }
             }
         }
 
-        return result;
-    }
+        // Step 2: Prepare the chunk's overlay array
+        TextureRegion[][] overlay = chunk.getAutotileRegions();
+        if (overlay == null) {
+            overlay = new TextureRegion[size][size];
+            chunk.setAutotileRegions(overlay);
+        }
 
-    public void applyAutotiling(Chunk chunk, boolean[][] waterMap) {
-        // Completely override the old logic. We now just place a predefined pond shape.
-        boolean[][] shapedWater = placePredefinedPonds(waterMap);
+        // Step 3: For each "shore" tile, build the 32×32 tile from a 4–bit edge mask.
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (!shoreMap[x][y]) {
+                    overlay[x][y] = null;
+                    continue;
+                }
+                int mask = computeEdgeMask(tiles, x, y);
+                TextureRegion base32 = TextureManager.getAutoTileRegion("sand_shore", mask, animFrame);
+                // FIX: Check for null base region before using it.
+                if (base32 == null) {
+                    System.err.println("AutoTileSystem.applyShorelineAutotiling: base32 is null for mask " + mask + " at (" + x + "," + y + ")");
+                    overlay[x][y] = null;
+                    continue;
+                }
+                CompositeRegion comp = new CompositeRegion(base32);
+                overlay[x][y] = comp;
+            }
+        }
 
-        int[][] tileData = chunk.getTileData();
-        for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
-            for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
-                if (!shapedWater[x][y]) continue;
-
-                int bitmask = calculateBitmask(x, y, shapedWater);
-                tileData[x][y] = getWaterTileFromBitmask(bitmask);
+        // Step 4: Apply inside-corner overlays (if the sub–tile sheet is available)
+        TextureRegion cornerSheet = TextureManager.getSubTile("sand_shore", animFrame, 2, 0);
+        if (cornerSheet != null) {
+            TextureRegion miniTL = new TextureRegion(cornerSheet, 0, 0, 16, 16);
+            TextureRegion miniTR = new TextureRegion(cornerSheet, 16, 0, 16, 16);
+            TextureRegion miniBL = new TextureRegion(cornerSheet, 0, 16, 16, 16);
+            TextureRegion miniBR = new TextureRegion(cornerSheet, 16, 16, 16, 16);
+            for (int x = 0; x < size; x++) {
+                for (int y = 0; y < size; y++) {
+                    if (!shoreMap[x][y]) continue;
+                    TextureRegion reg = overlay[x][y];
+                    if (!(reg instanceof CompositeRegion)) continue;
+                    CompositeRegion comp = (CompositeRegion) reg;
+                    if (isInnerCornerTopLeft(tiles, x, y)) {
+                        comp.addMiniOverlay(miniTL, 0, 16);
+                    }
+                    if (isInnerCornerTopRight(tiles, x, y)) {
+                        comp.addMiniOverlay(miniTR, 16, 16);
+                    }
+                    if (isInnerCornerBottomLeft(tiles, x, y)) {
+                        comp.addMiniOverlay(miniBL, 0, 0);
+                    }
+                    if (isInnerCornerBottomRight(tiles, x, y)) {
+                        comp.addMiniOverlay(miniBR, 16, 0);
+                    }
+                }
             }
         }
     }
 
-    private int calculateBitmask(int x, int y, boolean[][] waterMap) {
-        int bitmask = 0;
-
-        if (getWater(waterMap, x, y - 1)) bitmask |= N;  // North
-        if (getWater(waterMap, x, y + 1)) bitmask |= S;  // South
-        if (getWater(waterMap, x + 1, y)) bitmask |= E;  // East
-        if (getWater(waterMap, x - 1, y)) bitmask |= W;  // West
-
-        // Diagonals
-        if (getWater(waterMap, x - 1, y - 1) && (bitmask & (N | W)) == (N | W)) bitmask |= NW;
-        if (getWater(waterMap, x + 1, y - 1) && (bitmask & (N | E)) == (N | E)) bitmask |= NE;
-        if (getWater(waterMap, x - 1, y + 1) && (bitmask & (S | W)) == (S | W)) bitmask |= SW;
-        if (getWater(waterMap, x + 1, y + 1) && (bitmask & (S | E)) == (S | E)) bitmask |= SE;
-
-        return bitmask;
+    /** 4-bit mask => bit 1=Up, bit2=Right, bit4=Down, bit8=Left */
+    private int computeEdgeMask(int[][] tiles, int x, int y) {
+        int mask=0;
+        if (isWaterSafe(tiles, x,   y+1)) mask |= 1;  // up
+        if (isWaterSafe(tiles, x+1, y  )) mask |= 2;  // right
+        if (isWaterSafe(tiles, x,   y-1)) mask |= 4;  // down
+        if (isWaterSafe(tiles, x-1, y  )) mask |= 8;  // left
+        return mask;
     }
 
-    private int getWaterTileFromBitmask(int bitmask) {
-        Integer mappedTile = tileMap.get(bitmask);
-        if (mappedTile != null) {
-            return mappedTile;
-        }
-        return TileType.WATER_PUDDLE; // fallback
+    // Inside corner checks: diagonal is water, but the two orthogonal neighbors are beach
+    private boolean isInnerCornerTopLeft(int[][] t, int x, int y) {
+        return isBeachSafe(t,x,y+1) && isBeachSafe(t,x-1,y) && isWater(t,x-1,y+1);
+    }
+    private boolean isInnerCornerTopRight(int[][] t, int x, int y) {
+        return isBeachSafe(t,x,y+1) && isBeachSafe(t,x+1,y) && isWater(t,x+1,y+1);
+    }
+    private boolean isInnerCornerBottomLeft(int[][] t, int x, int y) {
+        return isBeachSafe(t,x,y-1) && isBeachSafe(t,x-1,y) && isWater(t,x-1,y-1);
+    }
+    private boolean isInnerCornerBottomRight(int[][] t, int x, int y) {
+        return isBeachSafe(t,x,y-1) && isBeachSafe(t,x+1,y) && isWater(t,x+1,y-1);
     }
 
-    private boolean getWater(boolean[][] waterMap, int x, int y) {
-        if (x < 0 || x >= Chunk.CHUNK_SIZE || y < 0 || y >= Chunk.CHUNK_SIZE) {
-            return false;
+    // Basic checks
+    private boolean isBeach(int tileID) {
+        return (tileID == TileType.BEACH_SAND ||
+            tileID == TileType.BEACH_GRASS ||
+            tileID == TileType.BEACH_GRASS_2 ||
+            tileID == TileType.BEACH_STARFISH ||
+            tileID == TileType.BEACH_SHELL );
+    }
+    private boolean isBeachSafe(int[][] t, int x, int y) {
+        if (x<0||y<0||x>=t.length||y>=t[0].length) return false;
+        return isBeach(t[x][y]);
+    }
+    private boolean isWater(int[][] t, int x, int y) {
+        if (x<0||y<0||x>=t.length||y>=t[0].length) return false;
+        return (t[x][y] == TileType.WATER);
+    }
+    private boolean isWaterSafe(int[][] t,int x,int y){
+        if (x<0||y<0||x>=t.length||y>=t[0].length) return false;
+        return (t[x][y] == TileType.WATER);
+    }
+    private boolean hasWaterNeighbor(int[][] t, int x, int y) {
+        int[][] offsets = {
+            { 0,  1}, { 1,  0}, { 0, -1}, {-1,  0},  // orthogonal
+            { 1,  1}, { 1, -1}, {-1,  1}, {-1, -1}   // diagonal
+        };
+        for (int[] off : offsets) {
+            int nx = x + off[0];
+            int ny = y + off[1];
+            if (nx < 0 || ny < 0 || nx >= t.length || ny >= t[0].length) continue;
+            if (t[nx][ny] == TileType.WATER) return true;
         }
-        return waterMap[x][y];
+        return false;
+    }
+    public void applySeaAutotiling(Chunk chunk, int animFrame) {
+        final int size = Chunk.CHUNK_SIZE;
+        int[][] tiles = chunk.getTileData();
+        // Retrieve or create a separate sea overlay array (you’ll need to add these in your Chunk class)
+        TextureRegion[][] seaOverlay = chunk.getSeatileRegions();
+        if (seaOverlay == null) {
+            seaOverlay = new TextureRegion[size][size];
+            chunk.setAutotileRegions(seaOverlay);
+        }
+
+        // Process each tile in the chunk.
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                // We only process water tiles.
+                if (tiles[x][y] != TileType.WATER) {
+                    seaOverlay[x][y] = null;
+                    continue;
+                }
+
+                // Determine if this water tile is on an edge.
+                // (An edge tile has at least one orthogonal neighbor that is not water
+                // and is not a beach tile.)
+                boolean isEdge = false;
+                int[][] offsets = { {0, 1}, {1, 0}, {0, -1}, {-1, 0} };
+                for (int[] off : offsets) {
+                    int nx = x + off[0], ny = y + off[1];
+                    if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+                    int neighborTile = tiles[nx][ny];
+                    // If neighbor is land and not a beach tile, then this is an edge.
+                    if (neighborTile != TileType.WATER && !isBeach(neighborTile)) {
+                        isEdge = true;
+                        break;
+                    }
+                }
+                if (isEdge) {
+                    int mask = computeSeaEdgeMask(tiles, x, y);
+                    TextureRegion seaTile = TextureManager.getAutoTileRegion("sea", mask, animFrame);
+                    seaOverlay[x][y] = seaTile;
+                } else {
+                    // Center water – no overlay needed.
+                    seaOverlay[x][y] = null;
+                }
+            }
+        }
+    }
+
+    /**
+     * Computes a 4–bit mask for a water tile at (x,y) based on its orthogonal neighbors.
+     * For each neighbor that is water, a bit is set.
+     */
+    private int computeSeaEdgeMask(int[][] tiles, int x, int y) {
+        int mask = 0;
+        if (isWaterSafe(tiles, x, y + 1)) mask |= 1;  // Up
+        if (isWaterSafe(tiles, x + 1, y)) mask |= 2;  // Right
+        if (isWaterSafe(tiles, x, y - 1)) mask |= 4;  // Down
+        if (isWaterSafe(tiles, x - 1, y)) mask |= 8;  // Left
+        return mask;
+    }
+
+
+
+    /**
+     * A "composite region" stores:
+     *  - a 32×32 base tile
+     *  - zero or more 16×16 corner overlays
+     * This allows us to place inside-corner pieces on top of the base tile.
+     */
+    public static class CompositeRegion extends TextureRegion {
+        private final TextureRegion base32;
+        private final List<MiniOverlay> overlays = new ArrayList<>();
+
+        public CompositeRegion(TextureRegion base) {
+            super(base);
+            this.base32 = base;
+        }
+
+        public void addMiniOverlay(TextureRegion mini, int offX, int offY) {
+            overlays.add(new MiniOverlay(mini, offX, offY));
+        }
+
+        public TextureRegion getBase32() {return base32;}
+        public List<MiniOverlay> getOverlays() {return overlays;}
+    }
+
+    /** A single 16×16 corner overlay with a local offset. */
+    public static class MiniOverlay {
+        public final TextureRegion region16;
+        public final int offsetX, offsetY;
+        public MiniOverlay(TextureRegion r, int x, int y) {
+            region16 = r;
+            offsetX  = x;
+            offsetY  = y;
+        }
     }
 }

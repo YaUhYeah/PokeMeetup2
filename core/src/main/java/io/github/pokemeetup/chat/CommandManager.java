@@ -21,13 +21,6 @@ public class CommandManager {
         return cmd;
     }
 
-    public int getRegisteredCommandCount() {
-        return commands.size();
-    }
-
-    public boolean hasCommand(String name) {
-        return commands.containsKey(name.toLowerCase());
-    }
     public void registerCommand(Command command) {
         if (command == null) {
             GameLogger.error("Attempted to register null command");

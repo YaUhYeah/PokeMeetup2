@@ -24,7 +24,6 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 
-import static io.github.pokemeetup.CreatureCaptureGame.MULTIPLAYER_WORLD_NAME;
 
 /**
  * Manages loading & saving of worlds and chunks on the server side,
@@ -35,28 +34,19 @@ public class ServerWorldManager {
     private static final long AUTO_SAVE_INTERVAL_MS = 300_000;   // e.g. 5 minutes
     private static final long CHUNK_EVICT_TIMEOUT_MS = 600_000;  // e.g. 10 minutes
     private static ServerWorldManager instance;
-    private final ServerStorageSystem storageSystem;
-
+    private final ServerStorageSystem storageSystem;// In ServerWorldManager, add:
     // Worlds & Chunks in memory
     private final Map<String, WorldData> activeWorlds = new ConcurrentHashMap<>();
     private final Map<String, Map<Vector2, TimedChunk>> chunkCache = new ConcurrentHashMap<>();
-
     // Schedulers
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private final ExecutorService loadExecutor = Executors.newFixedThreadPool(4);
-
-    // ------------------------------------------------------------------------------------
-    // SINGLETON INIT
-    // ------------------------------------------------------------------------------------
-    private final ServerBiomeManager serverBiomeManager;
     private final BiomeManager biomeManager;
-
 
     // Update constructor:
     private ServerWorldManager(ServerStorageSystem storageSystem) {
         this.storageSystem = storageSystem;
         this.biomeManager = new BiomeManager(System.currentTimeMillis());
-        this.serverBiomeManager = new ServerBiomeManager(this.biomeManager);
         initScheduledTasks();
     }
 
@@ -65,6 +55,10 @@ public class ServerWorldManager {
             instance = new ServerWorldManager(storageSystem);
         }
         return instance;
+    }
+
+    public BiomeTransitionResult getBiomeTransitionAt(float worldX, float worldY) {
+        return biomeManager.getBiomeAt(worldX, worldY);
     }
 
     private void initScheduledTasks() {
@@ -151,57 +145,54 @@ public class ServerWorldManager {
 
     // The new load–or–generate method for the server.
     public Chunk loadChunk(String worldName, int chunkX, int chunkY) {
-        // First, ensure the world is loaded.
         WorldData wd = loadWorld(worldName);
         if (wd == null) {
-            GameLogger.error("WorldData is null for world: " + worldName);
+            GameLogger.error("WorldData is null for: " + worldName);
             return null;
         }
 
-        // Get (or create) the per–world chunk cache.
         Map<Vector2, TimedChunk> worldChunkMap =
             chunkCache.computeIfAbsent(worldName, k -> new ConcurrentHashMap<>());
         Vector2 pos = new Vector2(chunkX, chunkY);
         TimedChunk timed = worldChunkMap.get(pos);
 
         if (timed == null || timed.chunk == null) {
-            // Try to load the chunk from disk.
+            // a) Load from disk or generate
             Chunk loaded = loadChunkFromDisk(worldName, chunkX, chunkY);
             if (loaded == null) {
-                // If not found on disk, generate a new chunk.
-                GameLogger.info("Chunk at " + pos + " not found on disk; generating new chunk.");
-                // Compute world coordinates (in tiles) for the chunk’s origin.
-                int worldX = chunkX * Chunk.CHUNK_SIZE;
-                int worldY = chunkY * Chunk.CHUNK_SIZE;
-                // Use runtime biome lookup (ignoring any saved biome data).
-                BiomeTransitionResult biomeTransition = biomeManager.getBiomeAt(
-                    worldX * World.TILE_SIZE, worldY * World.TILE_SIZE);
-                Biome biome = biomeTransition.getPrimaryBiome();
-                if (biome == null) {
-                    GameLogger.error("Null biome at " + worldX + "," + worldY);
-                    biome = biomeManager.getBiome(BiomeType.PLAINS); // Fallback
-                }
-                // Generate the new chunk using your unified generator.
-                loaded = UnifiedWorldGenerator.generateChunk(chunkX, chunkY, wd.getConfig().getSeed(), biomeManager);
-                // Generate world objects for the chunk.
-                ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(
-                    worldName, pos, ServerGameContext.get().getWorldObjectManager().generateObjectsForChunk(worldName, pos, loaded)
-                );
-                // Save the chunk to disk.
-                saveChunk(worldName, loaded);
+                // generate new
+                loaded = generateNewChunk(chunkX, chunkY, wd.getConfig().getSeed());
             }
+            // b) Store in cache
             timed = new TimedChunk(loaded);
             worldChunkMap.put(pos, timed);
+
+            // If we changed the chunk’s boundary tiles, mark dirty & save now
+            if (loaded.isDirty()) {
+                saveChunk(worldName, loaded);
+            }
         }
 
-        // If the chunk is dirty, save it.
+        // c) If chunk is dirty, we can also consider saving
         if (timed.chunk.isDirty()) {
             saveChunk(worldName, timed.chunk);
             timed.chunk.setDirty(false);
         }
 
+        timed.lastAccess = System.currentTimeMillis();
         return timed.chunk;
     }
+
+    private Chunk generateNewChunk(int chunkX, int chunkY, long seed) {
+        int worldTileX = chunkX * Chunk.CHUNK_SIZE;
+        int worldTileY = chunkY * Chunk.CHUNK_SIZE;
+        BiomeTransitionResult btr = biomeManager.getBiomeAt(worldTileX * World.TILE_SIZE, worldTileY * World.TILE_SIZE);
+        if ((btr.getPrimaryBiome() == null)) {
+            biomeManager.getBiome(BiomeType.PLAINS);
+        }
+        return UnifiedWorldGenerator.generateChunkForServer(chunkX, chunkY, seed, biomeManager);
+    }
+
 
     private Chunk loadChunkFromDisk(String worldName, int chunkX, int chunkY) {
         Path path = getChunkFilePath(worldName, chunkX, chunkY);
@@ -220,7 +211,7 @@ public class ServerWorldManager {
             if (biome == null) {
                 biome = biomeManager.getBiome(BiomeType.PLAINS);
             }
-            Chunk chunk = new Chunk(chunkX, chunkY, biome, cd.generationSeed, biomeManager);
+            Chunk chunk = new Chunk(chunkX, chunkY, biome, cd.generationSeed);
             chunk.setTileData(cd.tileData);
             // Process blocks.
             if (cd.blockData != null) {
@@ -287,6 +278,7 @@ public class ServerWorldManager {
             GameLogger.error("Failed to process block data: " + e.getMessage());
         }
     }
+
     /**
      * Returns a map of all currently loaded chunks (as Chunk objects)
      * for the given world name. This is used by the server to determine
@@ -450,7 +442,7 @@ public class ServerWorldManager {
     /**
      * For storing chunk + lastAccess time so we can evict if idle.
      */
-    private static class TimedChunk {
+    static class TimedChunk {
         final Chunk chunk;
         long lastAccess;
 

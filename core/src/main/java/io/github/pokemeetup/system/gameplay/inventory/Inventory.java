@@ -151,27 +151,18 @@ public class Inventory implements ItemContainer {
     public List<ItemData> getAllItems() {
         synchronized (inventoryLock) {
             List<ItemData> items = new ArrayList<>(INVENTORY_SIZE);
-
-
             for (Slot slot : slots) {
                 if (slot == null) {
                     items.add(null);
                     continue;
                 }
-
-                ItemData item = slot.getItemData();
-                if (item != null) {
-                    ItemData copy = item.copy();
-                    items.add(copy);
-
-                } else {
-                    items.add(null);
-                }
+                // Return the actual item, not a defensive copy.
+                items.add(slot.getItemData());
             }
-
             return items;
         }
     }
+
 
     public void setAllItems(List<ItemData> items) {
         if (items == null) {

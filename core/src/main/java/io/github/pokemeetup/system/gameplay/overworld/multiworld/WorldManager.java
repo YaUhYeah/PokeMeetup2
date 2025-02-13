@@ -122,6 +122,9 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
     }
 
     public void saveWorld(WorldData worldData) {
+        if (GameContext.get().isMultiplayer()){
+            return;
+        }
         GameLogger.info("Saving world: " + worldData.getName());
 
         synchronized (saveLock) {

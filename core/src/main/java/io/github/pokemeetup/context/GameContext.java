@@ -5,6 +5,7 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import io.github.pokemeetup.CreatureCaptureGame;
+import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.screens.ChestScreen;
@@ -34,6 +35,15 @@ public final class GameContext {
     private HotbarSystem hotbarSystem;
     private Player player;
     private SpriteBatch batch;
+
+    public BiomeManager getBiomeManager() {
+        return biomeManager;
+    }
+
+    public void setBiomeManager(BiomeManager biomeManager) {
+        this.biomeManager = biomeManager;
+    }
+
     private SpriteBatch uiBatch;
     private Stage uiStage;
     private Skin skin;
@@ -44,6 +54,7 @@ public final class GameContext {
     private CraftingTableScreen craftingScreen;
     private GameMenu gameMenu;
     private WorldManager worldManager;
+    private BiomeManager biomeManager;
     private GameScreen gameScreen;
     private DisconnectionManager disconnectionManager;
     private UIManager uiManager;
@@ -66,7 +77,7 @@ public final class GameContext {
         CraftingTableScreen craftingScreen, HotbarSystem hotbarSystem,
         GameMenu gameMenu,
         ChestScreen chestScreen, WorldManager worldManager,
-        GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable
+        GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable, BiomeManager biomeManager
     ) {
         this.game = game;
         this.gameClient = gameClient;
@@ -91,6 +102,7 @@ public final class GameContext {
         this.isMultiplayer = isMultiplayer;
         this.uiManager = uiManager;
         this.battleTable = battleTable;
+        this.biomeManager = biomeManager;
     }
 
     public static void init(
@@ -109,7 +121,7 @@ public final class GameContext {
         CraftingTableScreen craftingScreen,
         GameMenu gameMenu,
         ChestScreen chestScreen, WorldManager worldManager, HotbarSystem hotbarSystem,
-        GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable
+        GameScreen gameScreen, DisconnectionManager disconnectionManager, boolean isMultiplayer, Skin skin, UIManager uiManager, BattleTable battleTable, BiomeManager biomeManager
     ) {
         if (instance != null) {
             throw new IllegalStateException("GameContext already initialized!");
@@ -129,7 +141,7 @@ public final class GameContext {
             buildModeUI,
             craftingScreen, hotbarSystem,
             gameMenu,
-            chestScreen, worldManager, gameScreen, disconnectionManager, isMultiplayer, skin, uiManager, battleTable
+            chestScreen, worldManager, gameScreen, disconnectionManager, isMultiplayer, skin, uiManager, battleTable, biomeManager
         );
     }
 

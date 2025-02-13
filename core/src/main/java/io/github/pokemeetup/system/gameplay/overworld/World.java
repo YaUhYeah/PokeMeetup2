@@ -4,13 +4,12 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Json;
-import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.JsonWriter;
 import io.github.pokemeetup.audio.AudioManager;
@@ -21,7 +20,6 @@ import io.github.pokemeetup.managers.*;
 import io.github.pokemeetup.multiplayer.OtherPlayer;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.Player;
@@ -42,11 +40,11 @@ import java.util.stream.Collectors;
 
 public class World {
     public static final int INITIAL_LOAD_RADIUS = 3;
-    public static final int WORLD_SIZE = 100000;
     public static final int TILE_SIZE = 32;
+    public static final int WORLD_SIZE = 100000 * TILE_SIZE;
+    public static final int HALF_WORLD_SIZE = WORLD_SIZE / 2;
     public static final int CHUNK_SIZE = 16;
     public static final float INTERACTION_RANGE = TILE_SIZE * 1.6f;
-    public static final int HALF_WORLD_SIZE = WORLD_SIZE / 2;
     private static final float COLOR_TRANSITION_SPEED = 2.0f;
     private static final int MAX_CHUNK_LOAD_RADIUS = 16;  // or 10, adjust as needed
     private static final int MAX_LOADED_CHUNKS = 200;         // or whatever limit you want
@@ -71,7 +69,6 @@ public class World {
     private Map<Vector2, Future<Chunk>> loadingChunks;
     private Queue<Vector2> initialChunkLoadQueue = new LinkedList<>();
     private ExecutorService chunkLoadExecutor = Executors.newFixedThreadPool(4);
-    private BiomeManager biomeManager;
     private PlayerData currentPlayerData;
     private WorldObject nearestPokeball;
     private long lastPlayed;
@@ -99,16 +96,17 @@ public class World {
             this.name = worldData.getName();
             this.worldSeed = worldData.getConfig().getSeed();
             this.blockManager = new BlockManager();
-            this.biomeManager = new BiomeManager(this.worldSeed);
+          GameContext.get().setBiomeManager(new BiomeManager(this.worldSeed));
             this.biomeRenderer = new BiomeRenderer();
             this.chunks = new ConcurrentHashMap<>();
             this.loadingChunks = new ConcurrentHashMap<>();
             this.initialChunkLoadQueue = new LinkedList<>();
             this.chunkLoadExecutor = Executors.newFixedThreadPool(4);
-
-            loadChunksFromWorldData();
-            if (worldData.getBlockData() != null) {
-                migrateBlocksToChunks();
+            if (!GameContext.get().isMultiplayer()) {
+                loadChunksFromWorldData();
+                if (worldData.getBlockData() != null) {
+                    migrateBlocksToChunks();
+                }
             }
 
             this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
@@ -128,53 +126,134 @@ public class World {
         waterEffects = new WaterEffectsRenderer();
     }
 
-    public World(String name, long seed, BiomeManager manager) {
-        try {
-            GameLogger.info("Initializing singleplayer world: " + name);
-            this.name = name;
-            this.itemEntityManager = new ItemEntityManager();
-            this.biomeManager = manager;
-            this.worldSeed = seed;
+    private boolean isTallGrassTile(int tileType) {
+        return tileType == TileType.TALL_GRASS ||
+            tileType == TileType.FOREST_TALL_GRASS ||
+            tileType == TileType.RAIN_FOREST_TALL_GRASS ||
+            tileType == TileType.SNOW_TALL_GRASS ||
+            tileType == TileType.TALL_GRASS_2 ||
+            tileType == TileType.TALL_GRASS_3 ||
+            tileType == TileType.RUINS_TALL_GRASS ||
+            tileType == TileType.DESERT_GRASS ||
+            tileType == TileType.BEACH_GRASS;
+    }
 
-            this.worldData = new WorldData(name);
-            WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
-            this.worldData.setConfig(config);
-            // Initialize basic managers
-            this.blockManager = new BlockManager();
-            this.biomeRenderer = new BiomeRenderer();
 
-            footstepEffectManager = new FootstepEffectManager();
-            this.chunks = new ConcurrentHashMap<>();
-            this.loadingChunks = new ConcurrentHashMap<>();
+    /**
+     * Renders a continuous tall grass overlay over the player’s lower half
+     * using a dedicated overlay tile. Instead of following the player’s exact
+     * pixel position, the overlay is drawn relative to the tile grid so that it
+     * appears smooth as the player moves.
+     */
+    private void renderTallGrassOverlayForPlayer(SpriteBatch batch, Player player) {
+        // Determine which tile the player is currently on.
+        int tileX = player.getTileX();
+        int tileY = player.getTileY();
 
-            WorldData existingData = JsonConfig.loadWorldData(name);
-            if (existingData != null) {
-                GameLogger.info("Found existing world data for: " + name);
-                this.worldData = existingData;
-                loadChunksFromWorldData();
-                if (worldData != null && worldData.getBlockData() != null) {
-                    migrateBlocksToChunks();
-                }
-            }
+        // Calculate the world coordinates of that tile.
+        float worldX = tileX * TILE_SIZE;
+        float worldY = tileY * TILE_SIZE;
 
-            this.weatherSystem = new WeatherSystem();
-            this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
-            this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
-            this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
-
-            footstepEffectManager = new FootstepEffectManager();
-            // Generate initial chunks if needed
-            if (chunks.isEmpty()) {
-                initializeChunksAroundOrigin();
-            }
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to initialize singleplayer world: " + e.getMessage());
-            throw new RuntimeException("World initialization failed", e);
+        // Only continue if the base tile is tall grass.
+        int baseTileType = getTileTypeAt(tileX, tileY);
+        if (!isTallGrassTile(baseTileType)) {
+            return;
         }
-        this.waterEffectManager = new WaterEffectManager();
 
-        waterEffects = new WaterEffectsRenderer();
+        // Get the dedicated overlay tile for this type.
+        int overlayTile = getTallGrassOverlayTile(baseTileType);
+        if (overlayTile == -1) {
+            return;
+        }
+
+        // Retrieve the overlay texture region.
+        TextureRegion overlayRegion = TextureManager.getTileTexture(overlayTile);
+        if (overlayRegion == null) {
+            return;
+        }
+
+        // Calculate the source rectangle so that only the bottom half of the overlay is used.
+        int regionWidth = overlayRegion.getRegionWidth();
+        int regionHeight = overlayRegion.getRegionHeight();
+        int srcHeight = regionHeight / 2; // use bottom half
+        int srcX = overlayRegion.getRegionX();
+        int srcY = overlayRegion.getRegionY() + (regionHeight - srcHeight);
+
+        // Instead of using the player’s pixel position directly, we use the tile’s position.
+        // To get the Gen III “fixed” look, we shift the overlay 16 pixels to the left (half a tile)
+        // relative to the tile’s world coordinates.
+        // aligns with the bottom of the tile
+        float destWidth = TILE_SIZE;
+        float destHeight = TILE_SIZE / 2f;
+
+        // Save the current batch color.
+        Color originalColor = batch.getColor().cpy();
+        // Optionally, set the batch color based on world lighting:
+        // batch.setColor(getCurrentWorldColor());
+
+        // Draw the overlay (only the bottom half of the overlayRegion).
+        batch.draw(
+            overlayRegion.getTexture(), // overlay texture
+            worldX, worldY,               // destination bottom–left (snapped to the tile grid and shifted left)
+            destWidth, destHeight,      // destination dimensions
+            srcX, srcY,                 // source position (bottom half)
+            regionWidth, srcHeight,     // source dimensions
+            false, false                // no flipping
+        );
+
+        batch.setColor(originalColor);
+    }
+
+    /**
+     * Returns the dedicated overlay tile index for the given base tall–grass tile.
+     * Adjust the mapping if needed.
+     */
+    private int getTallGrassOverlayTile(int baseTileType) {
+        switch (baseTileType) {
+            case TileType.TALL_GRASS:
+                return TileType.TALL_GRASS_OVERLAY;
+            case TileType.FOREST_TALL_GRASS:
+                return TileType.FOREST_TALL_GRASS_OVERLAY;
+            case TileType.RAIN_FOREST_TALL_GRASS:
+                return TileType.RAINFOREST_TALL_GRASS_OVERLAY;
+            case TileType.SNOW_TALL_GRASS:
+                return TileType.SNOW_TALL_GRASS_OVERLAY;
+            case TileType.TALL_GRASS_2:
+                return TileType.TALL_GRASS_OVERLAY_2;
+            case TileType.TALL_GRASS_3:
+                return TileType.TALL_GRASS_OVERLAY_3;
+            case TileType.RUINS_TALL_GRASS:
+                return TileType.RUINS_TALL_GRASS_OVERLAY;
+            case TileType.DESERT_GRASS:
+                return TileType.DESERT_TALL_GRASS_OVERLAY;
+            case TileType.BEACH_GRASS:
+                return TileType.BEACH_TALL_GRASS_OVERLAY;
+            case TileType.HAUNTED_TALL_GRASS:
+                return TileType.HAUNTED_TALL_GRASS_OVERLAY;
+            default:
+                return -1;
+        }
+    }
+
+
+    public int getWorldWidthInTiles() {
+        // WORLD_SIZE is in pixels.  Our tile size is TILE_SIZE.
+        // Because the world is centered, the total width (in tiles) is:
+        return (HALF_WORLD_SIZE * 2) / TILE_SIZE;
+    }
+
+    public int getWorldHeightInTiles() {
+        return (HALF_WORLD_SIZE * 2) / TILE_SIZE;
+    }
+
+    /**
+     * Returns true if the given tile coordinates are within the world border.
+     * This implementation assumes that the world is centered at (0,0).
+     */
+    public boolean isWithinWorldBounds(int tileX, int tileY) {
+        int halfTiles = (HALF_WORLD_SIZE) / TILE_SIZE;
+        // Valid tiles are from -halfTiles (inclusive) to halfTiles (exclusive)
+        return tileX >= -halfTiles && tileX < halfTiles && tileY >= -halfTiles && tileY < halfTiles;
     }
 
     public int getTileTypeAt(int tileX, int tileY) {
@@ -207,8 +286,7 @@ public class World {
     }
 
     private void loadChunksFromWorldData() {
-        if (GameContext.get().getGameClient() != null &&
-            GameContext.get().isMultiplayer()) {
+        if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
             GameLogger.info("Multiplayer mode: skipping local chunk loading.");
             return;
         }
@@ -243,9 +321,7 @@ public class World {
         return weatherSystem;
     }
 
-    public void requestInitialChunks(Vector2 playerPosition) {
-        // In multiplayer, use the flag to avoid duplicate requests.
-        // In singleplayer, we always want to request any missing chunks.
+    public void requestInitialChunks() {
         if (GameContext.get().isMultiplayer()) {
             if (initialChunksRequested) {
                 return;
@@ -253,13 +329,10 @@ public class World {
             initialChunksRequested = true;
         }
 
-        GameLogger.info("Requesting initial chunks around: " + playerPosition);
-
         int playerTileX = GameContext.get().getPlayer().getTileX();
         int playerTileY = GameContext.get().getPlayer().getTileY();
         int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
         int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
-        // Request chunks in a spiral pattern for better loading visuals
         List<Vector2> chunkOrder = generateSpiralChunkOrder(playerChunkX, playerChunkY, INITIAL_LOAD_RADIUS);
         for (Vector2 chunkPos : chunkOrder) {
             if (!chunks.containsKey(chunkPos)) {
@@ -268,7 +341,6 @@ public class World {
                 } else {
                     loadChunkAsync(chunkPos);
                 }
-                GameLogger.info("Requested chunk at: " + chunkPos);
             }
         }
     }
@@ -338,9 +410,8 @@ public class World {
                 if (biome == null) {
                     biome = world.getBiomeManager().getBiome(BiomeType.PLAINS);
                 }
-
-                Chunk chunk = new Chunk(chunkData.chunkX, chunkData.chunkY,
-                    biome, world.getWorldData().getConfig().getSeed(), world.getBiomeManager());
+                Chunk chunk = new Chunk(chunkData.chunkX, chunkData.chunkY, biome,
+                    chunkData.generationSeed);
 
                 // Set tile data
                 chunk.setTileData(chunkData.tileData);
@@ -389,14 +460,14 @@ public class World {
     }
 
     public boolean areInitialChunksLoaded() {
-        // In multiplayer, we only require the player’s current chunk to be available.
         if (GameContext.get().isMultiplayer()) {
             int playerTileX = GameContext.get().getPlayer().getTileX();
             int playerTileY = GameContext.get().getPlayer().getTileY();
             int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
             int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
             Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
-            return chunks.containsKey(currentChunk) || loadingChunks.containsKey(currentChunk);
+            // Require that the current chunk is fully loaded (present in chunks)
+            return chunks.containsKey(currentChunk);
         }
         // Otherwise (singleplayer) use the full grid
         int playerTileX = GameContext.get().getPlayer().getTileX();
@@ -466,7 +537,11 @@ public class World {
             for (int dy = -INITIAL_LOAD_RADIUS; dy <= INITIAL_LOAD_RADIUS; dy++) {
                 Vector2 chunkKey = new Vector2(playerChunkX + dx, playerChunkY + dy);
                 if (!chunks.containsKey(chunkKey)) {
-                    GameContext.get().getGameClient().requestChunk(chunkKey);
+                    if (GameContext.get().isMultiplayer()) {
+                        GameContext.get().getGameClient().requestChunk(chunkKey);
+                    } else {
+                        loadChunkAsync(chunkKey);
+                    }
                     GameLogger.info("Requested chunk at: " + chunkKey);
                 }
             }
@@ -528,17 +603,10 @@ public class World {
         WildPokemon nearest = null;
         float shortestDistance = interactionDistance;
 
-        Collection<WildPokemon> nearbyPokemon = pokemonSpawnManager.getPokemonInRange(
-            checkX, checkY, interactionDistance
-        );
+        Collection<WildPokemon> nearbyPokemon = pokemonSpawnManager.getPokemonInRange(checkX, checkY, interactionDistance);
 
         for (WildPokemon pokemon : nearbyPokemon) {
-            float distance = Vector2.dst(
-                checkX,
-                checkY,
-                pokemon.getX(),
-                pokemon.getY()
-            );
+            float distance = Vector2.dst(checkX, checkY, pokemon.getX(), pokemon.getY());
 
             if (distance < shortestDistance) {
                 shortestDistance = distance;
@@ -556,7 +624,6 @@ public class World {
 
     public void save() {
         if (isMultiplayerOperation()) {
-            GameLogger.info("Skipping world save in multiplayer mode");
             return;
         }
 
@@ -656,9 +723,7 @@ public class World {
         List<Vector2> candidates = new ArrayList<>(chunks.keySet());
 
         // We’ll sort by distance first:
-        candidates.sort(Comparator.comparingDouble(
-            cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
-        ));
+        candidates.sort(Comparator.comparingDouble(cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)));
 
         // 2) We'll keep track of chunks that are beyond maxRadius
         //    AND haven't been accessed in UNLOAD_IDLE_THRESHOLD_MS.
@@ -726,8 +791,7 @@ public class World {
         }
 
         if (!toUnload.isEmpty()) {
-            GameLogger.info("Unloaded " + toUnload.size() + " distant/old chunks. " +
-                "Remaining loaded: " + chunks.size());
+            GameLogger.info("Unloaded " + toUnload.size() + " distant/old chunks. " + "Remaining loaded: " + chunks.size());
         }
     }
 
@@ -745,16 +809,13 @@ public class World {
             data.tileData = chunk.getTileData();
             data.blocks = chunk.getBlockDataForSave();
             List<WorldObject> objects = objectManager.getObjectsForChunk(chunkPos);
-            data.objects = objects.stream()
-                .map(WorldObjectData::new)
-                .collect(Collectors.toList());
+            data.objects = objects.stream().map(WorldObjectData::new).collect(Collectors.toList());
 
             Json json = new Json();
             json.setOutputType(JsonWriter.OutputType.json);
             registerCustomSerializers(json);
 
-            String baseDir =
-                "worlds/singleplayer/" + name + "/chunks/";
+            String baseDir = "worlds/singleplayer/" + name + "/chunks/";
             String filename = String.format("chunk_%d_%d.json", (int) chunkPos.x, (int) chunkPos.y);
             FileHandle chunkFile = Gdx.files.local(baseDir + filename);
 
@@ -774,6 +835,55 @@ public class World {
             GameLogger.error("Failed to save chunk at " + chunkPos + ": " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+
+    public World(String name, long seed) {
+        try {
+            GameLogger.info("Initializing singleplayer world: " + name);
+            this.name = name;
+            this.itemEntityManager = new ItemEntityManager();
+            this.worldSeed = seed;
+
+            this.worldData = new WorldData(name);
+            WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
+            this.worldData.setConfig(config);
+            // Initialize basic managers
+            this.blockManager = new BlockManager();
+            this.biomeRenderer = new BiomeRenderer();
+
+            footstepEffectManager = new FootstepEffectManager();
+            this.chunks = new ConcurrentHashMap<>();
+            this.loadingChunks = new ConcurrentHashMap<>();
+
+            WorldData existingData = JsonConfig.loadWorldData(name);
+            if (existingData != null) {
+                GameLogger.info("Found existing world data for: " + name);
+                this.worldData = existingData;
+                loadChunksFromWorldData();
+                if (worldData != null && worldData.getBlockData() != null) {
+                    migrateBlocksToChunks();
+                }
+            }
+
+            this.weatherSystem = new WeatherSystem();
+            this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
+            this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
+            this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
+
+            footstepEffectManager = new FootstepEffectManager();
+            // Generate initial chunks if needed
+            if (chunks.isEmpty()) {
+                initializeChunksAroundOrigin();
+            }
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to initialize singleplayer world: " + e.getMessage());
+            throw new RuntimeException("World initialization failed", e);
+        }
+        this.waterEffectManager = new WaterEffectManager();
+
+        waterEffects = new WaterEffectsRenderer();
     }
 
     private Chunk loadChunkData(Vector2 chunkPos) {
@@ -800,8 +910,8 @@ public class World {
 
             // Create chunk with original biome
             BiomeType biomeType = chunkData.biomeType;
-            Biome biome = biomeManager.getBiome(biomeType);
-            Chunk chunk = new Chunk((int) chunkPos.x, (int) chunkPos.y, biome, worldSeed, biomeManager);
+            Biome biome = GameContext.get().getBiomeManager().getBiome(biomeType);
+            Chunk chunk = new Chunk((int) chunkPos.x, (int) chunkPos.y, biome, worldSeed);
 
             // Load tile data
             chunk.setTileData(chunkData.tileData);
@@ -831,8 +941,7 @@ public class World {
                             // Handle chest data
                             if (blockDataItem.chestData != null) {
                                 block.setChestData(blockDataItem.chestData);
-                                GameLogger.info("Loaded chest at " + pos + " with " +
-                                    blockDataItem.chestData.items.stream().filter(Objects::nonNull).count() + " items");
+                                GameLogger.info("Loaded chest at " + pos + " with " + blockDataItem.chestData.items.stream().filter(Objects::nonNull).count() + " items");
                             }
                         }
 
@@ -996,46 +1105,40 @@ public class World {
         this.worldData = data;
         this.name = data.getName();
         this.worldSeed = data.getConfig().getSeed();
-        this.biomeManager = new BiomeManager(this.worldSeed);
+        GameContext.get().setBiomeManager(new BiomeManager(this.worldSeed));
 
         // Clear existing chunks and objects
         this.chunks.clear();
-        if (GameContext.get().getGameClient() == null ||
-            !GameContext.get().isMultiplayer()) {
+        if (GameContext.get().getGameClient() == null || !GameContext.get().isMultiplayer()) {
             loadChunksFromWorldData();
             if (worldData.getBlockData() != null) {
                 migrateBlocksToChunks();
             }
         }
 
-        GameLogger.info("Set WorldData for world: " + name +
-            " Time: " + data.getWorldTimeInMinutes() +
-            " Played: " + data.getPlayedTime());
+        GameLogger.info("Set WorldData for world: " + name + " Time: " + data.getWorldTimeInMinutes() + " Played: " + data.getPlayedTime());
     }
 
     public BiomeManager getBiomeManager() {
-        return biomeManager;
+        return GameContext.get().getBiomeManager();
     }
 
     public Biome getBiomeAt(int tileX, int tileY) {
-        // In multiplayer mode, use the biome from the chunk provided by the server.
+        // In multiplayer, try to get biome from the chunk.
         if (GameContext.get().isMultiplayer()) {
-            // Compute the chunk coordinates from the tile coordinates:
             int chunkX = tileX / Chunk.CHUNK_SIZE;
             int chunkY = tileY / Chunk.CHUNK_SIZE;
             Vector2 chunkKey = new Vector2(chunkX, chunkY);
             Chunk chunk = chunks.get(chunkKey);
-            if (chunk != null) {
-                return chunk.getBiome();
-            }
+            if (chunk != null) return chunk.getBiome();
         }
-
-        // Otherwise (or if no chunk found) fall back to our local biome calculation.
+        // Otherwise use the biome manager (note: tile coordinates converted to world pixels).
         float worldX = tileX * TILE_SIZE;
         float worldY = tileY * TILE_SIZE;
-        BiomeTransitionResult transition = biomeManager.getBiomeAt(worldX, worldY);
-        return transition.getPrimaryBiome();
+        BiomeTransitionResult btr = GameContext.get().getBiomeManager().getBiomeAt(worldX, worldY);
+        return btr.getPrimaryBiome();
     }
+
 
     private void initializeChunksAroundOrigin() {
         validateChunkState();
@@ -1063,26 +1166,27 @@ public class World {
 
     public Chunk loadOrGenerateChunk(Vector2 chunkPos) {
         if (GameContext.get().isMultiplayer()) {
-            GameLogger.error("Tried to generate a chunk in multiplayer mode at " + chunkPos);
+            GameContext.get().getGameClient().requestChunk(chunkPos);
             return null;
         }
-        Chunk chunk = loadChunkData(chunkPos);
-        // NEW: Check if the loaded chunk is valid; if not, generate it.
-        if (!isChunkValid(chunk)) {
-            int worldX = (int) (chunkPos.x * Chunk.CHUNK_SIZE);
-            int worldY = (int) (chunkPos.y * Chunk.CHUNK_SIZE);
-            BiomeTransitionResult biomeTransition = biomeManager.getBiomeAt(worldX * World.TILE_SIZE, worldY * World.TILE_SIZE);
-            Biome biome = biomeTransition.getPrimaryBiome();
-            if (biome == null) {
-                GameLogger.error("Null biome at " + worldX + "," + worldY);
-                biome = biomeManager.getBiome(BiomeType.PLAINS);
-            }
-            chunk = UnifiedWorldGenerator.generateChunk((int) chunkPos.x, (int) chunkPos.y, worldSeed, biomeManager);
-            objectManager.generateObjectsForChunk(chunkPos, chunk, biome);
-            saveChunkData(chunkPos, chunk);
+        // Step A: try to load from disk
+        Chunk loaded = loadChunkData(chunkPos);
+        if (isChunkValid(loaded)) {
+            return loaded;
         }
-        return chunk;
+        // Step B: If not found or invalid, generate from scratch
+        Chunk generated = UnifiedWorldGenerator.generateChunk(
+            (int) chunkPos.x,
+            (int) chunkPos.y,
+            this.worldSeed,
+            GameContext.get().getBiomeManager()
+        );
+        getObjectManager().setObjectsForChunk(chunkPos, generated.getWorldObjects());
+        // Then save it so next time we won't re-generate
+        saveChunkData(chunkPos, generated);
+        return generated;
     }
+
 
     private void updateWorldColor() {
         float hourOfDay = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
@@ -1104,8 +1208,7 @@ public class World {
 
         // Update transition
         if (colorTransitionProgress < 1.0f) {
-            colorTransitionProgress = Math.min(1.0f, colorTransitionProgress +
-                Gdx.graphics.getDeltaTime() * COLOR_TRANSITION_SPEED);
+            colorTransitionProgress = Math.min(1.0f, colorTransitionProgress + Gdx.graphics.getDeltaTime() * COLOR_TRANSITION_SPEED);
 
             // Interpolate between colors
             currentWorldColor.r = previousWorldColor.r + (targetColor.r - previousWorldColor.r) * colorTransitionProgress;
@@ -1169,17 +1272,17 @@ public class World {
         if (GameContext.get().isMultiplayer()) {
             // In multiplayer, use the flag to only request the initial chunks once.
             if (!initialChunksRequested) {
-                requestInitialChunks(playerPosition);
+                requestInitialChunks();
                 return;
             }
         } else {
             // In singleplayer, always check if the full grid is loaded around the player's current chunk.
             if (!areInitialChunksLoaded()) {
-                requestInitialChunks(playerPosition);
+                requestInitialChunks();
                 return;
             }
         }
-        // -------------------------------------------------------------------
+
 
         if (worldData != null) {
             worldData.updateTime(delta);
@@ -1216,10 +1319,7 @@ public class World {
             if (TileType.isWaterPuddle(currentChunk.getTileType(localX, localY))) {
                 if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().isMoving()) {
                     // Convert to pixel coordinates for the ripple (multiplying by TILE_SIZE)
-                    waterEffectManager.createRipple(
-                        playerTileX * TILE_SIZE + (float) Player.FRAME_WIDTH / 2,
-                        playerTileY * TILE_SIZE + (float) Player.FRAME_HEIGHT / 2
-                    );
+                    waterEffectManager.createRipple(playerTileX * TILE_SIZE + (float) Player.FRAME_WIDTH / 2, playerTileY * TILE_SIZE + (float) Player.FRAME_HEIGHT / 2);
                 }
             }
         }
@@ -1229,10 +1329,7 @@ public class World {
     }
 
     public void updateGameSystems(float delta, Vector2 playerPosition) {
-        BiomeTransitionResult currentBiomeTransition = biomeManager.getBiomeAt(
-            playerPosition.x * TILE_SIZE,
-            playerPosition.y * TILE_SIZE
-        );
+        BiomeTransitionResult currentBiomeTransition = GameContext.get().getBiomeManager().getBiomeAt(playerPosition.x * TILE_SIZE, playerPosition.y * TILE_SIZE);
 
         Biome currentBiome = currentBiomeTransition.getPrimaryBiome();
 
@@ -1249,39 +1346,36 @@ public class World {
 
     private void manageChunks(int playerChunkX, int playerChunkY) {
         int loadRadius = INITIAL_LOAD_RADIUS + 1;
-        PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(
-            cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
-        ));
-
+        PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)));
         for (int dx = -loadRadius; dx <= loadRadius; dx++) {
             for (int dy = -loadRadius; dy <= loadRadius; dy++) {
                 Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
                 chunkQueue.add(chunkPos);
             }
         }
-
         final int MAX_CHUNKS_PER_FRAME = 32;
         int loadedThisFrame = 0;
         long now = System.currentTimeMillis();
-
         while (!chunkQueue.isEmpty() && loadedThisFrame < MAX_CHUNKS_PER_FRAME) {
             Vector2 chunkPos = chunkQueue.poll();
             Chunk existing = chunks.get(chunkPos);
-            // If chunk is null or invalid…
             if (!isChunkValid(existing)) {
-                // If the chunk is in view (or close) force a synchronous load if it’s been waiting too long
-                if (loadingChunks.containsKey(chunkPos)) {
-                    Long lastAccess = lastChunkAccess.get(chunkPos);
-                    if (lastAccess != null && (now - lastAccess) > CRITICAL_TIMEOUT_MS) {
-                        Chunk chunk = loadOrGenerateChunk(chunkPos);
-                        if (chunk != null) {
-                            chunks.put(chunkPos, chunk);
-                            loadingChunks.remove(chunkPos);
-                            GameLogger.info("Synchronously reloaded critical chunk at " + chunkPos);
-                        }
-                    }
+                if (GameContext.get().isMultiplayer()) {
+                    GameContext.get().getGameClient().requestChunk(chunkPos);
                 } else {
-                    loadChunkAsync(chunkPos);
+                    if (loadingChunks.containsKey(chunkPos)) {
+                        Long lastAccess = lastChunkAccess.get(chunkPos);
+                        if (lastAccess != null && (now - lastAccess) > CRITICAL_TIMEOUT_MS) {
+                            Chunk chunk = loadOrGenerateChunk(chunkPos);
+                            if (chunk != null) {
+                                chunks.put(chunkPos, chunk);
+                                loadingChunks.remove(chunkPos);
+                                GameLogger.info("Synchronously reloaded critical chunk at " + chunkPos);
+                            }
+                        }
+                    } else {
+                        loadChunkAsync(chunkPos);
+                    }
                 }
                 loadedThisFrame++;
             }
@@ -1332,7 +1426,7 @@ public class World {
 
             // === RENDER PASS 3: Characters and Mid-Layer Objects ===
             renderMidLayer(batch, player, expandedBounds);
-
+            renderTallGrassOverlayForPlayer(batch, player);
             // === RENDER PASS 4: High Objects and Tree Tops ===
 
             // === RENDER PASS 5: Effects and Overlays ===
@@ -1384,14 +1478,12 @@ public class World {
             renderLowObjects(batch, expandedBounds);
 
             // **Render Wild Pokémon Behind Player**
-            renderWildPokemon(batch);
-
             // **Render Bottom Part of Tall Grass Over Player**
 //            renderTallGrassOverPlayer(batch, playerTileX, playerTileY);
 
             footstepEffectManager.render(batch);
-            // **Render Player and Mid-Layer Objects**
             renderMidLayer(batch, player, expandedBounds);
+            renderTallGrassOverlayForPlayer(batch, player);
 
             // **Render Water Effects (e.g., puddle splashes)**
             if (waterEffects != null && waterEffects.isInitialized()) {
@@ -1410,7 +1502,16 @@ public class World {
             if (weatherAudioSystem != null) {
                 weatherAudioSystem.renderLightningEffect(batch, viewBounds.width, viewBounds.height);
             }
-
+            Rectangle worldBorderRect = new Rectangle(-HALF_WORLD_SIZE, -HALF_WORLD_SIZE, WORLD_SIZE, WORLD_SIZE);
+            // If the camera’s view bounds (or expanded bounds) overlap the border,
+            // then render it.
+            if (viewBounds.overlaps(worldBorderRect)) {
+                // IMPORTANT: Do not mix SpriteBatch and ShapeRenderer without ending one.
+                // Here we create and dispose a ShapeRenderer. In production you’d probably want to cache it.
+                if (viewBounds.overlaps(worldBorderRect)) {
+                    renderWorldBorderWithBatch(batch, gameScreen.getCamera());
+                }
+            }
         } finally {
             batch.setColor(originalColor);
         }
@@ -1547,9 +1648,7 @@ public class World {
         return cachedSortedChunks;
     }
 
-    private void renderTerrainLayer(SpriteBatch batch,
-                                    List<Map.Entry<Vector2, Chunk>> sortedChunks,
-                                    Rectangle expandedBounds) {
+    private void renderTerrainLayer(SpriteBatch batch, List<Map.Entry<Vector2, Chunk>> sortedChunks, Rectangle expandedBounds) {
         for (Map.Entry<Vector2, Chunk> entry : sortedChunks) {
             Vector2 chunkPos = entry.getKey();
             if (isChunkVisible(chunkPos, expandedBounds)) {
@@ -1562,12 +1661,7 @@ public class World {
 
     private Rectangle getExpandedViewBounds(Rectangle viewBounds) {
         float buffer = TILE_SIZE * 2;
-        return new Rectangle(
-            viewBounds.x - buffer,
-            viewBounds.y - buffer,
-            viewBounds.width + (buffer * 2),
-            viewBounds.height + (buffer * 2)
-        );
+        return new Rectangle(viewBounds.x - buffer, viewBounds.y - buffer, viewBounds.width + (buffer * 2), viewBounds.height + (buffer * 2));
     }
 
     private void renderLowObjects(SpriteBatch batch, Rectangle expandedBounds) {
@@ -1607,11 +1701,7 @@ public class World {
     }
 
     private boolean isTreeObject(WorldObject obj) {
-        return obj.getType() == WorldObject.ObjectType.TREE_0 ||
-            obj.getType() == WorldObject.ObjectType.TREE_1 ||
-            obj.getType() == WorldObject.ObjectType.SNOW_TREE ||
-            obj.getType() == WorldObject.ObjectType.HAUNTED_TREE ||
-            obj.getType() == WorldObject.ObjectType.RAIN_TREE || obj.getType() == WorldObject.ObjectType.RUINS_TREE || obj.getType() == WorldObject.ObjectType.APRICORN_TREE || obj.getType() == WorldObject.ObjectType.CHERRY_TREE;
+        return obj.getType() == WorldObject.ObjectType.TREE_0 || obj.getType() == WorldObject.ObjectType.TREE_1 || obj.getType() == WorldObject.ObjectType.SNOW_TREE || obj.getType() == WorldObject.ObjectType.HAUNTED_TREE || obj.getType() == WorldObject.ObjectType.RAIN_TREE || obj.getType() == WorldObject.ObjectType.RUINS_TREE || obj.getType() == WorldObject.ObjectType.APRICORN_TREE || obj.getType() == WorldObject.ObjectType.BEACH_TREE || obj.getType() == WorldObject.ObjectType.CHERRY_TREE;
     }
 
     private void renderMidLayer(SpriteBatch batch, Player player, Rectangle expandedBounds) {
@@ -1627,22 +1717,22 @@ public class World {
                     if (isTreeObject(obj)) {
                         // Tree bases always go behind player
                         behindPlayerQueue.add(new ObjectWithYPosition(obj.getPixelY(), obj, RenderType.TREE_BASE));
-                        // Tree tops always go in front
-                        frontPlayerQueue.add(new ObjectWithYPosition(
-                            obj.getPixelY() + World.TILE_SIZE * 2,
-                            obj,
-                            RenderType.TREE_TOP
-                        ));
+
+                        // <<-- BUG: REMOVE THE FOLLOWING LINE:
+                        // renderWildPokemon(batch);
+
+                        // Render tree top later – add an offset so it draws above the player.
+                        frontPlayerQueue.add(new ObjectWithYPosition(obj.getPixelY() + World.TILE_SIZE * 2, obj, RenderType.TREE_TOP));
                     } else if (obj.getType().renderLayer == WorldObject.ObjectType.RenderLayer.BELOW_PLAYER) {
                         behindPlayerQueue.add(new ObjectWithYPosition(obj.getPixelY(), obj, RenderType.REGULAR_OBJECT));
                     }
                 }
             }
         }
-
         behindPlayerQueue.sort(Comparator.comparingDouble(a -> a.y));
         frontPlayerQueue.sort(Comparator.comparingDouble(a -> a.y));
 
+        // Render objects behind the player:
         for (ObjectWithYPosition item : behindPlayerQueue) {
             switch (item.renderType) {
                 case TREE_BASE:
@@ -1654,31 +1744,31 @@ public class World {
             }
         }
 
-        // 2. Render the player
-        if (GameContext.get().getGameClient() != null) {
-            if (GameContext.get().isMultiplayer()) {
-                renderOtherPlayers(GameContext.get().getBatch(), expandedBounds);
-            }
+        renderWildPokemon(batch);
+        // Render the player:
+        if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
+            renderOtherPlayers(GameContext.get().getBatch(), expandedBounds);
         }
         player.render(batch);
         batch.setColor(originalColor);
 
+        // Render tree tops above the player:
         for (ObjectWithYPosition item : frontPlayerQueue) {
             if (item.renderType == RenderType.TREE_TOP) {
                 objectManager.renderTreeTop(batch, (WorldObject) item.object, this);
             }
         }
         batch.setColor(originalColor);
+
+        // Now, render wild Pokémon in their own pass (if needed):
     }
+
 
     private Map<BiomeRenderer.Direction, Biome> getNeighboringBiomes(Vector2 chunkPos) {
         Map<BiomeRenderer.Direction, Biome> neighbors = new EnumMap<>(BiomeRenderer.Direction.class);
 
         for (BiomeRenderer.Direction dir : BiomeRenderer.Direction.values()) {
-            Vector2 neighborPos = new Vector2(
-                chunkPos.x + (dir == BiomeRenderer.Direction.EAST ? 1 : dir == BiomeRenderer.Direction.WEST ? -1 : 0),
-                chunkPos.y + (dir == BiomeRenderer.Direction.NORTH ? 1 : dir == BiomeRenderer.Direction.SOUTH ? -1 : 0)
-            );
+            Vector2 neighborPos = new Vector2(chunkPos.x + (dir == BiomeRenderer.Direction.EAST ? 1 : dir == BiomeRenderer.Direction.WEST ? -1 : 0), chunkPos.y + (dir == BiomeRenderer.Direction.NORTH ? 1 : dir == BiomeRenderer.Direction.SOUTH ? -1 : 0));
 
             Chunk neighborChunk = chunks.get(neighborPos);
             if (neighborChunk != null) {
@@ -1705,9 +1795,7 @@ public class World {
         float pixelX = worldX * World.TILE_SIZE;
         float pixelY = worldY * World.TILE_SIZE;
         Rectangle tileBox = new Rectangle(pixelX, pixelY, World.TILE_SIZE, World.TILE_SIZE);
-        Collection<WildPokemon> nearbyPokemon = pokemonSpawnManager.getPokemonInRange(
-            pixelX + ((float) World.TILE_SIZE / 2), pixelY + ((float) World.TILE_SIZE / 2), World.TILE_SIZE * 2
-        );
+        Collection<WildPokemon> nearbyPokemon = pokemonSpawnManager.getPokemonInRange(pixelX + ((float) World.TILE_SIZE / 2), pixelY + ((float) World.TILE_SIZE / 2), World.TILE_SIZE * 2);
 
         for (WildPokemon pokemon : nearbyPokemon) {
             if (pokemon.getBoundingBox().overlaps(tileBox)) {
@@ -1742,22 +1830,28 @@ public class World {
         }
     }
 
-    public boolean isPassable(int worldX, int worldY) {
-        if (!isPositionLoaded(worldX, worldY)) {
+    public boolean isPassable(int tileX, int tileY) {
+        if (!isWithinWorldBounds(tileX, tileY)) {
+            // Optionally, you might want to log this:
+            GameLogger.info("Tile (" + tileX + "," + tileY + ") is outside world bounds.");
             return false;
         }
 
+        // (Optional) If the tile isn’t even loaded, then return false.
+        if (!isPositionLoaded(tileX, tileY)) {
+            return false;
+        }
         try {
             // Convert pixel coordinates to chunk coordinates
-            int chunkX = Math.floorDiv(worldX, Chunk.CHUNK_SIZE);
-            int chunkY = Math.floorDiv(worldY, Chunk.CHUNK_SIZE);
-            Vector2 chunkPos = new Vector2(chunkX, chunkY);
 
+            int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
+            int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
+            Vector2 chunkPos = new Vector2(chunkX, chunkY);
             Chunk chunk = chunks.get(chunkPos);
             if (chunk == null) return false;
+            int localX = Math.floorMod(tileX, Chunk.CHUNK_SIZE);
+            int localY = Math.floorMod(tileY, Chunk.CHUNK_SIZE);
 
-            int localX = Math.floorMod(worldX, Chunk.CHUNK_SIZE);
-            int localY = Math.floorMod(worldY, Chunk.CHUNK_SIZE);
 
             String currentDirection = GameContext.get().getPlayer() != null ? GameContext.get().getPlayer().getDirection() : "down";
 
@@ -1767,27 +1861,51 @@ public class World {
                 return false;
             }
             // Check block collision
-            if (blockManager != null && blockManager.hasCollisionAt(worldX, worldY)) {
+            if (blockManager != null && blockManager.hasCollisionAt(tileX, tileY)) {
                 return false;
             }
 
             // Calculate pixel-based collision box
-            Rectangle movementBounds = new Rectangle(
-                worldX * TILE_SIZE,  // Now using actual pixel position
-                worldY * TILE_SIZE,
-                TILE_SIZE * 0.5f,    // Half tile collision size
-                TILE_SIZE * 0.5f
-            );
+            Rectangle movementBounds = new Rectangle(tileX * TILE_SIZE,  // Now using actual pixel position
+                tileY * TILE_SIZE, TILE_SIZE * 0.5f,    // Half tile collision size
+                TILE_SIZE * 0.5f);
 
             // Check collisions with objects and Pokemon
-            return !checkObjectCollision(movementBounds, currentDirection) &&
-                !checkPokemonCollision(worldX, worldY, currentDirection);
+            return !checkObjectCollision(movementBounds, currentDirection) && !checkPokemonCollision(tileX, tileY, currentDirection);
 
         } catch (Exception e) {
             GameLogger.error("Error checking passability: " + e.getMessage());
             return false;
         }
     }
+
+    private void renderWorldBorderWithBatch(SpriteBatch batch, OrthographicCamera camera) {
+        TextureRegion borderPixel = new TextureRegion(TextureManager.getWhitePixel());
+        // Save the current batch color.
+        Color originalColor = batch.getColor().cpy();
+        batch.setColor(Color.RED);
+
+        // Calculate the world border rectangle (in world pixels).
+        float left = -HALF_WORLD_SIZE;
+        float bottom = -HALF_WORLD_SIZE;
+        float worldSize = WORLD_SIZE;
+
+        // Set a line thickness (e.g., 2 pixels)
+        float thickness = 2f;
+
+        // Draw top border
+        batch.draw(borderPixel, left, bottom + worldSize - thickness, worldSize, thickness);
+        // Draw bottom border
+        batch.draw(borderPixel, left, bottom, worldSize, thickness);
+        // Draw left border
+        batch.draw(borderPixel, left, bottom, thickness, worldSize);
+        // Draw right border
+        batch.draw(borderPixel, left + worldSize - thickness, bottom, thickness, worldSize);
+
+        // Restore original color.
+        batch.setColor(originalColor);
+    }
+
 
     public GameClient getGameClient() {
         if (GameContext.get().getGameClient() == null) {
@@ -1823,10 +1941,7 @@ public class World {
     }
 
     private boolean checkObjectCollision(Rectangle movementBounds, String direction) {
-        List<WorldObject> nearbyObjects = objectManager.getObjectsNearPosition(
-            movementBounds.x + movementBounds.width / 2,
-            movementBounds.y + movementBounds.height / 2
-        );
+        List<WorldObject> nearbyObjects = objectManager.getObjectsNearPosition(movementBounds.x + movementBounds.width / 2, movementBounds.y + movementBounds.height / 2);
 
         for (WorldObject obj : nearbyObjects) {
             Rectangle collisionBox = obj.getCollisionBox();
@@ -1905,7 +2020,7 @@ public class World {
 
             // Update core properties
             this.worldSeed = seed;
-            this.biomeManager = new BiomeManager(seed);
+            GameContext.get().setBiomeManager(new BiomeManager(seed));
 
             // Initialize managers if needed
             if (blockManager == null) blockManager = new BlockManager();
@@ -1916,10 +2031,7 @@ public class World {
             // Clear any existing chunks to prevent singleplayer data persistence
             chunks.clear();
 
-            GameLogger.info("Multiplayer world initialization complete - " +
-                "Time: " + worldTimeInMinutes +
-                " Day Length: " + dayLength +
-                " Seed: " + seed);
+            GameLogger.info("Multiplayer world initialization complete - " + "Time: " + worldTimeInMinutes + " Day Length: " + dayLength + " Seed: " + seed);
 
         } catch (Exception e) {
             GameLogger.error("Failed to initialize multiplayer world: " + e.getMessage());
@@ -1960,7 +2072,7 @@ public class World {
         float worldY = playerPosition.y * TILE_SIZE;
 
         // Get current biome and calculate temperature
-        currentBiomeTransition = biomeManager.getBiomeAt(worldX, worldY);
+        currentBiomeTransition = GameContext.get().getBiomeManager().getBiomeAt(worldX, worldY);
         float temperature = calculateTemperature();
 
 
@@ -2015,11 +2127,27 @@ public class World {
         int chunkY = Math.floorDiv((int) y, Chunk.CHUNK_SIZE);
         Vector2 pos = new Vector2(chunkX, chunkY);
         Chunk chunk = chunks.get(pos);
+        if (chunk == null) {
+            if (GameContext.get().isMultiplayer()) {
+                GameContext.get().getGameClient().requestChunk(pos);
+                return null;
+            } else {
+                chunk = loadOrGenerateChunk(pos);
+                if (chunk != null) {
+                    chunks.put(pos, chunk);
+                }
+            }
+        }
         if (chunk != null && !isChunkValid(chunk)) {
-            GameLogger.info("Chunk at " + pos + " is invalid; forcing synchronous reload.");
-            chunk = loadOrGenerateChunk(pos);
-            if (chunk != null) {
-                chunks.put(pos, chunk);
+            if (GameContext.get().isMultiplayer()) {
+                GameLogger.info("Chunk at " + pos + " is invalid in multiplayer; requesting from server.");
+                GameContext.get().getGameClient().requestChunk(pos);
+                return null;
+            } else {
+                chunk = loadOrGenerateChunk(pos);
+                if (chunk != null) {
+                    chunks.put(pos, chunk);
+                }
             }
         }
         return chunk;
@@ -2030,10 +2158,7 @@ public class World {
     }
 
     private enum RenderType {
-        TREE_BASE,
-        TREE_TOP,
-        REGULAR_OBJECT,
-        PLAYER
+        TREE_BASE, TREE_TOP, REGULAR_OBJECT, PLAYER
     }
 
     private static class ObjectWithYPosition {

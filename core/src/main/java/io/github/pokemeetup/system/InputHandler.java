@@ -5,12 +5,15 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.scenes.scene2d.Stage;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
+import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.screens.otherui.BuildModeUI;
+import io.github.pokemeetup.screens.otherui.PokemonPartyWindow;
 import io.github.pokemeetup.system.battle.BattleInitiationHandler;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
@@ -65,6 +68,7 @@ public class InputHandler extends InputAdapter {
     // The current target for chopping (e.g. a tree) or breaking
     private WorldObject targetObject = null;
     private PlaceableBlock targetBlock = null;
+    private PokemonPartyWindow partyWindow;
 
     public InputHandler(
         PickupActionHandler pickupHandler,
@@ -233,7 +237,6 @@ public class InputHandler extends InputAdapter {
      *  KeyDown / KeyUp
      ************************************************************************/
     // Replace the keyDown method in InputHandler with this updated version:
-
     @Override
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
@@ -242,7 +245,8 @@ public class InputHandler extends InputAdapter {
             keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN) ||
             keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT) ||
             keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
-            GameContext.get().getPlayer().setInputHeld(true);}
+            GameContext.get().getPlayer().setInputHeld(true);
+        }
         // Hotbar selection via number keys
         if (keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
             int slot = keycode - Input.Keys.NUM_1;
@@ -293,7 +297,10 @@ public class InputHandler extends InputAdapter {
             moveUp(true);
             return true;
         }
-
+        if (keycode == Input.Keys.P) {
+            togglePartyWindow();
+            return true;
+        }
         if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN)) {
             moveDown(true);
             return true;
@@ -329,6 +336,47 @@ public class InputHandler extends InputAdapter {
 
         return false;
     }
+
+    private void togglePartyWindow() {
+        Stage uiStage = GameContext.get().getUiStage();
+        if (uiStage == null) {
+            GameLogger.info("UI stage is null, cannot show party window.");
+            return;
+        }
+        if (partyWindow == null) {
+            // Create and show the party window.
+            partyWindow = new PokemonPartyWindow(
+                GameContext.get().getSkin(),                                   // Skin to use
+                GameContext.get().getPlayer().getPokemonParty(),                 // The player's party
+                false,                                                           // Not in battle mode
+                new PokemonPartyWindow.PartySelectionListener() {                // Selection listener (if needed)
+                    @Override
+                    public void onPokemonSelected(Pokemon pokemon) {
+                        // (In battle mode you might handle selecting a Pokémon)
+                    }
+                },
+                new Runnable() {                                                 // Cancel callback
+                    @Override
+                    public void run() {
+                        closePartyWindow();
+                    }
+                }
+            );
+            partyWindow.show(uiStage); // show() centers and fades in the window.
+        } else {
+            // Already showing? Remove (close) it.
+            closePartyWindow();
+        }
+    }
+
+    private void closePartyWindow() {
+        if (partyWindow != null) {
+            partyWindow.remove(); // Remove the actor from its parent stage.
+            partyWindow = null;
+        }
+    }
+
+
 
     // Similarly update keyUp to use KeyBinds:
     @Override
@@ -684,7 +732,8 @@ public class InputHandler extends InputAdapter {
             obj.getType() == WorldObject.ObjectType.RAIN_TREE ||
             obj.getType() == WorldObject.ObjectType.APRICORN_TREE ||
             obj.getType() == WorldObject.ObjectType.RUINS_TREE ||
-            obj.getType() == WorldObject.ObjectType.CHERRY_TREE;
+            obj.getType() == WorldObject.ObjectType.CHERRY_TREE ||
+            obj.getType() == WorldObject.ObjectType.BEACH_TREE;
     }
 
     private WorldObject findChoppableObject() {
@@ -909,7 +958,7 @@ public class InputHandler extends InputAdapter {
                 obj.getType() == WorldObject.ObjectType.HAUNTED_TREE ||
                 obj.getType() == WorldObject.ObjectType.RUINS_TREE ||
                 obj.getType() == WorldObject.ObjectType.RAIN_TREE ||
-                obj.getType() == WorldObject.ObjectType.CHERRY_TREE) {
+                obj.getType() == WorldObject.ObjectType.CHERRY_TREE || obj.getType() == WorldObject.ObjectType.BEACH_TREE) {
                 removalTileX = removalTileX - 1;
             }
             manager.removeObjectFromChunk(chunkPos, obj.getId(), removalTileX, removalTileY);

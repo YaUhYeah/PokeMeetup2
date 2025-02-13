@@ -29,12 +29,10 @@ import io.github.pokemeetup.chat.commands.*;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.context.UIManager;
 import io.github.pokemeetup.managers.BiomeManager;
-import io.github.pokemeetup.managers.WaterEffectsRenderer;
 import io.github.pokemeetup.multiplayer.OtherPlayer;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.multiplayer.server.ServerStorageSystem;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonParty;
 import io.github.pokemeetup.pokemon.WildPokemon;
@@ -51,7 +49,6 @@ import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.*;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
-import io.github.pokemeetup.system.keybinds.KeyBinds;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.InventoryConverter;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -93,7 +90,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private Vector2 joystickCenter = new Vector2();
     private Vector2 joystickCurrent = new Vector2();
     private float initializationTimer = 0f;
-
     private Stage pokemonPartyStage;
     private Table partyDisplay;
     private float updateTimer = 0;
@@ -203,6 +199,21 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameLogger.error("GameScreen initialization failed: " + e.getMessage());
             throw new RuntimeException("Failed to initialize game screen", e);
         }
+    }
+
+    public void updatePartyDisplay() {
+        if (partyDisplay != null) {
+            partyDisplay.remove();
+        }
+        createPartyDisplay();
+    }
+
+    public Table getPartyDisplay() {
+        return partyDisplay;
+    }
+
+    public Skin getBattleSkin() {
+        return battleSkin;
     }
 
     public Skin getSkin() {
@@ -360,6 +371,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     @Override
     public void show() {
+        Gdx.input.setCatchKey(Input.Keys.F3, true);
         // Reinitialize player resources if needed
         if (GameContext.get().getPlayer() != null) {
             GameContext.get().getPlayer().initializeResources();
@@ -648,7 +660,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameLogger.info("ChatSystem created at: " + chatSystem.getX() + ", " + chatSystem.getY());
     }
 
-
     private void initializeWorldAndPlayer(String worldName) {
         GameLogger.info("Initializing world and player");
 
@@ -662,33 +673,48 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             // 1. Initialize or create world
             if (GameContext.get().getWorld() == null) {
                 if (isMultiplayer) {
+                    // Multiplayer: grab the world from the GameClient
                     GameContext.get().setWorld(GameContext.get().getGameClient().getCurrentWorld());
                     if (GameContext.get().getWorld() == null) {
                         throw new IllegalStateException("No world available from GameClient");
                     }
                 } else {
-                    GameContext.get().setWorld(new World(
-                        worldName,
-                        System.currentTimeMillis(),
-                        new BiomeManager(System.currentTimeMillis())
-                    ));
+                    // Singleplayer: create a new world with a new seed
+                    long seed = System.currentTimeMillis();
+                    GameContext.get().getBiomeManager().setBaseSeed(seed);
+                    GameContext.get().setWorld(new World(worldName, seed));
                 }
             }
 
-            // 2. Set up player
+            // 2. Set up the Player
             if (isMultiplayer) {
+                // Use the active (already–created) player from the server
                 GameContext.get().setPlayer(GameContext.get().getGameClient().getActivePlayer());
                 if (GameContext.get().getPlayer() == null) {
                     throw new IllegalStateException("No player available from GameClient");
                 }
             } else {
+                // Singleplayer:
                 GameContext.get().setPlayer(game.getPlayer());
                 if (GameContext.get().getPlayer() == null) {
-                    GameContext.get().setPlayer(new Player(username, GameContext.get().getWorld()));
+                    // Need to create a new singleplayer player
+                    World currentWorld = GameContext.get().getWorld();
+                    BiomeManager bm = currentWorld.getBiomeManager();
+                    // We'll pick a safe spawn tile from the islands
+                    Random rng = new Random(currentWorld.getWorldData().getConfig().getSeed());
+                    Vector2 safeTile = bm.findSafeSpawnLocation(currentWorld, rng);
+
+                    Player newPlayer = new Player(
+                        (int) safeTile.x,
+                        (int) safeTile.y,
+                        currentWorld,
+                        username
+                    );
+                    GameContext.get().setPlayer(newPlayer);
                 }
             }
 
-            // 3. Initialize world data and components
+            // 3. Initialize world data and components (if multiplayer)
             if (isMultiplayer) {
                 GameContext.get().getWorld().initializeFromServer(
                     GameContext.get().getGameClient().getWorldSeed(),
@@ -697,12 +723,18 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 );
             }
 
-            // 4. Initialize player resources and world connection
+            // 4. Player resources & hooking up the world
             GameContext.get().getPlayer().initializeResources();
             GameContext.get().getPlayer().initializeInWorld(GameContext.get().getWorld());
             GameContext.get().getWorld().setPlayer(GameContext.get().getPlayer());
-            GameContext.get().getPlayer().setRenderPosition(new Vector2(GameContext.get().getPlayer().getX(), GameContext.get().getPlayer().getY()));
-            // 5. Load initial chunks around player
+
+            // Set the player's render position to their actual location
+            float px = GameContext.get().getPlayer().getX();
+            float py = GameContext.get().getPlayer().getY();
+            GameContext.get().getPlayer().setRenderPosition(new Vector2(px, py));
+
+            // 5. Load initial chunks around the player
+            //    The player's tile coords / chunk coords:
             Vector2 playerPos = new Vector2(
                 (float) GameContext.get().getPlayer().getTileX() / World.CHUNK_SIZE,
                 (float) GameContext.get().getPlayer().getTileY() / World.CHUNK_SIZE
@@ -714,6 +746,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 GameContext.get().getWorld().forceLoadMissingChunks();
             }
 
+            // Optionally, set camera to center on player
             if (camera != null) {
                 camera.position.set(
                     GameContext.get().getPlayer().getX() + Player.FRAME_WIDTH / 2f,
@@ -723,13 +756,13 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 camera.update();
             }
 
-
         } catch (Exception e) {
             GameLogger.error("Failed to initialize world and player: " + e.getMessage());
             e.printStackTrace();
             throw e;
         }
     }
+
 
     private void initializeGameSystems() {
 
@@ -1132,7 +1165,14 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameLogger.info("Cannot battle - no healthy Pokemon");
             return;
         }
-
+        if (GameContext.get().getPlayer().getAnimations().isChopping() ||
+            GameContext.get().getPlayer().getAnimations().isPunching()) {
+            GameContext.get().getPlayer().getAnimations().stopChopping();
+            GameContext.get().getPlayer().getAnimations().stopPunching();
+            if (inputHandler != null) {
+                inputHandler.stopChopOrPunch();
+            }
+        }
         try {
             initializeBattleComponents(validPokemon, nearestPokemon);
 
@@ -1212,6 +1252,11 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 // Clean up battle state
                 battleSystem.endBattle();
                 endBattle(playerWon, wildPokemon);
+                Gdx.app.postRunnable(() -> {
+                    inputManager.setUIState(InputManager.UIState.NORMAL);
+                    inputManager.updateInputProcessors();
+                    GameLogger.info("Battle ended; UI state reset to NORMAL");
+                });
             }
 
             @Override
@@ -1292,38 +1337,43 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         if (isDisposing) return;
         isDisposing = true;
 
-        try {
-            Gdx.app.postRunnable(() -> {
-                try {
-                    // Only clear references without disposing textures
-                    if (battleTable != null) {
-                        battleTable.clear(); // Just clear children, don't dispose
-                    }
-
-                    if (battleStage != null) {
-                        battleStage.clear();
-                    }
-                    if (battleSystem != null) {
-                        battleSystem.endBattle();
-                    }
-
-                    // Reset states
-                    inBattle = false;
-                    transitioning = false;
-                    inputBlocked = false;
-                    battleInitialized = false;
-                    battleUIFading = false;
-                    isDisposing = false;
-                    inputManager.updateInputProcessors();
-
-                    GameLogger.info("Battle cleanup complete - Resources preserved for future battles");
-                } catch (Exception e) {
-                    GameLogger.error("Error during battle cleanup: " + e.getMessage());
+        Gdx.app.postRunnable(() -> {
+            try {
+                // Remove and clear BattleTable from its parent
+                if (battleTable != null) {
+                    battleTable.remove();
+                    battleTable.clear();
                 }
-            });
-        } catch (Exception e) {
-            GameLogger.error("Error queuing cleanup: " + e.getMessage());
-        }
+
+                // Clear, dispose, and null out the battle Stage so it no longer captures input
+                if (battleStage != null) {
+                    battleStage.clear();
+                    battleStage.dispose();
+                    battleStage = null;
+                }
+
+                // End battle in the battle system (and unlock any locked Pokemon)
+                if (battleSystem != null) {
+                    battleSystem.endBattle();
+                }
+
+                // Reset battle flags
+                inBattle = false;
+                transitioning = false;
+                inputBlocked = false;
+                battleInitialized = false;
+                battleUIFading = false;
+                isDisposing = false;
+
+                // Reset the input UI state to NORMAL and update processors
+                inputManager.setUIState(InputManager.UIState.NORMAL);
+                inputManager.updateInputProcessors();
+
+                GameLogger.info("Battle cleanup complete - battle Stage disposed and UI state reset");
+            } catch (Exception e) {
+                GameLogger.error("Error during battle cleanup: " + e.getMessage());
+            }
+        });
     }
 
     private void handleBattleVictory(WildPokemon wildPokemon) {
@@ -1460,7 +1510,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         if (GameContext.get().getPlayer() != null) {
             if (!GameContext.get().getWorld().areInitialChunksLoaded()) {
-                GameContext.get().getWorld().requestInitialChunks(new Vector2(GameContext.get().getPlayer().getX(), GameContext.get().getPlayer().getY()));
+                GameContext.get().getWorld().requestInitialChunks();
                 renderLoadingScreen();
                 return;
             }
@@ -1808,15 +1858,18 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     }
 
     private void handleInput() {
+        // Always check for F3 first, regardless of UI state:
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F3)) {
+            SHOW_DEBUG_INFO = !SHOW_DEBUG_INFO;
+        }
 
+        // Then process other inputs only if no UI is active that should block game input:
         if (GameContext.get().getChatSystem() != null && GameContext.get().getChatSystem().isActive()) {
             return;
         }
-
         if (inBattle) {
             return;
         }
-
         if (inputManager.getCurrentState() == InputManager.UIState.NORMAL) {
             handleGameInput();
         }
@@ -1836,10 +1889,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         if (inputBlocked) {
             return;
-        }
-
-        if (Gdx.input.isKeyJustPressed(Input.Keys.F3)) {
-            SHOW_DEBUG_INFO = !SHOW_DEBUG_INFO;
         }
 
 
@@ -2411,7 +2460,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
             // Knob (brighter when moved further)
             float intensity = 0.5f + (movementController.getMagnitude() * 0.5f);
-            shapeRenderer.setColor(intensity, intensity, intensity, 0.8f);
+            shapeRenderer.setColor(1.0f, 1.0f, 1.0f, intensity);
             shapeRenderer.circle(current.x, current.y, knobSize);
         }
 

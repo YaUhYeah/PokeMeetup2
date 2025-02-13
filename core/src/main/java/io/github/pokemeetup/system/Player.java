@@ -44,7 +44,6 @@ public class Player implements Positionable {
     private static final float COLLISION_BUFFER = 4f;
     private static final long VALIDATION_INTERVAL = 1000;
     private static final float PICKUP_RANGE = 48f;
-    private static final float INPUT_BUFFER_TIME = 0.1f;
     private static final float BUFFER_WINDOW = 0.15f;
     // Synchronization locks and layout
     private final Object movementLock = new Object();
@@ -94,6 +93,7 @@ public class Player implements Positionable {
     private float animationTime = 0f;
     private float animationSpeedMultiplier = 0.75f;
     private boolean inputHeld = false;
+
     // Constructors
     public Player(int startTileX, int startTileY, World world) {
         this(startTileX, startTileY, world, "Player");
@@ -191,8 +191,6 @@ public class Player implements Positionable {
         }
         this.hotbarSystem = newHotbarSystem;
     }
-
-
 
 
     public PlayerAnimations getAnimations() {
@@ -546,7 +544,7 @@ public class Player implements Positionable {
         if (tileType == TileType.SAND || tileType == TileType.SNOW ||
             tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND ||
             tileType == TileType.SNOW_2 || tileType == TileType.SNOW_3 ||
-            tileType == TileType.SNOW_TALL_GRASS) {
+            tileType == TileType.SNOW_TALL_GRASS || tileType == TileType.BEACH_GRASS || tileType == TileType.BEACH_SAND || tileType == TileType.BEACH_SHELL || tileType == TileType.BEACH_GRASS_2 || tileType == TileType.SNOWY_GRASS || tileType == TileType.BEACH_STARFISH) {
             GameContext.get().getWorld().getFootstepEffectManager()
                 .addEffect(new FootstepEffect(new Vector2(x, y), direction, 1.0f));
         }
@@ -571,13 +569,10 @@ public class Player implements Positionable {
         return x * x * (3 - 2 * x);
     }
 
-    // The move method – if already moving, buffer the new direction; otherwise start immediately.
     public void move(String newDirection) {
         synchronized (movementLock) {
             if (isMoving) {
-                if (!newDirection.equals(direction)) {
-                    direction = newDirection;
-                }
+                // If already moving, just buffer the new direction.
                 bufferedDirection = newDirection;
                 bufferedTime = 0f;
                 return;
@@ -605,6 +600,15 @@ public class Player implements Positionable {
                 default:
                     return;
             }
+
+            // *** Check world bounds ***
+            if (!world.isWithinWorldBounds(newTileX, newTileY)) {
+                // Optionally: play a “bump” sound or simply ignore the move.
+                GameLogger.info("Player cannot move outside the world border: (" + newTileX + "," + newTileY + ")");
+                return;
+            }
+
+            // Now check that the destination tile is passable.
             if (world.isPassable(newTileX, newTileY)) {
                 targetTileX = newTileX;
                 targetTileY = newTileY;

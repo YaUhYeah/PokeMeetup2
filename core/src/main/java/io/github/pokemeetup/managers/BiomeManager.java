@@ -1,6 +1,7 @@
 package io.github.pokemeetup.managers;
 
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.google.gson.*;
 import com.google.gson.stream.JsonReader;
@@ -8,11 +9,13 @@ import com.google.gson.stream.JsonWriter;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
+import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.OpenSimplex2;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
+import io.github.pokemeetup.utils.textures.TileType;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -20,765 +23,609 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Refactored BiomeManager
- *
- * <p>This class is responsible for determining biome values using noise functions,
- * domain–warping to smooth boundaries, and caching a low–resolution biome matrix.
- *
- * <p>The refactored class is organized as follows:
- * <ol>
- *   <li><b>Constants & Fields:</b> Tuning parameters, seeds, caches, and Voronoi sites.</li>
- *   <li><b>Initialization:</b> Loading JSON biome definitions and generating fallback Voronoi sites.</li>
- *   <li><b>Noise & Domain–Warp Utilities:</b> Encapsulated in the inner {@code NoiseUtil} class.</li>
- *   <li><b>Biome Classification:</b> Encapsulated in the inner {@code BiomeClassifier} class.</li>
- *   <li><b>Biome Sampling & Blending:</b> A low–resolution biome matrix is built per–chunk and its
- *       samples are bilinearly blended via {@code blendBiomeSamples()}.</li>
- *   <li><b>JSON Loading & Serialization:</b> Remains largely as before.</li>
- * </ol>
+ * Updated BiomeManager for large, diverse, AAA–style worlds.
+ * <p>
+ * Features:
+ * - Domain–warp once to decide ocean/beach/land.
+ * - If land, we do a Voronoi fallback approach to pick a local site → get "base" temperature & moisture → final classification.
+ * - Islands are generated randomly (for the chunk generator).
+ * - Gradual transitions, more realistic biome decisions, special “rare” biomes.
  */
 public class BiomeManager {
 
-    // -------------------------------
-    // Tuning and Sampling Constants
-    // -------------------------------
-    private static final double RUINS_THRESHOLD = 0.65;
-    private static final double COLD_THRESHOLD = 0.35;
-    private static final double HOT_THRESHOLD = 0.65;
-    private static final double DRY_THRESHOLD = 0.35;
-    private static final double WET_THRESHOLD = 0.65;
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. TUNING CONSTANTS & FIELD DEFINITIONS
+    // ─────────────────────────────────────────────────────────────────────────
 
-    private static final float TEMPERATURE_SCALE = 0.00005f;
-    private static final float MOISTURE_SCALE = 0.00005f;
-    private static final float WARP_SCALE = 0.00001f;
-    private static final float WARP_STRENGTH = 30f;
-    private static final float MOUNTAIN_DETAIL_SCALE = 0.002f;
-    private static final float MOUNTAIN_RIDGE_SCALE = 0.0015f;
-    private static final float MOUNTAIN_THRESHOLD = 0.85f;
-    private static final int BIOME_DOWNSAMPLE = 1;
-    private static final float BIOME_JITTER_FACTOR = 0.2f;
+    /**
+     * How many random islands to scatter.
+     */
+    private static final int ISLAND_COUNT = 50;
+    private static final int NUM_BIOME_SITES = 300; // reduced from 1000
 
-    // -------------------------------
-    // Voronoi Site Data for Fallback
-    // -------------------------------
-    private static final int NUM_BIOME_SITES = 800;
-    private static final float WORLD_RADIUS = 100000f;
+    // Lower noise frequencies for broader, smoother variations.
+    private static final float TEMPERATURE_SCALE = 0.00002f; // slower changes for larger biomes
+    private static final float MOISTURE_SCALE = 0.00002f;    // slower changes for larger biomes
 
-    // -------------------------------
-    // Fields and Caches
-    // -------------------------------
+    // Adjust domain warp parameters to produce a smoother warp.
+    private static final float FREQ_WARP_1 = 0.0003f; // reduced frequency
+    private static final float AMP_WARP_1 = 5f;       // keep amplitude, or adjust if needed
+    private static final float FREQ_WARP_2 = 0.0006f;  // reduced frequency
+    private static final float AMP_WARP_2 = 2f;        // keep amplitude
+    /**
+     * Min & max radius for each island.
+     */
+    private static final float ISLAND_MIN_RADIUS = 3000f;
+    private static final float ISLAND_MAX_RADIUS = 8000f;
+
+    /**
+     * Overall world boundary radius (in world pixels).
+     */
+    private static final float WORLD_RADIUS = 50000f;
+
+    /**
+     * The number of Voronoi sites used as fallback.
+     */
+
+    // If we want to or not store chunk→biome transitions
+    private final Map<Vector2, BiomeTransitionResult[][]> chunkBiomeCache = new ConcurrentHashMap<>();
     private final long temperatureSeed;
     private final long moistureSeed;
-    private final long warpSeed;
-    private final long baseSeed;
-    private final long mountainSeed;
     private final long detailSeed;
-    private final Map<BiomeType, Biome> biomes;
-    // Cache: key is chunk coordinates (as Vector2), value is a low–res biome matrix.
-    private final Map<Vector2, BiomeTransitionResult[][]> chunkBiomeCache = new ConcurrentHashMap<>();
-    // List of Voronoi sites used as fallback in domain–warped biome transitions.
+    // Voronoi fallback & island data
     private final List<BiomeSite> biomeSites = new ArrayList<>();
+    private final List<Island> islandSites = new ArrayList<>();
+    // The warp seed used for domain–warping
+    private final long warpSeed;
+    // Our loaded or default biomes
+    private final Map<BiomeType, Biome> biomes;
+    // Seeds
+    private long baseSeed;
 
-    // -------------------------------
-    // Constructor and Initialization
-    // -------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. CONSTRUCTOR & INITIALIZATION
+    // ─────────────────────────────────────────────────────────────────────────
     public BiomeManager(long baseSeed) {
         this.baseSeed = baseSeed;
-        this.biomes = new HashMap<>();
         this.temperatureSeed = baseSeed + 1000;
         this.moistureSeed = baseSeed + 2000;
-        this.mountainSeed = baseSeed + 3000;
+        this.detailSeed = baseSeed + 3000;
         this.warpSeed = baseSeed + 4000;
-        this.detailSeed = baseSeed + 5000;
-        loadBiomesFromJson();
-        generateBiomeSites(baseSeed);
+
+        this.biomes = new HashMap<>();
+
+        loadBiomesFromJson();           // load from your Data/biomes.json or fallback
+        generateBiomeSites(baseSeed);    // create random Voronoi sites
+        generateRandomIslands(baseSeed); // create random islands
     }
 
-    /**
-     * Generates Voronoi sites (with a randomly chosen biome type for each site) that are used
-     * to blend biomes when no chunk data is available.
-     */
-    private void generateBiomeSites(long seed) {
-        Random rng = new Random(seed ^ 0xDEADBEEF);
-        biomeSites.clear();
-        for (int i = 0; i < NUM_BIOME_SITES; i++) {
-            float x = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
-            float y = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
-            BiomeType randomBiome = pickRandomBiomeType(rng);
-            biomeSites.add(new BiomeSite(x, y, randomBiome));
-        }
-        GameLogger.info("BiomeManager - Generated " + biomeSites.size() + " Voronoi sites for domain-warped transitions.");
-    }
-
-    private static float quinticSmoothStep(float t) {
-        return t * t * t * (t * (t * 6 - 15) + 10);
-    }
-    // -------------------------------
-    // Public Biome Sampling Methods
-    // -------------------------------
-
-    /**
-     * Returns the biome transition result at the given world coordinates.
-     * If a chunk exists, its biome is returned; otherwise the low–resolution biome matrix is used.
-     */
-    public BiomeTransitionResult getBiomeAt(float worldX, float worldY) {
-        int chunkX = (int) Math.floor(worldX / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
-        int chunkY = (int) Math.floor(worldY / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
-        Vector2 chunkPos = new Vector2(chunkX, chunkY);
-        try {
-            World world = GameContext.get().getWorld();
-            if (world != null) {
-                Chunk existing = world.getChunks().get(chunkPos);
-                if (existing != null) {
-                    // If chunk data is present, return its biome (no blending required)
-                    return new BiomeTransitionResult(existing.getBiome(), null, 1.0f);
-                }
-            }
-        } catch (IllegalStateException ignored) {
-        }
-        return getBiomeAtCached(worldX, worldY);
-    }
-
-    /**
-     * Returns a biome transition result for the given world coordinates using a low–resolution biome matrix.
-     * This version blends four nearby samples to yield a smoother transition.
-     */
-
-    public BiomeTransitionResult getBiomeAtCached(float worldX, float worldY) {
-        int chunkX = (int) Math.floor(worldX / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
-        int chunkY = (int) Math.floor(worldY / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
-        BiomeTransitionResult[][] matrix = computeBiomeMatrixForChunk(chunkX, chunkY);
-        int size = Chunk.CHUNK_SIZE;
-        float baseWorldX = chunkX * size * World.TILE_SIZE;
-        float baseWorldY = chunkY * size * World.TILE_SIZE;
-        float localX = worldX - baseWorldX;
-        float localY = worldY - baseWorldY;
-        // With (size+1) samples, grid spacing equals:
-        float gridSpacingX = (Chunk.CHUNK_SIZE * World.TILE_SIZE) / (float) size; // equals World.TILE_SIZE
-        float gridSpacingY = (Chunk.CHUNK_SIZE * World.TILE_SIZE) / (float) size; // equals World.TILE_SIZE
-        // Map the local coordinates into grid space.
-        float gx = localX / gridSpacingX;
-        float gy = localY / gridSpacingY;
-        return enhancedBlendBiomeSamples(matrix, gx, gy);
-    }
-    /**
-     * Computes a low–resolution biome matrix for the specified chunk.
-     * Each sample is jittered slightly (via BIOME_JITTER_FACTOR) so that boundaries are less grid–like.
-     */
-
-    private BiomeTransitionResult[][] computeBiomeMatrixForChunk(int chunkX, int chunkY) {
-        Vector2 key = new Vector2(chunkX, chunkY);
-        if (chunkBiomeCache.containsKey(key)) {
-            return chunkBiomeCache.get(key);
-        }
-        int size = Chunk.CHUNK_SIZE; // e.g., 16
-        // Create one sample per tile boundary (thus, size+1 samples)
-        int outWidth = size + 1;
-        int outHeight = size + 1;
-        BiomeTransitionResult[][] matrix = new BiomeTransitionResult[outWidth][outHeight];
-        float baseWorldX = chunkX * size * World.TILE_SIZE;
-        float baseWorldY = chunkY * size * World.TILE_SIZE;
-        for (int bx = 0; bx < outWidth; bx++) {
-            for (int by = 0; by < outHeight; by++) {
-                float gridSampleX = baseWorldX + bx * World.TILE_SIZE;
-                float gridSampleY = baseWorldY + by * World.TILE_SIZE;
-                // (Optionally, you can adjust or reduce jitter for smoother results.)
-                float jitterX = (float) (OpenSimplex2.noise2(baseSeed + 123, gridSampleX * 0.01f, gridSampleY * 0.01f)
-                    * (World.TILE_SIZE * BIOME_JITTER_FACTOR));
-                float jitterY = (float) (OpenSimplex2.noise2(baseSeed + 456, gridSampleX * 0.01f, gridSampleY * 0.01f)
-                    * (World.TILE_SIZE * BIOME_JITTER_FACTOR));
-                float sampleX = gridSampleX + jitterX;
-                float sampleY = gridSampleY + jitterY;
-                matrix[bx][by] = fallbackNoiseBiome(sampleX, sampleY);
-            }
-        }
-        chunkBiomeCache.put(key, matrix);
-        return matrix;
-    }
-
-    /**
-     * A more advanced blend that aggregates contributions from a 4x4 neighborhood.
-     * This version uses a quintic smoothstep for weighting and blends multiple biomes.
-     */
-    private static BiomeTransitionResult enhancedBlendBiomeSamples(BiomeTransitionResult[][] matrix, float gx, float gy) {
-        int gridWidth = matrix.length;
-        int gridHeight = matrix[0].length;
-        int ix = MathUtils.floor(gx);
-        int iy = MathUtils.floor(gy);
-
-        // Use a 4x4 neighborhood (from ix-1 to ix+2 and similarly for y)
-        Map<Biome, Float> contributions = new HashMap<>();
-        for (int i = Math.max(0, ix - 1); i < Math.min(gridWidth, ix + 3); i++) {
-            // Weight based on distance – use quintic smoothstep for even smoother interpolation.
-            float wx = quinticSmoothStep(1f - Math.abs(gx - i));
-            for (int j = Math.max(0, iy - 1); j < Math.min(gridHeight, iy + 3); j++) {
-                float wy = quinticSmoothStep(1f - Math.abs(gy - j));
-                float weight = wx * wy;
-                BiomeTransitionResult sample = matrix[i][j];
-                if (sample == null) continue;
-                // Each sample “votes” for its primary biome weighted by its transition factor…
-                contributions.merge(sample.getPrimaryBiome(), weight * sample.getTransitionFactor(), Float::sum);
-                // …and for its secondary biome weighted by (1 - transition factor), if available.
-                if (sample.getSecondaryBiome() != null) {
-                    contributions.merge(sample.getSecondaryBiome(), weight * (1f - sample.getTransitionFactor()), Float::sum);
-                }
-            }
-        }
-
-        // Determine dominant biome and compute a blended transition factor.
-        Biome dominant = null;
-        float dominantWeight = 0f;
-        for (Map.Entry<Biome, Float> entry : contributions.entrySet()) {
-            if (entry.getValue() > dominantWeight) {
-                dominant = entry.getKey();
-                dominantWeight = entry.getValue();
-            }
-        }
-        // Compute total weight.
-        float totalWeight = 0f;
-        for (float w : contributions.values()) {
-            totalWeight += w;
-        }
-        // Calculate a smooth blend value.
-        float rawBlend = dominantWeight / totalWeight;
-        float smoothBlend = quinticSmoothStep(rawBlend);
-
-        // Optionally, pick a secondary biome (the next highest contribution) if available.
-        Biome secondary = null;
-        float secondaryWeight = 0f;
-        for (Map.Entry<Biome, Float> entry : contributions.entrySet()) {
-            if (!entry.getKey().equals(dominant) && entry.getValue() > secondaryWeight) {
-                secondary = entry.getKey();
-                secondaryWeight = entry.getValue();
-            }
-        }
-
-        return new BiomeTransitionResult(dominant, secondary, smoothBlend);
-    }
-
-
-    private static float cubicWeight(float x) {
-        x = Math.abs(x);
-        if (x <= 1) {
-            return (1.5f * x * x * x) - (2.5f * x * x) + 1;
-        } else if (x < 2) {
-            return (-0.5f * x * x * x) + (2.5f * x * x) - (4 * x) + 2;
-        } else {
-            return 0f;
-        }
-    }
-    /**
-     * Fallback method: computes a biome transition result at (worldX, worldY) using a domain–warped noise approach
-     * and a set of Voronoi sites. (This is used both for each low–res sample and when no chunk exists.)
-     */
-    private BiomeTransitionResult fallbackNoiseBiome(float worldX, float worldY) {
-        if (biomeSites.isEmpty()) {
-            GameLogger.error("BiomeManager: biomeSites is empty! Falling back to PLAINS.");
-            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
-        }
-        float[] warped = NoiseUtil.multiLayerDomainWarp(worldX, worldY, warpSeed);
-        float wx = warped[0];
-        float wy = warped[1];
-        // Find the two nearest Voronoi sites.
-        BiomeSite nearest = null, secondNearest = null;
-        double nearestDist = Double.MAX_VALUE, secondDist = Double.MAX_VALUE;
-        for (BiomeSite site : biomeSites) {
-            double dx = wx - site.x;
-            double dy = wy - site.y;
-            double distSq = dx * dx + dy * dy;
-            if (distSq < nearestDist) {
-                secondNearest = nearest;
-                secondDist = nearestDist;
-                nearest = site;
-                nearestDist = distSq;
-            } else if (distSq < secondDist) {
-                secondNearest = site;
-                secondDist = distSq;
-            }
-        }
-        if (nearest == null) {
-            GameLogger.error("Fallback biome: no nearest site found. Using PLAINS.");
-            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
-        }
-        if (secondNearest == null) {
-            return new BiomeTransitionResult(getBiome(nearest.biomeType), null, 1f);
-        }
-        float d1 = (float) Math.sqrt(nearestDist);
-        float d2 = (float) Math.sqrt(secondDist);
-        if (d2 < 1e-5f) {
-            return new BiomeTransitionResult(getBiome(nearest.biomeType), null, 1f);
-        }
-        // Compute a normalized blend value (raw between 0 and 1) then smooth it.
-        float raw = 1f - (d1 / d2);
-        float t = smoothStep(MathUtils.clamp((raw - 0.45f) / 0.1f, 0f, 1f));
-        return new BiomeTransitionResult(getBiome(nearest.biomeType), getBiome(secondNearest.biomeType), t);
-    }
-
-    /**
-     * A standard smoothstep interpolation (t*t*(3-2*t)).
-     */
     private static float smoothStep(float t) {
         return t * t * (3f - 2f * t);
     }
 
-    // -------------------------------
-    // Biome Type Determination (Delegated)
-    // -------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. PUBLIC BIOME SAMPLING
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Determines the biome type based on temperature, moisture, and additional noise.
-     */
-    private BiomeType determineBiomeType(double temperature, double moisture) {
-        return BiomeClassifier.determineBiomeType(temperature, moisture, detailSeed, mountainSeed);
+    public void setBaseSeed(long baseSeed) {
+        this.baseSeed = baseSeed;
     }
 
-    // -------------------------------
-    // JSON Loading and Default Biomes
-    // -------------------------------
+    public BiomeTransitionResult getBiomeAt(float worldX, float worldY) {
+        float[] warped = domainWarp(worldX, worldY);
+        return getBiomeFromAlreadyWarped(warped[0], warped[1]);
+    }
+
+    /**
+     * Called when we already have "warped" coordinates.
+     * Checks nearest island => ocean or beach or land => if land => do landBiomeVoronoi.
+     */
+    public BiomeTransitionResult getBiomeFromAlreadyWarped(float wx, float wy) {
+        Island isl = findClosestIsland(wx, wy);
+        if (isl == null) {
+            // No island found – return ocean.
+            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
+        }
+        // Distance from island center
+        float dx = wx - isl.centerX;
+        float dy = wy - isl.centerY;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+
+        // Compute angle and distortion value.
+        float angle = MathUtils.atan2(dy, dx);
+        float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
+        distort = Math.max(0f, distort);
+
+        // Increase island size and reduce noise impact.
+        float newExpandFactor = 1.3f;
+        float reducedFactor = 0.1f;
+        float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
+
+        // Use a 10% beach band (you might adjust this percentage for smoother transitions)
+        float beachBand = effectiveRadius * 0.1f;
+        float innerThreshold = effectiveRadius - (beachBand * 0.5f);
+        float outerThreshold = effectiveRadius + (beachBand * 0.5f);
+
+        if (dist < innerThreshold) {
+            // Deep inside the island – use the land biome (via the Voronoi method)
+            return landBiomeVoronoi(wx, wy);
+        } else if (dist > outerThreshold) {
+            // Outside the island – pure ocean
+            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
+        } else {
+            // In the beach band: blend from beach to ocean
+            float rawT = (dist - innerThreshold) / (outerThreshold - innerThreshold);
+            float t = smoothStep(rawT);
+            return new BiomeTransitionResult(getBiome(BiomeType.BEACH), getBiome(BiomeType.OCEAN), t);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 4. BIOME CLASSIFICATION & VORONOI
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * For AI spawns or players: find a "safe spawn" on an island interior (not too close
+     * to water), checking passable tiles.
+     */
+    public Vector2 findSafeSpawnLocation(World world, Random rng) {
+        if (islandSites.isEmpty()) {
+            GameLogger.error("No islands found; defaulting spawn to (0,0)");
+            return new Vector2(0, 0);
+        }
+        int maxAttempts = 200;
+        Island isl = islandSites.get(rng.nextInt(islandSites.size()));
+        float margin = 100f;
+        float safeRange = Math.max(isl.radius - margin, 20f);
+
+        for (int i = 0; i < maxAttempts; i++) {
+            float angle = rng.nextFloat() * MathUtils.PI2;
+            float dist = rng.nextFloat() * safeRange;
+            float candX = isl.centerX + MathUtils.cos(angle) * dist;
+            float candY = isl.centerY + MathUtils.sin(angle) * dist;
+
+            int tileX = MathUtils.floor(candX / World.TILE_SIZE);
+            int tileY = MathUtils.floor(candY / World.TILE_SIZE);
+
+            if (world.isWithinWorldBounds(tileX, tileY) && world.isPassable(tileX, tileY)) {
+                return new Vector2(tileX, tileY);
+            }
+        }
+        // fallback
+        GameLogger.error("Failed to find safe island spawn; use center");
+        int cx = MathUtils.floor(isl.centerX / World.TILE_SIZE);
+        int cy = MathUtils.floor(isl.centerY / World.TILE_SIZE);
+        if (!world.isWithinWorldBounds(cx, cy)) {
+            return new Vector2(0, 0);
+        }
+        return new Vector2(cx, cy);
+    }
+
+    /**
+     * If the tile is land, we do a Voronoi approach: find the nearest & second–nearest site,
+     * then do a blending factor. That site has a base temperature & moisture offset.
+     * Then we pass them to the BiomeClassifier => final BiomeType
+     */
+    public BiomeTransitionResult landBiomeVoronoi(float wx, float wy) {
+        BiomeSite nearest = null;
+        BiomeSite second = null;
+        double ndist = Double.MAX_VALUE, sdist = Double.MAX_VALUE;
+
+        for (BiomeSite site : biomeSites) {
+            double dx = wx - site.x;
+            double dy = wy - site.y;
+            double dist2 = dx * dx + dy * dy;
+            if (dist2 < ndist) {
+                second = nearest;
+                sdist = ndist;
+                nearest = site;
+                ndist = dist2;
+            } else if (dist2 < sdist) {
+                second = site;
+                sdist = dist2;
+            }
+        }
+        if (nearest == null) {
+            return new BiomeTransitionResult(
+                getBiome(BiomeType.PLAINS), null, 1f
+            );
+        }
+        if (second == null) {
+            // single site
+            Biome b = classifySiteToBiome(nearest, wx, wy);
+            return new BiomeTransitionResult(b, null, 1f);
+        }
+
+        // Dist ratio
+        float d1 = (float) Math.sqrt(ndist);
+        float d2 = (float) Math.sqrt(sdist);
+        if (d2 < 1e-6f) {
+            Biome b = classifySiteToBiome(nearest, wx, wy);
+            return new BiomeTransitionResult(b, null, 1f);
+        }
+        float raw = 1f - (d1 / d2);
+        float t = smoothStep(MathUtils.clamp((raw - 0.4f) / 0.15f, 0f, 1f));
+
+        // Then pick biome from each site
+        Biome bA = classifySiteToBiome(nearest, wx, wy);
+        Biome bB = classifySiteToBiome(second, wx, wy);
+
+        return new BiomeTransitionResult(bA, bB, t);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 5. NOISE & WARP UTILS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Given a BiomeSite (which has a base "tempOffset" & "moistOffset") and our
+     * "global" temperature & moisture fields, we produce the final biome.
+     */
+    private Biome classifySiteToBiome(BiomeSite site, float wx, float wy) {
+        double baseTemp = (OpenSimplex2.noise2(temperatureSeed, wx * TEMPERATURE_SCALE, wy * TEMPERATURE_SCALE) + 1) / 2.0;
+        double baseMoist = (OpenSimplex2.noise2(moistureSeed, wx * MOISTURE_SCALE, wy * MOISTURE_SCALE) + 1) / 2.0;
+        double temp = Math.min(Math.max(0, baseTemp + site.tempOffset), 1);
+        double moist = Math.min(Math.max(0, baseMoist + site.moistOffset), 1);
+        BiomeType type = BiomeClassifier.determineBiomeType(temp, moist, detailSeed, site.siteDetail);
+        return getBiome(type);
+    }
+
+    public long getWarpSeed() {
+        return warpSeed;
+    }
+
+    /**
+     * Single domain warp call that uses the two frequencies & amplitudes above.
+     */
+    public float[] domainWarp(float x, float y) {
+        float dx1 = (float) OpenSimplex2.noise2(warpSeed, x * FREQ_WARP_1, y * FREQ_WARP_1) * AMP_WARP_1;
+        float dy1 = (float) OpenSimplex2.noise2(warpSeed + 1337, x * FREQ_WARP_1, y * FREQ_WARP_1) * AMP_WARP_1;
+        float wx1 = x + dx1;
+        float wy1 = y + dy1;
+
+        float dx2 = (float) OpenSimplex2.noise2(warpSeed + 999, wx1 * FREQ_WARP_2, wy1 * FREQ_WARP_2) * AMP_WARP_2;
+        float dy2 = (float) OpenSimplex2.noise2(warpSeed + 1999, wx1 * FREQ_WARP_2, wy1 * FREQ_WARP_2) * AMP_WARP_2;
+
+        return new float[]{wx1 + dx2, wy1 + dy2};
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 6. ISLANDS, BIOME SITES, RANDOM GENERATION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * We scatter random Voronoi "sites" across the world. Each site also gets
+     * a random offset for temperature & moisture, plus a detail seed for local variation.
+     */
+    private void generateBiomeSites(long seed) {
+        biomeSites.clear();
+        Random rng = new Random(seed ^ 0xDEADBEEFL);
+
+        for (int i = 0; i < NUM_BIOME_SITES; i++) {
+            float x = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
+            float y = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
+
+            // random temp & moisture offset in range [-0.15..+0.15], for example
+            double tOff = (rng.nextFloat() - 0.5) * 0.3;
+            double mOff = (rng.nextFloat() - 0.5) * 0.3;
+
+            long detail = rng.nextLong();
+
+            BiomeSite site = new BiomeSite(x, y, tOff, mOff, detail);
+            biomeSites.add(site);
+        }
+        GameLogger.info("BiomeManager => created " + biomeSites.size() + " Voronoi sites.");
+    }
+
+    private void generateRandomIslands(long seed) {
+        islandSites.clear();
+        Random rng = new Random(seed ^ 0xBEEF9876L);
+        float regionSize = WORLD_RADIUS * 0.85f;
+        for (int i = 0; i < ISLAND_COUNT; i++) {
+            float cx = -regionSize + rng.nextFloat() * (2 * regionSize);
+            float cy = -regionSize + rng.nextFloat() * (2 * regionSize);
+            float r = ISLAND_MIN_RADIUS + rng.nextFloat() * (ISLAND_MAX_RADIUS - ISLAND_MIN_RADIUS);
+            long islandSeed = rng.nextLong();
+            Island isl = new Island(cx, cy, r, islandSeed);
+            islandSites.add(isl);
+        }
+        // FIX: Always add a central island so that the spawn area is on land.
+        Island centerIsland = new Island(0, 0, ISLAND_MAX_RADIUS, baseSeed);
+        islandSites.add(centerIsland);
+
+        GameLogger.info("Created " + islandSites.size() + " island sites (including central island).");
+    }
+
+    public Island findClosestIsland(float wx, float wy) {
+        Island best = null;
+        float bestDist = Float.MAX_VALUE;
+        for (Island isl : islandSites) {
+            float dx = wx - isl.centerX;
+            float dy = wy - isl.centerY;
+            float dd = dx * dx + dy * dy;
+            if (dd < bestDist) {
+                bestDist = dd;
+                best = isl;
+            }
+        }
+        return best;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 7. CHUNK BIOME SAMPLING (Optional Cache)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * If you want a low–res matrix of BiomeTransitionResult for each tile corner in the chunk.
+     * This helps you do fancy multi–tile transitions, but is optional. Called by UnifiedWorldGenerator or something.
+     */
+    public BiomeTransitionResult[][] computeBiomeMatrixForChunk(int chunkX, int chunkY) {
+        Vector2 key = new Vector2(chunkX, chunkY);
+        if (chunkBiomeCache.containsKey(key)) {
+            return chunkBiomeCache.get(key);
+        }
+
+        int size = Chunk.CHUNK_SIZE;
+        int outW = size + 1;  // sample corners
+        int outH = size + 1;
+        BiomeTransitionResult[][] matrix = new BiomeTransitionResult[outW][outH];
+
+        float baseWX = chunkX * size * World.TILE_SIZE;
+        float baseWY = chunkY * size * World.TILE_SIZE;
+        for (int bx = 0; bx < outW; bx++) {
+            for (int by = 0; by < outH; by++) {
+                float fx = baseWX + bx * World.TILE_SIZE;
+                float fy = baseWY + by * World.TILE_SIZE;
+
+                // Single warp:
+                float[] warped = domainWarp(fx, fy);
+
+                matrix[bx][by] = getBiomeFromAlreadyWarped(warped[0], warped[1]);
+            }
+        }
+
+        chunkBiomeCache.put(key, matrix);
+        return matrix;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 8. ACCESSORS & JSON LOADING
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Return a final Biome object for a given BiomeType, fallback if missing.
+     */
+    public Biome getBiome(BiomeType type) {
+        Biome b = biomes.get(type);
+        if (b == null) {
+            GameLogger.error("Biome data missing for " + type + ", fallback to PLAINS");
+            return biomes.get(BiomeType.PLAINS);
+        }
+        return b;
+    }
+
+    /**
+     * Loads (or defaults) the set of known biomes from your "Data/biomes.json".
+     * That JSON presumably includes tile distributions, spawnable objects, etc.
+     */
     private void loadBiomesFromJson() {
         try {
-            String jsonContent = GameFileSystem.getInstance().getDelegate().readString("Data/biomes.json");
-            if (jsonContent == null) {
+            String content = GameFileSystem.getInstance().getDelegate().readString("Data/biomes.json");
+            if (content == null) {
                 initializeDefaultBiomes();
                 return;
             }
             JsonParser parser = new JsonParser();
-            JsonArray biomesArray = parser.parse(jsonContent).getAsJsonArray();
-            for (JsonElement element : biomesArray) {
-                JsonObject biomeObject = element.getAsJsonObject();
-                BiomeData data = parseBiomeData(biomeObject);
+            JsonArray arr = parser.parse(content).getAsJsonArray();
+            for (JsonElement elem : arr) {
+                JsonObject obj = elem.getAsJsonObject();
+                BiomeData data = parseBiomeData(obj);
                 if (validateBiomeData(data)) {
-                    Biome biome = createBiomeFromData(data);
-                    biomes.put(biome.getType(), biome);
+                    Biome b = createBiomeFromData(data);
+                    biomes.put(b.getType(), b);
                 } else {
-                    GameLogger.error("Invalid biome data for: " + data.getName());
+                    GameLogger.error("Invalid biome data => " + data.getName());
                 }
             }
         } catch (Exception e) {
-            GameLogger.error("Failed to load biomes: " + e.getMessage());
+            GameLogger.error("BiomeManager => failed to load JSON => " + e.getMessage());
             initializeDefaultBiomes();
         }
     }
 
+    /**
+     * If no valid JSON is found, create some basic fallback.
+     */
+    private void initializeDefaultBiomes() {
+        // We'll define some basic ones: OCEAN, BEACH, PLAINS, FOREST, DESERT, SNOW, RAIN_FOREST, etc.
+
+        if (!biomes.containsKey(BiomeType.OCEAN)) {
+            Biome ocean = new Biome("Ocean", BiomeType.OCEAN);
+            /* watery tile IDs */
+            ocean.setAllowedTileTypes(List.of());
+            ocean.getTileDistribution().put(TileType.WATER, 100);
+            biomes.put(BiomeType.OCEAN, ocean);
+        }
+        if (!biomes.containsKey(BiomeType.BEACH)) {
+            Biome beach = new Biome("Beach", BiomeType.BEACH);
+            /* beach sand IDs*/
+            beach.setAllowedTileTypes(List.of());
+            beach.getTileDistribution().put(TileType.BEACH_SAND, 100);
+            biomes.put(BiomeType.BEACH, beach);
+        }
+        // Then add PLains, Forest, Desert, Snow, etc. as needed
+        // ...
+        GameLogger.info("Default fallback biomes have been created");
+    }
+
     private BiomeData parseBiomeData(JsonObject json) {
         BiomeData data = new BiomeData();
+
+        // name & type
         data.setName(json.get("name").getAsString());
         data.setType(json.get("type").getAsString());
-        JsonArray allowedTypes = json.getAsJsonArray("allowedTileTypes");
-        List<Integer> tileTypes = new ArrayList<>();
-        for (JsonElement type : allowedTypes) {
-            tileTypes.add(type.getAsInt());
+
+        // allowed tile types
+        List<Integer> atypes = new ArrayList<>();
+        if (json.has("allowedTileTypes")) {
+            JsonArray arr = json.getAsJsonArray("allowedTileTypes");
+            for (JsonElement e : arr) {
+                atypes.add(e.getAsInt());
+            }
         }
-        data.setAllowedTileTypes(tileTypes);
-        JsonObject distObject = json.getAsJsonObject("tileDistribution");
-        Map<Integer, Integer> distribution = new HashMap<>();
-        double total = 0;
-        for (Map.Entry<String, JsonElement> entry : distObject.entrySet()) {
-            int tileType = Integer.parseInt(entry.getKey());
-            double weight = entry.getValue().getAsDouble();
-            distribution.put(tileType, (int) Math.round(weight));
-            total += weight;
+        data.setAllowedTileTypes(atypes);
+
+        // tileDistribution
+        if (json.has("tileDistribution")) {
+            JsonObject distObj = json.getAsJsonObject("tileDistribution");
+            Map<Integer, Integer> dist = new HashMap<>();
+            double sum = 0.0;
+            for (Map.Entry<String, JsonElement> en : distObj.entrySet()) {
+                int tid = Integer.parseInt(en.getKey());
+                double w = en.getValue().getAsDouble();
+                dist.put(tid, (int) Math.round(w));
+                sum += w;
+            }
+            data.setTileDistribution(dist);
         }
+
+        // transitionTileTypes
+        if (json.has("transitionTileTypes")) {
+            JsonObject trans = json.getAsJsonObject("transitionTileTypes");
+            Map<Integer, Integer> tdist = new HashMap<>();
+            for (Map.Entry<String, JsonElement> en : trans.entrySet()) {
+                int tid = Integer.parseInt(en.getKey());
+                double w = en.getValue().getAsDouble();
+                tdist.put(tid, (int) Math.round(w));
+            }
+            data.setTransitionTileDistribution(tdist);
+        }
+
+        // spawnableObjects
         if (json.has("spawnableObjects")) {
-            List<String> spawnable = new ArrayList<>();
-            JsonArray array = json.getAsJsonArray("spawnableObjects");
-            for (JsonElement element : array) {
-                spawnable.add(element.getAsString());
+            JsonArray arr = json.getAsJsonArray("spawnableObjects");
+            List<String> sObjs = new ArrayList<>();
+            for (JsonElement e : arr) {
+                sObjs.add(e.getAsString());
             }
-            data.setSpawnableObjects(spawnable);
+            data.setSpawnableObjects(sObjs);
         }
+
+        // spawnChances
         if (json.has("spawnChances")) {
-            Map<String, Double> chances = new HashMap<>();
-            JsonObject chancesObj = json.getAsJsonObject("spawnChances");
-            for (Map.Entry<String, JsonElement> entry : chancesObj.entrySet()) {
-                chances.put(entry.getKey(), entry.getValue().getAsDouble());
+            JsonObject cobj = json.getAsJsonObject("spawnChances");
+            Map<String, Double> sc = new HashMap<>();
+            for (Map.Entry<String, JsonElement> e : cobj.entrySet()) {
+                sc.put(e.getKey(), e.getValue().getAsDouble());
             }
-            data.setSpawnChances(chances);
+            data.setSpawnChances(sc);
         }
-        if (Math.abs(total - 100.0) > 0.01) {
-            GameLogger.error("Tile distribution does not sum to 100% for biome: " + data.getName());
-            distribution = getDefaultDistribution(BiomeType.valueOf(data.getType()));
-        }
-        data.setTileDistribution(distribution);
+
+        data.validate();
         return data;
     }
 
     private boolean validateBiomeData(BiomeData data) {
         if (data.getName() == null || data.getType() == null) return false;
-        if (data.getAllowedTileTypes() == null || data.getAllowedTileTypes().isEmpty()) return false;
-        Map<Integer, Integer> dist = data.getTileDistribution();
-        if (dist == null || dist.isEmpty()) return false;
-        double total = dist.values().stream().mapToDouble(Integer::intValue).sum();
-        return Math.abs(total - 100.0) < 0.01;
+        if (data.getAllowedTileTypes().isEmpty()) return false;
+        return !data.getTileDistribution().isEmpty();
     }
 
     private Biome createBiomeFromData(BiomeData data) {
-        Biome biome = new Biome(data.getName(), BiomeType.valueOf(data.getType()));
-        biome.setAllowedTileTypes(data.getAllowedTileTypes());
-        biome.setTileDistribution(data.getTileDistribution());
+        BiomeType btype = BiomeType.valueOf(data.getType());
+        Biome b = new Biome(data.getName(), btype);
+        b.setAllowedTileTypes(data.getAllowedTileTypes());
+        b.setTileDistribution(data.getTileDistribution());
+        b.setTransitionTileDistribution(data.getTransitionTileDistribution());
         if (data.getSpawnableObjects() != null) {
-            biome.loadSpawnableObjects(data.getSpawnableObjects());
+            b.loadSpawnableObjects(data.getSpawnableObjects());
         }
         if (data.getSpawnChances() != null) {
-            biome.loadSpawnChances(data.getSpawnChances());
+            b.loadSpawnChances(data.getSpawnChances());
         }
-        return biome;
+        return b;
     }
 
-    private Map<Integer, Integer> getDefaultDistribution(BiomeType type) {
-        Map<Integer, Integer> dist = new HashMap<>();
-        switch (type) {
-            case DESERT:
-                dist.put(16, 70);
-                dist.put(2, 20);
-                dist.put(1, 10);
-                break;
-            case SNOW:
-                dist.put(4, 70);
-                dist.put(1, 20);
-                dist.put(3, 10);
-                break;
-            case HAUNTED:
-                dist.put(8, 70);
-                dist.put(2, 20);
-                dist.put(3, 10);
-                break;
-            default:
-                dist.put(1, 70);
-                dist.put(2, 20);
-                dist.put(3, 10);
-        }
-        return dist;
-    }
-
-    private void initializeDefaultBiomes() {
-        if (!biomes.containsKey(BiomeType.PLAINS)) {
-            Biome plains = new Biome("Plains", BiomeType.PLAINS);
-            plains.setAllowedTileTypes(Arrays.asList(1, 2, 3));
-            plains.getTileDistribution().put(1, 70);
-            plains.getTileDistribution().put(2, 20);
-            plains.getTileDistribution().put(3, 10);
-            biomes.put(BiomeType.PLAINS, plains);
-        }
-        if (!biomes.containsKey(BiomeType.FOREST)) {
-            Biome forest = new Biome("Forest", BiomeType.FOREST);
-            forest.setAllowedTileTypes(Arrays.asList(1, 2, 3));
-            forest.getTileDistribution().put(1, 60);
-            forest.getTileDistribution().put(2, 30);
-            forest.getTileDistribution().put(3, 10);
-            biomes.put(BiomeType.FOREST, forest);
-        }
-        BiomeType[] requiredTypes = {BiomeType.SNOW, BiomeType.DESERT, BiomeType.HAUNTED};
-        for (BiomeType type : requiredTypes) {
-            if (!biomes.containsKey(type)) {
-                Biome biome = new Biome(type.name(), type);
-                biome.setAllowedTileTypes(Arrays.asList(1, 2, 3));
-                biome.getTileDistribution().put(1, 80);
-                biome.getTileDistribution().put(2, 15);
-                biome.getTileDistribution().put(3, 5);
-                biomes.put(type, biome);
-            }
-        }
-        GameLogger.info("Default biomes initialized");
-    }
-
-    public Biome getBiome(BiomeType type) {
-        Biome biome = biomes.get(type);
-        if (biome == null) {
-            GameLogger.error("Missing biome type: " + type + ", falling back to PLAINS");
-            return biomes.get(BiomeType.PLAINS);
-        }
-        return biome;
-    }
-
-    // -------------------------------
-    // Debug Methods (Optional)
-    // -------------------------------
-    public void debugBiomeDistribution(int samples) {
-        Map<BiomeType, Integer> distribution = new HashMap<>();
-        Random random = new Random(baseSeed);
-        for (int i = 0; i < samples; i++) {
-            float x = random.nextFloat() * 1000;
-            float y = random.nextFloat() * 1000;
-            BiomeTransitionResult result = getBiomeAt(x, y);
-            BiomeType type = result.getPrimaryBiome().getType();
-            distribution.merge(type, 1, Integer::sum);
-        }
-        GameLogger.info("=== Biome Distribution Analysis ===");
-        GameLogger.info("Samples: " + samples);
-        GameLogger.info("World Seed: " + baseSeed);
-        for (Map.Entry<BiomeType, Integer> entry : distribution.entrySet()) {
-            double percentage = (entry.getValue() * 100.0) / samples;
-            GameLogger.info(String.format("%s: %d occurrences (%.2f%%)", entry.getKey(), entry.getValue(), percentage));
-        }
-        GameLogger.info("===============================");
-    }
-
-    public void debugNoiseDistribution(int samples) {
-        GameLogger.info("=== Noise Distribution Analysis ===");
-        double minTemp = 1.0, maxTemp = 0.0, avgTemp = 0.0;
-        double minMoist = 1.0, maxMoist = 0.0, avgMoist = 0.0;
-        Random random = new Random(baseSeed);
-        for (int i = 0; i < samples; i++) {
-            float x = random.nextFloat() * 1000;
-            float y = random.nextFloat() * 1000;
-            double tempNoise = OpenSimplex2.noise2(temperatureSeed, x * TEMPERATURE_SCALE, y * TEMPERATURE_SCALE);
-            double moistNoise = OpenSimplex2.noise2(moistureSeed, x * MOISTURE_SCALE, y * MOISTURE_SCALE);
-            double temp = (tempNoise + 1.0) / 2.0;
-            double moist = (moistNoise + 1.0) / 2.0;
-            minTemp = Math.min(minTemp, temp);
-            maxTemp = Math.max(maxTemp, temp);
-            avgTemp += temp;
-            minMoist = Math.min(minMoist, moist);
-            maxMoist = Math.max(maxMoist, moist);
-            avgMoist += moist;
-        }
-        avgTemp /= samples;
-        avgMoist /= samples;
-        GameLogger.info(String.format("Temperature - Min: %.3f, Max: %.3f, Avg: %.3f", minTemp, maxTemp, avgTemp));
-        GameLogger.info(String.format("Moisture - Min: %.3f, Max: %.3f, Avg: %.3f", minMoist, maxMoist, avgMoist));
-        GameLogger.info("===============================");
-    }
-
-    // -------------------------------
-    // Inner Classes
-    // -------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // 9. HELPER CLASSES
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Encapsulates noise and domain–warping utilities.
+     * Our random island definition.
      */
-    private static class NoiseUtil {
+    public static class Island {
+        public float centerX, centerY, radius;
+        public long seed;
 
-        /**
-         * Applies several passes of noise–based warping to (x,y).
-         */
-        public static float[] domainWarp(float x, float y, long warpSeed) {
-            float[] warped = new float[]{x, y};
-            float amplitude = WARP_STRENGTH;
-            float frequency = WARP_SCALE;
-            for (int i = 0; i < 3; i++) {
-                float warpX = (float) OpenSimplex2.noise2(warpSeed + i, warped[0] * frequency, warped[1] * frequency) * amplitude;
-                float warpY = (float) OpenSimplex2.noise2(warpSeed + i + 1000, warped[0] * frequency, warped[1] * frequency) * amplitude;
-                warped[0] += warpX;
-                warped[1] += warpY;
-                amplitude *= 0.5f;
-                frequency *= 1.8f;
-            }
-            return warped;
-        }
-
-        /**
-         * Applies an additional multi–layer warping pass.
-         */
-        public static float[] multiLayerDomainWarp(float x, float y, long warpSeed) {
-            float[] warp = domainWarp(x, y, warpSeed);
-            float amplitude2 = WARP_STRENGTH * 0.35f;
-            float frequency2 = WARP_SCALE * 2.0f;
-            float wx = warp[0];
-            float wy = warp[1];
-            for (int i = 0; i < 2; i++) {
-                float warpX = (float) OpenSimplex2.noise2(warpSeed + 999 + i, wx * frequency2, wy * frequency2) * amplitude2;
-                float warpY = (float) OpenSimplex2.noise2(warpSeed + 1999 + i, wx * frequency2, wy * frequency2) * amplitude2;
-                wx += warpX;
-                wy += warpY;
-                amplitude2 *= 0.55f;
-                frequency2 *= 1.8f;
-            }
-            float amplitude3 = WARP_STRENGTH * 0.1f;
-            float frequency3 = WARP_SCALE * 4.0f;
-            wx += (float) OpenSimplex2.noise2(warpSeed + 3000, wx * frequency3, wy * frequency3) * amplitude3;
-            wy += (float) OpenSimplex2.noise2(warpSeed + 4000, wx * frequency3, wy * frequency3) * amplitude3;
-            return new float[]{wx, wy};
+        public Island(float x, float y, float r, long s) {
+            centerX = x;
+            centerY = y;
+            radius = r;
+            seed = s;
         }
     }
 
     /**
-     * Encapsulates biome classification logic based on temperature, moisture, and noise.
-     */
-    private static class BiomeClassifier {
-
-        public static BiomeType determineBiomeType(double temperature, double moisture, long detailSeed, long mountainSeed) {
-            // Introduce a slight regional variation.
-            double regionalVar = OpenSimplex2.noise2(detailSeed + 3000, temperature * 2, moisture * 2) * 0.05;
-            double adjustedTemp = temperature + regionalVar;
-            double adjustedMoist = moisture + regionalVar;
-            if (shouldGenerateRuins(adjustedTemp, adjustedMoist, detailSeed)) {
-                return BiomeType.RUINS;
-            }
-            BiomeType chosen;
-            if (adjustedTemp < COLD_THRESHOLD) {
-                chosen = determineColderBiomes(adjustedMoist, detailSeed);
-            } else if (adjustedTemp > HOT_THRESHOLD) {
-                chosen = determineHotterBiomes(adjustedMoist, detailSeed);
-            } else {
-                chosen = determineTemperateBiomes(adjustedTemp, adjustedMoist, detailSeed);
-            }
-            double mountainNoise = OpenSimplex2.noise2(mountainSeed, adjustedTemp * 5, adjustedMoist * 5);
-            if (shouldGenerateMountains(adjustedTemp, adjustedMoist, mountainNoise, mountainSeed)) {
-                chosen = BiomeType.BIG_MOUNTAINS;
-            }
-            return chosen;
-        }
-
-        private static boolean shouldGenerateRuins(double temp, double moist, long detailSeed) {
-            boolean moderate = (temp > 0.3 && temp < 0.7 && moist > 0.3 && moist < 0.7);
-            if (!moderate) return false;
-            double ruinsNoise = OpenSimplex2.noise2(detailSeed + 2000, temp * 2, moist * 2);
-            double structureNoise = OpenSimplex2.noise2(detailSeed + 2500, temp * 4, moist * 4);
-            double historyNoise = OpenSimplex2.noise2(detailSeed + 3000, temp * 1.5, moist * 1.5);
-            double combined = ruinsNoise * 0.4 + structureNoise * 0.4 + historyNoise * 0.2;
-            return combined > RUINS_THRESHOLD;
-        }
-
-        private static BiomeType determineTemperateBiomes(double temp, double moist, long detailSeed) {
-            double variety = OpenSimplex2.noise2(detailSeed + 1000, temp * 3, moist * 3) * 0.5 + 0.5;
-            // Example: if moisture is high and the noise value is low, pick CHERRY_GROVE.
-            if (moist > WET_THRESHOLD && variety < 0.4) {
-                return BiomeType.CHERRY_GROVE;
-            } else if (moist > WET_THRESHOLD) {
-                return variety > 0.5 ? BiomeType.RAIN_FOREST : BiomeType.FOREST;
-            } else if (moist < DRY_THRESHOLD) {
-                return BiomeType.PLAINS;
-            }
-            return variety > 0.6 ? BiomeType.FOREST : (variety > 0.3 ? BiomeType.PLAINS : BiomeType.HAUNTED);
-        }
-
-
-        private static BiomeType determineColderBiomes(double moist, long detailSeed) {
-            double variety = OpenSimplex2.noise2(detailSeed + 3000, moist * 4, moist * 4) * 0.5 + 0.5;
-            if (moist > WET_THRESHOLD) {
-                return BiomeType.SNOW;
-            } else if (moist < DRY_THRESHOLD) {
-                return BiomeType.PLAINS;
-            }
-            return variety > 0.2 ? BiomeType.SNOW : BiomeType.HAUNTED;
-        }
-
-        private static BiomeType determineHotterBiomes(double moist, long detailSeed) {
-            if (moist < DRY_THRESHOLD) {
-                return BiomeType.DESERT;
-            } else if (moist > WET_THRESHOLD) {
-                return BiomeType.RAIN_FOREST;
-            }
-            double variety = OpenSimplex2.noise2(detailSeed + 2000, moist * 4, moist * 4) * 0.5 + 0.5;
-            return variety > 0.5 ? BiomeType.PLAINS : BiomeType.DESERT;
-        }
-
-        private static boolean shouldGenerateMountains(double temp, double moist, double mountainNoise, long mountainSeed) {
-            double mountainProb = (mountainNoise + 1.0) / 2.0;
-            if (temp < COLD_THRESHOLD) {
-                mountainProb *= 1.1;
-            }
-            if (moist > WET_THRESHOLD) {
-                mountainProb *= 1.1;
-            }
-            double ridge = Math.abs(OpenSimplex2.noise2(mountainSeed + 1000, temp * MOUNTAIN_RIDGE_SCALE, moist * MOUNTAIN_RIDGE_SCALE));
-            double detail = OpenSimplex2.noise2(mountainSeed + 2000, temp * MOUNTAIN_DETAIL_SCALE, moist * MOUNTAIN_DETAIL_SCALE);
-            double combined = mountainProb * 0.5 + ridge * 0.3 + Math.abs(detail) * 0.2;
-            return combined > MOUNTAIN_THRESHOLD;
-        }
-    }
-
-    /**
-     * Simple inner class to hold a Voronoi biome site.
+     * Voronoi "site" with random temperature & moisture offset + local detail seed.
      */
     private static class BiomeSite {
         public float x, y;
-        public BiomeType biomeType;
+        public double tempOffset, moistOffset;
+        public long siteDetail;
 
-        public BiomeSite(float x, float y, BiomeType type) {
+        public BiomeSite(float x, float y, double tOff, double mOff, long detail) {
             this.x = x;
             this.y = y;
-            this.biomeType = type;
+            this.tempOffset = tOff;
+            this.moistOffset = mOff;
+            this.siteDetail = detail;
         }
     }
 
     /**
-     * Picks a random biome type from the candidate list.
+     * Data structure for storing & reloading biome info.
      */
-    private BiomeType pickRandomBiomeType(Random rng) {
-        BiomeType[] candidates = {
-            BiomeType.PLAINS, BiomeType.DESERT, BiomeType.SNOW,
-            BiomeType.FOREST, BiomeType.RAIN_FOREST, BiomeType.HAUNTED,
-            BiomeType.RUINS, BiomeType.CHERRY_GROVE
-        };
-        return candidates[rng.nextInt(candidates.length)];
-    }
-
-
-    // -------------------------------
-    // Inner Classes for Data Serialization
-    // -------------------------------
     public static class BiomeData implements Serializable {
         private String name;
         private String type;
-        private ArrayList<Integer> allowedTileTypes;
-        private HashMap<Integer, Integer> tileDistribution;
-        private int chunkX;
-        private List<String> spawnableObjects;
-        private Map<String, Double> spawnChances;
-        private int chunkY;
-        private BiomeType primaryBiomeType;
-        private long lastModified;
+        private ArrayList<Integer> allowedTileTypes = new ArrayList<>();
+        private HashMap<Integer, Integer> tileDistribution = new HashMap<>();
+        private HashMap<Integer, Integer> transitionTileDistribution = new HashMap<>();
+        private List<String> spawnableObjects = new ArrayList<>();
+        private Map<String, Double> spawnChances = new HashMap<>();
 
-        public BiomeData() {
-            this.tileDistribution = new HashMap<>();
-            this.allowedTileTypes = new ArrayList<>();
-            this.spawnableObjects = new ArrayList<>();
-            this.spawnChances = new HashMap<>();
-        }
-
-        public int getChunkX() {
-            return chunkX;
-        }
-
-        public List<String> getSpawnableObjects() {
-            return spawnableObjects;
-        }
-
-        public void setSpawnableObjects(List<String> objects) {
-            this.spawnableObjects = objects;
-        }
-
-        public Map<String, Double> getSpawnChances() {
-            return spawnChances;
-        }
-
-        public void setSpawnChances(Map<String, Double> chances) {
-            this.spawnChances = chances;
-        }
-
-        public int getChunkY() {
-            return chunkY;
-        }
-
-        public long getLastModified() {
-            return lastModified;
+        public void validate() {
+            if (tileDistribution == null) tileDistribution = new HashMap<>();
+            if (transitionTileDistribution == null) transitionTileDistribution = new HashMap<>();
+            if (allowedTileTypes == null) allowedTileTypes = new ArrayList<>();
+            if (spawnableObjects == null) spawnableObjects = new ArrayList<>();
+            if (spawnChances == null) spawnChances = new HashMap<>();
         }
 
         public String getName() {
             return name;
         }
 
-        public void setName(String name) {
-            this.name = name;
+        public void setName(String n) {
+            name = n;
         }
 
         public String getType() {
             return type;
         }
 
-        public void setType(String type) {
-            this.type = type;
+        public void setType(String t) {
+            type = t;
         }
 
         public ArrayList<Integer> getAllowedTileTypes() {
             return allowedTileTypes;
         }
 
-        public void setAllowedTileTypes(List<Integer> types) {
-            if (types != null) {
-                this.allowedTileTypes.clear();
-                this.allowedTileTypes.addAll(types);
+        public void setAllowedTileTypes(List<Integer> t) {
+            if (t != null) {
+                allowedTileTypes.clear();
+                allowedTileTypes.addAll(t);
             }
         }
 
@@ -786,118 +633,110 @@ public class BiomeManager {
             return tileDistribution;
         }
 
-        public void setTileDistribution(Map<Integer, Integer> distribution) {
-            if (distribution != null) {
-                this.tileDistribution.clear();
-                this.tileDistribution.putAll(distribution);
+        public void setTileDistribution(Map<Integer, Integer> dist) {
+            if (dist != null) {
+                tileDistribution.clear();
+                tileDistribution.putAll(dist);
             }
         }
 
-        public BiomeType getPrimaryBiomeType() {
-            return primaryBiomeType;
+        public HashMap<Integer, Integer> getTransitionTileDistribution() {
+            return transitionTileDistribution;
         }
 
-        public void setPrimaryBiomeType(BiomeType type) {
-            this.primaryBiomeType = type;
+        public void setTransitionTileDistribution(Map<Integer, Integer> dist) {
+            if (dist != null) {
+                transitionTileDistribution.clear();
+                transitionTileDistribution.putAll(dist);
+            }
         }
 
-        public void validate() {
-            if (tileDistribution == null) tileDistribution = new HashMap<>();
-            if (allowedTileTypes == null) allowedTileTypes = new ArrayList<>();
-            if (spawnableObjects == null) spawnableObjects = new ArrayList<>();
-            if (spawnChances == null) spawnChances = new HashMap<>();
+        public List<String> getSpawnableObjects() {
+            return spawnableObjects;
+        }
+
+        public void setSpawnableObjects(List<String> s) {
+            spawnableObjects = s;
+        }
+
+        public Map<String, Double> getSpawnChances() {
+            return spawnChances;
+        }
+
+        public void setSpawnChances(Map<String, Double> c) {
+            spawnChances = c;
         }
     }
 
-    private static class BiomeDataTypeAdapter extends TypeAdapter<BiomeData> {
-        @Override
-        public void write(JsonWriter out, BiomeData value) throws IOException {
-            out.beginObject();
-            if (value.getName() != null) out.name("name").value(value.getName());
-            if (value.getType() != null) out.name("type").value(value.getType());
-            if (value.getAllowedTileTypes() != null && !value.getAllowedTileTypes().isEmpty()) {
-                out.name("allowedTileTypes");
-                out.beginArray();
-                for (Integer type : value.getAllowedTileTypes()) {
-                    if (type != null) out.value(type);
-                }
-                out.endArray();
-            }
-            if (value.getTileDistribution() != null && !value.getTileDistribution().isEmpty()) {
-                out.name("tileDistribution");
-                out.beginObject();
-                for (Map.Entry<Integer, Integer> entry : value.getTileDistribution().entrySet()) {
-                    if (entry.getKey() != null && entry.getValue() != null) {
-                        out.name(entry.getKey().toString()).value(entry.getValue());
-                    }
-                }
-                out.endObject();
-            }
-            if (value.getPrimaryBiomeType() != null) {
-                out.name("primaryBiomeType").value(value.getPrimaryBiomeType().name());
-            }
-            out.endObject();
-        }
+    // ─────────────────────────────────────────────────────────────────────────
+    // 10. BIOME CLASSIFIER FOR AAA–STYLE
+    // ─────────────────────────────────────────────────────────────────────────
 
-        @Override
-        public BiomeData read(JsonReader in) throws IOException {
-            BiomeData data = new BiomeData();
-            in.beginObject();
-            while (in.hasNext()) {
-                String fieldName = in.nextName();
-                try {
-                    switch (fieldName) {
-                        case "name":
-                            data.setName(in.nextString());
-                            break;
-                        case "type":
-                            data.setType(in.nextString());
-                            break;
-                        case "allowedTileTypes":
-                            in.beginArray();
-                            while (in.hasNext()) {
-                                try {
-                                    data.getAllowedTileTypes().add(in.nextInt());
-                                } catch (Exception e) {
-                                    in.skipValue();
-                                    GameLogger.error("Skipped invalid allowed tile type");
-                                }
-                            }
-                            in.endArray();
-                            break;
-                        case "tileDistribution":
-                            in.beginObject();
-                            while (in.hasNext()) {
-                                try {
-                                    String key = in.nextName();
-                                    int value = in.nextInt();
-                                    data.getTileDistribution().put(Integer.parseInt(key), value);
-                                } catch (Exception e) {
-                                    in.skipValue();
-                                    GameLogger.error("Skipped invalid tile distribution entry");
-                                }
-                            }
-                            in.endObject();
-                            break;
-                        case "primaryBiomeType":
-                            try {
-                                data.setPrimaryBiomeType(BiomeType.valueOf(in.nextString()));
-                            } catch (Exception e) {
-                                in.skipValue();
-                            }
-                            break;
-                        default:
-                            in.skipValue();
-                            break;
-                    }
-                } catch (Exception e) {
-                    GameLogger.error("Error parsing field " + fieldName + ": " + e.getMessage());
-                    in.skipValue();
+    private static class BiomeClassifier {
+        /**
+         * Example of a more “realistic” approach:
+         * - temp < 0.25 => "cold" => maybe snow, taiga, or haunted
+         * - temp > 0.75 => "hot" => maybe desert or badlands or rainforest
+         * - else => "temperate" => forest, plains, swamp, etc.
+         * - we might also do special "rare" or "ruins" checks
+         */
+        public static BiomeType determineBiomeType(double temperature, double moisture, long detailSeed, long siteDetail) {
+            // Incorporate local variation with additional noise
+            double localVar = OpenSimplex2.noise2(detailSeed ^ siteDetail, temperature * 5, moisture * 5) * 0.05;
+            double t = Math.min(Math.max(0, temperature + localVar), 1);
+            double m = Math.min(Math.max(0, moisture + localVar), 1);
+
+            // Rare ruins check: Only in a narrow moderate band with high noise threshold
+            if (t > 0.4 && t < 0.6 && m > 0.4 && m < 0.6) {
+                double ruinsNoise = OpenSimplex2.noise2(detailSeed ^ 12345, t * 10, m * 10);
+                if (ruinsNoise > 0.85) {
+                    return BiomeType.RUINS;
                 }
             }
-            in.endObject();
-            data.validate();
-            return data;
+
+            // Extremely cold regions: differentiate between SNOW and HAUNTED based on moisture
+            if (t < 0.15) {
+                if (m > 0.5) {
+                    return BiomeType.SNOW;    // Extremely cold and wet => SNOW
+                } else {
+                    return BiomeType.HAUNTED; // Extremely cold and very dry => HAUNTED
+                }
+            }
+
+            // Moderately cold regions: normally PLAINS, but add a rare haunted override in extreme dryness
+            if (t < 0.3) {
+                if (m < 0.2) {
+                    double hauntedChance = OpenSimplex2.noise2(detailSeed ^ 67890, t * 10, m * 10);
+                    if (hauntedChance > 0.9) {
+                        return BiomeType.HAUNTED;
+                    }
+                }
+                return BiomeType.PLAINS;
+            }
+
+            // Hot regions: Rainforest for very wet, desert for very dry, else plains
+            if (t > 0.75) {
+                if (m > 0.65) {
+                    return BiomeType.RAIN_FOREST;
+                } else if (m < 0.3) {
+                    return BiomeType.DESERT;
+                } else {
+                    return BiomeType.PLAINS;
+                }
+            }
+
+            // Temperate regions: deep forest or cherry grove based on additional noise
+            if (m > 0.75) {
+                return BiomeType.RAIN_FOREST;
+            } else if (m < 0.3) {
+                return BiomeType.PLAINS;
+            } else {
+                double chanceCherry = OpenSimplex2.noise2(siteDetail + 555, t * 8, m * 8);
+                if (chanceCherry > 0.6) {
+                    return BiomeType.CHERRY_GROVE;
+                }
+                return BiomeType.FOREST;
+            }
         }
     }
 }

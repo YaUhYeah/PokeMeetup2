@@ -5,9 +5,6 @@ import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonValue;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotData;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.ItemContainer;
-import io.github.pokemeetup.utils.GameLogger;
-
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;

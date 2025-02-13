@@ -7,41 +7,29 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import io.github.pokemeetup.utils.GameLogger;
 
-import java.util.Random;
-
 public class PokemonAnimations {
     public static final float IDLE_BOUNCE_DURATION = 1.0f;
-    private static final float IDLE_ANIMATION_CHANCE = 0.01f; // Chance to start idle animation per frame
 
-    private float idleTime = 0f;
-    private boolean isIdling = false;
-
-    private float idleOffset = 0f;
-    private float timeSinceLastIdle = 0f;
-    private final Random random = new Random();
-        // Constants for 256x256 sprite sheet with 4x4 grid
-        private static final int SPRITE_SHEET_SIZE = 256;
-        private static final int FRAMES_PER_DIRECTION = 4;
+    // Constants for a 256x256 sprite sheet split into a 4x4 grid
+    private static final int SPRITE_SHEET_SIZE = 256;
+    private static final int FRAMES_PER_DIRECTION = 4;
     private static final int FRAME_WIDTH = SPRITE_SHEET_SIZE / FRAMES_PER_DIRECTION;  // 64
     private static final int FRAME_HEIGHT = SPRITE_SHEET_SIZE / FRAMES_PER_DIRECTION; // 64
     private static final float FRAME_DURATION = 0.2f;
-
-    // Animations for each direction
+    // The first frame in each row is used as the “standing” (idle) frame.
+    private final TextureRegion[] standingFrames;
+    // Animations for each direction (rows in the sprite sheet)
     private Animation<TextureRegion> walkDownAnimation;  // Row 0
     private Animation<TextureRegion> walkLeftAnimation;  // Row 1
     private Animation<TextureRegion> walkRightAnimation; // Row 2
     private Animation<TextureRegion> walkUpAnimation;    // Row 3
-
-    private final TextureRegion[] standingFrames;
+    // Internal clock that tracks animation progress.
     private float stateTime;
     private TextureRegion defaultFrame;
+
+    // Used to track whether the animation should be running.
     private boolean isMoving;
     private String currentDirection;
-
-    public boolean isMoving() {
-        return isMoving;
-    }
-
     private boolean isInitialized;
 
     public PokemonAnimations(TextureRegion spriteSheet) {
@@ -55,7 +43,6 @@ public class PokemonAnimations {
         }
 
         try {
-            // Verify sprite sheet dimensions
             if (spriteSheet.getRegionWidth() != SPRITE_SHEET_SIZE ||
                 spriteSheet.getRegionHeight() != SPRITE_SHEET_SIZE) {
                 GameLogger.error(String.format(
@@ -64,10 +51,8 @@ public class PokemonAnimations {
                     spriteSheet.getRegionWidth(), spriteSheet.getRegionHeight()
                 ));
             }
-
             initializeAnimations(spriteSheet);
             isInitialized = true;
-//            GameLogger.info("Successfully initialized Pokemon animations");
         } catch (Exception e) {
             GameLogger.error("Failed to initialize animations: " + e.getMessage());
             e.printStackTrace();
@@ -75,40 +60,33 @@ public class PokemonAnimations {
         }
     }
 
-    private void initializeAnimations(TextureRegion spriteSheet) {
-        // Split sprite sheet into frames
-        TextureRegion[][] allFrames = new TextureRegion[4][FRAMES_PER_DIRECTION];
+    public boolean isMoving() {
+        return isMoving;
+    }
 
+    private void initializeAnimations(TextureRegion spriteSheet) {
+        // Split the sprite sheet into individual frames.
+        TextureRegion[][] allFrames = new TextureRegion[4][FRAMES_PER_DIRECTION];
         for (int row = 0; row < 4; row++) {
             for (int col = 0; col < FRAMES_PER_DIRECTION; col++) {
-                // Calculate frame coordinates
                 int x = col * FRAME_WIDTH;
                 int y = row * FRAME_HEIGHT;
+                allFrames[row][col] = new TextureRegion(spriteSheet, x, y, FRAME_WIDTH, FRAME_HEIGHT);
 
-
-                allFrames[row][col] = new TextureRegion(
-                    spriteSheet,
-                    x, y,
-                    FRAME_WIDTH, FRAME_HEIGHT
-                );
-
-                // Store first frame of each row as standing frame
+                // Store the first frame of each row for the idle/standing pose.
                 if (col == 0) {
                     standingFrames[row] = new TextureRegion(allFrames[row][0]);
                 }
             }
         }
 
-        // Create animations for each direction
+        // Create the walking animations.
         walkDownAnimation = new Animation<>(FRAME_DURATION, allFrames[0]);
         walkLeftAnimation = new Animation<>(FRAME_DURATION, allFrames[1]);
         walkRightAnimation = new Animation<>(FRAME_DURATION, allFrames[2]);
         walkUpAnimation = new Animation<>(FRAME_DURATION, allFrames[3]);
 
-        // Set default frame
         defaultFrame = standingFrames[0];
-
-//        GameLogger.info("Created all animations successfully");
     }
 
     private void createDefaultFrame() {
@@ -117,14 +95,21 @@ public class PokemonAnimations {
         pixmap.fill();
         Texture texture = new Texture(pixmap);
         pixmap.dispose();
-
         defaultFrame = new TextureRegion(texture);
         for (int i = 0; i < 4; i++) {
             standingFrames[i] = new TextureRegion(defaultFrame);
         }
     }
 
-    public TextureRegion getCurrentFrame(String direction, boolean isMoving, float delta) {
+    /**
+     * Retrieves the current frame. Note that the animation’s internal clock (stateTime)
+     * is updated via the update() method (not here).
+     *
+     * @param direction The current facing direction ("up", "down", etc.).
+     * @param isMoving  Whether the Pokémon is moving.
+     * @return The TextureRegion to render.
+     */
+    public TextureRegion getCurrentFrame(String direction, boolean isMoving) {
         if (!isInitialized) {
             return defaultFrame;
         }
@@ -132,16 +117,12 @@ public class PokemonAnimations {
         this.isMoving = isMoving;
         this.currentDirection = direction;
 
-        TextureRegion frame;
         if (isMoving) {
-            stateTime += delta;
             Animation<TextureRegion> currentAnimation = getAnimationForDirection(direction);
-            frame = currentAnimation.getKeyFrame(stateTime, true);
+            return currentAnimation.getKeyFrame(stateTime, true);
         } else {
-            frame = getStandingFrame(direction);
+            return getStandingFrame(direction);
         }
-
-        return frame != null ? frame : defaultFrame;
     }
 
     private TextureRegion getStandingFrame(String direction) {
@@ -155,7 +136,7 @@ public class PokemonAnimations {
             case "up":
                 return standingFrames[3];
             default:
-                return standingFrames[0]; // Default to down
+                return standingFrames[0]; // default to down
         }
     }
 
@@ -185,29 +166,18 @@ public class PokemonAnimations {
         this.isMoving = false;
     }
 
+    /**
+     * Updates the animation’s state time. When moving, the animation plays at normal speed.
+     * When idle, it can be slowed down for a more subtle effect.
+     *
+     * @param delta Time elapsed since the last update.
+     */
     public void update(float delta) {
         if (isMoving) {
             stateTime += delta;
-            isIdling = false;
-            idleTime = 0f;
-            timeSinceLastIdle = 0f;
         } else {
-            // Handle idle animation
-            timeSinceLastIdle += delta;
-
-            if (!isIdling && random.nextFloat() < IDLE_ANIMATION_CHANCE * delta) {
-                isIdling = true;
-                idleTime = 0f;
-            }
-
-            if (isIdling) {
-                idleTime += delta;
-                if (idleTime >= IDLE_BOUNCE_DURATION) {
-                    isIdling = false;
-                    idleTime = 0f;
-                    idleOffset = 0f;
-                }
-            }
+            // When idle, update stateTime more slowly.
+            stateTime += delta * 0.5f;
         }
     }
 }

@@ -165,6 +165,7 @@ public class StarterSelectionTable extends Table {
                 starter.setPrimaryType(Pokemon.PokemonType.GRASS);
                 starter.getMoves().add(PokemonDatabase.getMoveByName("Tackle"));
                 starter.getMoves().add(PokemonDatabase.getMoveByName("Growl"));
+                starter.getMoves().add(PokemonDatabase.getMoveByName("Poison-Powder"));
                 starter.setSecondaryType(Pokemon.PokemonType.POISON);
                 starter.setLevel(5);
                 starter.setCurrentHp(starter.getStats().getHp());

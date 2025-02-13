@@ -30,7 +30,6 @@ public class WildPokemon extends Pokemon {
     private static final float SCALE = 2.0f;
     private static final float TILE_SIZE = 32f;
     private static final float MOVEMENT_DURATION = 0.75f;
-    private static final float RENDER_SCALE = 1.5f;
     private static final float COLLISION_SCALE = 0.8f;
 
     private static final float FRAME_WIDTH = World.TILE_SIZE;
@@ -56,7 +55,6 @@ public class WildPokemon extends Pokemon {
     private boolean isAddedToParty = false;
     private boolean isDespawning = false;
     private PokemonDespawnAnimation despawnAnimation;
-    private float idleTimer = 0f;
     private float idleAnimationTime = 0;
     private boolean isIdling = false;
     private float currentMoveTime = 0f;
@@ -76,7 +74,12 @@ public class WildPokemon extends Pokemon {
         this.width = 0;
         this.height = 0;
         this.boundingBox = new Rectangle(0, 0, 0, 0);
-        this.animations = null;
+        this.animations = null;  PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null && template.moves != null && !template.moves.isEmpty()) {
+            // Use the helper that returns the moves for the given level
+            List<Move> moves = PokemonDatabase.getMovesForLevel(template.moves, level);
+            setMoves(moves);
+        }
     }
     public WildPokemon(String name, int level, int pixelX, int pixelY, boolean noTexture) {
         super(noTexture);
@@ -86,6 +89,7 @@ public class WildPokemon extends Pokemon {
         int tileY = MathUtils.floor((float) pixelY / World.TILE_SIZE);
         // Now snap: assign x and y to the top–left corner of that tile.
         this.pixelX = tileX * World.TILE_SIZE;
+        this.level = level;
         this.pixelY = tileY * World.TILE_SIZE;
         this.x = this.pixelX;
         this.y = this.pixelY;
@@ -122,9 +126,11 @@ public class WildPokemon extends Pokemon {
 
             // Set current HP to the maximum.
             setCurrentHp(stats.getHp());
-
-            // Initialize moves (if applicable).
-            initializeMovesForLevel(template.moves, level);
+            if (template.moves != null && !template.moves.isEmpty()) {
+                // Use the helper that returns the moves for the given level
+                List<Move> moves = PokemonDatabase.getMovesForLevel(template.moves, level);
+                setMoves(moves);
+            }
         }
 
         // --- Initialize the collision bounding box ---
@@ -188,9 +194,11 @@ public class WildPokemon extends Pokemon {
 
             // Set current HP to max HP
             this.setCurrentHp(stats.getHp());
-
-            // Initialize moves based on level
-            initializeMovesForLevel(template.moves, level);
+            if (template != null && template.moves != null && !template.moves.isEmpty()) {
+                // Use the helper that returns the moves for the given level
+                List<Move> moves = PokemonDatabase.getMovesForLevel(template.moves, level);
+                setMoves(moves);
+            }
         }
 
         this.ai = new PokemonAI(this);
@@ -294,65 +302,36 @@ public class WildPokemon extends Pokemon {
 
     public TextureRegion getCurrentFrame() {
         if (animations != null) {
-            return animations.getCurrentFrame(direction, isMoving, Gdx.graphics.getDeltaTime());
+            return animations.getCurrentFrame(direction, isMoving);
         }
         return null;
     }
 
-    private void updateIdleAnimation(float delta) {
-        idleTimer += delta;
 
-        // Start new idle animation
-        if (!isIdling && idleTimer >= MathUtils.random(2f, 4f)) {
-            isIdling = true;
-            idleTimer = 0;
-            idleAnimationTime = 0;
-        }
 
-        // Update current idle animation
-        if (isIdling) {
-            idleAnimationTime += delta;
-            if (idleAnimationTime >= IDLE_BOUNCE_DURATION) {
-                isIdling = false;
-                idleAnimationTime = 0;
-            }
-        }
-    }
 
     public void update(float delta, World world) {
-        if (world == null) return;if (isDespawning) {
-            if (despawnAnimation != null) {
-                // Update the despawn animation.
-                // The update method returns true when the animation is complete.
-                if (despawnAnimation.update(delta)) {
-                    // Once the despawn animation has finished,
-                    // mark the Pokémon as expired so that it can be removed from the world.
-                    isExpired = true;
-                }
+        if (world == null) return;
+        if (isDespawning) {
+            if (despawnAnimation != null && despawnAnimation.update(delta)) {
+                isExpired = true;
             }
-            // Skip all other update logic when despawning.
             return;
         }
 
-        // Update AI first
         if (ai != null) {
             ai.update(delta, world);
         }
 
-        // Update movement and animations
         if (isMoving) {
             updateMovement(delta);
-            isIdling = false;
-            idleAnimationTime = 0;
+            idleAnimationTime = 0; // reset idle bounce when moving
         } else {
             updateIdleAnimation(delta);
         }
 
-        // Update animations
         if (animations != null) {
             animations.update(delta);
-
-            // Sync animation state with movement
             if (isMoving != animations.isMoving()) {
                 if (isMoving) {
                     animations.startMoving(direction);
@@ -364,6 +343,10 @@ public class WildPokemon extends Pokemon {
         updateBoundingBox();
     }
 
+
+    private void updateIdleAnimation(float delta) {
+        idleAnimationTime = (idleAnimationTime + delta) % IDLE_BOUNCE_DURATION;
+    }
     private float calculateSmoothProgress(float progress) {
         return progress * progress * (3 - 2 * progress);
     }
@@ -468,67 +451,47 @@ public class WildPokemon extends Pokemon {
         return ai;
     }
 
+    @Override
     public void render(SpriteBatch batch) {
         if (isDespawning) {
             if (despawnAnimation != null) {
-                despawnAnimation.render(batch, getCurrentFrame(), FRAME_WIDTH, FRAME_HEIGHT);
+                despawnAnimation.render(batch, getCurrentFrame());
             }
             return;
         }
 
         TextureRegion frame = getCurrentFrame();
         if (frame != null) {
-            float renderX = x;
+            float renderWidth = this.width;
+            float renderHeight = this.height;
+            float offsetX = (renderWidth - World.TILE_SIZE) / 2f;
+            float offsetY = (renderHeight - World.TILE_SIZE) / 2f;
             float renderY = y;
 
-            if (!isMoving && isIdling) {
+            // When idle, apply a smooth sine–wave bounce.
+            if (!isMoving) {
                 float bounceOffset = IDLE_BOUNCE_HEIGHT *
                     MathUtils.sin(idleAnimationTime * MathUtils.PI2 / IDLE_BOUNCE_DURATION);
                 renderY += bounceOffset;
             }
 
-            // Scale and center the sprite
-            float width = FRAME_WIDTH * RENDER_SCALE;
-            float height = FRAME_HEIGHT * RENDER_SCALE;
-            float offsetX = (width - FRAME_WIDTH) / 2f;
-            float offsetY = (height - FRAME_HEIGHT) / 2f;
-
-            // Save original batch color
             Color originalColor = batch.getColor().cpy();
-
             if (world != null) {
-                // Get base color from the world
                 Color baseColor = world.getCurrentWorldColor();
-
-                // Convert position to tile coordinates
                 int tileX = (int) (x / World.TILE_SIZE);
                 int tileY = (int) (y / World.TILE_SIZE);
                 Vector2 tilePos = new Vector2(tileX, tileY);
-
-                // Get light level at this position
                 Float lightLevel = world.getLightLevelAtTile(tilePos);
                 if (lightLevel != null && lightLevel > 0) {
                     Color lightColor = new Color(1f, 0.9f, 0.7f, 1f);
                     baseColor = baseColor.cpy().lerp(lightColor, lightLevel);
                 }
-
-                // Set the adjusted color
                 batch.setColor(baseColor);
             }
-
-            // Draw with smooth interpolation
-            batch.draw(frame,
-                renderX - offsetX,
-                renderY - offsetY,
-                width,
-                height);
-
-            // Restore original batch color
+            batch.draw(frame, x - offsetX, renderY - offsetY, renderWidth, renderHeight);
             batch.setColor(originalColor);
         }
     }
-
-
     public boolean isExpired() {
         if (isExpired) return true;
         float currentTime = System.currentTimeMillis() / 1000f;
@@ -541,7 +504,8 @@ public class WildPokemon extends Pokemon {
     public void startDespawnAnimation() {
         if (!isDespawning) {
             isDespawning = true;
-            despawnAnimation = new PokemonDespawnAnimation(getX(), getY());
+            // Use the Pokémon’s current X/Y and frame dimensions (using your FRAME_WIDTH/HEIGHT constants)
+            despawnAnimation = new PokemonDespawnAnimation(getX(), getY(), WildPokemon.FRAME_WIDTH, WildPokemon.FRAME_HEIGHT);
         }
     }
 }

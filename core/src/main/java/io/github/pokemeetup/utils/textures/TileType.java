@@ -110,9 +110,24 @@ public class TileType {
     public static final int MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT = 216;
     public static final int FAIRY_ROCK = 217;
     public static final int CRYSTAL_ROCK = 218;
-
+    public static final int SNOWY_GRASS = 219;
+    public static final int BEACH_SAND = 220;
+    public static final int BEACH_GRASS = 221;
+    public static final int BEACH_GRASS_2 = 222;
+    public static final int BEACH_STARFISH = 223;
+    public static final int BEACH_SHELL = 224;
     public static final int CAVE_ENTRANCE = 149;
 
+    public static final int TALL_GRASS_OVERLAY = 225;
+    public static final int TALL_GRASS_OVERLAY_2 = 226;
+    public static final int TALL_GRASS_OVERLAY_3 = 227;
+    public static final int SNOW_TALL_GRASS_OVERLAY = 228;
+    public static final int HAUNTED_TALL_GRASS_OVERLAY = 229;
+    public static final int RAINFOREST_TALL_GRASS_OVERLAY = 230;
+    public static final int RUINS_TALL_GRASS_OVERLAY = 231;
+    public static final int FOREST_TALL_GRASS_OVERLAY = 232;
+    public static final int DESERT_TALL_GRASS_OVERLAY = 233;
+    public static final int BEACH_TALL_GRASS_OVERLAY = 234;
     private static final Map<Integer, String> tileTypeNames = new HashMap<>();
     private static final Map<Integer, String> mountainTileNames = new HashMap<>();
 
@@ -158,8 +173,8 @@ public class TileType {
         tileTypeNames.put(FLOWER, "flower");
         tileTypeNames.put(FLOWER_1, "flower");
         tileTypeNames.put(FLOWER_2, "flower");
-        tileTypeNames.put(TALL_GRASS_2, "tall_grass");
-        tileTypeNames.put(TALL_GRASS_3, "tall_grass");
+        tileTypeNames.put(TALL_GRASS_2, "tall_grass_two");
+        tileTypeNames.put(TALL_GRASS_3, "tall_grass_three");
         tileTypeNames.put(SNOW_2, "snow_grass");
         tileTypeNames.put(SNOW_3, "snow_base");
         tileTypeNames.put(GRASS_2, "grass");
@@ -206,7 +221,22 @@ public class TileType {
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT, "MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT");
         tileTypeNames.put(FAIRY_ROCK, "fairy_rock");
         tileTypeNames.put(CRYSTAL_ROCK, "crystal");
-
+        tileTypeNames.put(SNOWY_GRASS, "snowy_grass");
+        tileTypeNames.put(BEACH_SAND, "beach_sand");
+        tileTypeNames.put(BEACH_GRASS, "beach_tall_grass");
+        tileTypeNames.put(BEACH_GRASS_2, "beach_grass");
+        tileTypeNames.put(BEACH_STARFISH, "beach_starfish");
+        tileTypeNames.put(BEACH_SHELL, "beach_shell");
+        tileTypeNames.put(TALL_GRASS_OVERLAY, "tall_grass_overlay");
+        tileTypeNames.put(TALL_GRASS_OVERLAY_2, "tall_grass_2_overlay");
+        tileTypeNames.put(TALL_GRASS_OVERLAY_3, "tall_grass_3_overlay");
+        tileTypeNames.put(SNOW_TALL_GRASS_OVERLAY, "snow_tall_grass_overlay");
+        tileTypeNames.put(HAUNTED_TALL_GRASS_OVERLAY, "haunted_tall_grass_overlay");
+        tileTypeNames.put(RAINFOREST_TALL_GRASS_OVERLAY, "rain_forest_tall_grass_overlay");
+        tileTypeNames.put(RUINS_TALL_GRASS_OVERLAY, "ruins_tall_grass_overlay");
+        tileTypeNames.put(FOREST_TALL_GRASS_OVERLAY, "forest_tall_grass_overlay");
+        tileTypeNames.put(DESERT_TALL_GRASS_OVERLAY, "desert_grass_overlay");
+        tileTypeNames.put(BEACH_TALL_GRASS_OVERLAY, "beach_tall_grass_overlay");
 
         // Add mountain tiles to main tile names
         tileTypeNames.putAll(mountainTileNames);
@@ -239,8 +269,8 @@ public class TileType {
         // Basic terrain types that are passable
         if (tileType == GRASS || tileType == SAND || tileType == SNOW_TALL_GRASS || tileType == SNOW || tileType == SNOW_2 || tileType == SNOW_3 || tileType == GRASS_3 || tileType == FOREST_TALL_GRASS || tileType == HAUNTED_SHROOM || tileType == HAUNTED_SHROOMS || tileType == MOUNTAIN_STAIRS ||
             tileType == HAUNTED_GRASS || tileType == HAUNTED_TALL_GRASS || tileType == FOREST_GRASS || tileType == RAIN_FOREST_TALL_GRASS ||
-            tileType == RAIN_FOREST_GRASS || tileType == DESERT_SAND || tileType == DESERT_GRASS || tileType == FLOWER_2 || tileType == GRASS_2 || tileType == TALL_GRASS || tileType == TALL_GRASS_2 || tileType == TALL_GRASS_3 || tileType == FLOWER_1 || tileType == FLOWER ||
-            tileType == RUINS_BRICKS || tileType == RUINS_TALL_GRASS || tileType == RUINS_GRASS_0 || tileType == RUINS_GRASS) {
+            tileType == RAIN_FOREST_GRASS || tileType == DESERT_SAND || tileType == DESERT_GRASS || tileType == FLOWER_2 || tileType == GRASS_2 || tileType == TALL_GRASS || tileType == TALL_GRASS_2 || tileType == TALL_GRASS_3 || tileType == FLOWER_1 || tileType == FLOWER
+            || tileType == BEACH_GRASS || tileType == RUINS_BRICKS || tileType == RUINS_TALL_GRASS || tileType == RUINS_GRASS_0 || tileType == RUINS_GRASS || tileType == BEACH_GRASS_2 || tileType == BEACH_SHELL || tileType == BEACH_STARFISH || tileType == SNOWY_GRASS || tileType == BEACH_SAND) {
             return true;
         }
         if (isWaterPuddle(tileType)) {

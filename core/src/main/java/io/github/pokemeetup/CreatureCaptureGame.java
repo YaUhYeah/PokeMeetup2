@@ -40,6 +40,7 @@ import io.github.pokemeetup.utils.storage.GameFileSystem;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Random;
 
 public class CreatureCaptureGame extends Game implements GameStateHandler {
     public static final String MULTIPLAYER_WORLD_NAME = "multiplayer_world";
@@ -119,7 +120,8 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         try {
             // Reinitialize managers, etc.
             GameContext.get().setWorldManager(WorldManager.getInstance());
-            this.biomeManager = new BiomeManager(System.currentTimeMillis());
+            long seed = GameContext.get().getWorld().getWorldData().getConfig().getSeed();
+            this.biomeManager = new BiomeManager(seed);
             GameContext.get().getWorldManager().init();
 
             // Reinitialize the GameClient for singleplayer if needed.
@@ -247,6 +249,8 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             String username = isMultiplayer ? GameContext.get().getGameClient().getLocalUsername() : "Player";
             PlayerData savedPlayerData = worldData.getPlayerData(username, false);
 
+            long worldSeed = worldData.getConfig().getSeed();
+            this.biomeManager = new BiomeManager(worldSeed);
             if (savedPlayerData != null) {
                 GameLogger.info("Found saved player data for: " + username +
                     " Items: " + savedPlayerData.getInventoryItems().size() +
@@ -254,25 +258,43 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             }// Initialize world
             GameContext.get().setWorld(new World(worldName,
-                worldData.getConfig().getSeed(), biomeManager));
+                worldData.getConfig().getSeed()));
             GameContext.get().getWorld().setWorldData(worldData);
 
             if (savedPlayerData != null) {
-                GameContext.get().setPlayer(new Player(
-                    0, 0,
-                    GameContext.get().getWorld(),   // Use the newly created world!
+                World currentWorld = GameContext.get().getWorld();
+                // We'll pick a safe spawn tile from the islands
+                Random rng = new Random(currentWorld.getWorldData().getConfig().getSeed());
+
+                Vector2 safeTile = biomeManager.findSafeSpawnLocation(currentWorld, rng);
+
+
+                Player newPlayer = new Player(
+                    (int) safeTile.x,
+                    (int) safeTile.y,
+                    currentWorld,
                     username
-                ));
+                );
+                GameContext.get().setPlayer(newPlayer);
                 GameContext.get().getPlayer().initializeResources();
                 savedPlayerData.applyToPlayer(GameContext.get().getPlayer());
                 GameLogger.info("Restored player state - Items: " +
                     GameContext.get().getPlayer().getInventory().getAllItems().size() +
                     " Pokemon: " + GameContext.get().getPlayer().getPokemonParty().getSize());
             } else {
-                GameLogger.info("Creating new player at default position");
-                GameContext.get().setPlayer(new Player(World.DEFAULT_X_POSITION,
-                    World.DEFAULT_Y_POSITION, GameContext.get().getWorld(), username));
-                GameContext.get().getPlayer().initializeResources();
+                World currentWorld = GameContext.get().getWorld();
+                BiomeManager bm = currentWorld.getBiomeManager();
+                // We'll pick a safe spawn tile from the islands
+                Random rng = new Random(currentWorld.getWorldData().getConfig().getSeed());
+                Vector2 safeTile = bm.findSafeSpawnLocation(currentWorld, rng);
+
+                Player newPlayer = new Player(
+                    (int) safeTile.x,
+                    (int) safeTile.y,
+                    currentWorld,
+                    username
+                );
+                GameContext.get().setPlayer(newPlayer);
             }
 
 
@@ -307,6 +329,8 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             "atlas/hairstyles.atlas",
             "atlas/buildings.atlas",
             "atlas/girl.atlas",
+            "atlas/autotiles_sheets.atlas",
+            "atlas/capsule_throw.atlas",
         };
 
         for (String path : atlasFiles) {
@@ -407,12 +431,13 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             TextureAtlas blocks = assetManager.get("atlas/blocks.atlas", TextureAtlas.class);
             TextureAtlas clothing = assetManager.get("atlas/clothing.atlas", TextureAtlas.class);
             TextureAtlas buildings = assetManager.get("atlas/buildings.atlas", TextureAtlas.class);
+            TextureAtlas autotiles = assetManager.get("atlas/autotiles_sheets.atlas", TextureAtlas.class);
+            TextureAtlas capsuleThrow = assetManager.get("atlas/capsule_throw.atlas", TextureAtlas.class);
 
             TextureAtlas characters = assetManager.get("atlas/characters.atlas", TextureAtlas.class);
 
             TextureAtlas hairstyles = assetManager.get("atlas/hairstyles.atlas", TextureAtlas.class);
 
-            TextureManager.debugAtlasState("Boy", boyAtlas);
 
             if (!verifyAtlas(boyAtlas)) {
                 throw new RuntimeException("Boy atlas verification failed");
@@ -430,7 +455,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 boyAtlas,
                 tilesAtlas,
                 effects,
-                mountains, blocks, characters, clothing, hairstyles, buildings, girlAtlas
+                mountains, blocks, characters, clothing, hairstyles, buildings, girlAtlas, autotiles, capsuleThrow
 
             );
 
@@ -443,9 +468,8 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             SpriteBatch uiBatch = new SpriteBatch();
             Stage uiStage = new Stage();
             Stage battleStage = new Stage();
-            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null, WorldManager.getInstance(), null, null, new DisconnectionManager(this), false, null, null, null);
+            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null, WorldManager.getInstance(), null, null, new DisconnectionManager(this), false, null, null, null, new BiomeManager(System.currentTimeMillis()));
 
-            this.biomeManager = new BiomeManager(System.currentTimeMillis());
             GameContext.get().getWorldManager().init();
 
             GameLogger.info("Managers initialized successfully");

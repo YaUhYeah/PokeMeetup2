@@ -2,6 +2,7 @@ package io.github.pokemeetup.system.gameplay.overworld.biomes;
 
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.utils.GameLogger;
+import io.github.pokemeetup.utils.textures.TileType;
 
 import java.util.*;
 
@@ -110,11 +111,37 @@ public class Biome {
 
         this.tileDistribution = new HashMap<>(distribution);
 
+    }public void setBeachTileDistribution(Map<Integer, Integer> beachTileDistribution) {
+        this.beachTileDistribution = beachTileDistribution;
     }
 
+    private Map<Integer, Integer> beachTileDistribution;
+    public Map<Integer, Integer> getBeachTileDistribution() {
+        if (beachTileDistribution == null || beachTileDistribution.isEmpty()) {
+            // Fallback distribution: 100% BEACH_SAND.
+            Map<Integer, Integer> defaultBeach = new HashMap<>();
+            defaultBeach.put(TileType.BEACH_SAND, 60);
+            defaultBeach.put(TileType.BEACH_GRASS, 20);
+            defaultBeach.put(TileType.BEACH_GRASS_2, 20);
+            defaultBeach.put(TileType.BEACH_SHELL, 5);
+            defaultBeach.put(TileType.BEACH_STARFISH, 5);
+            return defaultBeach;
+        }
+        return beachTileDistribution;
+    }
     public BiomeType getType() {
         return type;
     }
+    private Map<Integer, Integer> transitionTileDistribution = new HashMap<>();
+
+    public Map<Integer, Integer> getTransitionTileDistribution() {
+        return transitionTileDistribution;
+    }
+
+    public void setTransitionTileDistribution(Map<Integer, Integer> map) {
+        this.transitionTileDistribution = map;
+    }
+
 
     public HashMap<Integer, Integer> getTileDistribution() {
         return tileDistribution;

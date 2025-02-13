@@ -13,6 +13,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
+import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
@@ -578,10 +579,18 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public long timestamp;
     }
 
-    public static class WorldStateUpdate implements Serializable {
-        public io.github.pokemeetup.system.data.WorldData worldData;
+
+    public static class WorldStateUpdate {
+        public long seed;                    // world generation seed
+        public double worldTimeInMinutes;    // current world time in minutes
+        public float dayLength;              // length of a day in minutes (or seconds, as you require)
+
+        // Optionally include weather parameters:
+        public WeatherSystem.WeatherType currentWeather;
+        public float intensity;
+        public float accumulation;
+
         public long timestamp;
-        public Map<String, Object> extraData = new HashMap<>();  // For additional sync data
     }
 
     public static class TeamCreate {

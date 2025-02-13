@@ -11,6 +11,7 @@ import io.github.pokemeetup.system.gameplay.overworld.PokemonSpawnManager;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
+import io.github.pokemeetup.utils.PokemonLevelCalculator;
 import org.discord.context.ServerGameContext;
 
 import java.util.*;
@@ -30,7 +31,7 @@ public class ServerPokemonSpawnManager {
     // Check for new spawns every 5 seconds.
     private static final float SPAWN_INTERVAL = 5f;
     // Maximum wild Pokémon per chunk.
-    private static final int MAX_POKEMON_PER_CHUNK = 3;
+    private static final int MAX_POKEMON_PER_CHUNK = 5;
     // These constants must match those used in your World class.
     private static final int TILE_SIZE = 32;
     // Assume Chunk.CHUNK_SIZE is defined in the Chunk class.
@@ -180,14 +181,12 @@ public class ServerPokemonSpawnManager {
             // pick a random Pokémon for this biome
             String pokemonName = selectRandomPokemonForBiome(biome);
             int level = calculatePokemonLevel(pixelX, pixelY);
-
-            // In your spawn manager:
             WildPokemon pokemon = new WildPokemon(
                 pokemonName,
                 level,
                 (int) pixelX,
                 (int) pixelY,
-                true // noTexture mode
+                true // noTexture mode on the server
             );
 
 
@@ -351,11 +350,10 @@ public class ServerPokemonSpawnManager {
 
 
     private static final Map<BiomeType, Map<PokemonSpawnManager.TimeOfDay, String[]>> POKEMON_SPAWNS = new HashMap<>();
-    private int calculatePokemonLevel(float pixelX, float pixelY) {
-        float distance = new Vector2(pixelX, pixelY).len();
-        return MathUtils.clamp((int) (distance / 500), 1, 50);
-    }
 
+    private int calculatePokemonLevel(float pixelX, float pixelY) {
+        return PokemonLevelCalculator.calculateLevel(pixelX, pixelY, TILE_SIZE);
+    }
     private void removeExpiredPokemon() {
         activePokemon.entrySet().removeIf(entry -> {
             WildPokemon pokemon = entry.getValue();

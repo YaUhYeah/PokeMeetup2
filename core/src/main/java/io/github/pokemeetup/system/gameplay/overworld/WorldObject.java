@@ -1,5 +1,6 @@
 package io.github.pokemeetup.system.gameplay.overworld;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
@@ -81,6 +82,7 @@ public class WorldObject {
                     textureCache.put(ObjectType.RAIN_TREE, atlas.findRegion("rain_tree"));
                     textureCache.put(ObjectType.APRICORN_TREE, atlas.findRegion("apricorn_tree_grown"));
                     textureCache.put(ObjectType.CHERRY_TREE, atlas.findRegion("CherryTree"));
+                    textureCache.put(ObjectType.BEACH_TREE, atlas.findRegion("beach_tree"));
                     // Add other object types as needed
                 }
             }
@@ -334,7 +336,7 @@ public class WorldObject {
                 World.TILE_SIZE,      // 32px wide, one tile
                 World.TILE_SIZE * 2   // 64px tall, two tiles high
             );
-        } else if (type == ObjectType.RUINS_TREE || type == ObjectType.CHERRY_TREE) {
+        } else if (type == ObjectType.RUINS_TREE || type == ObjectType.CHERRY_TREE || type == ObjectType.BEACH_TREE) {
             // 2x2 collision as before
             float treeBaseX = pixelX - World.TILE_SIZE;
             float treeBaseY = pixelY;
@@ -362,7 +364,7 @@ public class WorldObject {
             type == ObjectType.HAUNTED_TREE ||
             type == ObjectType.RUINS_TREE ||
             type == ObjectType.APRICORN_TREE ||
-            type == ObjectType.RAIN_TREE;
+            type == ObjectType.RAIN_TREE || type == ObjectType.BEACH_TREE;
     }
 
     // Add this to your WorldObject class
@@ -386,7 +388,8 @@ public class WorldObject {
         POKEBALL(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
         RAIN_TREE(true, true, 2, 3, RenderLayer.LAYERED),
         CHERRY_TREE(true, true, 2, 3, RenderLayer.LAYERED),
-        SUNFLOWER(true, false, 1, 2, RenderLayer.BELOW_PLAYER);   // No collision
+        SUNFLOWER(true, false, 1, 2, RenderLayer.BELOW_PLAYER),
+        BEACH_TREE(true, true, 2, 3, RenderLayer.LAYERED);
 
         public final boolean isPermanent;    // Permanent or temporary object
         public final boolean isCollidable;   // Has collision or not
@@ -415,6 +418,7 @@ public class WorldObject {
     public static class WorldObjectManager {
         public static final float POKEBALL_SPAWN_CHANCE = 0.025f;
         public static final int MAX_POKEBALLS_PER_CHUNK = 1;
+        private static final float POKEBALL_SPAWN_INTERVAL = 5.0f; // Try every 5 seconds
         private final Map<Vector2, List<WorldObject>> objectsByChunk = new ConcurrentHashMap<>();
         private final Map<ObjectType, TextureRegion> objectTextures;
         private final long worldSeed;
@@ -422,7 +426,7 @@ public class WorldObject {
         private Set<String> removedObjectIds = Collections.newSetFromMap(new ConcurrentHashMap<>());
         // New: a set to track removed objects by their base tile coordinate
         private Set<Vector2> removedObjectTiles = Collections.newSetFromMap(new ConcurrentHashMap<>());
-
+        private float pokeballSpawnTimer = 0f;
 
         public WorldObjectManager(long seed) {
             this.worldSeed = seed;
@@ -444,6 +448,7 @@ public class WorldObject {
             objectTextures.put(ObjectType.RUIN_POLE, atlas.findRegion("ruins_pole"));
             objectTextures.put(ObjectType.RUINS_TREE, atlas.findRegion("ruins_tree"));
             objectTextures.put(ObjectType.APRICORN_TREE, atlas.findRegion("apricorn_tree_grown"));
+            objectTextures.put(ObjectType.BEACH_TREE, atlas.findRegion("beach_tree"));
 
         }
 
@@ -479,65 +484,7 @@ public class WorldObject {
         /**
          * Record that an object was removed at the given tile coordinate.
          */
-        public void recordRemovedTile(int tileX, int tileY) {
-            removedObjectTiles.add(new Vector2(tileX, tileY));
-        }
 
-        public void generateObjectsForChunk(Vector2 chunkPos, Chunk chunk, Biome biome) {
-            List<WorldObject> objects = new CopyOnWriteArrayList<>();
-
-            if (objectsByChunk.containsKey(chunkPos)) {
-                // Chunk already generated
-                return;
-            }
-
-            try {
-                Random random = new Random((long) (worldSeed + chunkPos.x * 31 + chunkPos.y * 17));
-
-                for (ObjectType objectType : biome.getSpawnableObjects()) {
-                    double spawnChance = biome.getSpawnChanceForObject(objectType);
-                    int attempts = (int) (Chunk.CHUNK_SIZE * Chunk.CHUNK_SIZE * spawnChance);
-
-
-                    for (int i = 0; i < attempts; i++) {
-                        int x = random.nextInt(Chunk.CHUNK_SIZE);
-                        int y = random.nextInt(Chunk.CHUNK_SIZE);
-
-                        // Convert to world tile coordinates.
-                        int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + x);
-                        int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + y);
-                        // For tree objects, compute the canonical spawn coordinate.
-                        if (isTreeType(objectType)) {
-                            int baseTileX = worldTileX - 1;  // same as in serialization
-                            int baseTileY = worldTileY;
-                            if (isRemovedTile(baseTileX, baseTileY)) {
-                                continue;
-                            }
-                        }
-
-                        if (canPlaceObject(chunk, x, y, objects, biome, objectType)) {
-                            TextureRegion texture = objectTextures.get(objectType);
-                            if (texture != null) {
-                                WorldObject obj = createObject(objectType, x, y, chunkPos);
-                                if (obj != null) {
-                                    objects.add(obj);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Store generated objects (note: these objects have new UUIDs).
-                setObjectsForChunk(chunkPos, objects);
-
-                // In multiplayer, sync to server.
-                if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
-                    sendChunkObjectSync(objects);
-                }
-            } catch (Exception e) {
-                GameLogger.error("Error generating chunk objects: " + e.getMessage());
-            }
-        }
 
         public void addObjectToChunk(WorldObject object) {
             int actualChunkX = (int) Math.floor(object.getPixelX() / (Chunk.CHUNK_SIZE * World.TILE_SIZE));
@@ -581,55 +528,6 @@ public class WorldObject {
             return null;
         }
 
-        private boolean canPlaceObject(Chunk chunk, int x, int y, List<WorldObject> objects, Biome biome, ObjectType newObjectType) {
-            // Check tile type compatibility
-            int tileType = chunk.getTileType(x, y);
-            if (!biome.getAllowedTileTypes().contains(tileType)) {
-                return false;
-            }
-
-            // Convert to world coordinates
-            int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + x;
-            int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + y;
-
-            // Calculate bounds for the new object
-            Rectangle newObjectBounds = getObjectBounds(worldTileX, worldTileY, newObjectType);
-
-            if (!chunk.isPassable(x, y)) {
-                return false;
-            }
-            int band = chunk.getElevationBands()[x][y];
-            if (band >= 1 && isTreeType(newObjectType)) {
-                return false;
-            }
-            // Check spacing against existing objects by bounding boxes
-            for (WorldObject obj : objects) {
-                Rectangle existingBounds = getObjectBounds(obj.getTileX(), obj.getTileY(), obj.getType());
-                if (boundsOverlapWithPadding(newObjectBounds, existingBounds, getRequiredSpacing(newObjectType))) {
-                    return false;
-                }
-            }
-
-            // Strict tile-based adjacency check for trees
-            // If the new object is a tree, ensure no other tree is in any adjacent tile (including diagonals).
-            if (isTreeType(newObjectType)) {
-                for (WorldObject obj : objects) {
-                    if (isTreeType(obj.getType())) {
-                        int dx = Math.abs(obj.getTileX() - worldTileX);
-                        int dy = Math.abs(obj.getTileY() - worldTileY);
-
-                        // If another tree is within one tile horizontally, vertically, or diagonally, prevent placement.
-                        // dx <= 1 and dy <= 1 means a tile directly adjacent in any of the 8 directions.
-                        if (dx <= 1 && dy <= 1) {
-                            return false;
-                        }
-                    }
-                }
-            }
-
-            return true;
-        }
-
 
         private Rectangle getObjectBounds(int tileX, int tileY, ObjectType type) {
             float width = type.widthInTiles * World.TILE_SIZE;
@@ -669,7 +567,6 @@ public class WorldObject {
             return paddedBounds.overlaps(bounds2);
         }
 
-
         private boolean isTreeType(ObjectType type) {
             return type == ObjectType.TREE_0 ||
                 type == ObjectType.TREE_1 ||
@@ -677,7 +574,7 @@ public class WorldObject {
                 type == ObjectType.HAUNTED_TREE ||
                 type == ObjectType.RUINS_TREE ||
                 type == ObjectType.APRICORN_TREE ||
-                type == ObjectType.RAIN_TREE || type == ObjectType.CHERRY_TREE;
+                type == ObjectType.RAIN_TREE || type == ObjectType.CHERRY_TREE || type == ObjectType.BEACH_TREE;
         }
 
         private int getRequiredSpacing(ObjectType type) {
@@ -691,12 +588,12 @@ public class WorldObject {
                 case RAIN_TREE:
                 case CHERRY_TREE:
                 case RUINS_TREE:
+                case BEACH_TREE:
                     return 2; // More strict than before for large trees
                 default:
                     return 1; // Smaller objects remain at spacing 1
             }
         }
-
 
         public void renderTreeBase(SpriteBatch batch, WorldObject tree, World world) {
             // Get texture and handle null case
@@ -886,12 +783,10 @@ public class WorldObject {
             }
         }
 
-
         public List<WorldObject> getObjectsForChunk(Vector2 chunkPos) {
             List<WorldObject> objects = objectsByChunk.get(chunkPos);
             return objects != null ? objects : Collections.emptyList();
         }
-
 
         private void handlePokeballSpawning(Vector2 chunkPos, Chunk chunk) {
             // Get or create the chunk's object list
@@ -962,6 +857,7 @@ public class WorldObject {
 
         public void update(Map<Vector2, Chunk> loadedChunks) {
             WorldObjectOperation operation;
+            pokeballSpawnTimer += Gdx.graphics.getDeltaTime();
             while ((operation = operationQueue.poll()) != null) {
                 try {
                     switch (operation.type) {
@@ -1009,21 +905,24 @@ public class WorldObject {
                 }
             }
 
-            // Update existing chunks
-            for (Map.Entry<Vector2, Chunk> entry : loadedChunks.entrySet()) {
-                Vector2 chunkPos = entry.getKey();
-                List<WorldObject> objects = objectsByChunk.computeIfAbsent(chunkPos,
-                    k -> new CopyOnWriteArrayList<>());
+            if (pokeballSpawnTimer >= POKEBALL_SPAWN_INTERVAL) {
+                // Update existing chunks
+                for (Map.Entry<Vector2, Chunk> entry : loadedChunks.entrySet()) {
+                    Vector2 chunkPos = entry.getKey();
+                    List<WorldObject> objects = objectsByChunk.computeIfAbsent(chunkPos,
+                        k -> new CopyOnWriteArrayList<>());
 
-                // Remove expired objects
-                boolean changed = objects.removeIf(WorldObject::isExpired);
-                if (changed) {
-                    operationQueue.add(new PersistOperation(chunkPos, new ArrayList<>(objects)));
+                    // Remove expired objects
+                    boolean changed = objects.removeIf(WorldObject::isExpired);
+                    if (changed) {
+                        operationQueue.add(new PersistOperation(chunkPos, new ArrayList<>(objects)));
+                    }
+
+                    handlePokeballSpawning(chunkPos, entry.getValue());
                 }
 
-                handlePokeballSpawning(chunkPos, entry.getValue());
+                pokeballSpawnTimer = 0f;
             }
-
             // Clean up unloaded chunks
             cleanupUnloadedChunks(loadedChunks);
         }
@@ -1070,6 +969,68 @@ public class WorldObject {
             // Update the runtime state
             objectsByChunk.put(chunkPos, new CopyOnWriteArrayList<>(objects));
 
+        }
+        public boolean canPlaceWorldObject(Chunk chunk, int localX, int localY,
+                                           List<WorldObject> currentChunkObjects,
+                                           Biome biome,
+                                           WorldObject.ObjectType objectType) {
+            // Convert local coordinates (within this chunk) to world tile coordinates.
+            int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
+            int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
+            int tileType = chunk.getTileType(localX, localY);
+
+            // Basic checks
+            if (!chunk.isPassable(localX, localY)) {
+                return false;
+            }
+            if (!biome.getAllowedTileTypes().contains(tileType)) {
+                return false;
+            }
+            // Extra restrictions: do not place on disallowed terrain types.
+            if (tileType == TileType.ROCK ||
+                tileType == TileType.BEACH_STARFISH ||
+                tileType == TileType.BEACH_SHELL ||
+                tileType == TileType.WATER) {
+                return false;
+            }
+            if (TileType.isMountainTile(tileType)) {
+                return false;
+            }
+            if (tileType == TileType.FLOWER ||
+                tileType == TileType.FLOWER_1 ||
+                tileType == TileType.FLOWER_2) {
+                return false;
+            }
+            // Create a candidate object at the desired location.
+            WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, objectType);
+            candidate.ensureTexture();
+            Rectangle candidateBounds = candidate.getBoundingBox();
+
+            // Determine the required spacing for this type.
+            int requiredSpacing = getRequiredSpacing(objectType);
+
+            // Only checking currentChunkObjects is not enough if candidate is near a chunk border.
+            // Instead, gather objects from current chunk and all eight neighboring chunks.
+            List<WorldObject> nearbyObjects = new ArrayList<>();
+            Vector2 baseChunkPos = new Vector2(chunk.getChunkX(), chunk.getChunkY());
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    Vector2 neighborChunkPos = new Vector2(baseChunkPos.x + dx, baseChunkPos.y + dy);
+                    List<WorldObject> objectsInChunk = getObjectsForChunk(neighborChunkPos);
+                    if (objectsInChunk != null) {
+                        nearbyObjects.addAll(objectsInChunk);
+                    }
+                }
+            }
+
+            // Check candidateBounds (with required spacing) against every nearby object's bounds.
+            for (WorldObject obj : nearbyObjects) {
+                Rectangle objBounds = obj.getBoundingBox();
+                if (boundsOverlapWithPadding(candidateBounds, objBounds, requiredSpacing)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
 

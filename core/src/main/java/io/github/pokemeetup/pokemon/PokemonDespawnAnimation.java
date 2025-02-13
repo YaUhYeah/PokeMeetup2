@@ -1,123 +1,42 @@
 package io.github.pokemeetup.pokemon;
 
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.math.Vector2;
-import io.github.pokemeetup.utils.textures.TextureManager;
 
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * A simple fade–out despawn animation.
+ */
 public class PokemonDespawnAnimation {
-    private static final float DESPAWN_DURATION = 1.0f; // Total animation time in seconds
-    private static final float SPARKLE_DURATION = 0.3f;
-    private static final int NUM_SPARKLES = 6; // Number of sparkle particles
+    private final float duration; // seconds for fade–out
+    private float timer;
+    private final float x, y;
+    private final float frameWidth, frameHeight;
 
-    private float animationTime = 0f;
-    private final List<Sparkle> sparkles;
-    private final boolean isComplete = false;
-    private final Vector2 position;
-
-    private static class Sparkle {
-        float x, y;
-        float angle;
-        float lifeTime;
-
-        Sparkle(float x, float y, float angle) {
-            this.x = x;
-            this.y = y;
-            this.angle = angle;
-            this.lifeTime = 0f;
-        }
-    }
-
-    public PokemonDespawnAnimation(float x, float y) {
-        this.position = new Vector2(x, y);
-        this.sparkles = new ArrayList<>();
-        initializeSparkles();
-    }
-
-    private void initializeSparkles() {
-        for (int i = 0; i < NUM_SPARKLES; i++) {
-            float angle = (360f / NUM_SPARKLES) * i;
-            sparkles.add(new Sparkle(position.x, position.y, angle));
-        }
+    public PokemonDespawnAnimation(float x, float y, float frameWidth, float frameHeight) {
+        this.duration = 2.0f; // for example, 2 seconds fade out
+        this.timer = 0f;
+        this.x = x;
+        this.y = y;
+        this.frameWidth = frameWidth;
+        this.frameHeight = frameHeight;
     }
 
     /**
-     * Call this method each frame; it returns true once the animation duration has elapsed.
+     * Update the animation. Returns true if the animation is finished.
      */
     public boolean update(float delta) {
-        animationTime += delta;
-
-        // Update each sparkle’s lifetime and position (spiraling outward)
-        for (Sparkle sparkle : sparkles) {
-            sparkle.lifeTime += delta;
-            float radius = (sparkle.lifeTime / DESPAWN_DURATION) * 32f;
-            float rotationSpeed = 360f * (sparkle.lifeTime / DESPAWN_DURATION);
-            sparkle.angle += rotationSpeed * delta;
-            sparkle.x = position.x + radius * MathUtils.cosDeg(sparkle.angle);
-            sparkle.y = position.y + radius * MathUtils.sinDeg(sparkle.angle);
-        }
-
-        // When animation time exceeds duration, signal completion.
-        return animationTime >= DESPAWN_DURATION;
+        timer += delta;
+        return timer >= duration;
     }
 
     /**
-     * Renders the Pokémon fading out along with its sparkles.
-     * The sparkles are drawn with additive blending so they “glow.”
+     * Render the current frame of the animation with a fading effect.
      */
-    public void render(SpriteBatch batch, TextureRegion pokemonSprite, float width, float height) {
-        if (isComplete) return;
-
-        float progress = animationTime / DESPAWN_DURATION;
-        float alpha = 1.0f - progress;
-        float scale = 1.0f - (progress * 0.5f);
-
-        // Save the current batch color and blend function settings.
-        Color prevColor = new Color(batch.getColor());
-        int oldSrcFunc = batch.getBlendSrcFunc();
-        int oldDstFunc = batch.getBlendDstFunc();
-
-        // Render the Pokémon sprite fading out.
-        batch.setColor(prevColor.r, prevColor.g, prevColor.b, alpha);
-        float scaledWidth = width * scale;
-        float scaledHeight = height * scale;
-        float xOffset = (width - scaledWidth) / 2;
-        float yOffset = (height - scaledHeight) / 2;
-        batch.draw(pokemonSprite,
-            position.x + xOffset, position.y + yOffset,
-            scaledWidth / 2, scaledHeight / 2,
-            scaledWidth, scaledHeight,
-            1f, 1f, 0);
-
-        // Now render sparkles using additive blending.
-        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
-        TextureRegion sparkleTexture = TextureManager.ui.findRegion("sparkle");
-        if (sparkleTexture != null) {
-            for (Sparkle sparkle : sparkles) {
-                float sparkleProgress = sparkle.lifeTime / SPARKLE_DURATION;
-                float sparkleAlpha = 1.0f - (Math.min(sparkleProgress, 1f));
-                float sparkleScale = 0.5f - (sparkleProgress * 0.3f);
-
-                batch.setColor(1f, 1f, 1f, sparkleAlpha);
-                batch.draw(sparkleTexture,
-                    sparkle.x - (8f * sparkleScale), sparkle.y - (8f * sparkleScale),
-                    8f, 8f,
-                    16f * sparkleScale, 16f * sparkleScale,
-                    1f, 1f, sparkle.angle);
-            }
-        }
-        // Restore the batch’s original blend function and color.
-        batch.setBlendFunction(oldSrcFunc, oldDstFunc);
-        batch.setColor(prevColor);
-    }
-
-    public boolean isComplete() {
-        return isComplete;
+    public void render(SpriteBatch batch, TextureRegion currentFrame) {
+        float alpha = MathUtils.clamp(1 - (timer / duration), 0, 1);
+        batch.setColor(1f, 1f, 1f, alpha);
+        batch.draw(currentFrame, x, y, frameWidth, frameHeight);
+        batch.setColor(1f, 1f, 1f, 1f);
     }
 }

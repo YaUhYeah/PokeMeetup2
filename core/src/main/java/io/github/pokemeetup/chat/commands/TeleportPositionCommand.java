@@ -43,7 +43,7 @@ public class TeleportPositionCommand implements Command {
         try {
             GameLogger.info("Executing tp command...");
 
-            // Get player and world from global context.
+            // Get player and world from the global context.
             Player player = GameContext.get().getPlayer();
             if (player == null) {
                 chatSystem.addSystemMessage("Error: Player not found");
@@ -59,14 +59,20 @@ public class TeleportPositionCommand implements Command {
                 return;
             }
 
+            // Parse target tile coordinates.
             int tileX = Integer.parseInt(argsArray[0]);
             int tileY = Integer.parseInt(argsArray[1]);
+
+            // *** NEW CHECK: Ensure the target is within the world border ***
+            if (!currentWorld.isWithinWorldBounds(tileX, tileY)) {
+                chatSystem.addSystemMessage("Error: Teleport location (" + tileX + ", " + tileY + ") is outside the world border.");
+                return;
+            }
+
             float pixelX = tileX * World.TILE_SIZE;
             float pixelY = tileY * World.TILE_SIZE;
 
-
-
-            // Now teleport the player.
+            // Teleport the player by updating his position and tile coordinates.
             player.getPosition().set(pixelX, pixelY);
             player.setTileX(tileX);
             player.setTileY(tileY);
@@ -75,9 +81,8 @@ public class TeleportPositionCommand implements Command {
             player.setRenderPosition(new Vector2(pixelX, pixelY));
             player.setMoving(false);
 
-            // **The crucial fix: Reset the chunk state.**
+            // Reset the chunk state so that a fresh set of chunks are loaded around the new position.
             currentWorld.clearChunks();
-            // Now trigger a fresh initial load (this method does not check the flag)
             currentWorld.loadChunksAroundPlayer();
 
             // If in multiplayer mode, update the server.

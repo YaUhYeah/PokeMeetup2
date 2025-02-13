@@ -1,12 +1,10 @@
-package io.github.pokemeetup.multiplayer.server.plugin;
+package org.discord.plugin;
 
 import java.io.File;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.net.URLClassLoader;
 import java.net.URL;
-import java.util.List;
-
 
 
 public class JarPluginLoader implements PluginLoader {

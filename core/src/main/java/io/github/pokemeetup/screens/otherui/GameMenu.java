@@ -1,7 +1,6 @@
 package io.github.pokemeetup.screens.otherui;
 
 import com.badlogic.gdx.Application;
-import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.scenes.scene2d.*;
@@ -14,18 +13,12 @@ import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
-import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.screens.ModeSelectionScreen;
+import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.InputManager;
-import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.PlayerData;
-import io.github.pokemeetup.system.gameplay.overworld.World;
-import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.system.keybinds.KeyBindsDialog;
 import io.github.pokemeetup.utils.GameLogger;
-
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class GameMenu extends Actor {
     private static final float BUTTON_WIDTH = 200f;
@@ -67,21 +60,29 @@ public class GameMenu extends Actor {
             performSaveAndExit();
         }
     }
-
     public void resize(int width, int height) {
-        // Update the viewport for your stage(s)
+        // Update the stage's viewport.
         stage.getViewport().update(width, height, true);
 
-        // If your optionsWindow exists, repack it (if needed) and center it.
+        // Center the main menu window.
+        if (menuWindow != null) {
+            menuWindow.pack(); // Recalculate size if needed
+            menuWindow.setPosition(
+                (width - menuWindow.getWidth()) / 2,
+                (height - menuWindow.getHeight()) / 2
+            );
+        }
+
+        // Center the options window as well.
         if (optionsWindow != null) {
-            optionsWindow.pack();  // Optional: if your window’s content might affect its size
+            optionsWindow.pack();
             optionsWindow.setPosition(
                 (width - optionsWindow.getWidth()) / 2,
                 (height - optionsWindow.getHeight()) / 2
             );
         }
-
     }
+
 
     /**
      * Transitions to the title screen (or ModeSelectionScreen) after disposing of UI resources.
@@ -204,7 +205,12 @@ public class GameMenu extends Actor {
         };
 
         bagButton.addListener(notImplementedListener);
-        pokemonButton.addListener(notImplementedListener);
+        pokemonButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                showPartyScreen(false); // false indicates not battle mode
+            }
+        });
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -235,6 +241,31 @@ public class GameMenu extends Actor {
 
         createOptionsMenu();
         stage.addActor(menuWindow);
+    }
+
+    private void showPartyScreen(boolean battleMode) {
+        // Hide menu window temporarily
+        menuWindow.setVisible(false);
+        if (GameContext.get().getGameScreen().getBattleSkin() != null) {
+            // Create party screen
+            PokemonPartyWindow partyScreen = new PokemonPartyWindow(
+                GameContext.get().getGameScreen().getBattleSkin() ,
+                GameContext.get().getPlayer().getPokemonParty(),
+                battleMode,
+                (selectedPokemon) -> {
+                    // Handle selection
+                    menuWindow.setVisible(true);
+                },
+                () -> {
+                    // Handle cancel
+                    menuWindow.setVisible(true);
+                }
+            );
+
+            // Add to stage above other elements
+            stage.addActor(partyScreen);
+            partyScreen.show(stage);
+        }
     }
 
     private void performSaveAndExit() {

@@ -2,8 +2,8 @@ package org.discord;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import io.github.pokemeetup.multiplayer.server.plugin.PluginConfig;
-import io.github.pokemeetup.multiplayer.server.plugin.ServerPlugin;
+import org.discord.plugin.PluginConfig;
+import org.discord.plugin.ServerPlugin;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.servers.PluginContext;
 

@@ -49,9 +49,15 @@ public class WeatherSystem {
         this.currentWeather = WeatherType.CLEAR;
         this.intensity = 0f;
         this.accumulation = 0f;
-        this.rainDrop = TextureManager.effects.findRegion("rain_drop");
-        this.snowflake = TextureManager.effects.findRegion("snowflake");
-        this.sandParticle = TextureManager.effects.findRegion("sand_particle");
+        if (TextureManager.effects != null) {
+            this.rainDrop = TextureManager.effects.findRegion("rain_drop");
+            this.snowflake = TextureManager.effects.findRegion("snowflake");
+            this.sandParticle = TextureManager.effects.findRegion("sand_particle");
+        } else {
+            this.rainDrop = null;
+            this.snowflake = null;
+            this.sandParticle = null;
+        }
     }
 
     // (Other methods remain unchanged.)
@@ -151,13 +157,19 @@ public class WeatherSystem {
     /**
      * Set new weather. If the weather type is changing, clear existing particles for a smooth transition.
      */
+    public void setAccumulation(float accumulation) {
+        this.accumulation = accumulation;
+    }
+
     public void setWeather(WeatherType type, float intensity) {
+        // If the weather type is changing, clear existing particles (optional).
         if (this.currentWeather != type) {
             particles.clear();
         }
         this.currentWeather = type;
         this.intensity = intensity;
     }
+
 
     public WeatherType getCurrentWeather() {
         return currentWeather;

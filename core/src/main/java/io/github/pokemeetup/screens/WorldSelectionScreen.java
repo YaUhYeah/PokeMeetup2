@@ -906,8 +906,7 @@ public class WorldSelectionScreen implements Screen {
         long seed = (worldData.getConfig() != null)
             ? worldData.getConfig().getSeed()
             : System.currentTimeMillis();
-        BiomeManager biomeManager = new BiomeManager(seed);
-        World world = new World(worldData.getName(), seed, biomeManager);
+        World world = new World(worldData.getName(), seed);
         // Create and set a dummy player first.
         Player tempPlayer = new Player(World.DEFAULT_X_POSITION, World.DEFAULT_Y_POSITION, world, "ThumbnailGen");
         world.setPlayer(tempPlayer);

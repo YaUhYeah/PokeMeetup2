@@ -1,15 +1,12 @@
 package io.github.pokemeetup.pokemon;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
-import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.attacks.Move;
 import io.github.pokemeetup.pokemon.data.PokemonDatabase;
-import io.github.pokemeetup.system.battle.BattleCompletionHandler;
 import io.github.pokemeetup.system.gameplay.PokemonAnimations;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -618,7 +615,7 @@ public class Pokemon {
 
     public void render(SpriteBatch batch) {
         if (animations != null) {
-            TextureRegion currentFrame = animations.getCurrentFrame(direction, isMoving, Gdx.graphics.getDeltaTime());
+            TextureRegion currentFrame = animations.getCurrentFrame(direction, isMoving);
             batch.draw(currentFrame, position.x, position.y);
 //            GameLogger.info("Rendering Pokémon: " + name + " at position: " + position);
         }

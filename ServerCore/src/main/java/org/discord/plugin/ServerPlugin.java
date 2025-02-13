@@ -1,4 +1,4 @@
-package io.github.pokemeetup.multiplayer.server.plugin;
+package org.discord.plugin;
 
 
 import io.github.pokemeetup.system.servers.PluginContext;
