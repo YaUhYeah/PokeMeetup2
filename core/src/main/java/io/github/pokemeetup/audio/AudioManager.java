@@ -227,13 +227,14 @@ public class AudioManager {
             "music/Menu-Music-3.mp3",
             "music/Menu-Music-4.mp3"
         ));
+        loadBiomeMusic(BiomeType.BEACH, (Arrays.asList("music/Beach-Biome-0.mp3", "music/Beach-Biome-1.mp3", "music/Beach-Biome-2.mp3")));
+        loadBiomeMusic(BiomeType.OCEAN, (Arrays.asList("music/Ocean-Biome-0.mp3", "music/Ocean-Biome-1.mp3", "music/Ocean-Biome-2.mp3")));
         loadBiomeMusic(BiomeType.CHERRY_GROVE, (Arrays.asList("music/CherryGrove-Biome-0.mp3", "music/CherryGrove-Biome-1.mp3", "music/CherryGrove-Biome-2.mp3")));
         loadBiomeMusic(BiomeType.RUINS, (Arrays.asList("music/Ruins-Biome-0.mp3", "music/Ruins-Biome-1.mp3")));
         loadBiomeMusic(BiomeType.FOREST, (Arrays.asList("music/Forest-Biome-0.mp3", "music/Forest-Biome-1.mp3", "music/Forest-Biome-2.mp3", "music/Forest-Biome-3.mp3")));
         loadBiomeMusic(BiomeType.SNOW, (Arrays.asList("music/Snow-Biome-0.mp3", "music/Snow-Biome-1.mp3", "music/Snow-Biome-2.mp3")));
         loadBiomeMusic(BiomeType.HAUNTED, (Arrays.asList("music/Haunted-Biome-0.mp3", "music/Haunted-Biome-1.mp3")));
         loadBiomeMusic(BiomeType.PLAINS, (Arrays.asList("music/Plains-Biome-0.mp3", "music/Plains-Biome-1.mp3", "music/Plains-Biome-2.mp3", "music/Plains-Biome-3.mp3", "music/Plains-Biome-4.mp3")));
-        loadBiomeMusic(BiomeType.BIG_MOUNTAINS, (Arrays.asList("music/Mountain-Biome-1.mp3", "music/Mountain-Biome-0.mp3")));
         loadBiomeMusic(BiomeType.RAIN_FOREST, (Arrays.asList("music/RainForest-Biome-0.mp3", "music/RainForest-Biome-1.mp3", "music/RainForest-Biome-2.mp3", "music/RainForest-Biome-3.mp3")));
         loadBiomeMusic(BiomeType.DESERT, (Arrays.asList("music/Desert-Biome-0.mp3", "music/Desert-Biome-1.mp3", "music/Desert-Biome-2.mp3", "music/Desert-Biome-3.mp3", "music/Desert-Biome-4.mp3")));
 
@@ -512,6 +513,8 @@ public class AudioManager {
     }
 
     public enum SoundEffect {
+        POKEMON_SENDOUT("sounds/SENDOUT.ogg"),
+        POKEMON_RETURN("sounds/RETREAT.ogg"),
         ITEM_PICKUP("sounds/pickup.ogg"),
         ITEM_PICKUP_OW("sounds/item_ow_pickup.ogg"),
         MENU_SELECT("sounds/select.ogg"),

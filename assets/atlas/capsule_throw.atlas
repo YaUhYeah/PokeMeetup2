@@ -1,0 +1,7 @@
+capsule_throw.png
+size:512,128
+repeat:none
+ball_POKEBALL
+bounds:2,2,256,64
+ball_POKEBALL_open
+bounds:260,2,32,64
