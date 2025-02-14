@@ -9,10 +9,14 @@ plugins {
   id "io.github.fourlastor.construo" version "1.4.1"
 }
 
+// Allow Launch4j types if needed.
 System.setProperty("xstream.allowTypesByWildcard", "net.sf.launch4j.**")
 
 group = 'io.github.pokemeetup'
 version = '1.0.0'
+
+// Define a variable for the main class.
+def mainClassName = 'io.github.pokemeetup.lwjgl3.Lwjgl3Launcher'
 
 repositories {
   mavenCentral()
@@ -28,8 +32,8 @@ dependencies {
 }
 
 application {
-  // The main class for your desktop client launcher.
-  mainClass = 'io.github.pokemeetup.lwjgl3.Lwjgl3Launcher'
+  // Use the variable here.
+  mainClass = mainClassName
 }
 
 java {
@@ -63,6 +67,9 @@ tasks.register('buildServer', GradleBuild) {
 }
 
 // --- Task: Create a minimal JRE using jlink.
+// We include java.xml along with java.base, java.desktop, and java.logging.
+// --- Task: Create a minimal JRE using jlink.
+// We now include jdk.unsupported along with java.base, java.desktop, java.logging, and java.xml.
 tasks.register('createMinimalJRE', Exec) {
   def jdkPath = "C:/Program Files/Java/jdk-17"  // MODIFY this path as needed.
   doFirst {
@@ -74,7 +81,7 @@ tasks.register('createMinimalJRE', Exec) {
   }
   commandLine "${jdkPath}/bin/jlink",
     "--module-path", "${jdkPath}/jmods",
-    "--add-modules", "java.base,java.desktop",
+    "--add-modules", "java.base,java.desktop,java.logging,java.xml,jdk.unsupported",
     "--compress", "2",
     "--strip-debug",
     "--no-header-files",
@@ -82,11 +89,11 @@ tasks.register('createMinimalJRE', Exec) {
     "--output", "${buildDir}/minimalJRE"
 }
 
-// --- Task: Copy the contents of the assets folder for Packr packaging
+
+// --- Task: Copy the contents of the assets folder for Packr packaging.
 tasks.register('copyAssetsForPackr', Copy) {
   group = 'distribution'
   description = 'Copies the contents of the assets folder for inclusion in the Packr distribution'
-  // IMPORTANT: The trailing slash copies only the *contents* of the folder.
   from "${rootProject.projectDir}/assets/"
   into "${buildDir}/packr_resources"
   doLast {
@@ -97,7 +104,7 @@ tasks.register('copyAssetsForPackr', Copy) {
   }
 }
 
-// --- Task: Run Packr to Package the Client
+// --- Task: Run Packr to Package the Client.
 tasks.register('runPackr', Exec) {
   dependsOn 'shadowJar', 'copyAssetsForPackr'
   def packrJar = rootProject.file("tools/packr.jar")
@@ -111,13 +118,13 @@ tasks.register('runPackr', Exec) {
       outputDir.deleteDir()
     }
   }
-  // Pass the resources folder that now contains the *contents* of assets.
+  // Pass the mainClassName variable (a string) so Packr gets the correct value.
   commandLine "java", "-jar", packrJar,
     "--platform", "windows64",
     "--jdk", "${buildDir}/minimalJRE",
     "--executable", "PokeMeetup",
     "--classpath", file("build/libs/${project.name}-${version}-all.jar").absolutePath,
-    "--mainclass", application.mainClass,
+    "--mainclass", mainClassName,
     "--resources", "${buildDir}/packr_resources",
     "--output", "${buildDir}/packr",
     "--verbose"
@@ -129,8 +136,7 @@ tasks.register('runPackr', Exec) {
   }
 }
 
-// --- Fallback Task: Copy assets from packr_resources into the final output folder
-// (This ensures that if Packr did not merge resources properly, the assets appear at the root.)
+// --- Fallback Task: Copy assets from packr_resources into the final output folder.
 tasks.register('copyFinalAssets', Copy) {
   group = 'distribution'
   description = 'Copies assets from packr_resources into the final output folder'
@@ -138,11 +144,10 @@ tasks.register('copyFinalAssets', Copy) {
   into "${buildDir}/packr"
 }
 
-// --- Task: Package the Desktop Client using Packr
+// --- Task: Package the Desktop Client using Packr.
 tasks.register('packClient') {
   group = 'distribution'
   description = 'Packages the desktop client as a portable executable using Packr'
-  // Run packClient then copyFinalAssets to force the assets into the output folder.
   dependsOn 'shadowJar', 'createMinimalJRE', 'copyAssetsForPackr', 'runPackr'
   finalizedBy 'copyFinalAssets'
 }

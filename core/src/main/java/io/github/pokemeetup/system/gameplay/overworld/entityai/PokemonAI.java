@@ -8,35 +8,36 @@ import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 
-import java.util.Collection;
-
 public class PokemonAI {
 
-    private static final float DECISION_INTERVAL = 1.0f;
-    // Shorter idle durations so decisions happen more frequently.
-    private static final float IDLE_MIN_DURATION = 0.25f;
-    private static final float IDLE_MAX_DURATION = 0.75f;
-    private static final float BASE_MOVEMENT_CHANCE = 0.85f;
+    // Normal roaming: delay between moves (in seconds)
+    private static final float IDLE_MIN_DURATION = 1.0f;
+    private static final float IDLE_MAX_DURATION = 2.0f;
+    // Flee (sprint) mode: shorter delay between moves
+    private static final float FLEE_IDLE_DURATION = 0.2f;
+    // Flee sprint: number of consecutive tile moves
+    private static final int FLEE_MIN_STEPS = 3;
+    private static final int FLEE_MAX_STEPS = 5;
+    // Base flee range in pixels.
     private static final float BASE_FLEE_RANGE = 150f;
-    private static final float MIN_DISTANCE_TO_OTHERS = World.TILE_SIZE * 2;
 
-    // Personality modifier enums:
+    // Personality modifier enums.
     public enum PokemonPersonality {
-        TIMID,    // Flees earlier, less likely to move (more skittish)
-        CURIOUS,  // May occasionally approach the player
+        TIMID,    // Flees earlier
+        CURIOUS,  // May occasionally approach
         LAZY      // Moves infrequently
     }
 
     private final WildPokemon pokemon;
     private boolean isPaused = false;
-    private float decisionTimer = 0;
     private float stateTimer = 0;
     private float idleDuration = 0;
-    // NEW: Field to hold our roaming/flee target position
-    private Vector2 targetPosition = new Vector2();
-    // Replace the old MOVING state with a new ROAMING state.
     private AIState currentState = AIState.IDLE;
     private final PokemonPersonality personality;
+
+    // Flee sprint variables.
+    private int fleeStepsRemaining = 0;
+    private String fleeDirection = null;
 
     public PokemonAI(WildPokemon pokemon) {
         this.pokemon = pokemon;
@@ -50,6 +51,12 @@ public class PokemonAI {
         this.isPaused = paused;
     }
 
+    /**
+     * Updates the AI. If the Pokémon is not moving and the idle delay has passed,
+     * then issue a new move command.
+     * - In normal (roaming) mode, it moves one tile in a random cardinal direction.
+     * - In flee mode, it “sprints” several tiles away with a short delay between each.
+     */
     public void update(float delta, World world) {
         if (world == null || pokemon == null) {
             GameLogger.error("AI Update skipped - null world or pokemon");
@@ -57,148 +64,205 @@ public class PokemonAI {
         }
         if (isPaused) return;
 
-        // Check for species-specific actions (e.g. Abra teleport, Diglett underground)
+        // Handle species-specific behavior.
         handleSpecialTraits(world);
 
         stateTimer += delta;
-        decisionTimer += delta;
-
         Player player = GameContext.get().getPlayer();
-        if (player != null) {
-            float fleeRange = BASE_FLEE_RANGE;
-            if (personality == PokemonPersonality.TIMID) {
-                fleeRange *= 0.8f;
-            }
-            // Convert player tile coords to pixels.
-            float playerX = player.getX() * World.TILE_SIZE;
-            float playerY = player.getY() * World.TILE_SIZE;
-            float distToPlayer = Vector2.dst(pokemon.getX(), pokemon.getY(), playerX, playerY);
 
-            // If too close, switch to fleeing state.
+        // Check if the player is too close.
+        if (player != null) {
+            float distToPlayer = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
             if (distToPlayer < 2 * World.TILE_SIZE) {
                 if (currentState != AIState.FLEEING) {
                     GameLogger.info(pokemon.getName() + " (" + personality + ") is frightened and flees!");
                     currentState = AIState.FLEEING;
+                    // Reset flee sprint variables.
+                    fleeDirection = null;
+                    fleeStepsRemaining = 0;
+                }
+            } else if (currentState == AIState.FLEEING && distToPlayer > 3 * World.TILE_SIZE) {
+                // Once far enough, exit flee mode.
+                currentState = AIState.ROAMING;
+                fleeDirection = null;
+                fleeStepsRemaining = 0;
+            }
+        }
+
+        // If already moving, wait.
+        if (pokemon.isMoving()) {
+            return;
+        }
+
+        // Set idle duration based on mode.
+        if (currentState == AIState.FLEEING) {
+            idleDuration = FLEE_IDLE_DURATION;
+        }
+        if (stateTimer < idleDuration) {
+            return;
+        }
+
+        // Issue a move command.
+        if (currentState == AIState.FLEEING) {
+            // On the first flee move, compute the flee direction.
+            if (fleeDirection == null) {
+                fleeDirection = computeFleeDirection(world);
+                if (fleeDirection != null) {
+                    fleeStepsRemaining = MathUtils.random(FLEE_MIN_STEPS, FLEE_MAX_STEPS);
+                    GameLogger.info(pokemon.getName() + " starts sprinting in direction: " + fleeDirection
+                        + " for " + fleeStepsRemaining + " steps.");
+                } else {
+                    // Fallback if no valid flee direction found.
+                    chooseNewAdjacentTarget(world);
                     stateTimer = 0;
+                    return;
                 }
             }
-            // If we are fleeing and now safe, transition to roaming.
-            else if (currentState == AIState.FLEEING && distToPlayer > 3 * World.TILE_SIZE) {
-                currentState = AIState.ROAMING;
-                stateTimer = 0;
-                chooseRandomTarget(world, player);
+            // Issue a move in the flee direction.
+            move(fleeDirection);
+            fleeStepsRemaining--;
+            if (fleeStepsRemaining <= 0) {
+                GameLogger.info(pokemon.getName() + " finished sprinting away.");
+                currentState = AIState.IDLE;
+                fleeDirection = null;
+                fleeStepsRemaining = 0;
+            }
+        } else {
+            // Normal roaming: move one tile in a random cardinal direction.
+            chooseRandomTargetTile(world);
+        }
+
+        stateTimer = 0;
+        if (currentState != AIState.FLEEING) {
+            idleDuration = MathUtils.random(IDLE_MIN_DURATION, IDLE_MAX_DURATION);
+        }
+    }
+
+    /**
+     * Issues a move command in the given cardinal direction (one tile).
+     */
+    private void move(String newDirection) {
+        pokemon.moveToTile(getNextTileX(newDirection), getNextTileY(newDirection), newDirection);
+    }
+
+    private int getNextTileX(String direction) {
+        int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
+        if (direction.equals("left")) {
+            return currentTileX - 1;
+        } else if (direction.equals("right")) {
+            return currentTileX + 1;
+        }
+        return currentTileX;
+    }
+
+    private int getNextTileY(String direction) {
+        int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
+        if (direction.equals("up")) {
+            return currentTileY + 1;
+        } else if (direction.equals("down")) {
+            return currentTileY - 1;
+        }
+        return currentTileY;
+    }
+
+    /**
+     * For normal roaming, randomly pick one of the four cardinal directions (one tile).
+     */
+    private void chooseRandomTargetTile(World world) {
+        int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
+        int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
+        String[] directions = {"up", "down", "left", "right"};
+        int[] order = {0, 1, 2, 3};
+        // Shuffle order.
+        for (int i = 0; i < order.length; i++) {
+            int j = MathUtils.random(i, order.length - 1);
+            int temp = order[i];
+            order[i] = order[j];
+            order[j] = temp;
+        }
+        for (int idx : order) {
+            String dir = directions[idx];
+            int targetTileX = currentTileX;
+            int targetTileY = currentTileY;
+            if (dir.equals("up")) targetTileY++;
+            else if (dir.equals("down")) targetTileY--;
+            else if (dir.equals("left")) targetTileX--;
+            else if (dir.equals("right")) targetTileX++;
+            if (world.isPassable(targetTileX, targetTileY)) {
+                GameLogger.info(pokemon.getName() + " is roaming from tile (" + currentTileX + "," + currentTileY +
+                    ") to tile (" + targetTileX + "," + targetTileY + ") facing " + dir);
+                pokemon.moveToTile(targetTileX, targetTileY, dir);
+                return;
             }
         }
+        GameLogger.info(pokemon.getName() + " could not find a valid roaming target; idling instead.");
+    }
 
-        // Every decision interval, perform a state–based update.
-        if (decisionTimer >= DECISION_INTERVAL) {
-            decisionTimer = 0;
-            switch (currentState) {
-                case IDLE:
-                    if (stateTimer >= idleDuration) {
-                        // Transition from idle to roaming.
-                        currentState = AIState.ROAMING;
-                        stateTimer = 0;
-                        chooseRandomTarget(world, player);
-                    }
-                    break;
-                case ROAMING:
-                    if (reachedTarget()) {
-                        GameLogger.info(pokemon.getName() + " reached its target and is now idling.");
-                        enterIdleState();
-                    } else {
-                        moveTowardsTarget(delta, world);
-                    }
-                    break;
-                case FLEEING:
-                    if (player != null) {
-                        chooseFleeTarget(player, world);
-                        moveTowardsTarget(delta, world);
-                    }
-                    break;
+    /**
+     * Computes a flee direction based on the player's position, using only cardinal directions.
+     */
+    private String computeFleeDirection(World world) {
+        Player player = GameContext.get().getPlayer();
+        if (player == null) return null;
+        int pokemonTileX = (int)(pokemon.getX() / World.TILE_SIZE);
+        int pokemonTileY = (int)(pokemon.getY() / World.TILE_SIZE);
+        int playerTileX = (int)(player.getX() / World.TILE_SIZE);
+        int playerTileY = (int)(player.getY() / World.TILE_SIZE);
+        int dx = pokemonTileX - playerTileX;
+        int dy = pokemonTileY - playerTileY;
+        // Use dominant axis to avoid diagonal movement.
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            return (dx >= 0) ? "right" : "left";
+        } else {
+            return (dy >= 0) ? "up" : "down";
+        }
+    }
+
+    /**
+     * If the direct flee tile is blocked, try one of the four adjacent tiles.
+     */
+    private void chooseNewAdjacentTarget(World world) {
+        int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
+        int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
+        int[] dx = {0, 0, -1, 1};
+        int[] dy = {1, -1, 0, 0};
+        String[] dirs = {"up", "down", "left", "right"};
+        for (int i = 0; i < 4; i++) {
+            int targetTileX = currentTileX + dx[i];
+            int targetTileY = currentTileY + dy[i];
+            if (world.isPassable(targetTileX, targetTileY)) {
+                GameLogger.info(pokemon.getName() + " chooses an adjacent tile (" + targetTileX + "," + targetTileY + ")");
+                pokemon.moveToTile(targetTileX, targetTileY, dirs[i]);
+                return;
             }
         }
+        GameLogger.info("No valid adjacent moves found for " + pokemon.getName() + "; remaining idle.");
     }
 
     /**
-     * Chooses a random target position (for roaming) a set distance from the player.
+     * Determines a cardinal direction based on the difference between two tile positions.
      */
-    private void chooseRandomTarget(World world, Player player) {
-        float baseX = (player != null) ? player.getX() * World.TILE_SIZE : pokemon.getX();
-        float baseY = (player != null) ? player.getY() * World.TILE_SIZE : pokemon.getY();
-        // Choose a random angle and a distance between 10 and 20 tiles.
-        float angle = MathUtils.random(0, MathUtils.PI2);
-        float distance = MathUtils.random(10 * World.TILE_SIZE, 20 * World.TILE_SIZE);
-        float targetX = baseX + MathUtils.cos(angle) * distance;
-        float targetY = baseY + MathUtils.sin(angle) * distance;
-        // Check if the target tile is passable.
-        if (world.isPassable((int)(targetX/World.TILE_SIZE), (int)(targetY/World.TILE_SIZE))) {
-            targetPosition.set(targetX, targetY);
-            GameLogger.info(pokemon.getName() + " is roaming to (" + targetX + "," + targetY + ")");
+    private String determineDirection(int fromX, int fromY, int toX, int toY) {
+        int dx = toX - fromX;
+        int dy = toY - fromY;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            return (dx >= 0) ? "right" : "left";
         } else {
-            targetPosition.set(pokemon.getX(), pokemon.getY());
-            GameLogger.info(pokemon.getName() + " could not find a valid roaming target; idling instead.");
+            return (dy >= 0) ? "up" : "down";
         }
     }
 
     /**
-     * Chooses a flee target directly opposite the player's position.
+     * Handles species-specific behavior (e.g., Abra teleport or Diglett underground)
+     * without interrupting an active move.
      */
-    private void chooseFleeTarget(Player player, World world) {
-        float dx = pokemon.getX() - player.getX() * World.TILE_SIZE;
-        float dy = pokemon.getY() - player.getY() * World.TILE_SIZE;
-        Vector2 dir = new Vector2(dx, dy).nor();
-        float targetX = pokemon.getX() + dir.x * World.TILE_SIZE;
-        float targetY = pokemon.getY() + dir.y * World.TILE_SIZE;
-        if (world.isPassable((int)(targetX/World.TILE_SIZE), (int)(targetY/World.TILE_SIZE))) {
-            targetPosition.set(targetX, targetY);
-        } else {
-            targetPosition.set(pokemon.getX(), pokemon.getY());
-        }
-    }
-
-    /**
-     * Moves the Pokémon toward the target position using simple linear interpolation.
-     */
-    private void moveTowardsTarget(float delta, World world) {
-        float currentX = pokemon.getX();
-        float currentY = pokemon.getY();
-        float targetX = targetPosition.x;
-        float targetY = targetPosition.y;
-        float distance = Vector2.dst(currentX, currentY, targetX, targetY);
-        if (distance < 0.1f) return; // Already at target
-
-        // Speed can be adjusted as needed.
-        float speed = World.TILE_SIZE * 2;
-        float lerpFactor = delta * speed / distance;
-        float newX = MathUtils.lerp(currentX, targetX, lerpFactor);
-        float newY = MathUtils.lerp(currentY, targetY, lerpFactor);
-        if (world.isPassable((int)(newX/World.TILE_SIZE), (int)(newY/World.TILE_SIZE))) {
-            pokemon.setX(newX);
-            pokemon.setY(newY);
-        } else {
-            GameLogger.info(pokemon.getName() + " encountered an obstacle; idling.");
-            enterIdleState();
-        }
-    }
-
-    /**
-     * Checks whether the Pokémon is close enough to its target.
-     */
-    private boolean reachedTarget() {
-        return Vector2.dst(pokemon.getX(), pokemon.getY(), targetPosition.x, targetPosition.y) < 2f;
-    }
-
-    // ------------------- Existing Methods Below (with minor tweaks) -------------------
-
     private void handleSpecialTraits(World world) {
-        if (pokemon.isMoving()) return; // Do not interrupt if already moving
-
+        if (pokemon.isMoving()) return;
         String name = pokemon.getName().toLowerCase();
-        if (name.equalsIgnoreCase("abra")) {
+        if (name.equals("abra")) {
             if (MathUtils.random() < 0.01f) {
-                int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-                int currentTileY = (int) (pokemon.getY() / World.TILE_SIZE);
+                int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
+                int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
                 int step = MathUtils.random(3, 6);
                 int[] dx = {step, -step, 0, 0};
                 int[] dy = {0, 0, step, -step};
@@ -213,10 +277,10 @@ public class PokemonAI {
                     enterIdleState();
                 }
             }
-        } else if (name.equalsIgnoreCase("diglett")) {
+        } else if (name.equals("diglett")) {
             if (MathUtils.random() < 0.01f) {
-                int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-                int currentTileY = (int) (pokemon.getY() / World.TILE_SIZE);
+                int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
+                int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
                 int step = MathUtils.random(1, 3);
                 int[] dx = {step, -step, 0, 0};
                 int[] dy = {0, 0, step, -step};
@@ -234,93 +298,13 @@ public class PokemonAI {
         }
     }
 
-    private void approachPlayer(World world, Player player) {
-        int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-        int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-        int playerTileX = (int) (player.getX());
-        int playerTileY = (int) (player.getY());
-
-        int dx = playerTileX - pokemonTileX;
-        int dy = playerTileY - pokemonTileY;
-        int stepX = dx != 0 ? dx / Math.abs(dx) : 0;
-        int stepY = dy != 0 ? dy / Math.abs(dy) : 0;
-        int targetTileX = pokemonTileX + stepX;
-        int targetTileY = pokemonTileY + stepY;
-
-        if (world.isPassable(targetTileX, targetTileY)) {
-            String direction = (Math.abs(dx) > Math.abs(dy)) ? (dx > 0 ? "right" : "left")
-                : (dy > 0 ? "up" : "down");
-            pokemon.moveToTile(targetTileX, targetTileY, direction);
-            currentState = AIState.ROAMING;
-        } else {
-            chooseNewTarget(world);
-        }
-    }
-
-    private void chooseNewTarget(World world) {
-        if (pokemon.isMoving()) {
-            GameLogger.info("Cannot choose new target while moving");
-            return;
-        }
-        int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-        int currentTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-        int step = MathUtils.random(1, 3);
-        int[] dx = {0, 0, -step, step};
-        int[] dy = {step, -step, 0, 0};
-        String[] dirs = {"up", "down", "left", "right"};
-
-        for (int i = 0; i < 4; i++) {
-            int targetTileX = currentTileX + dx[i];
-            int targetTileY = currentTileY + dy[i];
-            if (isValidMove(targetTileX, targetTileY, world)) {
-                pokemon.moveToTile(targetTileX, targetTileY, dirs[i]);
-                currentState = AIState.ROAMING;
-                return;
-            }
-        }
-        GameLogger.info("No valid moves found - entering idle state");
-        enterIdleState();
-    }
-
-    private boolean isValidMove(int tileX, int tileY, World world) {
-        if (!world.isPassable(tileX, tileY)) {
-            return false;
-        }
-        float pixelX = tileX * World.TILE_SIZE;
-        float pixelY = tileY * World.TILE_SIZE;
-        Collection<WildPokemon> nearby = world.getPokemonSpawnManager()
-            .getPokemonInRange(pixelX, pixelY, MIN_DISTANCE_TO_OTHERS);
-        return nearby.isEmpty() || (nearby.size() == 1 && nearby.iterator().next() == pokemon);
-    }
-
-    private void enterFleeingState(World world) {
-        Player player = GameContext.get().getPlayer();
-        if (player == null) return;
-
-        int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-        int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-        int playerTileX = (int) (player.getX());
-        int playerTileY = (int) (player.getY());
-
-        int dx = pokemonTileX - playerTileX;
-        int dy = pokemonTileY - playerTileY;
-        int targetTileX = pokemonTileX + (dx != 0 ? dx / Math.abs(dx) : 0);
-        int targetTileY = pokemonTileY + (dy != 0 ? dy / Math.abs(dy) : 0);
-
-        if (world.isPassable(targetTileX, targetTileY)) {
-            String direction = (Math.abs(dx) > Math.abs(dy)) ? (dx > 0 ? "right" : "left")
-                : (dy > 0 ? "up" : "down");
-            pokemon.moveToTile(targetTileX, targetTileY, direction);
-            currentState = AIState.FLEEING;
-        } else {
-            chooseNewTarget(world);
-        }
-    }
-
     public void enterIdleState() {
         currentState = AIState.IDLE;
         stateTimer = 0;
         idleDuration = MathUtils.random(IDLE_MIN_DURATION, IDLE_MAX_DURATION);
+        // Reset flee mode variables.
+        fleeDirection = null;
+        fleeStepsRemaining = 0;
         pokemon.setMoving(false);
     }
 

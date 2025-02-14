@@ -1,4 +1,5 @@
 package io.github.pokemeetup.lwjgl3;
+
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Window;
@@ -6,11 +7,13 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowListener;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.utils.GameLogger;
 
-
 public class Lwjgl3Launcher {
 
     public static void main(String[] args) {
-        // Instantiate the game
+        // Log the working directory for debugging.
+        GameLogger.info("Working directory: " + System.getProperty("user.dir"));
+
+        // Instantiate the game.
         CreatureCaptureGame game = new CreatureCaptureGame(false);
 
         Lwjgl3ApplicationConfiguration configuration = getDefaultConfiguration();
@@ -22,43 +25,32 @@ public class Lwjgl3Launcher {
             }
 
             @Override
-            public void iconified(boolean isIconified) {
-                // Handle window iconify (minimize) events if necessary
-            }
+            public void iconified(boolean isIconified) { }
 
             @Override
-            public void maximized(boolean isMaximized) {
-                // Handle window maximize events if necessary
-            }
+            public void maximized(boolean isMaximized) { }
 
             @Override
-            public void focusLost() {
-                // Handle window losing focus if necessary
-            }
+            public void focusLost() { }
 
             @Override
-            public void focusGained() {
-                // Handle window gaining focus if necessary
-            }
-            // In Lwjgl3Launcher class
+            public void focusGained() { }
+
             @Override
             public boolean closeRequested() {
                 GameLogger.info("Window close requested, saving final state...");
                 game.shutdown();
                 return true;
             }
-            @Override
-            public void filesDropped(String[] files) {
-                // Handle file drop events if necessary
-            }
 
             @Override
-            public void refreshRequested() {
-                // Handle refresh requests if necessary
-            }
+            public void filesDropped(String[] files) { }
+
+            @Override
+            public void refreshRequested() { }
         });
 
-        // Instantiate the application, which starts the game loop
+        // Instantiate the application which starts the game loop.
         new Lwjgl3Application(game, configuration);
     }
 
@@ -67,14 +59,9 @@ public class Lwjgl3Launcher {
         configuration.setTitle("Capsule Story");
         configuration.useVsync(true);
 
-        // Set the foreground FPS to the monitor's refresh rate + 1 for smoother rendering
+        // Set the foreground FPS to the monitor's refresh rate + 1 for smoother rendering.
         int refreshRate = Lwjgl3ApplicationConfiguration.getDisplayMode().refreshRate;
-        if (refreshRate > 0) {
-            configuration.setForegroundFPS(refreshRate + 1);
-        } else {
-            // Fallback if refresh rate is not available
-            configuration.setForegroundFPS(60);
-        }
+        configuration.setForegroundFPS(refreshRate > 0 ? refreshRate + 1 : 60);
 
         configuration.setWindowedMode(800, 600);
         configuration.setWindowIcon("libgdx128.png", "libgdx64.png", "libgdx32.png", "libgdx16.png");

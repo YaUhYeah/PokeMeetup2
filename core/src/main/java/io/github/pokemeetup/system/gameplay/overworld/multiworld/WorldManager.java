@@ -126,7 +126,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
             return;
         }
         GameLogger.info("Saving world: " + worldData.getName());
-
         synchronized (saveLock) {
             try {
                 // Log pre-save state
@@ -207,7 +206,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
 
     private void createDirectoryStructure() {
         try {
-            // Only create directories for singleplayer mode
             fs.createDirectory(WORLDS_BASE_DIR);
             fs.createDirectory(baseDirectory);
             fs.createDirectory(baseDirectory + "backups/");

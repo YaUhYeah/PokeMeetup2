@@ -262,6 +262,10 @@ public class BattleTable extends Table {
         }});
     }
 
+    private boolean moveSelectionActive = false;
+    private Image playerStatusIcon;
+    private Image enemyStatusIcon;
+    private Label playerInfoLabel; // stores player Pokémon's name/level/hp info
     // Instance fields
     private final Stage stage;
     private final Skin skin;
@@ -280,12 +284,6 @@ public class BattleTable extends Table {
     private boolean isAnimating = false;
     private ProgressBar expBar;
 
-    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-    // SKIN STYLE REGISTRATION FOR HP BARS
-    // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
-    private boolean moveSelectionActive = false;
-    private Image playerStatusIcon;
-    private Image enemyStatusIcon;
 
     // –––––––––––––––––––
     // CONSTRUCTOR
@@ -522,7 +520,12 @@ public class BattleTable extends Table {
         float tableHeight = (getHeight() > 0 ? getHeight() : BATTLE_SCREEN_HEIGHT);
         battleText.setSize(tableWidth, 30);
         battleText.setPosition(0, tableHeight - 40);
-
+        playerInfoLabel = new Label(
+            playerPokemon.getName() + " Lv. " + playerPokemon.getLevel() +
+                " HP: " + playerPokemon.getCurrentHp() + "/" + playerPokemon.getStats().getHp() +
+                " XP: " + playerPokemon.getCurrentExperience() + "/" + playerPokemon.getExperienceForNextLevel(),
+            skin
+        );
         // Create action menu.
         actionMenu = new Table(skin);
         actionMenu.setBackground(createTranslucentBackground(0.5f));
@@ -683,56 +686,22 @@ public class BattleTable extends Table {
      * This includes the sprite, HP bar, name label, and any status effects
      */
     private void updatePlayerPokemonDisplay() {
-        // Update sprite
         TextureRegion newTexture = playerPokemon.getBackSprite();
         if (newTexture != null) {
             playerPokemonImage.setDrawable(new TextureRegionDrawable(newTexture));
-            // Maintain consistent sizing
             float aspect = (float) newTexture.getRegionWidth() / newTexture.getRegionHeight();
             float baseSize = 85f;
             playerPokemonImage.setSize(baseSize * aspect, baseSize);
         }
-
-        // Update HP bar
         playerHPBar.setRange(0, playerPokemon.getStats().getHp());
         playerHPBar.setValue(playerPokemon.getCurrentHp());
         updateHPBarColor(playerHPBar, playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp());
-
-        // Update info label with new Pokémon's details
-        for (Actor actor : getChildren()) {
-            if (actor instanceof Table) {
-                Table mainContainer = (Table) actor;
-                for (Actor child : mainContainer.getChildren()) {
-                    if (child instanceof Table) {
-                        Table section = (Table) child;
-                        for (Actor label : section.getChildren()) {
-                            if (label instanceof Label) {
-                                Label infoLabel = (Label) label;
-                                if (infoLabel.getText().toString().contains("Lv.")) {
-                                    infoLabel.setText(
-                                        playerPokemon.getName() + " Lv. " + playerPokemon.getLevel() +
-                                            " (" + playerPokemon.getCurrentHp() + "/" + playerPokemon.getStats().getHp() + ")"
-                                    );
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Update exp bar for new Pokémon
+        // Update our dedicated info label.
+        updatePlayerInfoLabel();
         expBar.setRange(0, playerPokemon.getExperienceForNextLevel());
         expBar.setValue(playerPokemon.getCurrentExperience());
-
-        // Update status icon
         updateStatusIcon(playerPokemon, playerStatusIcon);
-
-        // Force layout update
         invalidate();
-
-        // Center the new Pokémon image on the platform
         centerPlayerPokemon();
     }
     private void centerPlayerPokemon() {
@@ -857,14 +826,9 @@ public class BattleTable extends Table {
         enemyStack.add(enemyPokemonImage);
         enemySection.add(enemyStack).expand().right().padRight(stage.getWidth() * 0.1f).row();
 
-        // Player section.
+
         Table playerSection = new Table();
-        // Create a label that shows the player's Pokémon name, level, and current HP/total HP.
-        // For example: "Charmander Lv. 7 (18/39)"
-        Label playerInfoLabel = new Label(
-            playerPokemon.getName() + " Lv. " + playerPokemon.getLevel() +
-                " (" + playerPokemon.getCurrentHp() + "/" + playerPokemon.getStats().getHp() + ")",
-            skin);
+        // Use the dedicated info label for player info.
         playerSection.add(playerInfoLabel).expandX().left().pad(10).row();
         playerSection.add(playerHPBar).expandX().left().pad(10).row();
         Stack playerStack = new Stack();
@@ -1051,6 +1015,7 @@ public class BattleTable extends Table {
         updateStatusIcon(playerPokemon, playerStatusIcon);
         updateStatusIcon(enemyPokemon, enemyStatusIcon);
 
+        updatePlayerInfoLabel();
         // Only update battleText if there are no pending actions.
         if (battleText.getActions().size == 0) {
             switch (currentState) {
@@ -1122,7 +1087,10 @@ public class BattleTable extends Table {
         applyDamage(defender, damage);
         applyDamage(attacker, recoil);
         battleText.setText(attacker.getName() + " used Struggle!");
+        // Finish the move execution to complete the turn.
+        finishMoveExecution(false);
     }
+
 
     private float getTypeEffectiveness(Pokemon.PokemonType attackType, Pokemon.PokemonType defendType) {
         if (attackType == null || defendType == null) {
@@ -1133,18 +1101,36 @@ public class BattleTable extends Table {
         if (effectivenessMap == null) return 1.0f;
         return effectivenessMap.get(defendType, 1.0f);
     }
-
     private void executeMove(Move move, Pokemon attacker, Pokemon defender, boolean isPlayerMove) {
         if (isAnimating) return;
         isAnimating = true;
-        // Hide the main action menu if it’s showing.
         showActionMenu(false);
         SequenceAction moveSequence = Actions.sequence(
-            Actions.run(() -> battleText.setText(attacker.getName() + " used " + move.getName() + "!")),
+            Actions.run(() -> {
+                battleText.setText(attacker.getName() + " used " + move.getName() + "!");
+            }),
             Actions.delay(0.5f),
             Actions.run(() -> {
-                float damage = calculateDamage(move, attacker, defender);
-                applyDamage(defender, damage);
+                // Apply damage if the move does damage.
+                if (move.getPower() > 0) {
+                    float damage = calculateDamage(move, attacker, defender);
+                    applyDamage(defender, damage);
+                }
+                // Check and apply any secondary status effect.
+                if (move.getEffect() != null) {
+                    // Special handling for moves like leech seed.
+                    if ("leechSeed".equalsIgnoreCase(move.getEffect().getEffectType())) {
+                        defender.setStatus(Pokemon.Status.LEECH_SEED);
+                        battleText.setText(battleText.getText() + "\n" + defender.getName() + " was seeded!");
+                    } else if (MathUtils.random() <= move.getEffect().getChance()) {
+                        Pokemon.Status effectStatus = move.getEffect().getStatusEffect();
+                        if (effectStatus != null && effectStatus != Pokemon.Status.NONE) {
+                            defender.setStatus(effectStatus);
+                            battleText.setText(battleText.getText() + "\n" + defender.getName() + " was "
+                                + effectStatus.toString().toLowerCase() + "!");
+                        }
+                    }
+                }
                 // Flash the target sprite.
                 Image targetSprite = (defender == playerPokemon ? playerPokemonImage : enemyPokemonImage);
                 targetSprite.addAction(Actions.sequence(
@@ -1158,6 +1144,7 @@ public class BattleTable extends Table {
         );
         addAction(moveSequence);
     }
+
 
     private float calculateDamage(Move move, Pokemon attacker, Pokemon defender) {
         // Use the attacker's level in the calculation.
@@ -1188,6 +1175,13 @@ public class BattleTable extends Table {
         float modifier = randomModifier * stab * typeMultiplier;
 
         return baseDamage * modifier;
+    }
+    private void updatePlayerInfoLabel() {
+        // Update the dedicated info label with name, level, HP, and XP.
+        String info = playerPokemon.getName() + " Lv. " + playerPokemon.getLevel() +
+            " HP: " + playerPokemon.getCurrentHp() + "/" + playerPokemon.getStats().getHp() +
+            "  XP: " + playerPokemon.getCurrentExperience() + "/" + playerPokemon.getExperienceForNextLevel();
+        playerInfoLabel.setText(info);
     }
 
 
@@ -1220,36 +1214,51 @@ public class BattleTable extends Table {
         updateHPBars();
     }
     private void finishMoveExecution(boolean isPlayerMove) {
-        isAnimating = false;
+        // If the enemy just acted, then the turn is complete so apply end‐of–turn effects.
+        if (!isPlayerMove) {
+            applyEndOfTurnEffectsForTurn();
+        }
 
+        // Check if either Pokémon fainted after end‐of–turn effects.
         if (enemyPokemon.getCurrentHp() <= 0) {
-            // Enemy fainted
             finishBattle();
             return;
         } else if (playerPokemon.getCurrentHp() <= 0) {
-            // Player's Pokémon fainted
             battleText.setText(playerPokemon.getName() + " fainted!");
             if (hasAvailablePokemon()) {
-                // Only trigger the forced switch if we’re not already in forced switch mode.
                 if (currentState != BattleState.FORCED_SWITCH) {
                     currentState = BattleState.FORCED_SWITCH;
-                    showForcedSwitchPartyScreen(); // Force user to pick another Pokémon
+                    showForcedSwitchPartyScreen(); // Force user to pick another Pokémon.
                 }
             } else {
-                finishBattle(); // No Pokémon left
+                finishBattle(); // No Pokémon left.
             }
             return;
+        }
+
+        // *** Reset the animation lock so turns can progress ***
+        isAnimating = false;
+
+        // Proceed to the next turn.
+        if (isPlayerMove) {
+            transitionToState(BattleState.ENEMY_TURN);
+            executeEnemyMove();
         } else {
-            // No one fainted; proceed as normal
-            if (isPlayerMove) {
-                transitionToState(BattleState.ENEMY_TURN);
-                executeEnemyMove();
-            } else {
-                transitionToState(BattleState.PLAYER_TURN);
-                showActionMenu(true);
-            }
+            transitionToState(BattleState.PLAYER_TURN);
+            showActionMenu(true);
         }
     }
+
+    private void applyEndOfTurnEffectsForTurn() {
+        // Apply status effects for both Pokémon.
+        playerPokemon.applyEndOfTurnEffects();
+        enemyPokemon.applyEndOfTurnEffects();
+
+        // Update HUD elements (HP bars and info label) after applying effects.
+        updateHPBars();
+        updatePlayerInfoLabel();
+    }
+
 
     private void showForcedSwitchPartyScreen() {
         // No cancel callback => forced switch

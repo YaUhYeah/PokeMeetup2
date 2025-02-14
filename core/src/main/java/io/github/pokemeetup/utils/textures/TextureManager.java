@@ -500,11 +500,15 @@ public class TextureManager {
     }
 
     private static TextureRegion createColoredIcon(Color color, int width, int height) {
+        if (color == null) {
+            GameLogger.error("createColoredIcon received a null color; defaulting to white.");
+            color = Color.WHITE;
+        }
         Pixmap pixmap = new Pixmap(width, height, Pixmap.Format.RGBA8888);
         pixmap.setColor(color);
         pixmap.fillRectangle(0, 0, width, height);
 
-        // Add a border
+        // Add a border in white.
         pixmap.setColor(Color.WHITE);
         pixmap.drawRectangle(0, 0, width, height);
 
@@ -513,6 +517,7 @@ public class TextureManager {
 
         return new TextureRegion(texture);
     }
+
 
     private static void loadTypeAndStatusIcons() {
         TextureRegion typesSheet = ui.findRegion("types");
