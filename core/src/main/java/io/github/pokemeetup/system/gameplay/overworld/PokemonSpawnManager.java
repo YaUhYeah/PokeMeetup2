@@ -19,12 +19,12 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class PokemonSpawnManager {
     public static final float POKEMON_DESPAWN_TIME = 300; // Increased from 120 to 300 seconds
-    private static final float BASE_SPAWN_RATE = 0.25f;  // Base 30% chance per check
+    private static final float BASE_SPAWN_RATE = 0.275f;  // Base 30% chance per check
     private static final float SPAWN_CHECK_INTERVAL = 2.5f;
     private static final Map<BiomeType, Map<TimeOfDay, String[]>> POKEMON_SPAWNS = new HashMap<>();
 
-    private static final float MIN_SPAWN_DISTANCE_PIXELS = 15 * World.TILE_SIZE;
-    private static final float MAX_SPAWN_DISTANCE_PIXELS = 30 * World.TILE_SIZE;
+    private static final float MIN_SPAWN_DISTANCE_PIXELS = 10 * World.TILE_SIZE;
+    private static final float MAX_SPAWN_DISTANCE_PIXELS = 20 * World.TILE_SIZE;
     private static final int MAX_POKEMON_PER_CHUNK = 6;
     private static final float MIN_POKEMON_SPACING = World.TILE_SIZE * 2;
     private static final float PACK_SPAWN_CHANCE = 0.3f; // 30% chance that a spawn will be a pack

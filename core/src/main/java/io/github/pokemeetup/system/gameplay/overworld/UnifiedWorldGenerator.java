@@ -520,12 +520,12 @@ public class UnifiedWorldGenerator {
     }
 
     private static boolean collidesWithAny(WorldObject candidate, List<WorldObject> existing) {
-        // Get the candidate's bounding box.
-        Rectangle candidateBounds = candidate.getBoundingBox();
-        // Define a spacing margin equal to one tile.
-        float spacing = World.TILE_SIZE;
+        // Use the placement bounding box for overlap checks
+        Rectangle candidateBounds = candidate.getPlacementBoundingBox();
+        // Define a spacing margin equal to one tile
+        float spacing = (float) (World.TILE_SIZE * 1.5);
 
-        // Create an "inflated" rectangle by extending the candidate's bounds by the spacing on all sides.
+        // Inflate candidate bounds by the spacing margin
         Rectangle paddedCandidate = new Rectangle(
             candidateBounds.x - spacing,
             candidateBounds.y - spacing,
@@ -533,14 +533,15 @@ public class UnifiedWorldGenerator {
             candidateBounds.height + 2 * spacing
         );
 
-        // Check if this padded bounds overlaps any of the already placed objects.
+        // Check overlap against every placed object using their placement bounding boxes
         for (WorldObject other : existing) {
-            if (paddedCandidate.overlaps(other.getBoundingBox())) {
+            if (paddedCandidate.overlaps(other.getPlacementBoundingBox())) {
                 return true;
             }
         }
         return false;
     }
+
 
 
     /**

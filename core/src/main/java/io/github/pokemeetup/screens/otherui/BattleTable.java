@@ -265,8 +265,8 @@ public class BattleTable extends Table {
     // Instance fields
     private final Stage stage;
     private final Skin skin;
-    private Pokemon playerPokemon;
     private final Pokemon enemyPokemon;
+    private Pokemon playerPokemon;
     private TextureRegion platformTexture;
     private Image playerPlatform, enemyPlatform;
     private Image playerPokemonImage, enemyPokemonImage;
@@ -512,7 +512,6 @@ public class BattleTable extends Table {
      * BattleTable coordinates and brought to the front.
      */
 // Inside io.github.pokemeetup.screens.otherui.BattleTable
-
     private void initializeUIComponents() {
         // Create battle text label.
         battleText = new Label("", skin);
@@ -623,7 +622,6 @@ public class BattleTable extends Table {
     }
 
 
-
     private void showPartyScreen() {
         // Create and show party screen
         PokemonPartyWindow partyScreen = new PokemonPartyWindow(
@@ -678,7 +676,9 @@ public class BattleTable extends Table {
         );
 
         playerPokemonImage.addAction(switchSequence);
-    }/**
+    }
+
+    /**
      * Updates the player's Pokémon display components after a switch
      * This includes the sprite, HP bar, name label, and any status effects
      */
@@ -687,7 +687,6 @@ public class BattleTable extends Table {
         TextureRegion newTexture = playerPokemon.getBackSprite();
         if (newTexture != null) {
             playerPokemonImage.setDrawable(new TextureRegionDrawable(newTexture));
-
             // Maintain consistent sizing
             float aspect = (float) newTexture.getRegionWidth() / newTexture.getRegionHeight();
             float baseSize = 85f;
@@ -697,9 +696,9 @@ public class BattleTable extends Table {
         // Update HP bar
         playerHPBar.setRange(0, playerPokemon.getStats().getHp());
         playerHPBar.setValue(playerPokemon.getCurrentHp());
-        updateHPBarColor(playerHPBar, playerPokemon.getCurrentHp() / (float)playerPokemon.getStats().getHp());
+        updateHPBarColor(playerHPBar, playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp());
 
-        // Update info label with new Pokemon's details
+        // Update info label with new Pokémon's details
         for (Actor actor : getChildren()) {
             if (actor instanceof Table) {
                 Table mainContainer = (Table) actor;
@@ -723,7 +722,7 @@ public class BattleTable extends Table {
             }
         }
 
-        // Update exp bar for new Pokemon
+        // Update exp bar for new Pokémon
         expBar.setRange(0, playerPokemon.getExperienceForNextLevel());
         expBar.setValue(playerPokemon.getCurrentExperience());
 
@@ -732,7 +731,20 @@ public class BattleTable extends Table {
 
         // Force layout update
         invalidate();
+
+        // Center the new Pokémon image on the platform
+        centerPlayerPokemon();
     }
+    private void centerPlayerPokemon() {
+        if (playerPlatform != null && playerPokemonImage != null) {
+            // Calculate horizontal and vertical offsets so that the Pokemon image is centered
+            float offsetX = (playerPlatform.getWidth() - playerPokemonImage.getWidth()) / 2f;
+            float offsetY = (playerPlatform.getHeight() - playerPokemonImage.getHeight()) / 2f;
+            playerPokemonImage.setPosition(offsetX, offsetY);
+        }
+    }
+
+
     private void attemptRun() {
         if (isAnimating) return;  // Don’t allow multiple run attempts during an animation
 
@@ -798,11 +810,9 @@ public class BattleTable extends Table {
                     transitionToState(BattleState.ENEMY_TURN);
                 }
             }
-        );
+        , enemyPokemonImage);
         addActor(captureAnimation);
     }
-
-
 
 
     private void handleFightButton() {
@@ -1032,7 +1042,6 @@ public class BattleTable extends Table {
             statusIcon.setVisible(false);
         }
     }
-
     @Override
     public void act(float delta) {
         super.act(delta);
@@ -1060,6 +1069,9 @@ public class BattleTable extends Table {
                     if (!isAnimating && stateTimer >= 0.5f) {
                         executeEnemyMove();
                     }
+                    break;
+                case FORCED_SWITCH:
+                    // Do nothing – wait until the player selects a new Pokémon.
                     break;
                 case ENDED:
                     if (!isAnimating) {
@@ -1206,28 +1218,67 @@ public class BattleTable extends Table {
         float newHP = Math.max(0, target.getCurrentHp() - damage);
         target.setCurrentHp(newHP);
         updateHPBars();
-        if (target.getCurrentHp() <= 0) {
-            transitionToState(BattleState.ENDED);
-        }
-
     }
-
     private void finishMoveExecution(boolean isPlayerMove) {
-        // Ensure animation flag is cleared
         isAnimating = false;
-        // Then check if either side has fainted:
-        if (playerPokemon.getCurrentHp() <= 0 || enemyPokemon.getCurrentHp() <= 0) {
-            transitionToState(BattleState.ENDED);
-        } else if (isPlayerMove) {
-            // After player’s attack, switch to enemy turn.
-            transitionToState(BattleState.ENEMY_TURN);
-            executeEnemyMove();
+
+        if (enemyPokemon.getCurrentHp() <= 0) {
+            // Enemy fainted
+            finishBattle();
+            return;
+        } else if (playerPokemon.getCurrentHp() <= 0) {
+            // Player's Pokémon fainted
+            battleText.setText(playerPokemon.getName() + " fainted!");
+            if (hasAvailablePokemon()) {
+                // Only trigger the forced switch if we’re not already in forced switch mode.
+                if (currentState != BattleState.FORCED_SWITCH) {
+                    currentState = BattleState.FORCED_SWITCH;
+                    showForcedSwitchPartyScreen(); // Force user to pick another Pokémon
+                }
+            } else {
+                finishBattle(); // No Pokémon left
+            }
+            return;
         } else {
-            // Otherwise return to player turn.
-            transitionToState(BattleState.PLAYER_TURN);
-            showActionMenu(true);
+            // No one fainted; proceed as normal
+            if (isPlayerMove) {
+                transitionToState(BattleState.ENEMY_TURN);
+                executeEnemyMove();
+            } else {
+                transitionToState(BattleState.PLAYER_TURN);
+                showActionMenu(true);
+            }
         }
     }
+
+    private void showForcedSwitchPartyScreen() {
+        // No cancel callback => forced switch
+        PokemonPartyWindow partyScreen = new PokemonPartyWindow(
+            skin,
+            GameContext.get().getPlayer().getPokemonParty(),
+            true,
+            (selectedPokemon) -> {
+                if (selectedPokemon.getCurrentHp() > 0) {
+                    switchPokemon(selectedPokemon);
+                }
+            },
+            null
+        );
+        stage.addActor(partyScreen);
+        partyScreen.show(stage);
+    }
+
+    private boolean hasAvailablePokemon() {
+        for (Pokemon poke : GameContext.get().getPlayer().getPokemonParty().getParty()) {
+            if (poke != playerPokemon && poke.getCurrentHp() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+
 
     private void transitionToState(BattleState newState) {
         currentState = newState;
@@ -1349,8 +1400,10 @@ public class BattleTable extends Table {
         ANIMATING,
         ENDED,
         RUNNING,
-        CATCHING
+        CATCHING,
+        FORCED_SWITCH  // New state: once the player's Pokémon faints, we switch to this state.
     }
+
 
     // ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
     // CALLBACK INTERFACE & CLEANUP
@@ -1365,3 +1418,4 @@ public class BattleTable extends Table {
         void onMoveUsed(Pokemon user, Move move, Pokemon target);
     }
 }
+

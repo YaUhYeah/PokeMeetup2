@@ -267,6 +267,25 @@ public class WorldObject {
         return currentTime - spawnTime > POKEBALL_DESPAWN_TIME;
     }
 
+    public Rectangle getPlacementBoundingBox() {
+        if (isTreeType(type)) {
+            // For apricorn trees we already use a 3x3 area.
+            if (type == ObjectType.APRICORN_TREE) {
+                float treeBaseX = pixelX - World.TILE_SIZE;
+                float treeBaseY = pixelY;
+                return new Rectangle(treeBaseX, treeBaseY, World.TILE_SIZE * 3, World.TILE_SIZE * 3);
+            } else {
+                // For other trees, use a 2x3 area to cover the full sprite.
+                float treeBaseX = pixelX - World.TILE_SIZE;
+                float treeBaseY = pixelY;
+                return new Rectangle(treeBaseX, treeBaseY, World.TILE_SIZE * 2, World.TILE_SIZE * 3);
+            }
+        }
+        // For non-tree objects, the placement bounding box can be the same as their visual size.
+        return new Rectangle(pixelX, pixelY, type.widthInTiles * World.TILE_SIZE, type.heightInTiles * World.TILE_SIZE);
+    }
+
+
     public Rectangle getBoundingBox() {
         if (type == ObjectType.APRICORN_TREE) {
             float treeBaseX = pixelX - World.TILE_SIZE;  // Center the 3-tile width
@@ -970,69 +989,6 @@ public class WorldObject {
             objectsByChunk.put(chunkPos, new CopyOnWriteArrayList<>(objects));
 
         }
-        public boolean canPlaceWorldObject(Chunk chunk, int localX, int localY,
-                                           List<WorldObject> currentChunkObjects,
-                                           Biome biome,
-                                           WorldObject.ObjectType objectType) {
-            // Convert local coordinates (within this chunk) to world tile coordinates.
-            int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
-            int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
-            int tileType = chunk.getTileType(localX, localY);
-
-            // Basic checks
-            if (!chunk.isPassable(localX, localY)) {
-                return false;
-            }
-            if (!biome.getAllowedTileTypes().contains(tileType)) {
-                return false;
-            }
-            // Extra restrictions: do not place on disallowed terrain types.
-            if (tileType == TileType.ROCK ||
-                tileType == TileType.BEACH_STARFISH ||
-                tileType == TileType.BEACH_SHELL ||
-                tileType == TileType.WATER) {
-                return false;
-            }
-            if (TileType.isMountainTile(tileType)) {
-                return false;
-            }
-            if (tileType == TileType.FLOWER ||
-                tileType == TileType.FLOWER_1 ||
-                tileType == TileType.FLOWER_2) {
-                return false;
-            }
-            // Create a candidate object at the desired location.
-            WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, objectType);
-            candidate.ensureTexture();
-            Rectangle candidateBounds = candidate.getBoundingBox();
-
-            // Determine the required spacing for this type.
-            int requiredSpacing = getRequiredSpacing(objectType);
-
-            // Only checking currentChunkObjects is not enough if candidate is near a chunk border.
-            // Instead, gather objects from current chunk and all eight neighboring chunks.
-            List<WorldObject> nearbyObjects = new ArrayList<>();
-            Vector2 baseChunkPos = new Vector2(chunk.getChunkX(), chunk.getChunkY());
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    Vector2 neighborChunkPos = new Vector2(baseChunkPos.x + dx, baseChunkPos.y + dy);
-                    List<WorldObject> objectsInChunk = getObjectsForChunk(neighborChunkPos);
-                    if (objectsInChunk != null) {
-                        nearbyObjects.addAll(objectsInChunk);
-                    }
-                }
-            }
-
-            // Check candidateBounds (with required spacing) against every nearby object's bounds.
-            for (WorldObject obj : nearbyObjects) {
-                Rectangle objBounds = obj.getBoundingBox();
-                if (boundsOverlapWithPadding(candidateBounds, objBounds, requiredSpacing)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
 
         private boolean shouldSpawnPokeball(List<WorldObject> chunkObjects) {
             long pokeballCount = chunkObjects.stream()
