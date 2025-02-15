@@ -39,7 +39,7 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public class World {
-    public static final int INITIAL_LOAD_RADIUS = 3;
+    public static final int INITIAL_LOAD_RADIUS = 2;
     public static final int TILE_SIZE = 32;
     public static final int WORLD_SIZE = 100000 * TILE_SIZE;
     public static final int HALF_WORLD_SIZE = WORLD_SIZE / 2;
@@ -49,7 +49,6 @@ public class World {
     private static final int MAX_CHUNK_LOAD_RADIUS = 16;  // or 10, adjust as needed
     private static final int MAX_LOADED_CHUNKS = 200;         // or whatever limit you want
     private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000; // how long to keep an unused chunk
-    private static final long CRITICAL_TIMEOUT_MS = 50; // lower timeout for in–view chunks
     public static int DEFAULT_X_POSITION = 0;
     public static int DEFAULT_Y_POSITION = 0;
     private final Map<Vector2, Long> lastChunkAccess = new ConcurrentHashMap<>();
@@ -68,7 +67,8 @@ public class World {
     private volatile boolean initialChunksRequested = false;
     private Map<Vector2, Future<Chunk>> loadingChunks;
     private Queue<Vector2> initialChunkLoadQueue = new LinkedList<>();
-    private ExecutorService chunkLoadExecutor = Executors.newFixedThreadPool(4);
+    private ExecutorService chunkLoadExecutor = Executors.newFixedThreadPool(2); // limit to 2 threads
+
     private PlayerData currentPlayerData;
     private WorldObject nearestPokeball;
     private long lastPlayed;
@@ -101,7 +101,7 @@ public class World {
             this.chunks = new ConcurrentHashMap<>();
             this.loadingChunks = new ConcurrentHashMap<>();
             this.initialChunkLoadQueue = new LinkedList<>();
-            this.chunkLoadExecutor = Executors.newFixedThreadPool(4);
+            this.chunkLoadExecutor = Executors.newFixedThreadPool(2);
             if (!GameContext.get().isMultiplayer()) {
                 loadChunksFromWorldData();
                 if (worldData.getBlockData() != null) {
@@ -487,10 +487,6 @@ public class World {
         return loadedChunks == totalRequired;
     }
 
-    public void initializeWorldFromData(WorldData worldData) {
-        setWorldData(worldData);
-        loadChunksFromWorldData();
-    }
 
     public boolean areAllChunksLoaded() {
         // Get the player's current chunk coordinates:
@@ -1233,34 +1229,43 @@ public class World {
         }
     }
 
-    public void loadChunkAsync(Vector2 chunkPos) {
+
+    public void loadChunkAsync(final Vector2 chunkPos) {
         if (isDisposed) return;
-        try {
-            if (loadingChunks.containsKey(chunkPos)) return;
-            CompletableFuture<Chunk> future = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return loadOrGenerateChunk(chunkPos);
-                } catch (Exception e) {
-                    GameLogger.error("Failed to load chunk at " + chunkPos + ": " + e.getMessage());
-                    return null;
-                }
-            }, chunkLoadExecutor).thenApplyAsync(chunk -> {
-                // NEW: If the chunk is not valid, force synchronous reload.
+        // If we are already loading this chunk, skip
+        if (loadingChunks.containsKey(chunkPos)) return;
+
+        // Mark the chunk as "in progress" (store a placeholder future)
+        loadingChunks.put(chunkPos, CompletableFuture.completedFuture(null));
+
+        // Offload heavy generation to our dedicated executor
+        CompletableFuture.supplyAsync(() -> {
+                // This heavy work (noise calls, island checks, auto–tiling, etc.) runs off the main thread
+                return loadOrGenerateChunk(chunkPos);
+            }, chunkLoadExecutor)
+            .thenApply(chunk -> {
+                // If the chunk is not valid (e.g. noise returned bad values), try regenerating it
                 if (chunk != null && !isChunkValid(chunk)) {
                     chunk = loadOrGenerateChunk(chunkPos);
                 }
-                if (chunk != null) {
-                    chunks.put(chunkPos, chunk);
-                    loadingChunks.remove(chunkPos);
-                }
                 return chunk;
+            })
+            .thenAccept(chunk -> {
+                // Post the update to the main LibGDX thread
+                Gdx.app.postRunnable(() -> {
+                    if (chunk != null) {
+                        chunks.put(chunkPos, chunk);
+                    }
+                    // Remove from the loading map so we can try again if needed.
+                    loadingChunks.remove(chunkPos);
+                });
+            })
+            .exceptionally(ex -> {
+                GameLogger.error("Error in asynchronous chunk load for " + chunkPos + ": " + ex.getMessage());
+                loadingChunks.remove(chunkPos);
+                return null;
             });
-            loadingChunks.put(chunkPos, future);
-        } catch (Exception e) {
-            GameLogger.error("Error initiating chunk load: " + e.getMessage());
-        }
     }
-
     public void update(float delta, Vector2 playerPosition, float viewportWidth, float viewportHeight, GameScreen gameScreen) {
         if (isDisposed) {
             return;
@@ -1268,48 +1273,46 @@ public class World {
         validateChunkState();
         itemEntityManager.update(delta);
 
-        // --- FIX: Different behavior for singleplayer vs multiplayer ---
+        // Request initial chunks if needed.
         if (GameContext.get().isMultiplayer()) {
-            // In multiplayer, use the flag to only request the initial chunks once.
             if (!initialChunksRequested) {
                 requestInitialChunks();
                 return;
             }
         } else {
-            // In singleplayer, always check if the full grid is loaded around the player's current chunk.
             if (!areInitialChunksLoaded()) {
                 requestInitialChunks();
                 return;
             }
         }
 
-
         if (worldData != null) {
+            // Update world time (you might throttle this further if needed)
             worldData.updateTime(delta);
         }
         updateWorldColor();
 
-        // Throttle light level updates – run only once per second
+        // Throttle light level updates: update only every 2 seconds instead of every frame.
         lightLevelUpdateTimer += delta;
-        if (lightLevelUpdateTimer >= 1.0f) {
+        if (lightLevelUpdateTimer >= 2.0f) {
             updateLightLevels();
             lightLevelUpdateTimer = 0f;
         }
 
+        // Weather updates – you may also throttle these if desired.
         updateWeather(delta, playerPosition, gameScreen);
         footstepEffectManager.update(delta);
 
-        // Throttle chunk management (which uses a PriorityQueue) so that it runs every 0.2 seconds:
+        // Throttle chunk management: update every 0.2 seconds instead of every 0.1 sec.
         manageChunksTimer += delta;
-        if (manageChunksTimer >= 0.1f) {
+        if (manageChunksTimer >= 0.2f) {
             int currentChunkX = GameContext.get().getPlayer().getTileX() / Chunk.CHUNK_SIZE;
             int currentChunkY = GameContext.get().getPlayer().getTileY() / Chunk.CHUNK_SIZE;
-
-            // Manage chunks (load new ones and unload distant ones)
             manageChunks(currentChunkX, currentChunkY);
             manageChunksTimer = 0f;
         }
         waterEffectManager.update(delta);
+
         int playerTileX = (int) playerPosition.x;
         int playerTileY = (int) playerPosition.y;
         Chunk currentChunk = getChunkAtPosition(playerTileX, playerTileY);
@@ -1318,13 +1321,13 @@ public class World {
             int localY = Math.floorMod(playerTileY, Chunk.CHUNK_SIZE);
             if (TileType.isWaterPuddle(currentChunk.getTileType(localX, localY))) {
                 if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().isMoving()) {
-                    // Convert to pixel coordinates for the ripple (multiplying by TILE_SIZE)
-                    waterEffectManager.createRipple(playerTileX * TILE_SIZE + (float) Player.FRAME_WIDTH / 2, playerTileY * TILE_SIZE + (float) Player.FRAME_HEIGHT / 2);
+                    waterEffectManager.createRipple(
+                        playerTileX * TILE_SIZE + (float) Player.FRAME_WIDTH / 2,
+                        playerTileY * TILE_SIZE + (float) Player.FRAME_HEIGHT / 2
+                    );
                 }
             }
         }
-
-        // Update other game systems (audio, Pokémon spawning, etc.)
         updateGameSystems(delta, playerPosition);
     }
 
@@ -1342,20 +1345,24 @@ public class World {
 
         objectManager.update(chunks);
         checkPlayerInteractions(playerPosition);
-    }
-
+    }// --- Modified manageChunks method in World.java ---
     private void manageChunks(int playerChunkX, int playerChunkY) {
         int loadRadius = INITIAL_LOAD_RADIUS + 1;
-        PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)));
+        PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(
+            cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
+        ));
+        // Gather the positions for chunks we care about
         for (int dx = -loadRadius; dx <= loadRadius; dx++) {
             for (int dy = -loadRadius; dy <= loadRadius; dy++) {
-                Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                chunkQueue.add(chunkPos);
+                chunkQueue.add(new Vector2(playerChunkX + dx, playerChunkY + dy));
             }
         }
-        final int MAX_CHUNKS_PER_FRAME = 32;
+
+        // Lower the number of chunks to initiate per frame (e.g. 8 instead of 32)
+        final int MAX_CHUNKS_PER_FRAME = 8;
         int loadedThisFrame = 0;
         long now = System.currentTimeMillis();
+
         while (!chunkQueue.isEmpty() && loadedThisFrame < MAX_CHUNKS_PER_FRAME) {
             Vector2 chunkPos = chunkQueue.poll();
             Chunk existing = chunks.get(chunkPos);
@@ -1363,17 +1370,8 @@ public class World {
                 if (GameContext.get().isMultiplayer()) {
                     GameContext.get().getGameClient().requestChunk(chunkPos);
                 } else {
-                    if (loadingChunks.containsKey(chunkPos)) {
-                        Long lastAccess = lastChunkAccess.get(chunkPos);
-                        if (lastAccess != null && (now - lastAccess) > CRITICAL_TIMEOUT_MS) {
-                            Chunk chunk = loadOrGenerateChunk(chunkPos);
-                            if (chunk != null) {
-                                chunks.put(chunkPos, chunk);
-                                loadingChunks.remove(chunkPos);
-                                GameLogger.info("Synchronously reloaded critical chunk at " + chunkPos);
-                            }
-                        }
-                    } else {
+                    // Only schedule asynchronous load if one isn’t already in progress
+                    if (!loadingChunks.containsKey(chunkPos)) {
                         loadChunkAsync(chunkPos);
                     }
                 }
@@ -1383,6 +1381,7 @@ public class World {
         }
         unloadDistantChunks(playerChunkX, playerChunkY);
     }
+
 
 
     public PokemonSpawnManager getPokemonSpawnManager() {
@@ -1516,14 +1515,25 @@ public class World {
             batch.setColor(originalColor);
         }
     }
-
     public void updateLightLevels() {
         lightLevelMap.clear();
-        // Only recalc lighting during night to reduce overhead.
+        // Only recalc lighting during night.
         float hour = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
         if (DayNightCycle.getTimePeriod(hour) != DayNightCycle.TimePeriod.NIGHT) return;
-        for (Chunk chunk : chunks.values()) {
-            // Iterate only over chunks that are visible or recently accessed.
+
+        // Update only for chunks near the player.
+        int playerTileX = GameContext.get().getPlayer().getTileX();
+        int playerTileY = GameContext.get().getPlayer().getTileY();
+        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
+        int updateRadius = 5;  // Only update chunks within 5 chunks from the player.
+
+        for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
+            Vector2 chunkPos = entry.getKey();
+            if (Math.abs(chunkPos.x - playerChunkX) > updateRadius || Math.abs(chunkPos.y - playerChunkY) > updateRadius)
+                continue;
+            Chunk chunk = entry.getValue();
+            // Iterate over the blocks in the chunk.
             for (PlaceableBlock block : chunk.getBlocks().values()) {
                 if (block.getId().equalsIgnoreCase("furnace")) {
                     Vector2 pos = block.getPosition();
@@ -1543,6 +1553,7 @@ public class World {
             }
         }
     }
+
 
     private void renderOtherPlayers(SpriteBatch batch, Rectangle viewBounds) {
         if (GameContext.get().getGameClient() == null || GameContext.get().getGameClient().isSinglePlayer()) {

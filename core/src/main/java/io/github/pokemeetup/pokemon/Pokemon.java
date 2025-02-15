@@ -261,6 +261,10 @@ public class Pokemon {
     }
 
     public void setStatus(Status newStatus) {
+        if (newStatus == null) {
+            GameLogger.error("Attempted to set a null status on " + name + "; ignoring.");
+            return;
+        }
         // Some types are immune to certain statuses
         if (newStatus == Status.PARALYZED &&
             (primaryType == PokemonType.ELECTRIC || secondaryType == PokemonType.ELECTRIC)) {
@@ -352,27 +356,32 @@ public class Pokemon {
 
         return true;
     }
-
     public void applyEndOfTurnEffects() {
         switch (status) {
             case POISONED:
                 currentHp = Math.max(0, currentHp - (stats.getHp() / 8));
                 break;
-
             case BADLY_POISONED:
-                currentHp = Math.max(0, currentHp - ((stats.getHp() * toxicCounter) / 16));
+                currentHp = Math.max(0, currentHp - ((float) (stats.getHp() * toxicCounter) / 16));
                 toxicCounter = Math.min(toxicCounter + 1, 15);
                 break;
-
             case BURNED:
-                currentHp = Math.max(0, currentHp - (stats.getHp() / 16));
+                currentHp = Math.max(0, currentHp - ((float) stats.getHp() / 16));
+                break;
+            case LEECH_SEED:
+                // For example, take 1/8th max HP damage each turn.
+                int leechDamage = stats.getHp() / 8;
+                currentHp = Math.max(0, currentHp - leechDamage);
+                // Optionally, add healing to the attacker.
+                break;
+            default:
                 break;
         }
-
         if (currentHp <= 0) {
             status = Status.FAINTED;
         }
     }
+
 
     public float getStatusModifier(Move move) {
         if (status == Status.BURNED && !move.isSpecial()) {
@@ -754,7 +763,6 @@ public class Pokemon {
             stats.setSpeed(stats.getSpeed() / 2);
         }
     }
-
     public enum Status {
         NONE,
         PARALYZED,
@@ -763,8 +771,10 @@ public class Pokemon {
         BURNED,
         FROZEN,
         ASLEEP,
+        LEECH_SEED,  // NEW!
         FAINTED
     }
+
 
     public enum Weather {
         CLEAR,
