@@ -19,7 +19,6 @@ public class PokemonAI {
     private static final int FLEE_MIN_STEPS = 2;
     private static final int FLEE_MAX_STEPS = 8;
     // Base flee range in pixels.
-    private static final float BASE_FLEE_RANGE = 150f;
 
     // Personality modifier enums.
     public enum PokemonPersonality {

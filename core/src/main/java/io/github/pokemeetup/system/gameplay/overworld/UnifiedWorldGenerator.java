@@ -102,29 +102,28 @@ public class UnifiedWorldGenerator {
 
                 float newExpandFactor = 1.3f;
                 float reducedFactor = 0.1f;
-                float effectiveRadius = isl.radius * newExpandFactor +
-                    (isl.radius * newExpandFactor * reducedFactor * distort);
+                float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
 
+// Define a fixed beach band (10% of the effective radius)
                 float beachBand = effectiveRadius * 0.1f;
-                float innerThreshold = effectiveRadius - (beachBand * 0.5f);
-                float outerThreshold = effectiveRadius + (beachBand * 0.5f);
+                float innerThreshold = effectiveRadius;           // land ends here
+                float outerThreshold = effectiveRadius + beachBand; // beach occupies this band
 
                 if (dist < innerThreshold) {
                     // Land tile: use the land biome Voronoi method.
-                    BiomeTransitionResult landTrans = biomeManager.landBiomeVoronoi(warped[0], warped[1]);
+                    BiomeTransitionResult landTrans = GameContext.get().getBiomeManager().landBiomeVoronoi(warped[0], warped[1]);
                     sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(landTrans, worldX, worldY, worldSeed);
-                } else if (dist > outerThreshold) {
-                    // Outside island: ocean.
-                    sampleTiles[sx][sy] = TileType.WATER;
-                } else {
-                    // In the beach ring: blend from beach to ocean.
-                    float t = (dist - innerThreshold) / (outerThreshold - innerThreshold);
+                } else if (dist < outerThreshold) {
+                    // Entirely beach – no blending.
                     BiomeTransitionResult beachTrans = new BiomeTransitionResult(
-                        biomeManager.getBiome(BiomeType.BEACH),
-                        biomeManager.getBiome(BiomeType.OCEAN),
-                        t
+                        GameContext.get().getBiomeManager().getBiome(BiomeType.BEACH),
+                        null,
+                        1f
                     );
                     sampleTiles[sx][sy] = TileDataPicker.pickBeachTile(beachTrans, worldX, worldY, worldSeed);
+                } else {
+                    // Outside the island – ocean.
+                    sampleTiles[sx][sy] = TileType.WATER;
                 }
             }
         }

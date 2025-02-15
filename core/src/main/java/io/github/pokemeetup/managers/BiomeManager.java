@@ -137,26 +137,24 @@ public class BiomeManager {
         distort = Math.max(0f, distort);
 
         // Increase island size and reduce noise impact.
+
         float newExpandFactor = 1.3f;
         float reducedFactor = 0.1f;
         float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
 
-        // Use a 10% beach band (you might adjust this percentage for smoother transitions)
         float beachBand = effectiveRadius * 0.1f;
-        float innerThreshold = effectiveRadius - (beachBand * 0.5f);
-        float outerThreshold = effectiveRadius + (beachBand * 0.5f);
+        float innerThreshold = effectiveRadius;
+        float outerThreshold = effectiveRadius + beachBand;
 
         if (dist < innerThreshold) {
-            // Deep inside the island – use the land biome (via the Voronoi method)
+            // Deep inside the island – use the land biome
             return landBiomeVoronoi(wx, wy);
-        } else if (dist > outerThreshold) {
-            // Outside the island – pure ocean
-            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
+        } else if (dist < outerThreshold) {
+            // Entire beach region (no blending)
+            return new BiomeTransitionResult(getBiome(BiomeType.BEACH), null, 1f);
         } else {
-            // In the beach band: blend from beach to ocean
-            float rawT = (dist - innerThreshold) / (outerThreshold - innerThreshold);
-            float t = smoothStep(rawT);
-            return new BiomeTransitionResult(getBiome(BiomeType.BEACH), getBiome(BiomeType.OCEAN), t);
+            // Outside island – pure ocean
+            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
         }
     }
 
@@ -249,7 +247,10 @@ public class BiomeManager {
         // Then pick biome from each site
         Biome bA = classifySiteToBiome(nearest, wx, wy);
         Biome bB = classifySiteToBiome(second, wx, wy);
-
+        if ((bA.getType() == BiomeType.SNOW && bB.getType() == BiomeType.DESERT) ||
+            (bA.getType() == BiomeType.DESERT && bB.getType() == BiomeType.SNOW)) {
+            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
+        }
         return new BiomeTransitionResult(bA, bB, t);
     }
 
@@ -686,10 +687,9 @@ public class BiomeManager {
             double t = Math.min(Math.max(0, temperature + localVar), 1);
             double m = Math.min(Math.max(0, moisture + localVar), 1);
 
-            // Rare ruins check: Only in a narrow moderate band with high noise threshold
             if (t > 0.4 && t < 0.6 && m > 0.4 && m < 0.6) {
                 double ruinsNoise = OpenSimplex2.noise2(detailSeed ^ 12345, t * 10, m * 10);
-                if (ruinsNoise > 0.85) {
+                if (ruinsNoise > 0.92) {
                     return BiomeType.RUINS;
                 }
             }
