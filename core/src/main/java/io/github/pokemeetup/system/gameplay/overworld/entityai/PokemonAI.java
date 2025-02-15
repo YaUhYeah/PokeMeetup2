@@ -14,10 +14,10 @@ public class PokemonAI {
     private static final float IDLE_MIN_DURATION = 1.0f;
     private static final float IDLE_MAX_DURATION = 2.0f;
     // Flee (sprint) mode: shorter delay between moves
-    private static final float FLEE_IDLE_DURATION = 0.2f;
+    private static final float FLEE_IDLE_DURATION = 0.05f;
     // Flee sprint: number of consecutive tile moves
-    private static final int FLEE_MIN_STEPS = 3;
-    private static final int FLEE_MAX_STEPS = 5;
+    private static final int FLEE_MIN_STEPS = 2;
+    private static final int FLEE_MAX_STEPS = 8;
     // Base flee range in pixels.
     private static final float BASE_FLEE_RANGE = 150f;
 
