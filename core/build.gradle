@@ -20,7 +20,7 @@ dependencies {
     exclude group: 'org.mongodb', module: 'bson-record-codec'
     exclude group: 'javax.activation', module: 'activation'
   }
-
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-core:2.2.3"
   api "com.badlogicgames.ashley:ashley:$ashleyVersion"
   api "com.badlogicgames.gdx-controllers:gdx-controllers-core:$gdxControllersVersion"
   api "com.badlogicgames.gdx:gdx-ai:$aiVersion"

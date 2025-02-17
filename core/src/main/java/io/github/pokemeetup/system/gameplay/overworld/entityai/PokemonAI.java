@@ -58,7 +58,6 @@ public class PokemonAI {
      */
     public void update(float delta, World world) {
         if (world == null || pokemon == null) {
-            GameLogger.error("AI Update skipped - null world or pokemon");
             return;
         }
         if (isPaused) return;
@@ -108,8 +107,6 @@ public class PokemonAI {
                 fleeDirection = computeFleeDirection(world);
                 if (fleeDirection != null) {
                     fleeStepsRemaining = MathUtils.random(FLEE_MIN_STEPS, FLEE_MAX_STEPS);
-                    GameLogger.info(pokemon.getName() + " starts sprinting in direction: " + fleeDirection
-                        + " for " + fleeStepsRemaining + " steps.");
                 } else {
                     // Fallback if no valid flee direction found.
                     chooseNewAdjacentTarget(world);
@@ -121,7 +118,6 @@ public class PokemonAI {
             move(fleeDirection);
             fleeStepsRemaining--;
             if (fleeStepsRemaining <= 0) {
-                GameLogger.info(pokemon.getName() + " finished sprinting away.");
                 currentState = AIState.IDLE;
                 fleeDirection = null;
                 fleeStepsRemaining = 0;
@@ -188,9 +184,6 @@ public class PokemonAI {
             else if (dir.equals("left")) targetTileX--;
             else if (dir.equals("right")) targetTileX++;
             if (world.isPassable(targetTileX, targetTileY)) {
-                GameLogger.info(pokemon.getName() + " is roaming from tile (" + currentTileX + "," + currentTileY +
-                    ") to tile (" + targetTileX + "," + targetTileY + ") facing " + dir);
-                pokemon.moveToTile(targetTileX, targetTileY, dir);
                 return;
             }
         }
@@ -230,12 +223,10 @@ public class PokemonAI {
             int targetTileX = currentTileX + dx[i];
             int targetTileY = currentTileY + dy[i];
             if (world.isPassable(targetTileX, targetTileY)) {
-                GameLogger.info(pokemon.getName() + " chooses an adjacent tile (" + targetTileX + "," + targetTileY + ")");
                 pokemon.moveToTile(targetTileX, targetTileY, dirs[i]);
                 return;
             }
         }
-        GameLogger.info("No valid adjacent moves found for " + pokemon.getName() + "; remaining idle.");
     }
 
     /**

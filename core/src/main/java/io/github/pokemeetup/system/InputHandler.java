@@ -136,7 +136,7 @@ public class InputHandler extends InputAdapter {
         }
     }
 
-    private void handleBlockPlacement() {
+    void handleBlockPlacement() {
         int targetX = GameContext.get().getPlayer().getTileX();
         int targetY = GameContext.get().getPlayer().getTileY();
         switch (GameContext.get().getPlayer().getDirection()) {
@@ -807,7 +807,7 @@ public class InputHandler extends InputAdapter {
     /************************************************************************
      *  Block Breaking
      ************************************************************************/
-    private PlaceableBlock findBreakableBlock() {
+    PlaceableBlock findBreakableBlock() {
         int targetX = GameContext.get().getPlayer().getTileX();
         int targetY = GameContext.get().getPlayer().getTileY();
         switch (GameContext.get().getPlayer().getDirection()) {
@@ -827,7 +827,7 @@ public class InputHandler extends InputAdapter {
         return GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(targetX, targetY);
     }
 
-    private void startBreaking(PlaceableBlock block) {
+    void startBreaking(PlaceableBlock block) {
         if (isBreaking) return;
         checkForAxe();
         isBreaking = true;

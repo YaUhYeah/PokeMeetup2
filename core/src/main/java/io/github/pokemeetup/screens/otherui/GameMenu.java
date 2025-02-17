@@ -17,6 +17,7 @@ import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.InputManager;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
+import io.github.pokemeetup.system.keybinds.ControllerBindsDialog;
 import io.github.pokemeetup.system.keybinds.KeyBindsDialog;
 import io.github.pokemeetup.utils.GameLogger;
 
@@ -82,6 +83,7 @@ public class GameMenu extends Actor {
             );
         }
     }
+    private TextButton controllerBindsButton;
 
 
     /**
@@ -162,53 +164,51 @@ public class GameMenu extends Actor {
     }
 
     private void createMenu() {
+        // Create the menu window and table
         menuWindow = new Window("Menu", skin);
         menuWindow.setMovable(false);
         menuWindow.addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
                 GameLogger.info("GameMenu keyDown: keycode=" + keycode);
-                return false; // Allow event to propagate
+                return false; // Allow event propagation
             }
-
             @Override
             public boolean keyUp(InputEvent event, int keycode) {
                 GameLogger.info("GameMenu keyUp: keycode=" + keycode);
-                return false; // Allow event to propagate
+                return false;
             }
         });
 
         menuTable = new Table();
         menuTable.defaults().pad(10).width(BUTTON_WIDTH).height(BUTTON_HEIGHT);
 
+        // Create main menu buttons
         TextButton saveButton = new TextButton("Save Game", skin);
         TextButton bagButton = new TextButton("Bag", skin);
         TextButton pokemonButton = new TextButton("Pokemon", skin);
         TextButton optionsButton = new TextButton("Options", skin);
         TextButton exitButton = new TextButton("Quit and Save to Title", skin);
 
-
         saveButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
+                // Only save in single-player mode
                 if (!GameContext.get().isMultiplayer()) {
                     saveGame();
                 }
             }
         });
-
-        ClickListener notImplementedListener = new ClickListener() {
+        bagButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 showNotImplementedMessage();
             }
-        };
-
-        bagButton.addListener(notImplementedListener);
+        });
         pokemonButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                showPartyScreen(false); // false indicates not battle mode
+                showPartyScreen(false);
             }
         });
         exitButton.addListener(new ClickListener() {
@@ -217,21 +217,6 @@ public class GameMenu extends Actor {
                 handleExit();
             }
         });
-
-
-        menuTable.add(saveButton).row();
-        menuTable.add(bagButton).row();
-        menuTable.add(pokemonButton).row();
-        menuTable.add(optionsButton).row();
-        menuTable.add(exitButton).row();
-
-        menuWindow.add(menuTable).pad(MENU_PADDING);
-        menuWindow.pack();
-        menuWindow.setPosition(
-            (Gdx.graphics.getWidth() - menuWindow.getWidth()) / 2,
-            (Gdx.graphics.getHeight() - menuWindow.getHeight()) / 2
-        );
-
         optionsButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -239,9 +224,25 @@ public class GameMenu extends Actor {
             }
         });
 
+        // Add buttons to the menu table
+        menuTable.add(saveButton).row();
+        menuTable.add(bagButton).row();
+        menuTable.add(pokemonButton).row();
+        menuTable.add(optionsButton).row();
+        menuTable.add(exitButton).row();
+
+        // Add the menu table to the menu window
+        menuWindow.add(menuTable).pad(MENU_PADDING);
+        menuWindow.pack();
+        menuWindow.setPosition((Gdx.graphics.getWidth() - menuWindow.getWidth()) / 2,
+            (Gdx.graphics.getHeight() - menuWindow.getHeight()) / 2);
+
+        // Build the options menu (which also includes controller keybinds)
         createOptionsMenu();
+
         stage.addActor(menuWindow);
     }
+
 
     private void showPartyScreen(boolean battleMode) {
         // Hide menu window temporarily
@@ -379,6 +380,7 @@ public class GameMenu extends Actor {
         dialog.show(stage);
     }
 
+
     private void createOptionsMenu() {
         optionsWindow = new Window("Options", skin);
         optionsWindow.setMovable(false);
@@ -386,6 +388,7 @@ public class GameMenu extends Actor {
         Table optionsTable = new Table();
         optionsTable.pad(MENU_PADDING);
 
+        // Audio settings
         Label musicLabel = new Label("Music Volume", skin);
         musicSlider = new Slider(0f, 1f, 0.1f, false, skin);
         musicSlider.setValue(AudioManager.getInstance().getMusicVolume());
@@ -400,22 +403,28 @@ public class GameMenu extends Actor {
         soundEnabled = new CheckBox(" Sound Enabled", skin);
         soundEnabled.setChecked(AudioManager.getInstance().isSoundEnabled());
 
-        setupAudioListeners();
-        if (Gdx.app.getType() == Application.ApplicationType.Desktop) {
-            TextButton keyBindsButton = new TextButton("Key Bindings", skin);
-            keyBindsButton.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    KeyBindsDialog dialog = new KeyBindsDialog(skin);
-                    dialog.show(stage);
-                }
-            });
+        // Buttons to open keybind dialogs
+        TextButton keyBindsButton = new TextButton("Keyboard Key Bindings", skin);
+        keyBindsButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                KeyBindsDialog dialog = new KeyBindsDialog(skin);
+                dialog.show(stage);
+            }
+        });
 
-            optionsTable.add(keyBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(20).row();
-        }
-        setupSaveButton(optionsTable); // Pass optionsTable to add the Save button
-        setupCancelButton(optionsTable); // Optionally add a Cancel button
+        controllerBindsButton = new TextButton("Controller Key Bindings", skin);
+        controllerBindsButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                ControllerBindsDialog dialog = new ControllerBindsDialog(skin);
+                dialog.show(stage);
+            }
+        });
 
+        // Add audio settings to options table
+        optionsTable.add(keyBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(20).row();
+        optionsTable.add(controllerBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(10).row();
         optionsTable.add(musicLabel).left().padBottom(10).row();
         optionsTable.add(musicSlider).width(200).padBottom(5).row();
         optionsTable.add(musicEnabled).left().padBottom(20).row();
@@ -423,13 +432,29 @@ public class GameMenu extends Actor {
         optionsTable.add(soundSlider).width(200).padBottom(5).row();
         optionsTable.add(soundEnabled).left().padBottom(20).row();
 
+        // Save and Cancel buttons for options
+        TextButton saveButton = new TextButton("Save", skin);
+        saveButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                saveAudioSettings();
+                hideOptions();
+            }
+        });
+        TextButton cancelButton = new TextButton("Cancel", skin);
+        cancelButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                hideOptions();
+            }
+        });
+        optionsTable.add(saveButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(10).row();
+        optionsTable.add(cancelButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(10).row();
+
         optionsWindow.add(optionsTable);
         optionsWindow.pack();
-        optionsWindow.setPosition(
-            (Gdx.graphics.getWidth() - optionsWindow.getWidth()) / 2,
-            (Gdx.graphics.getHeight() - optionsWindow.getHeight()) / 2
-        );
-
+        optionsWindow.setPosition((Gdx.graphics.getWidth() - optionsWindow.getWidth()) / 2,
+            (Gdx.graphics.getHeight() - optionsWindow.getHeight()) / 2);
         optionsWindow.setVisible(false);
         stage.addActor(optionsWindow);
     }

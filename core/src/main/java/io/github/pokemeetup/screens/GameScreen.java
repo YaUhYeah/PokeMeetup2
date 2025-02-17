@@ -135,6 +135,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private Actor houseToggleButton;
     private GLProfiler glProfiler;
     private boolean initialChunksLoadedOnce = false;
+    private ControllerInputProcessor controllerInputProcessor;
 
     public GameScreen(CreatureCaptureGame game, String username, GameClient gameClient) {
         this.game = game;
@@ -763,7 +764,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
-
     private void initializeGameSystems() {
 
         // 1. Camera and viewport
@@ -775,6 +775,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         this.chestHandler = new ChestInteractionHandler();
         this.inputHandler = new InputHandler(this, this, this, chestHandler, inputManager);
 
+        this.controllerInputProcessor = new ControllerInputProcessor(inputManager, getInputHandler());
         // 4. UI Components
         createPartyDisplay();
 
@@ -1599,6 +1600,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameContext.get().getUiStage().getViewport().apply();
             GameContext.get().getUiStage().act(delta);
             GameContext.get().getUiStage().draw();
+        }
+        if(controllerInputProcessor != null) {
+            controllerInputProcessor.update();
         }
 
         if (Gdx.input.isKeyPressed(Input.Keys.TAB)) {

@@ -25,9 +25,9 @@ repositories {
 dependencies {
   // --- Desktop client dependencies: include your shared core project.
   implementation project(':core')
-  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-desktop:${project.findProperty('gdxControllersVersion') ?: '2.2.3'}"
   implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:${project.findProperty('gdxVersion') ?: '1.13.0'}"
   implementation "com.badlogicgames.gdx:gdx-box2d-platform:${project.findProperty('gdxVersion') ?: '1.13.0'}:natives-desktop"
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-desktop:2.2.3"
   implementation "com.badlogicgames.gdx:gdx-platform:${project.findProperty('gdxVersion') ?: '1.13.0'}:natives-desktop"
 }
 
@@ -39,6 +39,15 @@ application {
 java {
   sourceCompatibility = JavaVersion.VERSION_11
   targetCompatibility = JavaVersion.VERSION_11
+}
+sourceSets {
+  main {
+    resources {
+      // Adjust the source directory path as needed.
+      srcDirs = ['../assets']
+      exclude 'Textures/**', 'thumbnails/**', 'ui', 'worlds/**'
+    }
+  }
 }
 
 def os = System.properties['os.name'].toLowerCase()
@@ -57,6 +66,7 @@ shadowJar {
   archiveFileName = "${project.name}-${version}-all.jar"
   mergeServiceFiles()
 }
+
 
 // --- Server Build Task (for your maintained server jar)
 tasks.register('buildServer', GradleBuild) {
@@ -106,7 +116,7 @@ tasks.register('copyAssetsForPackr', Copy) {
 
 // --- Task: Run Packr to Package the Client.
 tasks.register('runPackr', Exec) {
-  dependsOn 'shadowJar', 'copyAssetsForPackr'
+  dependsOn 'shadowJar', 'createMinimalJRE'
   def packrJar = rootProject.file("tools/packr.jar")
   if (!packrJar.exists()) {
     throw new GradleException("packr.jar not found in tools/; please download it from https://github.com/libgdx/packr/releases")
@@ -118,14 +128,12 @@ tasks.register('runPackr', Exec) {
       outputDir.deleteDir()
     }
   }
-  // Pass the mainClassName variable (a string) so Packr gets the correct value.
   commandLine "java", "-jar", packrJar,
     "--platform", "windows64",
     "--jdk", "${buildDir}/minimalJRE",
     "--executable", "PokeMeetup",
     "--classpath", file("build/libs/${project.name}-${version}-all.jar").absolutePath,
     "--mainclass", mainClassName,
-    "--resources", "${buildDir}/packr_resources",
     "--output", "${buildDir}/packr",
     "--verbose"
   doLast {
@@ -135,6 +143,7 @@ tasks.register('runPackr', Exec) {
     }
   }
 }
+
 
 // --- Fallback Task: Copy assets from packr_resources into the final output folder.
 tasks.register('copyFinalAssets', Copy) {
@@ -148,9 +157,9 @@ tasks.register('copyFinalAssets', Copy) {
 tasks.register('packClient') {
   group = 'distribution'
   description = 'Packages the desktop client as a portable executable using Packr'
-  dependsOn 'shadowJar', 'createMinimalJRE', 'copyAssetsForPackr', 'runPackr'
-  finalizedBy 'copyFinalAssets'
+  dependsOn 'shadowJar', 'createMinimalJRE', 'runPackr'
 }
+
 
 // --- Server Deployment Task (for the server jar)
 tasks.register('deployServer', Copy) {
