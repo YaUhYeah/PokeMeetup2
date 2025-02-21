@@ -10,7 +10,6 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 public class UIManager {
     private final Stage uiStage;
     private final Skin skin;
-    private HotbarSystem hotbarSystem;
 
     public UIManager(Stage stage, Skin skin) {
         this.uiStage = stage;
@@ -24,17 +23,10 @@ public class UIManager {
         if (hotbarBg == null) {
             GameLogger.error("Missing 'hotbar_bg' region in skin!");
         }
-        // Create and add your hotbar
-        hotbarSystem = new HotbarSystem(uiStage, skin);
-        // … initialize other UI components if needed
     }
 
-    public HotbarSystem getHotbarSystem() {
-        return hotbarSystem;
-    }
 
     public void resize(int width, int height) {
         // Update positions, if needed.
-        hotbarSystem.resize(width, height);
     }
 }

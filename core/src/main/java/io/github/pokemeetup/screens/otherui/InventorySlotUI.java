@@ -29,9 +29,10 @@ import java.util.UUID;
 
 public class InventorySlotUI extends Table implements InventorySlotDataObserver {
     public static final int ITEM_SIZE = 32;
-    private static final int SLOT_SIZE = 40;
     private static final float DURABILITY_BAR_HEIGHT = 4f;
     private static final float DURABILITY_BAR_PADDING = 2f;
+    // Use an instance variable for slot size so that it can be set dynamically.
+    private final int slotSize;
     private final InventorySlotData slotData;
     private final Skin skin;
     private final InventoryScreenInterface screenInterface;
@@ -40,22 +41,47 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     private Label itemNameLabel;
     private Label durabilityLabel;
     private Image durabilityBar;
-
-    public InventorySlotUI(InventorySlotData slotData, Skin skin, InventoryScreenInterface screenInterface) {
+    /**
+     * @param slotSize the computed size (in pixels) for this slot (e.g., from InventoryScreen)
+     */
+    public InventorySlotUI(InventorySlotData slotData, Skin skin, InventoryScreenInterface screenInterface, int slotSize) {
         this.slotData = slotData;
         this.skin = skin;
         this.screenInterface = screenInterface;
+        this.slotSize = slotSize;
 
+        // Set the initial look and input settings.
         setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("slot_normal")));
-        setSize(SLOT_SIZE, SLOT_SIZE);
+        // Do not call setSize() here because the layout from the parent (Table) will control it.
         setTouchable(Touchable.enabled);
 
-        // Order of calls adjusted:
+        // Build the UI: add contents, tooltips, observers, and input listeners.
         setupContents();
-        setupTooltip();           // Setup tooltip labels before updateSlot()
+        setupTooltip();
         slotData.addObserver(this);
-        updateSlot();             // Now we can safely call updateSlot()
+        updateSlot();
         setupInput();
+    }
+
+    @Override
+    public Actor hit(float x, float y, boolean touchable) {
+        if (x >= 0 && x < getWidth() && y >= 0 && y < getHeight()) {
+            return this;
+        }
+        return null;
+    }
+
+    /**
+     * Helper that routes changes to the slot either directly (for non-crafting slots)
+     * or through the CraftingSystem (for crafting grid slots).
+     */
+    private void setSlotItem(ItemData itemData) {
+        if (slotData.getSlotType() == InventorySlotData.SlotType.CRAFTING ||
+            slotData.getSlotType() == InventorySlotData.SlotType.EXPANDED_CRAFTING) {
+            screenInterface.getCraftingSystem().setItemInGrid(slotData.getSlotIndex(), itemData);
+        } else {
+            slotData.setItemData(itemData);
+        }
     }
 
     public void forceUpdate() {
@@ -69,7 +95,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         Label.LabelStyle tooltipStyle = new Label.LabelStyle(skin.getFont("default-font"), Color.WHITE);
 
-        // Initialize labels here
         itemNameLabel = new Label("", tooltipStyle);
         durabilityLabel = new Label("", tooltipStyle);
 
@@ -84,6 +109,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     }
 
     public void updateSlot() {
+        // For crafting-result slots, we retrieve the result from the crafting system.
         ItemData itemData = getSlotItemData();
         if (slotData.getSlotType() == InventorySlotData.SlotType.CRAFTING_RESULT) {
             CraftingSystem cs = screenInterface.getCraftingSystem();
@@ -96,16 +122,18 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                 itemImage.setDrawable(new TextureRegionDrawable(itemTexture));
                 itemImage.setVisible(true);
 
-                countLabel.setVisible(itemData.getCount() > 1);
                 if (itemData.getCount() > 1) {
                     countLabel.setText(String.valueOf(itemData.getCount()));
+                    countLabel.setVisible(true);
+                } else {
+                    countLabel.setVisible(false);
                 }
 
                 if (itemData.getMaxDurability() > 0) {
                     float percentage = itemData.getDurabilityPercentage();
                     percentage = Math.max(0f, Math.min(1f, percentage));
                     durabilityBar.setColor(getDurabilityColor(percentage));
-                    float barWidth = (SLOT_SIZE - DURABILITY_BAR_PADDING * 2) * percentage;
+                    float barWidth = (slotSize - DURABILITY_BAR_PADDING * 2) * percentage;
                     durabilityBar.setSize(barWidth, DURABILITY_BAR_HEIGHT);
                     durabilityBar.setPosition(DURABILITY_BAR_PADDING, DURABILITY_BAR_PADDING);
                     durabilityBar.setVisible(true);
@@ -113,7 +141,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                     durabilityBar.setVisible(false);
                 }
             } else {
-                // Texture missing fallback
+                // If the texture is missing, hide the image and labels.
                 itemImage.setVisible(false);
                 countLabel.setVisible(false);
                 durabilityBar.setVisible(false);
@@ -147,12 +175,13 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         durabilityContainer.setFillParent(false);
 
         Stack stack = new Stack();
-        stack.setSize(SLOT_SIZE, SLOT_SIZE);
+        stack.setSize(slotSize, slotSize);
         stack.add(itemImage);
         stack.add(durabilityContainer);
         stack.add(countLabel);
 
-        add(stack).expand().fill().size(SLOT_SIZE, SLOT_SIZE);
+        // Let the parent layout (Table cell) control the final size.
+        add(stack).expand().fill().size(slotSize, slotSize);
     }
 
     @Override
@@ -205,7 +234,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                 float moveDistance = touchDownPos.dst(x, y);
                 long clickDuration = System.currentTimeMillis() - touchDownTime;
 
-                // Simple click check
                 if (moveDistance < 5 && clickDuration < 200) {
                     boolean shiftHeld = isShiftDown();
                     if (button == Input.Buttons.LEFT) {
@@ -243,6 +271,8 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         return Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT) || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT);
     }
 
+    // --- Click Handling Methods (unchanged logic) ---
+
     private void handleLeftClick(boolean shiftHeld) {
         InventoryLock.writeLock();
         try {
@@ -261,7 +291,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             }
 
             if (currentSlotItem == null && heldItem != null) {
-                // Place entire held stack into empty slot
+                // Place the entire held stack into an empty slot.
                 placeStackIntoEmptySlot(heldItem, slotType, heldItem.getCount());
             } else if (currentSlotItem != null && heldItem == null) {
                 pickUpEntireStack(currentSlotItem, slotType);
@@ -295,10 +325,9 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             if (slotType == InventorySlotData.SlotType.CRAFTING_RESULT) {
                 pickUpOneCraftedItem();
             } else if (currentSlotItem == null && heldItem != null) {
-                // Place one item from held stack into empty slot
+                // Place one item from the held stack into an empty slot.
                 placeStackIntoEmptySlot(heldItem, slotType, 1);
             } else if (currentSlotItem != null && heldItem == null) {
-                // Pick up half the stack
                 pickUpHalfStack(currentSlotItem, slotType);
             } else if (currentSlotItem != null && heldItem != null && canStackTogether(currentSlotItem, heldItem)) {
                 addOneItemToSlot(currentSlotItem, heldItem, slotType);
@@ -309,7 +338,8 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         } finally {
             InventoryLock.writeUnlock();
             updateSlot();
-            screenInterface.updateHeldItemDisplay();if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+            screenInterface.updateHeldItemDisplay();
+            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
                 GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
             }
         }
@@ -321,7 +351,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         ItemData result = cs.getCraftingResult();
         if (result == null) return;
         Item heldItem = screenInterface.getHeldItemObject();
-        if (heldItem != null) return; // Hand not empty
+        if (heldItem != null) return; // Do nothing if the hand isn’t empty
 
         if (cs.craftOneItem()) {
             Item crafted = new Item(result.getItemId());
@@ -339,42 +369,34 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         if (currentSlotItem == null) return;
 
         if (slotType == InventorySlotData.SlotType.CHEST) {
-            // Move from chest to player inventory
             int remainder = fullyTryAddItem(screenInterface.getInventory(), currentSlotItem);
             if (remainder <= 0) {
-                // Everything moved to inventory
-                slotData.setItemData(null);
+                setSlotItem(null);
             } else {
-                // Some items couldn't fit
                 currentSlotItem.setCount(remainder);
-                slotData.setItemData(currentSlotItem);
+                setSlotItem(currentSlotItem);
             }
         } else if (slotType == InventorySlotData.SlotType.INVENTORY) {
-            // Move from inventory to chest
             ItemContainer chest = screenInterface.getChestData();
             if (chest == null) return;
 
             int remainder = fullyTryAddItem(chest, currentSlotItem);
             if (remainder <= 0) {
-                // Everything moved to chest
-                slotData.setItemData(null);
+                setSlotItem(null);
             } else {
-                // Some items remain
                 currentSlotItem.setCount(remainder);
-                slotData.setItemData(currentSlotItem);
+                setSlotItem(currentSlotItem);
             }
         } else if (slotType == InventorySlotData.SlotType.CRAFTING_RESULT) {
-            // Mass craft all possible items into inventory
             handleMassCraftToInventory();
         }
 
-        // Update UI after shift-click
         updateSlot();
-        screenInterface.updateHeldItemDisplay();if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+        screenInterface.updateHeldItemDisplay();
+        if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
             GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
         }
     }
-
 
     private void handleMassCraftToInventory() {
         CraftingSystem cs = screenInterface.getCraftingSystem();
@@ -388,25 +410,22 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             single.setUuid(UUID.randomUUID());
             int remainder = fullyTryAddItem(screenInterface.getInventory(), single);
             if (remainder > 0) {
-                // Can't fit this crafted item entirely, so break
-                // Return it to the crafting table or discard depending on logic
+                // If the inventory can’t fully accept the item, stop.
                 break;
             }
         }
     }
 
-
     private void moveAllToInventory(ItemData itemData) {
         if (itemData == null) return;
         int remaining = addItemToContainer(screenInterface.getInventory(), itemData);
         if (remaining <= 0) {
-            slotData.setItemData(null);
+            setSlotItem(null);
         } else {
             itemData.setCount(remaining);
-            slotData.setItemData(itemData);
+            setSlotItem(itemData);
         }
     }
-
 
     private int addItemToContainer(ItemContainer container, ItemData itemData) {
         if (container instanceof Inventory) {
@@ -442,7 +461,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         newItem.setDurability(heldItem.getDurability());
         newItem.setMaxDurability(heldItem.getMaxDurability());
 
-        slotData.setItemData(newItem);
+        setSlotItem(newItem);
 
         int newCount = heldItem.getCount() - amount;
         if (newCount <= 0) {
@@ -457,7 +476,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
     private void pickUpEntireStack(ItemData currentSlotItem, InventorySlotData.SlotType slotType) {
         if (currentSlotItem == null) return;
-        slotData.setItemData(null);
+        setSlotItem(null);
 
         Item newHeld = new Item(currentSlotItem.getItemId());
         newHeld.setCount(currentSlotItem.getCount());
@@ -497,7 +516,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         for (int i = 0; i < container.getSize(); i++) {
             InventorySlotData slotData = container.getSlotData(i);
             if (slotData.getItemData() == null) {
-                // Place as many as we can into this empty slot
                 int toPlace = Math.min(remainder, Item.MAX_STACK_SIZE);
                 ItemData newData = itemToMove.copy();
                 newData.setCount(toPlace);
@@ -511,10 +529,8 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     }
 
     private int fullyTryAddItem(ItemContainer container, ItemData itemData) {
-        // First try merging into existing stacks
         int remainder = tryMergeItemData(container, itemData);
 
-        // If still have remainder, try placing into empty slots
         if (remainder > 0) {
             ItemData remainderData = itemData.copy();
             remainderData.setCount(remainder);
@@ -522,7 +538,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         }
         return remainder;
     }
-
 
     private void mergeStacks(ItemData currentSlotItem, Item heldItem, InventorySlotData.SlotType slotType) {
         int maxStack = Item.MAX_STACK_SIZE;
@@ -532,7 +547,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         ItemData updated = currentSlotItem.copy();
         updated.setCount(newSlotCount);
-        slotData.setItemData(updated);
+        setSlotItem(updated);
 
         if (remainder <= 0) {
             screenInterface.setHeldItem(null);
@@ -548,7 +563,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         ItemData slotNew = new ItemData(heldItem.getName(), heldItem.getCount(), UUID.randomUUID());
         slotNew.setDurability(heldItem.getDurability());
         slotNew.setMaxDurability(heldItem.getMaxDurability());
-        slotData.setItemData(slotNew);
+        setSlotItem(slotNew);
 
         Item newHeld = new Item(currentSlotItem.getItemId());
         newHeld.setCount(currentSlotItem.getCount());
@@ -567,7 +582,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         ItemData updated = currentSlotItem.copy();
         updated.setCount(remain <= 0 ? 0 : remain);
-        slotData.setItemData(remain <= 0 ? null : updated);
+        setSlotItem(remain <= 0 ? null : updated);
 
         Item newHeld = new Item(currentSlotItem.getItemId());
         newHeld.setCount(half);
@@ -584,7 +599,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         ItemData updated = currentSlotItem.copy();
         updated.setCount(currentSlotItem.getCount() + 1);
-        slotData.setItemData(updated);
+        setSlotItem(updated);
 
         int newHeldCount = heldItem.getCount() - 1;
         if (newHeldCount <= 0) {

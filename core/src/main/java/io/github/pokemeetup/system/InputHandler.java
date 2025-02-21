@@ -293,27 +293,27 @@ public class InputHandler extends InputAdapter {
             return true;
         }
 
-        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP)) {
-            moveUp(true);
-            return true;
-        }
-        if (keycode == Input.Keys.P) {
-            togglePartyWindow();
-            return true;
-        }
-        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN)) {
-            moveDown(true);
-            return true;
-        }
-
-        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT)) {
-            moveLeft(true);
-            return true;
-        }
-
-        if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
-            moveRight(true);
-            return true;
+        if (!isChopping && !isPunching) {
+            if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP)) {
+                moveUp(true);
+                GameContext.get().getPlayer().setInputHeld(true);
+                return true;
+            }
+            if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN)) {
+                moveDown(true);
+                GameContext.get().getPlayer().setInputHeld(true);
+                return true;
+            }
+            if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT)) {
+                moveLeft(true);
+                GameContext.get().getPlayer().setInputHeld(true);
+                return true;
+            }
+            if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
+                moveRight(true);
+                GameContext.get().getPlayer().setInputHeld(true);
+                return true;
+            }
         }
 
         if (keycode == KeyBinds.getBinding(KeyBinds.SPRINT)) {
@@ -991,12 +991,12 @@ public class InputHandler extends InputAdapter {
             updateBreaking(deltaTime);
         }
 
-        // Process movement only if in a valid state.
-        if (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
-            inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
+        // Only allow movement (or direction buffering) if NOT chopping/punching.
+        if (!isChopping && !isPunching &&
+            (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
+                inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE)) {
 
             Player player = GameContext.get().getPlayer();
-            // If the player is not already moving, start a move based on key input.
             if (!player.isMoving()) {
                 if (upPressed) {
                     player.move("up");
@@ -1008,7 +1008,6 @@ public class InputHandler extends InputAdapter {
                     player.move("right");
                 }
             } else {
-                // If the player is moving and a key is still held, buffer that direction.
                 if (upPressed) {
                     player.setBufferedDirection("up");
                 } else if (downPressed) {
@@ -1020,7 +1019,9 @@ public class InputHandler extends InputAdapter {
                 }
             }
         }
+        // When chopping/punching, do not update or buffer a new direction.
     }
+
 
 
     /************************************************************************

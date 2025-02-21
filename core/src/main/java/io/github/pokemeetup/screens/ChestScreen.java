@@ -109,7 +109,7 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         int cols = 9;
         for (int i = 0; i < chestData.getSize(); i++) {
             InventorySlotData slotData = chestData.getSlotData(i);
-            InventorySlotUI slot = new InventorySlotUI(slotData, skin, this);
+            InventorySlotUI slot = new InventorySlotUI(slotData, skin, this, SLOT_SIZE);
             chestTable.add(slot).size(SLOT_SIZE);
             if ((i + 1) % cols == 0) {
                 chestTable.row();
@@ -159,7 +159,7 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
             InventorySlotData slotData = new InventorySlotData(i, InventorySlotData.SlotType.INVENTORY, GameContext.get().getPlayer().getInventory());
 // No need to set slotType again
 
-            InventorySlotUI slot = new InventorySlotUI(slotData, skin, this);
+            InventorySlotUI slot = new InventorySlotUI(slotData, skin, this, SLOT_SIZE);
 
 
             grid.add(slot).size(SLOT_SIZE);

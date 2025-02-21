@@ -83,15 +83,49 @@ public class CraftingSystem {
         }
     }
 
+
     private boolean matchesShapedRecipe(RecipeManager.CraftingRecipe recipe) {
         String[][] pattern = recipe.getPattern();
+        // Compute frequency for each non-null symbol in the pattern
+        Map<String, Integer> symbolFrequency = new HashMap<>();
+        for (int r = 0; r < pattern.length; r++) {
+            for (int c = 0; c < pattern[r].length; c++) {
+                String symbol = pattern[r][c];
+                if (symbol != null) {
+                    symbolFrequency.merge(symbol, 1, Integer::sum);
+                }
+            }
+        }
+
+        // Build the expected mapping: for each symbol, we expect a specific item.
+        // We assume that for each symbol, its frequency matches one ingredient’s required count.
+        Map<String, String> expectedMapping = new HashMap<>();
+        // Make a copy of the ingredients map (itemId -> count)
+        Map<String, Integer> ingredients = new HashMap<>(recipe.getIngredients());
+
+        for (Map.Entry<String, Integer> symbolEntry : symbolFrequency.entrySet()) {
+            boolean found = false;
+            for (Iterator<Map.Entry<String, Integer>> it = ingredients.entrySet().iterator(); it.hasNext();) {
+                Map.Entry<String, Integer> ingEntry = it.next();
+                if (ingEntry.getValue().equals(symbolEntry.getValue())) {
+                    expectedMapping.put(symbolEntry.getKey(), ingEntry.getKey());
+                    it.remove();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                // No matching ingredient with the exact count – pattern does not match recipe.
+                return false;
+            }
+        }
+
+        // Try the recipe pattern at every possible starting position in the grid.
         int patternHeight = pattern.length;
         int patternWidth = pattern[0].length;
-
-        // Try recipe at each possible position in grid
         for (int startRow = 0; startRow <= gridSize - patternHeight; startRow++) {
             for (int startCol = 0; startCol <= gridSize - patternWidth; startCol++) {
-                if (matchesPatternAtPosition(pattern, startRow, startCol)) {
+                if (matchesPatternAtPosition(pattern, startRow, startCol, expectedMapping)) {
                     return true;
                 }
             }
@@ -99,10 +133,8 @@ public class CraftingSystem {
         return false;
     }
 
-    private boolean matchesPatternAtPosition(String[][] pattern, int startRow, int startCol) {
+    private boolean matchesPatternAtPosition(String[][] pattern, int startRow, int startCol, Map<String, String> expectedMapping) {
         Set<Integer> usedSlots = new HashSet<>();
-        Map<String, String> symbolToItem = new HashMap<>();
-
         for (int row = 0; row < pattern.length; row++) {
             for (int col = 0; col < pattern[row].length; col++) {
                 int gridIndex = (startRow + row) * gridSize + (startCol + col);
@@ -113,29 +145,26 @@ public class CraftingSystem {
                     if (slotItem != null) return false;
                     continue;
                 }
-
                 if (slotItem == null) return false;
 
-                String expectedItemId = symbolToItem.get(symbol);
-                if (expectedItemId == null) {
-                    symbolToItem.put(symbol, slotItem.getItemId());
-                } else if (!expectedItemId.equals(slotItem.getItemId())) {
+                // Instead of inferring, check against our expected mapping.
+                String expectedItemId = expectedMapping.get(symbol);
+                if (expectedItemId == null || !expectedItemId.equals(slotItem.getItemId())) {
                     return false;
                 }
 
                 usedSlots.add(gridIndex);
             }
         }
-
-        // Check that all other slots are empty
+        // Ensure all grid slots not used by the pattern are empty.
         for (int i = 0; i < craftingGrid.getSize(); i++) {
             if (!usedSlots.contains(i) && craftingGrid.getItemAt(i) != null) {
                 return false;
             }
         }
-
         return true;
     }
+
 
     private boolean matchesShapelessRecipe(RecipeManager.CraftingRecipe recipe) {
         Map<String, Integer> required = new HashMap<>(recipe.getIngredients());

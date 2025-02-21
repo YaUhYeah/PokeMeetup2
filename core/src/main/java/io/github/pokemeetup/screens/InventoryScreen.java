@@ -100,6 +100,7 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
             if (stage != null) {
                 stage.setKeyboardFocus(null);
                 stage.unfocusAll();
+                stage.act(0);
             }
         }
     }
@@ -214,7 +215,7 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
                 final int index = y * 2 + x;
                 // FIX: Use the existing InventorySlotData from the CraftingGrid.
                 InventorySlotData craftSlotData = craftingGrid.getSlotData(index);
-                InventorySlotUI craftSlot = new InventorySlotUI(craftSlotData, skin, this);
+                InventorySlotUI craftSlot = new InventorySlotUI(craftSlotData, skin, this, SLOT_SIZE);
                 craftingSlotUIs.add(craftSlot);
                 craftingSystem.addSlotObserver(index, craftSlot);
 
@@ -228,7 +229,7 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         // Arrow and result slot
         Image arrowImage = new Image(TextureManager.ui.findRegion("arrow"));
         InventorySlotData resultSlotData = new InventorySlotData(-1, InventorySlotData.SlotType.CRAFTING_RESULT, craftingGrid);
-        craftingResultSlotUI = new InventorySlotUI(resultSlotData, skin, this);
+        craftingResultSlotUI = new InventorySlotUI(resultSlotData, skin, this, SLOT_SIZE);
 
         craftingContainer.add(craftingGrid1).padRight(SLOT_SIZE * 0.5f);
         craftingContainer.add(arrowImage).size(SLOT_SIZE * 0.8f).padRight(SLOT_SIZE * 0.5f);
@@ -289,7 +290,9 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         float buttonHeight = SLOT_SIZE * 1.0f;
         contentContainer.add(closeButton).size(buttonWidth, buttonHeight).pad(SLOT_SIZE * 0.5f);
 
-        mainTable.add(contentContainer);
+        mainTable.add(contentContainer);mainTable.toFront();
+        heldItemGroup.toFront();
+
         stage.addActor(mainTable);
         stage.addActor(heldItemGroup);
     }
@@ -304,13 +307,18 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
     public void resize(int width, int height) {
         if (stage != null) {
             stage.getViewport().update(width, height, true);
-
-            // Recalculate UI sizes and update if needed
+            // Force a re-layout on all UI Tables in the stage.
+            for (Actor actor : stage.getActors()) {
+                if (actor instanceof Table) {
+                    ((Table) actor).invalidateHierarchy();
+                    ((Table) actor).layout();
+                }
+            }
             float baseSize = Math.min(width * 0.04f, height * 0.07f);
             SLOT_SIZE = (int) Math.max(baseSize, 40);
-
         }
     }
+
 
     public void reloadInventory() {
         GameLogger.info("Reloading inventory (only on show or controlled calls)...");
@@ -355,8 +363,9 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
 
     private InventorySlotUI createSlotUI(int index) {
         InventorySlotData slotData = inventorySlots.get(index);
-        return new InventorySlotUI(slotData, skin, this);
+        return new InventorySlotUI(slotData, skin, this, SLOT_SIZE);
     }
+
 
     @Override
     public void updateHeldItemDisplay() {

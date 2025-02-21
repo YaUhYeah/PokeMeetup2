@@ -115,7 +115,7 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         int cols = 9;
 
         for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
-            InventorySlotUI slot = new InventorySlotUI(inventorySlotData[i], skin, this);
+            InventorySlotUI slot = new InventorySlotUI(inventorySlotData[i], skin, this, SLOT_SIZE);
             inventorySlots.add(slot);
 
             gridTable.add(slot).size(SLOT_SIZE);
@@ -133,7 +133,7 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
 
         for (int i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
             InventorySlotData slotData = new InventorySlotData(i, InventorySlotData.SlotType.EXPANDED_CRAFTING, craftingGrid);
-            InventorySlotUI slot = new InventorySlotUI(slotData, skin, this);
+            InventorySlotUI slot = new InventorySlotUI(slotData, skin, this, SLOT_SIZE);
             craftingSlots.add(slot);
 
             // Register slot observer with crafting system
@@ -189,7 +189,7 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         // Create result slot
         InventorySlotData resultSlotData = new InventorySlotData(-1, InventorySlotData.SlotType.CRAFTING_RESULT, craftingGrid);
         resultSlotData.setSlotType(InventorySlotData.SlotType.CRAFTING_RESULT);
-        resultSlot = new InventorySlotUI(resultSlotData, skin, this);
+        resultSlot = new InventorySlotUI(resultSlotData, skin, this, SLOT_SIZE);
 
         // Create the crafting table layout
         Table craftingTable = new Table();

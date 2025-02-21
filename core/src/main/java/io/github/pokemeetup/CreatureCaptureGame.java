@@ -151,9 +151,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             // Reinitialize the player's hotbar system.
             if (GameContext.get().getPlayer() != null) {
-                GameContext.get().getPlayer().setHotbarSystem(null);
-                HotbarSystem newHotbar = new HotbarSystem(newUiStage, skin);
-                GameContext.get().getPlayer().setHotbarSystem(newHotbar);
+                GameContext.get().setHotbarSystem(new HotbarSystem(newUiStage, skin));
                 GameLogger.info("Hotbar system reinitialized on the new UI stage");
             }
 

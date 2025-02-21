@@ -88,7 +88,6 @@ public class Player implements Positionable {
     private volatile boolean fontInitialized = false;
     private Skin skin;
     private Stage stage;
-    private HotbarSystem hotbarSystem;
     private float bufferedTime = 0f;
     private float animationTime = 0f;
     private float animationSpeedMultiplier = 0.75f;
@@ -170,7 +169,7 @@ public class Player implements Positionable {
     }
 
     public HotbarSystem getHotbarSystem() {
-        if (hotbarSystem == null) {
+        if (GameContext.get().getHotbarSystem() == null) {
             Stage stage = GameContext.get().getUiStage();
             if (stage == null) {
                 GameLogger.error("UI Stage is null in getHotbarSystem()!");
@@ -178,18 +177,10 @@ public class Player implements Positionable {
             }
             // Use the skin stored in GameContext if available.
             Skin hotbarSkin = GameContext.get().getSkin() != null ? GameContext.get().getSkin() : skin;
-            hotbarSystem = new HotbarSystem(stage, hotbarSkin);
+            GameContext.get().setHotbarSystem(new HotbarSystem(stage, hotbarSkin));
             GameLogger.info("HotbarSystem successfully initialized synchronously.");
         }
-        return hotbarSystem;
-    }
-
-    public void setHotbarSystem(HotbarSystem newHotbarSystem) {
-        if (this.hotbarSystem != null) {
-            // Remove the old hotbar actor so that it no longer receives input or is drawn.
-            this.hotbarSystem.getHotbarTable().remove();
-        }
-        this.hotbarSystem = newHotbarSystem;
+        return GameContext.get().getHotbarSystem();
     }
 
 
@@ -801,10 +792,10 @@ public class Player implements Positionable {
                 resourcesInitialized = true;
                 disposed = false;
                 GameLogger.info("Player resources initialized successfully");
-                if (hotbarSystem == null && GameContext.get().getUiStage() != null) {
+                if (GameContext.get().getHotbarSystem() == null && GameContext.get().getUiStage() != null) {
                     Gdx.app.postRunnable(() -> {
                         Skin hotbarSkin = GameContext.get().getSkin() != null ? GameContext.get().getSkin() : skin;
-                        hotbarSystem = new HotbarSystem(GameContext.get().getUiStage(), hotbarSkin);
+                        GameContext.get().setHotbarSystem(new HotbarSystem(GameContext.get().getUiStage(), hotbarSkin));
                         GameLogger.info("HotbarSystem successfully initialized.");
                     });
                 }

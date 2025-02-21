@@ -1,7 +1,10 @@
 package io.github.pokemeetup.screens.otherui;
 
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import io.github.pokemeetup.context.GameContext;
@@ -27,6 +30,7 @@ public class HotbarSystem {
         containerTable.setFillParent(true);
         containerTable.bottom().padBottom(VERTICAL_OFFSET);
 
+        // Set a background for the hotbar if available.
         TextureRegion hotbarBg = TextureManager.ui.findRegion("hotbar_bg");
         if (hotbarBg == null) {
             GameLogger.error("Skin is missing region 'hotbar_bg'! Hotbar will not be visible.");
@@ -34,7 +38,6 @@ public class HotbarSystem {
             GameLogger.info("Found 'hotbar_bg' region.");
             hotbarTable.setBackground(new TextureRegionDrawable(hotbarBg));
         }
-
         containerTable.add(hotbarTable).center();
         stage.addActor(containerTable);
 
@@ -47,18 +50,31 @@ public class HotbarSystem {
 
     public void updateHotbar() {
         hotbarTable.clear();
-        hotbarTable.defaults().size(SLOT_SIZE).space(2f);
+        // Loop through each hotbar slot.
         for (int i = 0; i < HOTBAR_SIZE; i++) {
-            boolean isSelected = (i == selectedSlot);
-            HotbarSlot slot = new HotbarSlot(isSelected, skin);
-            // Get the item from the player’s inventory.
+            final int slotIndex = i;
+            // Create a new HotbarSlot.
+            HotbarSlot slot = new HotbarSlot(i == selectedSlot, skin);
+
+            // Set item data if available.
             ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null) {
                 slot.setItem(item);
             }
-            hotbarTable.add(slot);
+
+            // Wrap the slot in a container so that its touch area is well defined.
+            Container<HotbarSlot> slotContainer = new Container<HotbarSlot>(slot);
+            slotContainer.setTouchable(Touchable.enabled);
+            // Add a ClickListener to the container.
+            slotContainer.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    setSelectedSlot(slotIndex);
+                }
+            });
+
+            hotbarTable.add(slotContainer).pad(5);
         }
-        hotbarTable.pack();
     }
 
     public void setSelectedSlot(int slot) {

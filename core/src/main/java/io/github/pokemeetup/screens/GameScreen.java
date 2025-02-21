@@ -405,7 +405,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             // If the player's hotbar is null or its stage isn’t the current UI stage, recreate it.
             if (GameContext.get().getPlayer().getHotbarSystem() == null) {
                 HotbarSystem newHotbar = new HotbarSystem(uiStage, skin);
-                GameContext.get().getPlayer().setHotbarSystem(newHotbar);
+                GameContext.get().setHotbarSystem(newHotbar);
                 GameLogger.info("Hotbar system reinitialized on the new UI stage");
             }
         }
@@ -1569,7 +1569,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         GameContext.get().getBatch().end();
 
-
+        if(controllerInputProcessor != null) {
+            controllerInputProcessor.update();
+        }
         if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
             if (GameContext.get().getBuildModeUI() != null) {
                 GameContext.get().getBuildModeUI().render(GameContext.get().getBatch(), camera);
@@ -1601,9 +1603,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameContext.get().getUiStage().act(delta);
             GameContext.get().getUiStage().draw();
         }
-        if(controllerInputProcessor != null) {
-            controllerInputProcessor.update();
-        }
+
 
         if (Gdx.input.isKeyPressed(Input.Keys.TAB)) {
             renderPlayerListOverlay();

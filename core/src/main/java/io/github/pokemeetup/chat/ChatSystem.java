@@ -98,6 +98,15 @@ public class ChatSystem extends Table {
     }
 
     @Override
+    public Actor hit(float x, float y, boolean touchable) {
+        if (!isActive) {
+            return null; // Let touches fall through when not active.
+        }
+        return super.hit(x, y, touchable);
+    }
+
+
+    @Override
     public void setPosition(float x, float y) {
         super.setPosition(x, y);
         if (chatWindow != null) {
@@ -205,6 +214,8 @@ public class ChatSystem extends Table {
 
     public void deactivateChat() {
         isActive = false;
+        chatWindow.setTouchable(Touchable.disabled);
+
         inputField.setVisible(false);
         stage.setKeyboardFocus(null);
 
