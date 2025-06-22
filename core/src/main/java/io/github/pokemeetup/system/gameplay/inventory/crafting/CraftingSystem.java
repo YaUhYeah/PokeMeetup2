@@ -212,50 +212,69 @@ public class CraftingSystem {
         return totalCount;
     }
 
-    public boolean craftOneItem() {
+    /**
+     * [FIXED] Consumes one set of ingredients from the grid and returns the crafted item.
+     * It no longer adds the item to the inventory directly.
+     *
+     * @return The crafted ItemData, or null if crafting failed.
+     */
+    public ItemData craftAndConsume() {
         synchronized (craftingLock) {
-            if (resultSlot == null) return false;
-
-            // First verify we can add the result to inventory
-            ItemData craftResult = resultSlot.copy();
-            if (!inventory.addItem(craftResult)) {
-                GameLogger.error("Cannot craft - inventory full");
-                return false;
+            if (resultSlot == null) {
+                return null;
             }
 
-            // Get recipe requirements
+            ItemData craftedItem = resultSlot.copy();
+
             RecipeManager.CraftingRecipe recipe = findMatchingRecipe();
-            if (recipe == null) return false;
-
-            Map<String, Integer> requiredItems = recipe.getIngredients();
-            if (requiredItems == null) return false;
-
-            // Check if grid has sufficient items
-            for (Map.Entry<String, Integer> entry : requiredItems.entrySet()) {
-                String itemId = entry.getKey();
-                int requiredCount = entry.getValue();
-                int availableCount = getTotalItemCountInGrid(itemId);
-
-                if (availableCount < requiredCount) {
-                    GameLogger.error("Not enough " + itemId + " to craft");
-                    return false;
-                }
+            if (recipe == null) {
+                GameLogger.error("Recipe mismatch for result: " + resultSlot.getItemId());
+                return null;
             }
 
-            // Consume ingredients
-            for (Map.Entry<String, Integer> entry : requiredItems.entrySet()) {
+            // Consume ingredients from the grid
+            for (Map.Entry<String, Integer> entry : recipe.getIngredients().entrySet()) {
                 consumeItemsFromGrid(entry.getKey(), entry.getValue());
             }
 
-            // Play craft sound
             AudioManager.getInstance().playSound(AudioManager.SoundEffect.CRAFT);
+            updateCraftingResult(); // This will re-evaluate the grid, which is now missing ingredients
 
-            inventory.notifyObservers();
-            // Update crafting result and UI
-            updateCraftingResult();
+            return craftedItem;
+        }
+    }
 
-            GameLogger.info("Successfully crafted: " + craftResult.getItemId() + " x" + craftResult.getCount());
-            return true;
+    /**
+     * [NEW] Calculates the maximum number of times the current recipe can be crafted
+     * based on the ingredients available in the crafting grid.
+     *
+     * @return The number of times the current recipe can be crafted.
+     */
+    public int calculateMaxCrafts() {
+        synchronized (craftingLock) {
+            if (resultSlot == null) return 0;
+            RecipeManager.CraftingRecipe recipe = findMatchingRecipe();
+            if (recipe == null) return 0;
+
+            int maxCrafts = Integer.MAX_VALUE;
+
+            for (Map.Entry<String, Integer> req : recipe.getIngredients().entrySet()) {
+                String itemId = req.getKey();
+                int requiredCount = req.getValue();
+                if (requiredCount == 0) continue;
+
+                int availableCount = 0;
+                for (int i = 0; i < craftingGrid.getSize(); i++) {
+                    ItemData item = craftingGrid.getItemAt(i);
+                    if (item != null && item.getItemId().equals(itemId)) {
+                        availableCount += item.getCount();
+                    }
+                }
+
+                maxCrafts = Math.min(maxCrafts, availableCount / requiredCount);
+            }
+
+            return (maxCrafts == Integer.MAX_VALUE) ? 0 : maxCrafts;
         }
     }
 

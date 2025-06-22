@@ -144,6 +144,7 @@ public class ServerWorldManager {
 
 
     // The new load–or–generate method for the server.
+    // Modify loadChunk in ServerWorldManager.java
     public Chunk loadChunk(String worldName, int chunkX, int chunkY) {
         WorldData wd = loadWorld(worldName);
         if (wd == null) {
@@ -160,14 +161,22 @@ public class ServerWorldManager {
             // a) Load from disk or generate
             Chunk loaded = loadChunkFromDisk(worldName, chunkX, chunkY);
             if (loaded == null) {
-                // generate new
-                loaded = generateNewChunk(chunkX, chunkY, wd.getConfig().getSeed());
+                // CRITICAL FIX: Generate new chunk with deterministic seed
+                // This ensures consistent generation across server restarts
+                long determinSeed = wd.getConfig().getSeed() +
+                    (((long)chunkX << 32) | ((long)chunkY & 0xFFFFFFFFL));
+
+                loaded = generateNewChunk(chunkX, chunkY, determinSeed);
+
+                // Save immediately to ensure persistence
+                saveChunk(worldName, loaded);
             }
+
             // b) Store in cache
             timed = new TimedChunk(loaded);
             worldChunkMap.put(pos, timed);
 
-            // If we changed the chunk’s boundary tiles, mark dirty & save now
+            // If we changed the chunk's boundary tiles, mark dirty & save now
             if (loaded.isDirty()) {
                 saveChunk(worldName, loaded);
             }
@@ -186,13 +195,32 @@ public class ServerWorldManager {
     private Chunk generateNewChunk(int chunkX, int chunkY, long seed) {
         int worldTileX = chunkX * Chunk.CHUNK_SIZE;
         int worldTileY = chunkY * Chunk.CHUNK_SIZE;
-        BiomeTransitionResult btr = biomeManager.getBiomeAt(worldTileX * World.TILE_SIZE, worldTileY * World.TILE_SIZE);
-        if ((btr.getPrimaryBiome() == null)) {
-            biomeManager.getBiome(BiomeType.PLAINS);
-        }
-        return UnifiedWorldGenerator.generateChunkForServer(chunkX, chunkY, seed, biomeManager);
-    }
 
+        // Calculate chunk center for consistent biome determination
+        float centerPixelX = (chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+        float centerPixelY = (chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+
+        BiomeTransitionResult btr = biomeManager.getBiomeAt(centerPixelX, centerPixelY);
+
+        // Ensure we always have a valid biome
+        if (btr == null || btr.getPrimaryBiome() == null) {
+            btr = new BiomeTransitionResult(
+                biomeManager.getBiome(BiomeType.PLAINS),
+                null,
+                1.0f
+            );
+        }
+
+        // Pass the deterministic seed to the world generator
+        Chunk chunk = UnifiedWorldGenerator.generateChunkForServer(
+            chunkX, chunkY, seed, biomeManager);
+
+        // IMPORTANT: Force the biome to match what we calculated
+        // This ensures consistent biome assignment
+        chunk.setBiome(btr.getPrimaryBiome());
+
+        return chunk;
+    }
 
     private Chunk loadChunkFromDisk(String worldName, int chunkX, int chunkY) {
         Path path = getChunkFilePath(worldName, chunkX, chunkY);
@@ -461,7 +489,6 @@ public class ServerWorldManager {
         public int chunkX;
         public int chunkY;
         public BiomeType biomeType;
-        public BiomeData biomeData;
         public int[][] tileData;
         public List<BlockSaveData.BlockData> blockData = new ArrayList<>();
         public long generationSeed;

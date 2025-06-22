@@ -4,15 +4,12 @@
     "type": "PLAINS",
     "allowedTileTypes": [
       1,
-      24,
       20,
       22,
       23
     ],
     "tileDistribution": {
       "1": 60.0,
-      "10": 20.0,
-      "24": 14.0,
       "22": 3.0,
       "23": 3.0
     },
@@ -24,13 +21,19 @@
       "TREE_0",
       "TREE_1",
       "SUNFLOWER",
-      "APRICORN_TREE"
+      "APRICORN_TREE",
+      "TALL_GRASS",
+      "TALL_GRASS_2",
+      "TALL_GRASS_3"
     ],
     "spawnChances": {
       "SUNFLOWER": 0.1,
       "TREE_0": 0.09,
       "TREE_1": 0.09,
-      "APRICORN_TREE": 0.075
+      "APRICORN_TREE": 0.075,
+      "TALL_GRASS": 0.35,
+      "TALL_GRASS_2": 0.25,
+      "TALL_GRASS_3": 0.15
     }
   },
   {
@@ -38,16 +41,13 @@
     "type": "FOREST",
     "allowedTileTypes": [
       11,
-      12,
       1,
       10,
       20
     ],
     "tileDistribution": {
       "11": 50.0,
-      "12": 25.0,
       "1": 15.0,
-      "10": 8.0,
       "20": 2.0
     },
     "transitionTileTypes": {
@@ -57,12 +57,14 @@
     "spawnableObjects": [
       "TREE_0",
       "TREE_1",
-      "APRICORN_TREE"
+      "APRICORN_TREE",
+      "FOREST_TALL_GRASS"
     ],
     "spawnChances": {
       "TREE_0": 0.2,
       "TREE_1": 0.2,
-      "APRICORN_TREE": 0.1
+      "APRICORN_TREE": 0.1,
+      "FOREST_TALL_GRASS": 0.35
     }
   },
   {
@@ -70,12 +72,10 @@
     "type": "SNOW",
     "allowedTileTypes": [
       4,
-      6,
       51
     ],
     "tileDistribution": {
       "4": 75.0,
-      "6": 10.0,
       "51": 10.0,
       "219": 5.0
     },
@@ -85,10 +85,12 @@
       "219": 35.0
     },
     "spawnableObjects": [
-      "SNOW_TREE"
+      "SNOW_TREE",
+      "SNOW_TALL_GRASS"
     ],
     "spawnChances": {
-      "SNOW_TREE": 0.1
+      "SNOW_TREE": 0.1,
+      "SNOW_TALL_GRASS": 0.4
     }
   },
   {
@@ -96,14 +98,12 @@
     "type": "HAUNTED",
     "allowedTileTypes": [
       5,
-      7,
       8,
       9,
       1
     ],
     "tileDistribution": {
       "5": 55.0,
-      "7": 25.0,
       "8": 8.0,
       "9": 7.0,
       "1": 5.0
@@ -116,43 +116,29 @@
       "HAUNTED_TREE",
       "DEAD_TREE",
       "SMALL_HAUNTED_TREE",
-      "VINES"
+      "VINES",
+      "HAUNTED_TALL_GRASS"
     ],
     "spawnChances": {
-      "HAUNTED_TREE": 0.75,
-      "DEAD_TREE": 0.6,
-      "SMALL_HAUNTED_TREE": 0.6,
-      "VINES": 0.7
+      "HAUNTED_TREE": 0.175,
+      "DEAD_TREE": 0.06,
+      "SMALL_HAUNTED_TREE": 0.06,
+      "VINES": 0.1,
+      "HAUNTED_TALL_GRASS": 0.1
     }
   },
   {
     "name": "Rain Forest",
     "type": "RAIN_FOREST",
     "allowedTileTypes": [
-      13,
-      14,
-      1,
       20,
-      10,
-      21,
-      24,
       140,
-      141,
-      142,
-      143,
-      144,
-      145,
-      146,
-      147,
-      148
+      13
     ],
     "tileDistribution": {
-      "13": 40.0,
-      "20": 30.0,
-      "10": 15.0,
-      "21": 3.0,
-      "24": 2.0,
-      "140": 10.0
+      "20": 5.0,
+      "140": 5.0,
+      "13": 25.0
     },
     "transitionTileTypes": {
       "13": 25.0,
@@ -160,11 +146,13 @@
     },
     "spawnableObjects": [
       "RAIN_TREE",
-      "BUSH"
+      "BUSH",
+      "RAIN_FOREST_TALL_GRASS"
     ],
     "spawnChances": {
       "RAIN_TREE": 0.4,
-      "BUSH": 0.1
+      "BUSH": 0.1,
+      "RAIN_FOREST_TALL_GRASS": 0.5
     }
   },
   {
@@ -173,27 +161,27 @@
     "allowedTileTypes": [
       15,
       16,
-      17,
       2
     ],
     "tileDistribution": {
       "15": 65.0,
-      "16": 10.0,
-      "17": 10.0,
       "2": 15.0
     },
     "transitionTileTypes": {
       "15": 25.0,
-      "16": 15.0,
       "2": 10.0
     },
     "spawnableObjects": [
       "CACTUS",
-      "DEAD_TREE"
+      "DEAD_TREE",
+      "DESERT_TALL_GRASS",
+      "DESERT_ROCK"
     ],
     "spawnChances": {
       "CACTUS": 0.1,
-      "DEAD_TREE": 0.1
+      "DEAD_TREE": 0.1,
+      "DESERT_TALL_GRASS": 0.3,
+      "DESERT_ROCK": 0.1
     }
   },
   {
@@ -251,14 +239,11 @@
     "allowedTileTypes": [
       53,
       54,
-      55,
       56
     ],
     "tileDistribution": {
       "53": 10.0,
       "54": 20.0,
-      "14": 25.0,
-      "55": 5.0,
       "56": 40.0
     },
     "transitionTileTypes": {
@@ -267,38 +252,41 @@
     },
     "spawnableObjects": [
       "RUINS_TREE",
-      "RUIN_POLE"
+      "RUIN_POLE",
+      "RUINS_TALL_GRASS"
     ],
     "spawnChances": {
       "RUINS_TREE": 0.4,
-      "RUIN_POLE": 0.3
+      "RUIN_POLE": 0.3,
+      "RUINS_TALL_GRASS": 0.4
     }
   },
   {
     "name": "Cherry Grove",
     "type": "CHERRY_GROVE",
     "allowedTileTypes": [
-      217,
-      218,
       11,
       1
     ],
     "tileDistribution": {
-      "217": 5.0,
-      "218": 5.0,
       "11": 65.0,
       "1": 25.0
     },
     "transitionTileTypes": {
-      "217": 5.0,
       "11": 15.0,
       "1": 5.0
     },
     "spawnableObjects": [
-      "CHERRY_TREE"
+      "CHERRY_TREE",
+      "CRYSTAL_ROCK",
+      "FAIRY_ROCK",
+      "TALL_GRASS"
     ],
     "spawnChances": {
-      "CHERRY_TREE": 0.5
+      "CHERRY_TREE": 0.5,
+      "TALL_GRASS": 0.4,
+      "CRYSTAL_ROCK": 0.15,
+      "FAIRY_ROCK": 0.1
     }
   },
   {
@@ -306,17 +294,13 @@
     "type": "BEACH",
     "allowedTileTypes": [
       220,
-      221,
-      222,
       223,
       224
     ],
     "tileDistribution": {
       "220": 50.0,
-      "221": 10.0,
-      "222": 10.0,
-      "223": 25.0,
-      "224": 5.0
+      "223": 2.0,
+      "224": 3.0
     },
     "transitionTileTypes": {
     },

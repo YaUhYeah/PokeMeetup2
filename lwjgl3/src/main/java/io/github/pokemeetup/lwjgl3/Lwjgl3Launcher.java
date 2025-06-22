@@ -50,7 +50,6 @@ public class Lwjgl3Launcher {
             public void refreshRequested() { }
         });
 
-        // Instantiate the application which starts the game loop.
         new Lwjgl3Application(game, configuration);
     }
 
@@ -59,7 +58,6 @@ public class Lwjgl3Launcher {
         configuration.setTitle("Capsule Story");
         configuration.useVsync(true);
 
-        // Set the foreground FPS to the monitor's refresh rate + 1 for smoother rendering.
         int refreshRate = Lwjgl3ApplicationConfiguration.getDisplayMode().refreshRate;
         configuration.setForegroundFPS(refreshRate > 0 ? refreshRate + 1 : 60);
 

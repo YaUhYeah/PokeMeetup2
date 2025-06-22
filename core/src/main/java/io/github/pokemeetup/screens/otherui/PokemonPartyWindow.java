@@ -32,6 +32,7 @@ public class PokemonPartyWindow extends Window {
     private final Runnable cancelCallback;
 
     private Table contentTable;
+    private int currentPokemonIndex = -1; // Index of the Pokemon currently in battle
     private ArrayList<PokemonSlot> pokemonSlots = new ArrayList<>();
 
     // For swapping in non–battle mode
@@ -55,7 +56,18 @@ public class PokemonPartyWindow extends Window {
         // Do not call getStage() here because this actor isn’t on a stage yet.
         setModal(true);
         setMovable(false);
-
+        if (battleMode && GameContext.get().getBattleTable() != null) {
+            Pokemon activePokemon = GameContext.get().getBattleTable().getPlayerPokemon(); // Assuming BattleTable has getPlayerPokemon()
+            if (activePokemon != null) {
+                List<Pokemon> partyList = party.getParty();
+                for (int i = 0; i < partyList.size(); i++) {
+                    if (partyList.get(i) == activePokemon) {
+                        currentPokemonIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
         initialize();
     }
 
@@ -161,63 +173,62 @@ public class PokemonPartyWindow extends Window {
         rebuildSlots();
     }
 
-    /**
-     * Completely rebuilds the table:
-     * - Clears existing rows,
-     * - Adds the title row,
-     * - Adds a row for each Pokémon slot.
-     */
     private void rebuildSlots() {
         contentTable.clearChildren();
 
-        // Title row
         Label title = new Label(battleMode ? "Choose Pokémon" : "Pokémon Party", getSkin());
         title.setFontScale(1.2f);
         contentTable.add(title).expandX().center().pad(10).row();
 
-        // Slots
         pokemonSlots.clear();
         List<Pokemon> partyList = party.getParty();
         for (int i = 0; i < partyList.size(); i++) {
             Pokemon pokemon = partyList.get(i);
             final int slotIndex = i;
 
-            // (A) Pass "this" to the PokemonSlot constructor
-            PokemonSlot slot = new PokemonSlot(
-                this,          // the parent window
-                pokemon,
-                getSkin(),
-                battleMode,
-                i
-            );
+            // Pass index and battle mode to the slot
+            PokemonSlot slot = new PokemonSlot(this, pokemon, getSkin(), battleMode, slotIndex, i == currentPokemonIndex); // NEW: pass active status
             pokemonSlots.add(slot);
 
+            // --- Updated Click Listener ---
             slot.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
-                    if (selectionMade) return;  // Ignore if a selection has already been made.
-                    if (battleMode) {
-                        if (pokemon.getCurrentHp() <= 0) return;
-                        selectionMade = true;  // Mark as already selected.
-                        // Fire your selection callback
-                        selectionListener.onPokemonSelected(pokemon);
+                    if (selectionMade) return;
 
-                        // Fade out and remove the entire PokemonPartyWindow
+                    if (battleMode) {
+                        // Prevent selecting fainted or current Pokemon in battle
+                        if (pokemon.getCurrentHp() <= 0) {
+                            // Optionally show a message "This Pokemon can't battle!"
+                            // GameContext.get().getBattleTable().displayMessage(pokemon.getName() + " is unable to battle!");
+                            return;
+                        }
+                        if (slotIndex == currentPokemonIndex) {
+                            // Optionally show message "This Pokemon is already out!"
+                            // GameContext.get().getBattleTable().displayMessage(pokemon.getName() + " is already in battle!");
+                            return;
+                        }
+
+                        selectionMade = true;
+                        // --- Pass INDEX back, not the Pokemon object ---
+                        selectionListener.onPokemonSelected(slotIndex); // MODIFIED
+
                         PokemonPartyWindow.this.addAction(Actions.sequence(
                             Actions.fadeOut(0.3f),
                             Actions.run(PokemonPartyWindow.this::remove)
                         ));
                     } else {
+                        // Non-battle mode swapping logic
                         handleSlotClick(slotIndex, slot);
                     }
                 }
             });
 
-
-
             contentTable.add(slot).expandX().fillX().pad(5).row();
         }
-    }private boolean selectionMade = false;
+    }
+
+    private boolean selectionMade = false;
 
 
     /**
@@ -245,8 +256,10 @@ public class PokemonPartyWindow extends Window {
         }
     }
 
+
     public interface PartySelectionListener {
-        void onPokemonSelected(Pokemon pokemon);
+        // Now accepts the index of the selected Pokemon
+        void onPokemonSelected(int partyIndex); // MODIFIED
     }
 
     /**
@@ -262,16 +275,19 @@ public class PokemonPartyWindow extends Window {
         private boolean isHovered = false;
         private boolean isSelected = false;
 
+        private final boolean isActiveInBattle; // NEW field
         public PokemonSlot(PokemonPartyWindow parentWindow,
                            Pokemon pokemon,
                            Skin skin,
                            boolean battleMode,
-                           int slotIndex) {
+                           int slotIndex,
+                           boolean isActive) { // NEW parameter
 
             super(skin);
             this.parentWindow = parentWindow;  // store reference
             this.pokemon = pokemon;
 
+            this.isActiveInBattle = isActive; // Store active status
             // Fallback if the icon is null
             TextureRegion fullIcon = pokemon.getIconSprite();
             if (fullIcon == null) {
@@ -308,9 +324,11 @@ public class PokemonPartyWindow extends Window {
                 .padRight(10);
             add(infoTable).expand().fill().row();
 
-            // Grey out fainted Pokémon if in battle mode
-            if (battleMode && pokemon.getCurrentHp() <= 0) {
+            if (battleMode && (pokemon.getCurrentHp() <= 0 || isActiveInBattle)) {
                 setColor(getColor().mul(0.6f));
+                setTouchable(Touchable.disabled); // Make untappable
+            } else {
+                setTouchable(Touchable.enabled); // Ensure tappable otherwise
             }
 
             // Tooltip logic

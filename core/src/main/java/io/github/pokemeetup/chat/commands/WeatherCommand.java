@@ -55,6 +55,7 @@ public class WeatherCommand implements Command {
                 chatSystem.addSystemMessage("Error: World not found");
                 return;
             }
+            currentWorld.getWeatherSystem().setWorld(currentWorld);
 
             // Get current weather
             if (argsArray[0].equalsIgnoreCase("get")) {

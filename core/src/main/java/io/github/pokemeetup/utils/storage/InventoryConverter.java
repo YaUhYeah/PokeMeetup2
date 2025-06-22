@@ -18,11 +18,9 @@ public class InventoryConverter {
             return null;
         }
 
-        // Create new ItemData with DEEP copy of all properties
         ItemData itemData = new ItemData();
         itemData.setItemId(item.getName());
         itemData.setCount(item.getCount());
-        // Use original UUID to maintain item identity
         itemData.setUuid(item.getUuid() != null ? item.getUuid() : UUID.randomUUID());
         itemData.setDurability(item.getDurability());
         itemData.setMaxDurability(item.getMaxDurability());
@@ -82,17 +80,6 @@ public class InventoryConverter {
             }
         }
 
-    public static List<ItemData> duplicateItemDataList(List<ItemData> itemDataList) {
-        List<ItemData> duplicatedList = new ArrayList<>();
-        for (ItemData item : itemDataList) {
-            if (item != null) {
-                duplicatedList.add(item.copy());
-            } else {
-                duplicatedList.add(null);
-            }
-        }
-        return duplicatedList;
-    }
 
     @Deprecated
     public static List<String> toPlayerDataFormat(List<ItemData> items) {

@@ -54,112 +54,161 @@ public class UnifiedWorldGenerator {
         return chunk;
     }
 
+    private static List<WorldObject> spawnWorldObjects(Chunk chunk, int[][] tiles, long worldSeed) {
+        // Use the new enhanced spawner for better object distribution
+        return EnhancedWorldObjectSpawner.spawnWorldObjects(chunk, tiles, worldSeed);
+    }
+
+    /**
+     * Generates a chunk for server-side use with deterministic properties to ensure consistent
+     * generation across server restarts and multiple client sessions.
+     *
+     * @param chunkX X coordinate of the chunk
+     * @param chunkY Y coordinate of the chunk
+     * @param worldSeed The world seed for deterministic generation
+     * @param biomeManager The biome manager instance
+     * @return A fully initialized chunk
+     */
     public static Chunk generateChunkForServer(int chunkX, int chunkY, long worldSeed, BiomeManager biomeManager) {
-        // Determine an approximate biome at the chunk center.
-        float centerWorldX = (chunkX * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-        float centerWorldY = (chunkY * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-        BiomeTransitionResult centerBTR = biomeManager.getBiomeAt(centerWorldX, centerWorldY);
-        Biome primary = centerBTR.getPrimaryBiome();
-        if (primary == null) {
-            primary = biomeManager.getBiome(BiomeType.PLAINS);
-        }
+        try {
+            // Determine biome at a fixed point (center of chunk) for consistency
+            float centerWorldX = (chunkX * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+            float centerWorldY = (chunkY * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
 
-        // Create a new chunk with the determined primary biome.
-        Chunk chunk = new Chunk(chunkX, chunkY, primary, worldSeed);
+            // Round coordinates for deterministic queries
+            centerWorldX = (float) (Math.floor(centerWorldX / 10.0f) * 10.0f);
+            centerWorldY = (float) (Math.floor(centerWorldY / 10.0f) * 10.0f);
 
-        final int size = Chunk.CHUNK_SIZE;
-        final int MARGIN = 2;
-        final int sampleW = size + 2 * MARGIN;
-        final int sampleH = size + 2 * MARGIN;
-        int[][] sampleTiles = new int[sampleW][sampleH];
+            BiomeTransitionResult centerBTR = biomeManager.getBiomeAt(centerWorldX, centerWorldY);
+            Biome primary = centerBTR.getPrimaryBiome();
+            if (primary == null) {
+                GameLogger.error("Null primary biome at (" + chunkX + "," + chunkY + "), defaulting to PLAINS");
+                primary = biomeManager.getBiome(BiomeType.PLAINS);
+            }
 
-        // Phase 1: Sample tiles over an expanded region for smoother edges.
-        for (int sx = 0; sx < sampleW; sx++) {
-            for (int sy = 0; sy < sampleH; sy++) {
-                // Convert sample coordinates to world tile coordinates.
-                int worldTileX = (chunkX * size) + (sx - MARGIN);
-                int worldTileY = (chunkY * size) + (sy - MARGIN);
-                float worldX = worldTileX * World.TILE_SIZE;
-                float worldY = worldTileY * World.TILE_SIZE;
+            // Create a new chunk with the determined primary biome and deterministic seed
+            Chunk chunk = new Chunk(chunkX, chunkY, primary, worldSeed);
 
-                // 1) Domain–warp using the provided biomeManager.
-                float[] warped = biomeManager.domainWarp(worldX, worldY);
+            final int size = Chunk.CHUNK_SIZE;
+            final int MARGIN = 2;
+            final int sampleW = size + 2 * MARGIN;
+            final int sampleH = size + 2 * MARGIN;
+            int[][] sampleTiles = new int[sampleW][sampleH];
 
-                // 2) Find the closest island.
-                BiomeManager.Island isl = biomeManager.findClosestIsland(warped[0], warped[1]);
-                if (isl == null) {
-                    sampleTiles[sx][sy] = TileType.WATER;
-                    continue;
-                }
+            // Create a chunk-specific sub-seed for local variation that's still deterministic
+            long chunkSpecificSeed = worldSeed + (((long)chunkX << 32) | ((long)chunkY & 0xFFFFFFFFL));
+            Random chunkRng = new Random(chunkSpecificSeed);
 
-                // Compute distance and distortion.
-                float dx = warped[0] - isl.centerX;
-                float dy = warped[1] - isl.centerY;
-                float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                float angle = MathUtils.atan2(dy, dx);
-                float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
-                distort = Math.max(0, distort);
+            // Phase 1: Sample tiles with deterministic noise
+            for (int sx = 0; sx < sampleW; sx++) {
+                for (int sy = 0; sy < sampleH; sy++) {
+                    int worldTileX = (chunkX * size) + (sx - MARGIN);
+                    int worldTileY = (chunkY * size) + (sy - MARGIN);
+                    float worldX = worldTileX * World.TILE_SIZE;
+                    float worldY = worldTileY * World.TILE_SIZE;
 
-                float newExpandFactor = 1.3f;
-                float reducedFactor = 0.1f;
-                float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
+                    // Ensure rounded coordinates for deterministic queries
+                    worldX = (float) (Math.floor(worldX / 10.0f) * 10.0f);
+                    worldY = (float) (Math.floor(worldY / 10.0f) * 10.0f);
 
-// Define a fixed beach band (10% of the effective radius)
-                float beachBand = effectiveRadius * 0.1f;
-                float innerThreshold = effectiveRadius;           // land ends here
-                float outerThreshold = effectiveRadius + beachBand; // beach occupies this band
+                    // Use biome manager's domain warp
+                    float[] warped = biomeManager.domainWarp(worldX, worldY);
 
-                if (dist < innerThreshold) {
-                    // Land tile: use the land biome Voronoi method.
-                    BiomeTransitionResult landTrans = GameContext.get().getBiomeManager().landBiomeVoronoi(warped[0], warped[1]);
-                    sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(landTrans, worldX, worldY, worldSeed);
-                } else if (dist < outerThreshold) {
-                    // Entirely beach – no blending.
-                    BiomeTransitionResult beachTrans = new BiomeTransitionResult(
-                        GameContext.get().getBiomeManager().getBiome(BiomeType.BEACH),
-                        null,
-                        1f
-                    );
-                    sampleTiles[sx][sy] = TileDataPicker.pickBeachTile(beachTrans, worldX, worldY, worldSeed);
-                } else {
-                    // Outside the island – ocean.
-                    sampleTiles[sx][sy] = TileType.WATER;
+                    // Find closest island using deterministic approach
+                    BiomeManager.Island isl = biomeManager.findClosestIsland(warped[0], warped[1]);
+                    if (isl == null) {
+                        sampleTiles[sx][sy] = TileType.WATER;
+                        continue;
+                    }
+
+                    // Use deterministic distance calculation
+                    float dx = warped[0] - isl.centerX;
+                    float dy = warped[1] - isl.centerY;
+                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                    float angle = MathUtils.atan2(dy, dx);
+
+                    // Use the island's seed for consistent distortion
+                    float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
+                    distort = Math.max(0, distort);
+
+                    // Use consistent coefficients
+                    float newExpandFactor = 1.3f;
+                    float reducedFactor = 0.1f;
+                    float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
+
+                    // Define fixed beach band size
+                    float beachBand = effectiveRadius * 0.1f;
+                    float innerThreshold = effectiveRadius;
+                    float outerThreshold = effectiveRadius + beachBand;
+
+                    if (dist < innerThreshold) {
+                        // Land tile: use the land biome Voronoi method
+                        BiomeTransitionResult landTrans = biomeManager.landBiomeVoronoi(warped[0], warped[1]);
+                        sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(landTrans, worldX, worldY, worldSeed);
+                    } else if (dist < outerThreshold) {
+                        // Beach tiles
+                        BiomeTransitionResult beachTrans = new BiomeTransitionResult(
+                            biomeManager.getBiome(BiomeType.BEACH),
+                            null,
+                            1f
+                        );
+                        sampleTiles[sx][sy] = TileDataPicker.pickBeachTile(beachTrans, worldX, worldY, worldSeed);
+                    } else {
+                        // Ocean tiles
+                        sampleTiles[sx][sy] = TileType.WATER;
+                    }
                 }
             }
-        }
 
-        // Phase 2: Remove inland ocean pockets.
-        removeInlandOceanPockets(sampleTiles);
+            // Phase 2: Remove inland ocean pockets for visual consistency
+            removeInlandOceanPockets(sampleTiles);
 
-        // Phase 3: Copy the central region (the real chunk) from sampleTiles.
-        int[][] tiles = new int[size][size];
-        for (int lx = 0; lx < size; lx++) {
-            System.arraycopy(sampleTiles[lx + MARGIN], MARGIN, tiles[lx], 0, size);
-        }
-        chunk.setTileData(tiles);
+            // Phase 3: Copy the central region to chunk tiles
+            int[][] tiles = new int[size][size];
+            for (int lx = 0; lx < size; lx++) {
+                System.arraycopy(sampleTiles[lx + MARGIN], MARGIN, tiles[lx], 0, size);
+            }
+            chunk.setTileData(tiles);
 
-        // Apply auto-tiling.
-        try {
-            new AutoTileSystem().applyShorelineAutotiling(chunk, 0);
+
+
+            // Apply mountain generation if needed, using the deterministic chunk-specific seed
+            applyMountainsIfNeeded(chunk, tiles, chunkSpecificSeed);
+
+            // Generate objects with the same deterministic seed
+            List<WorldObject> objects = spawnWorldObjects(chunk, tiles, chunkSpecificSeed);
+
+            // Log what we've generated for debugging
+            GameLogger.info("Generated chunk (" + chunkX + "," + chunkY + ") with " +
+                objects.size() + " objects, biome: " + primary.getType());
+
+            // Store the objects and mark as dirty
+            chunk.setWorldObjects(objects);
+            chunk.setDirty(true);
+
+            // CRITICAL FIX: Force the chunk biome to match what was determined at the center
+            // This ensures consistent biome assignment
+            chunk.setBiome(primary);
+
+            return chunk;
         } catch (Exception e) {
-            GameLogger.error("Error during autotiling: " + e.getMessage());
+            // Add robust error handling to prevent crashes
+            GameLogger.error("Error generating chunk at (" + chunkX + "," + chunkY + "): " + e.getMessage());
+            e.printStackTrace();
+
+            // Return a fallback chunk in case of errors
+            Biome fallbackBiome = biomeManager.getBiome(BiomeType.PLAINS);
+            Chunk fallbackChunk = new Chunk(chunkX, chunkY, fallbackBiome, worldSeed);
+            int[][] fallbackTiles = new int[CHUNK_SIZE][CHUNK_SIZE];
+            for (int x = 0; x < CHUNK_SIZE; x++) {
+                for (int y = 0; y < CHUNK_SIZE; y++) {
+                    fallbackTiles[x][y] = TileType.GRASS;  // Simple fallback
+                }
+            }
+            fallbackChunk.setTileData(fallbackTiles);
+            fallbackChunk.setDirty(true);
+            return fallbackChunk;
         }
-
-        // Apply mountain generation if needed.
-        applyMountainsIfNeeded(chunk, tiles, worldSeed);
-        chunk.setDirty(true);
-
-        // Spawn world objects (e.g. trees, stones) inside the chunk.
-        List<WorldObject> objects = spawnWorldObjects(chunk, tiles, worldSeed);
-        GameLogger.info("spawnWorldObjects produced " + objects.size() + " objects for chunk (" +
-            chunk.getChunkX() + "," + chunk.getChunkY() + ").");
-        chunk.setWorldObjects(objects);
-
-        // Determine the dominant biome across the chunk.
-        Biome chunkBiome = findDominantBiomeInChunk(chunk,biomeManager);
-        chunk.setBiome(chunkBiome);
-
-        return chunk;
     }
 
 
@@ -254,7 +303,7 @@ public class UnifiedWorldGenerator {
         // set chunk tile data
         chunk.setTileData(tiles);
         try {
-            new AutoTileSystem().applyShorelineAutotiling(chunk, 0);
+            new AutoTileSystem().applyShorelineAutotiling(chunk, 0, GameContext.get().getWorld());
         } catch (Exception e) {
             GameLogger.error("Error during autotiling: " + e.getMessage());
         }
@@ -385,8 +434,6 @@ public class UnifiedWorldGenerator {
         ElevationLogic.finalizeStairAccess(tiles, elevationBands);
         ElevationLogic.maybeAddCaveEntrance(elevationBands, tiles, rng);
 
-        // Store it in the chunk
-        chunk.setElevationBands(elevationBands);
     }
 
     /**
@@ -431,54 +478,7 @@ public class UnifiedWorldGenerator {
             type == WorldObject.ObjectType.BEACH_TREE;
     }
 
-    /**
-     * Spawns trees, stones, etc. in the chunk interior, skipping ocean/beach,
-     * and ensuring a buffer from water. Reuses your original logic, but placed
-     * into a method for clarity.
-     */
 
-    private static List<WorldObject> spawnWorldObjects(Chunk chunk, int[][] tiles, long worldSeed) {
-        List<WorldObject> spawned = new ArrayList<>();
-        Random rng = new Random(worldSeed + (chunk.getChunkX() * 31L) ^ (chunk.getChunkY() * 1337L));
-        Biome b = chunk.getBiome();
-        List<WorldObject.ObjectType> spawnable = b.getSpawnableObjects();
-        if (spawnable == null || spawnable.isEmpty()) {
-            GameLogger.error("Biome " + b.getName() + " returned no spawnable objects.");
-            return spawned;
-        }
-        for (WorldObject.ObjectType ot : spawnable) {
-            double multiplier = isTreeType(ot) ? 0.5 : 0.1;
-            double baseChance = b.getSpawnChanceForObject(ot);
-            double spawnChance = baseChance * multiplier;
-            int attempts = (int) (CHUNK_SIZE * CHUNK_SIZE * spawnChance);
-            GameLogger.info("For " + ot.name() + ": spawnChance=" + spawnChance + ", attempts=" + attempts);
-            for (int i = 0; i < attempts; i++) {
-                int lx = rng.nextInt(CHUNK_SIZE);
-                int ly = rng.nextInt(CHUNK_SIZE);
-                int tileType = tiles[lx][ly];
-                if (tileType == TileType.WATER || tileType == TileType.BEACH_SAND) continue;
-                // For trees, skip the water-buffer check.
-                if (!isTreeType(ot) && isNextToWater(tiles, lx, ly)) continue;
-                if (!b.getAllowedTileTypes().contains(tileType)) continue;
-                if (!chunk.isPassable(lx, ly)) continue;
-                int worldTileX = chunk.getChunkX() * CHUNK_SIZE + lx;
-                int worldTileY = chunk.getChunkY() * CHUNK_SIZE + ly;
-                WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, ot);
-                candidate.ensureTexture();
-                if (!collidesWithAny(candidate, spawned)) {
-                    if (canPlaceWorldObject(chunk, lx, ly, spawned, b, ot)) {
-                        spawned.add(candidate);
-                        GameLogger.info("Added " + ot.name() + " at (" + worldTileX + "," + worldTileY + ")");
-                    } else {
-                        GameLogger.info("Rejected " + ot.name() + " at (" + worldTileX + "," + worldTileY + ") by placement rules.");
-                    }
-                } else {
-                    GameLogger.info("Rejected " + ot.name() + " at (" + worldTileX + "," + worldTileY + ") due to collision.");
-                }
-            }
-        }
-        return spawned;
-    }
     public static boolean canPlaceWorldObject(Chunk chunk, int localX, int localY,
                                               List<WorldObject> currentChunkObjects,
                                               Biome biome,
@@ -877,13 +877,16 @@ public class UnifiedWorldGenerator {
             }
         }
 
-        // The rest is your same logic for applying mountain tiles, autotiling cliffs, etc.
         public static void applyMountainTiles(int[][] tiles, int[][] bands) {
             int size = tiles.length;
             for (int x = 0; x < size; x++) {
                 for (int y = 0; y < size; y++) {
                     int b = bands[x][y];
                     if (b > 0) {
+                        int originalTile = tiles[x][y];
+                        if (originalTile == TileType.WATER || originalTile == TileType.BEACH_SAND) {
+                            continue;
+                        }
                         assignMountainTile(x, y, tiles, bands);
                     }
                 }

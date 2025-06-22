@@ -10,7 +10,6 @@ import io.github.pokemeetup.utils.GameLogger;
 public class PokemonAnimations {
     public static final float IDLE_BOUNCE_DURATION = 1.0f;
 
-    // Constants for a 256x256 sprite sheet split into a 4x4 grid
     private static final int SPRITE_SHEET_SIZE = 256;
     private static final int FRAMES_PER_DIRECTION = 4;
     private static final int FRAME_WIDTH = SPRITE_SHEET_SIZE / FRAMES_PER_DIRECTION;  // 64

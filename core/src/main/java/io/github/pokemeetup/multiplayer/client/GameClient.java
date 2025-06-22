@@ -27,10 +27,9 @@ import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
-import io.github.pokemeetup.system.gameplay.overworld.Chunk;
-import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
-import io.github.pokemeetup.system.gameplay.overworld.World;
-import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
+import io.github.pokemeetup.system.gameplay.overworld.*;
+import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
+import io.github.pokemeetup.system.gameplay.overworld.mechanics.AutoTileSystem;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -46,8 +45,6 @@ import java.util.function.Consumer;
 
 
 public class GameClient {
-    private static final long CONNECTION_TIMEOUT_MS = 5000;
-    private static final long CONNECTION_TIMEOUT = 45000;
     private static final long RECONNECT_DELAY = 3000;
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
     private static final int MAX_CONCURRENT_CHUNK_REQUESTS = 4;
@@ -244,6 +241,11 @@ public class GameClient {
             lastPingTime = now;
         }
 
+        pokemonUpdateAccumulator += deltaTime;
+        if (pokemonUpdateAccumulator >= POKEMON_UPDATE_THRESHOLD) {
+            pokemonUpdateAccumulator = 0f;
+            updatePokemonStates(deltaTime);
+        }
         updateOtherPlayers(deltaTime);
         updateAccumulator += deltaTime;
 
@@ -722,53 +724,221 @@ public class GameClient {
             }, REGISTRATION_CONNECT_TIMEOUT_MS);
         }
     }
+    /**
+     * Improved handling of compressed chunk data from server
+     * Ensures proper biome transitions and object placement
+     */
     private void handleCompressedChunkData(NetworkProtocol.CompressedChunkData compressed) {
         try {
+            // Step 1: Create LZ4 decompressor
             LZ4Factory factory = LZ4Factory.fastestInstance();
             LZ4SafeDecompressor decompressor = factory.safeDecompressor();
-            // Allocate an array for the original uncompressed data.
-            byte[] restored = new byte[compressed.originalLength];
-            decompressor.decompress(compressed.data, 0, compressed.data.length, restored, 0);
 
-            // Deserialize the uncompressed data to a ChunkData object using Kryo.
+            // Step 2: Prepare buffer for decompressed data with proper size
+            byte[] restored = new byte[compressed.originalLength];
+            int decompressedSize = decompressor.decompress(
+                compressed.data, 0, compressed.data.length,
+                restored, 0, compressed.originalLength
+            );
+
+            // Step 3: Verify complete decompression
+            if (decompressedSize != compressed.originalLength) {
+                GameLogger.error("Incomplete decompression: got " + decompressedSize +
+                    " bytes, expected " + compressed.originalLength + " - requesting chunk again");
+
+                // Request the chunk again since decompression failed
+                Vector2 chunkPos = new Vector2(compressed.chunkX, compressed.chunkY);
+                pendingChunks.remove(chunkPos);
+                requestChunk(chunkPos);
+                return;
+            }
+
+            // Step 4: Deserialize with Kryo
             ByteArrayInputStream bais = new ByteArrayInputStream(restored);
             Input input = new Input(bais);
             Kryo kryo = new Kryo();
-            // IMPORTANT: Register all classes exactly as on the server!
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
-            NetworkProtocol.ChunkData chunkData = kryo.readObject(input, NetworkProtocol.ChunkData.class);
-            input.close();
-            bais.close();
 
+            // Try to read the chunk data - handle possible errors
+            NetworkProtocol.ChunkData chunkData;
+            try {
+                chunkData = kryo.readObject(input, NetworkProtocol.ChunkData.class);
+            } catch (Exception e) {
+                GameLogger.error("Failed to deserialize chunk data: " + e.getMessage());
+
+                // Request the chunk again if deserialization fails
+                Vector2 chunkPos = new Vector2(compressed.chunkX, compressed.chunkY);
+                pendingChunks.remove(chunkPos);
+                requestChunk(chunkPos);
+                return;
+            } finally {
+                input.close();
+                bais.close();
+            }
+
+            // Get the chunk position for reference
             final Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
+            GameLogger.info("Successfully decompressed chunk at " + chunkPos);
+
+            // Process on main thread to avoid concurrency issues
             Gdx.app.postRunnable(() -> {
                 try {
                     World world = GameContext.get().getWorld();
-                    if (world == null) return;
+                    if (world == null) {
+                        GameLogger.error("World is null when processing chunk " + chunkPos);
+                        pendingChunks.remove(chunkPos);
+                        return;
+                    }
 
-                    // Update the world’s chunk map from the received ChunkData.
+                    // Process chunk data
                     world.processChunkData(chunkData);
 
-                    // Build a BiomeTransitionResult from the new biome info.
+                    // Create biome transition result with complete information
                     BiomeTransitionResult transition = new BiomeTransitionResult(
                         world.getBiomeManager().getBiome(chunkData.primaryBiomeType),
-                        (chunkData.secondaryBiomeType != null ? world.getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null),
+                        (chunkData.secondaryBiomeType != null ?
+                            world.getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null),
                         chunkData.biomeTransitionFactor
                     );
+
+                    // Store the transition in the world for future reference
                     world.storeBiomeTransition(chunkPos, transition);
+
+                    // Apply auto-tiling to ensure smooth edges
+                    Chunk chunk = world.getChunks().get(chunkPos);
+                    if (chunk != null) {
+                        try {
+                            new AutoTileSystem().applyShorelineAutotiling(chunk, 0, world);
+                            chunk.setDirty(true);
+                        } catch (Exception e) {
+                            GameLogger.error("Auto-tiling failed for chunk " + chunkPos + ": " + e.getMessage());
+                            // Continue processing - non-fatal error
+                        }
+                    }
+
+                    // Mark chunk as processed
                     pendingChunks.remove(chunkPos);
+
+                    // Log success with detailed information
                     GameLogger.info("Processed chunk " + chunkPos + " with " +
-                        (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) + " objects");
+                        (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) + " objects, " +
+                        "biome: " + chunkData.primaryBiomeType +
+                        (chunkData.secondaryBiomeType != null ?
+                            " blended with " + chunkData.secondaryBiomeType +
+                                " at " + chunkData.biomeTransitionFactor : ""));
+
+                    // Request adjacent chunks for smoother transitions
+                    requestAdjacentChunksIfNeeded(chunkPos);
+
                 } catch (Exception e) {
-                    GameLogger.error("Error processing chunk data: " + e.getMessage());
+                    GameLogger.error("Error processing chunk " + chunkPos + ": " + e.getMessage());
+                    e.printStackTrace();
+
+                    // Clear pending status to allow retry, but delay to prevent spam
+                    pendingChunks.remove(chunkPos);
+
+                    // Schedule a retry after a short delay
+                    scheduler.schedule(() -> {
+                        if (GameContext.get().isMultiplayer() &&
+                            GameContext.get().getWorld() != null &&
+                            !GameContext.get().getWorld().getChunks().containsKey(chunkPos)) {
+                            GameLogger.info("Retrying chunk request for " + chunkPos);
+                            requestChunk(chunkPos);
+                        }
+                    }, 1000, TimeUnit.MILLISECONDS);
                 }
             });
         } catch (Exception e) {
-            GameLogger.error("Error decompressing chunk data: " + e.getMessage());
+            GameLogger.error("Error handling compressed chunk data: " + e.getMessage());
+            e.printStackTrace();
+
+            // Request the chunk again, but delayed to prevent request spam
+            if (compressed != null) {
+                Vector2 chunkPos = new Vector2(compressed.chunkX, compressed.chunkY);
+                pendingChunks.remove(chunkPos);
+
+                scheduler.schedule(() -> {
+                    if (GameContext.get().isMultiplayer() &&
+                        GameContext.get().getWorld() != null &&
+                        !GameContext.get().getWorld().getChunks().containsKey(chunkPos)) {
+                        requestChunk(chunkPos);
+                    }
+                }, 2000, TimeUnit.MILLISECONDS);
+            }
         }
     }
 
+    /**
+     * Request adjacent chunks if needed to ensure smooth transitions
+     */
+    private void requestAdjacentChunksIfNeeded(Vector2 processedChunkPos) {
+        // Check all 8 surrounding chunks (including diagonals) for better transitions
+        int[][] adjacentOffsets = {
+            {0, 1}, {1, 1}, {1, 0}, {1, -1},
+            {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}
+        };
+
+        World world = GameContext.get().getWorld();
+        if (world == null) return;
+
+        // Sort offsets by distance to player for more efficient loading
+        Player player = GameContext.get().getPlayer();
+        if (player != null) {
+            int playerChunkX = Math.floorDiv(player.getTileX(), Chunk.CHUNK_SIZE);
+            int playerChunkY = Math.floorDiv(player.getTileY(), Chunk.CHUNK_SIZE);
+            final Vector2 playerChunkPos = new Vector2(playerChunkX, playerChunkY);
+
+            // Sort by Manhattan distance to player's chunk
+            Arrays.sort(adjacentOffsets, (a, b) -> {
+                Vector2 posA = new Vector2(processedChunkPos.x + a[0], processedChunkPos.y + a[1]);
+                Vector2 posB = new Vector2(processedChunkPos.x + b[0], processedChunkPos.y + b[1]);
+                float distA = Math.abs(posA.x - playerChunkPos.x) + Math.abs(posA.y - playerChunkPos.y);
+                float distB = Math.abs(posB.x - playerChunkPos.x) + Math.abs(posB.y - playerChunkPos.y);
+                return Float.compare(distA, distB);
+            });
+        }
+
+        // Request adjacent chunks with priority to those closer to player
+        for (int[] offset : adjacentOffsets) {
+            Vector2 adjPos = new Vector2(
+                processedChunkPos.x + offset[0],
+                processedChunkPos.y + offset[1]
+            );
+
+            // Only request if not already loaded or pending
+            if (!world.getChunks().containsKey(adjPos) && !pendingChunks.contains(adjPos)) {
+                // Check if chunk is within the loading radius
+                if (isChunkNearPlayer(adjPos, 4)) { // Within 4 chunks of player
+                    requestChunk(adjPos);
+                    // Small delay between requests to prevent network flooding
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Determines if a chunk is within a given distance from the player
+     */
+    private boolean isChunkNearPlayer(Vector2 chunkPos, float radius) {
+        Player player = GameContext.get().getPlayer();
+        if (player == null) return false;
+
+        int playerChunkX = Math.floorDiv(player.getTileX(), Chunk.CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(player.getTileY(), Chunk.CHUNK_SIZE);
+        Vector2 playerChunkPos = new Vector2(playerChunkX, playerChunkY);
+
+        // Use Manhattan distance for better performance
+        float distance = Math.abs(chunkPos.x - playerChunkPos.x) +
+            Math.abs(chunkPos.y - playerChunkPos.y);
+
+        return distance <= radius;
+    }
 
     /**
      * Recalculate the sliding window of chunks based on the player's current chunk position.
@@ -1179,36 +1349,146 @@ public class GameClient {
         }
 
         try {
+            // Check if chunk is already requested
             if (pendingChunks.contains(chunkPos)) {
-                GameLogger.info("Chunk already requested: " + chunkPos);
+                GameLogger.error("Chunk already requested: " + chunkPos);
                 return;
             }
 
+            // Add to pending chunks first to prevent duplicate requests
+            pendingChunks.add(chunkPos);
+
+            // Create the request with the exact coordinates
             NetworkProtocol.ChunkRequest request = new NetworkProtocol.ChunkRequest();
-            // Ensure coordinates are sent as-is, including negative values
             request.chunkX = (int) chunkPos.x;
             request.chunkY = (int) chunkPos.y;
             request.timestamp = System.currentTimeMillis();
 
-            pendingChunks.add(chunkPos);
-            client.sendTCP(request);
-            GameLogger.info("Requested chunk at " + chunkPos);
+            // Check if this is the player's current chunk for prioritization
+            boolean isPlayerCurrentChunk = false;
+            if (GameContext.get().getPlayer() != null) {
+                int playerChunkX = Math.floorDiv(GameContext.get().getPlayer().getTileX(), Chunk.CHUNK_SIZE);
+                int playerChunkY = Math.floorDiv(GameContext.get().getPlayer().getTileY(), Chunk.CHUNK_SIZE);
+                isPlayerCurrentChunk = (chunkPos.x == playerChunkX && chunkPos.y == playerChunkY);
+            }
 
-            // Add timeout handling
-            scheduler.schedule(() -> {
-                if (pendingChunks.contains(chunkPos)) {
-                    GameLogger.error("Chunk request timeout for " + chunkPos + " - retrying");
-                    pendingChunks.remove(chunkPos);
-                    requestChunk(chunkPos); // Retry the request
-                }
-            }, 5000, TimeUnit.MILLISECONDS);
+            // Send the request with appropriate logging
+            client.sendTCP(request);
+
+            if (isPlayerCurrentChunk) {
+                GameLogger.info("Requested player's current chunk at " + chunkPos + " (HIGH PRIORITY)");
+            } else {
+                GameLogger.info("Requested chunk at " + chunkPos);
+            }
+
+            // Add timeout handling with progressive backoff retry system
+            setupChunkRequestTimeout(chunkPos, 1);
 
         } catch (Exception e) {
-            GameLogger.error("Failed to request chunk: " + e.getMessage());
+            GameLogger.error("Failed to request chunk at " + chunkPos + ": " + e.getMessage());
             pendingChunks.remove(chunkPos);
         }
     }
 
+    private void setupChunkRequestTimeout(Vector2 chunkPos, int attempt) {
+        // Calculate timeout with progressive backoff
+        long timeoutMs = Math.min(2000 + (attempt * 1000), 8000); // 2s first try, +1s per attempt, max 8s
+
+        scheduler.schedule(() -> {
+            // Check if chunk is still pending and not received
+            if (pendingChunks.contains(chunkPos) &&
+                GameContext.get().getWorld() != null &&
+                !GameContext.get().getWorld().getChunks().containsKey(chunkPos)) {
+
+                if (attempt <= 5) { // Max 5 retry attempts
+                    GameLogger.error("Chunk request timeout for " + chunkPos +
+                        " - retry attempt " + attempt + "/5");
+
+                    // Check if we're still connected before retrying
+                    if (isConnected() && isAuthenticated()) {
+                        // First remove from pending chunks
+                        pendingChunks.remove(chunkPos);
+
+                        // Then request again with a small delay
+                        try {
+                            Thread.sleep(50);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+
+                        // Create a new request
+                        NetworkProtocol.ChunkRequest request = new NetworkProtocol.ChunkRequest();
+                        request.chunkX = (int) chunkPos.x;
+                        request.chunkY = (int) chunkPos.y;
+                        request.timestamp = System.currentTimeMillis();
+
+                        // Mark as pending again
+                        pendingChunks.add(chunkPos);
+
+                        // Send retry request
+                        client.sendTCP(request);
+
+                        // Setup next timeout with increased attempt counter
+                        setupChunkRequestTimeout(chunkPos, attempt + 1);
+                    } else {
+                        GameLogger.error("Cannot retry chunk request - not connected");
+                        pendingChunks.remove(chunkPos);
+                    }
+                } else {
+                    // Give up after max attempts
+                    GameLogger.error("Max retry attempts reached for chunk " + chunkPos + " - giving up");
+                    pendingChunks.remove(chunkPos);
+
+                    // Potentially generate a fallback chunk if absolutely needed
+                    if (isPlayerCurrentChunk(chunkPos)) {
+                        GameLogger.error("Generating emergency fallback chunk for player position");
+                        generateFallbackChunk(chunkPos);
+                    }
+                }
+            }
+        }, timeoutMs, TimeUnit.MILLISECONDS);
+    }
+
+    private void generateFallbackChunk(Vector2 chunkPos) {
+        if (!GameContext.get().isMultiplayer() || GameContext.get().getWorld() == null) return;
+
+        try {
+            // Generate an emergency fallback chunk
+            GameLogger.error("Generating emergency fallback chunk at " + chunkPos);
+
+            // Use client-side generation as a last resort
+            long seed = worldSeed;
+            BiomeManager biomeManager = GameContext.get().getBiomeManager();
+
+            // Generate a basic chunk
+            Chunk fallbackChunk = UnifiedWorldGenerator.generateChunk(
+                (int)chunkPos.x, (int)chunkPos.y, seed, biomeManager);
+
+            // Use plains biome as fallback
+            if (fallbackChunk.getBiome() == null) {
+                fallbackChunk.setBiome(biomeManager.getBiome(BiomeType.PLAINS));
+            }
+
+            // Store in world's chunk map
+            GameContext.get().getWorld().getChunks().put(chunkPos, fallbackChunk);
+
+            // Add a visual indicator that this is a fallback chunk (e.g. special color)
+            GameLogger.error("Added emergency fallback chunk at " + chunkPos);
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to generate fallback chunk: " + e.getMessage());
+        }
+    }
+    /**
+     * Checks if the given chunk position is the player's current chunk
+     */
+    private boolean isPlayerCurrentChunk(Vector2 chunkPos) {
+        if (GameContext.get().getPlayer() == null) return false;
+
+        int playerChunkX = Math.floorDiv(GameContext.get().getPlayer().getTileX(), Chunk.CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(GameContext.get().getPlayer().getTileY(), Chunk.CHUNK_SIZE);
+        return (chunkPos.x == playerChunkX && chunkPos.y == playerChunkY);
+    }
     private void handleWorldObjectUpdate(NetworkProtocol.WorldObjectUpdate update) {
         if (update == null || GameContext.get().getWorld() == null) {
             return;
@@ -1297,19 +1577,61 @@ public class GameClient {
         }
     }
 
-    private void processChunkQueue() {
-        long now = System.currentTimeMillis();
-        if (!chunkRequestQueue.isEmpty() &&
-            now - lastRequestTime >= CHUNK_REQUEST_INTERVAL &&
-            pendingChunks.size() < MAX_CONCURRENT_CHUNK_REQUESTS) {
 
-            Vector2 nextChunk = chunkRequestQueue.poll();
-            // Before requesting, double-check that this chunk is still missing.
-            if (nextChunk != null && !GameContext.get().getWorld().getChunks().containsKey(nextChunk)
-                && !loadingChunks.containsKey(nextChunk)) {
-                requestChunk(nextChunk);
-                lastRequestTime = now;
-            }
+    private void processChunkQueue() {
+        if (chunkRequestQueue.isEmpty() || !isConnected() || !isAuthenticated()) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        // Check if we've exceeded our chunk request rate limit
+        if (now - lastRequestTime < CHUNK_REQUEST_INTERVAL) {
+            return;
+        }
+
+        // Check if we're already at the maximum number of pending chunks
+        if (pendingChunks.size() >= MAX_CONCURRENT_CHUNK_REQUESTS) {
+            return;
+        }
+
+        // Get player's current position for prioritization
+        Vector2 playerChunkPos;
+        if (GameContext.get().getPlayer() != null) {
+            int playerChunkX = Math.floorDiv(GameContext.get().getPlayer().getTileX(), Chunk.CHUNK_SIZE);
+            int playerChunkY = Math.floorDiv(GameContext.get().getPlayer().getTileY(), Chunk.CHUNK_SIZE);
+            playerChunkPos = new Vector2(playerChunkX, playerChunkY);
+        } else {
+            playerChunkPos = null;
+        }
+
+        // Sort the queue by distance to player for priority loading
+        if (playerChunkPos != null && chunkRequestQueue.size() > 1) {
+            List<Vector2> sortedQueue = new ArrayList<>(chunkRequestQueue);
+            sortedQueue.sort((a, b) -> {
+                float distA = Vector2.dst(a.x, a.y, playerChunkPos.x, playerChunkPos.y);
+                float distB = Vector2.dst(b.x, b.y, playerChunkPos.x, playerChunkPos.y);
+                return Float.compare(distA, distB);
+            });
+
+            // Clear the queue and add back in sorted order
+            chunkRequestQueue.clear();
+            chunkRequestQueue.addAll(sortedQueue);
+        }
+
+        // Process the next chunk in the queue
+        Vector2 nextChunk = chunkRequestQueue.poll();
+
+        // Double-check that this chunk is still needed
+        if (nextChunk != null &&
+            GameContext.get().getWorld() != null &&
+            !GameContext.get().getWorld().getChunks().containsKey(nextChunk) &&
+            !pendingChunks.contains(nextChunk) &&
+            !loadingChunks.containsKey(nextChunk)) {
+
+            // Request the chunk
+            requestChunk(nextChunk);
+            lastRequestTime = now;
         }
     }
 
@@ -1427,6 +1749,7 @@ public class GameClient {
         });
     }
 
+
     private void handlePokemonSpawn(NetworkProtocol.WildPokemonSpawn spawnData) {
         if (spawnData == null || spawnData.uuid == null || spawnData.data == null) {
             GameLogger.error("Received invalid Pokemon spawn data");
@@ -1435,16 +1758,18 @@ public class GameClient {
 
         Gdx.app.postRunnable(() -> {
             try {
+                // Check if we already have this Pokemon
                 if (trackedWildPokemon.containsKey(spawnData.uuid)) {
                     return;
                 }
-                TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
 
+                TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
                 if (overworldSprite == null) {
                     GameLogger.error("Could not load sprite for Pokemon: " + spawnData.data.getName());
                     return;
                 }
 
+                // Create the Pokemon instance
                 WildPokemon pokemon = new WildPokemon(
                     spawnData.data.getName(),
                     spawnData.data.getLevel(),
@@ -1452,23 +1777,36 @@ public class GameClient {
                     (int) spawnData.y,
                     overworldSprite
                 );
-                pokemon.setWorld(GameContext.get().getWorld());
 
+                // Set additional data
                 pokemon.setUuid(spawnData.uuid);
+                pokemon.setWorld(GameContext.get().getWorld());
                 pokemon.setDirection("down");
                 pokemon.setSpawnTime(spawnData.timestamp / 1000L);
 
-                trackedWildPokemon.put(spawnData.uuid, pokemon);
-                syncedPokemonData.put(spawnData.uuid, new NetworkSyncData());
+                // Mark as network controlled
+                pokemon.setNetworkControlled(true);
 
-                if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getPokemonSpawnManager() != null) {
+                // Register in tracking collections
+                trackedWildPokemon.put(spawnData.uuid, pokemon);
+
+                // Add to the world
+                if (GameContext.get().getWorld() != null &&
+                    GameContext.get().getWorld().getPokemonSpawnManager() != null) {
                     GameContext.get().getWorld().getPokemonSpawnManager().addPokemonToChunk(
                         pokemon,
-                        new Vector2(spawnData.x, spawnData.y)
+                        new Vector2(
+                            Math.floorDiv((int)spawnData.x, World.CHUNK_SIZE * World.TILE_SIZE),
+                            Math.floorDiv((int)spawnData.y, World.CHUNK_SIZE * World.TILE_SIZE)
+                        )
                     );
                 }
+
+                GameLogger.info("Spawned network Pokemon: " + spawnData.data.getName() +
+                    " at (" + spawnData.x + "," + spawnData.y + ")");
             } catch (Exception e) {
                 GameLogger.error("Error handling Pokemon spawn: " + e.getMessage());
+                e.printStackTrace();
             }
         });
     }
@@ -1508,27 +1846,26 @@ public class GameClient {
         });
     }
 
+
     private void handlePokemonUpdate(NetworkProtocol.PokemonUpdate update) {
         if (update == null || update.uuid == null) return;
 
         Gdx.app.postRunnable(() -> {
             WildPokemon pokemon = trackedWildPokemon.get(update.uuid);
-            NetworkSyncData syncData = syncedPokemonData.get(update.uuid);
 
-            if (pokemon == null || syncData == null) {
+            if (pokemon == null) {
+                // If this is a Pokemon we don't know about, request spawn data
                 requestPokemonSpawnData(update.uuid);
                 return;
             }
 
-            syncData.targetPosition = new Vector2(update.x, update.y);
-            syncData.direction = update.direction;
-            syncData.isMoving = update.isMoving;
-            syncData.lastUpdateTime = System.currentTimeMillis();
-            syncData.interpolationProgress = 0f;
+            // Mark as network controlled
+            pokemon.setNetworkControlled(true);
 
-            pokemon.setDirection(update.direction);
-            pokemon.setMoving(update.isMoving);
+            // Apply the network update
+            pokemon.applyNetworkUpdate(update.x, update.y, update.direction, update.isMoving, update.timestamp);
 
+            // Update other properties if provided
             if (update.level > 0) pokemon.setLevel(update.level);
             if (update.currentHp > 0) pokemon.setCurrentHp(update.currentHp);
             pokemon.setSpawnTime(update.timestamp / 1000L);
@@ -1538,6 +1875,14 @@ public class GameClient {
             }
         });
     }
+    private void handlePokemonBatchUpdate(NetworkProtocol.PokemonBatchUpdate batchUpdate) {
+        if (batchUpdate == null || batchUpdate.updates == null) return;
+
+        for (NetworkProtocol.PokemonUpdate update : batchUpdate.updates) {
+            handlePokemonUpdate(update);
+        }
+    }
+
 
     public void sendPokemonUpdate(NetworkProtocol.PokemonUpdate update) {
         if (!isAuthenticated.get() || connectionState != ConnectionState.CONNECTED) return;
@@ -1644,6 +1989,8 @@ public class GameClient {
         this.suppressDisconnectHandling = suppress;
     }
 
+    // In GameClient.java, update handleLoginResponse:
+
     private void handleLoginResponse(NetworkProtocol.LoginResponse response) {
         if (response.success) {
             isAuthenticated.set(true);
@@ -1685,6 +2032,34 @@ public class GameClient {
         }
     }
 
+    private void initializeWorldBasic(long seed, double worldTimeInMinutes, float dayLength) {
+        try {
+            GameLogger.info("Initializing basic world with seed: " + seed);
+            if (worldData == null) {
+                worldData = new WorldData("multiplayer_world");
+                GameLogger.info("Created new WorldData instance");
+            }
+
+            WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
+            worldData.setConfig(config);
+            worldData.setWorldTimeInMinutes(worldTimeInMinutes);
+            worldData.setDayLength(dayLength);
+
+            this.worldSeed = seed;
+            // CRITICAL: Initialize BiomeManager with the correct seed
+            BiomeManager biomeManager = new BiomeManager(seed);
+            GameContext.get().setBiomeManager(biomeManager);
+
+            if (GameContext.get().getWorld() == null) {
+                GameContext.get().setWorld(new World(worldData));
+                GameLogger.info("Basic world initialization complete");
+            }
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to initialize basic world: " + e.getMessage());
+            throw new RuntimeException("World initialization failed", e);
+        }
+    }
     private void handleLoginFailure(String message) {
         loginRequestSent = false;
         GameLogger.error("Login failed: " + message);
@@ -1700,32 +2075,10 @@ public class GameClient {
 
     }
 
-    private void initializeWorldBasic(long seed, double worldTimeInMinutes, float dayLength) {
-        try {
-            GameLogger.info("Initializing basic world with seed: " + seed);
-            if (worldData == null) {
-                worldData = new WorldData("multiplayer_world");
-                GameLogger.info("Created new WorldData instance");
-            }
 
-            WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
-            worldData.setConfig(config);
-            worldData.setWorldTimeInMinutes(worldTimeInMinutes);
-            worldData.setDayLength(dayLength);
 
-            this.worldSeed = seed;
-            GameContext.get().getBiomeManager().setBaseSeed(seed);
-            if (GameContext.get().getWorld() == null) {
-                GameContext.get().setWorld(new World(worldData));
-                GameLogger.info("Basic world initialization complete");
-            }
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to initialize basic world: " + e.getMessage());
-            throw new RuntimeException("World initialization failed", e);
-        }
-    }
-
+    private static final float POKEMON_UPDATE_THRESHOLD = 0.1f;
+    private float pokemonUpdateAccumulator = 0f;
 
     private enum ConnectionState {
         DISCONNECTED,

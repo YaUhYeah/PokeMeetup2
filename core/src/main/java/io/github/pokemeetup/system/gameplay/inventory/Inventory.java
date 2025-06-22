@@ -29,6 +29,46 @@ public class Inventory implements ItemContainer {
             slotDataArray[i] = new InventorySlotData(i, InventorySlotData.SlotType.INVENTORY, this);
         }
     }
+
+    /**
+     * [NEW] Checks if the inventory has space for a given item, considering stacking.
+     * Does not modify the inventory.
+     *
+     * @param itemToAdd The item to check for.
+     * @return True if the item can be fully added, false otherwise.
+     */
+    public boolean hasSpaceFor(ItemData itemToAdd) {
+        if (itemToAdd == null) return true;
+        synchronized (inventoryLock) {
+            int remaining = itemToAdd.getCount();
+            Item itemTemplate = ItemManager.getItemTemplate(itemToAdd.getItemId());
+            boolean isStackable = (itemTemplate != null && itemTemplate.isStackable());
+
+            // Pass 1: try to stack with existing items
+            if (isStackable) {
+                for (Slot slot : slots) {
+                    ItemData existing = slot.getItemData();
+                    if (existing != null && existing.getItemId().equals(itemToAdd.getItemId()) && existing.getCount() < Item.MAX_STACK_SIZE) {
+                        int space = Item.MAX_STACK_SIZE - existing.getCount();
+                        int canAdd = Math.min(remaining, space);
+                        remaining -= canAdd;
+                        if (remaining <= 0) return true;
+                    }
+                }
+            }
+
+            // Pass 2: find empty slots
+            for (Slot slot : slots) {
+                if (slot.isEmpty()) {
+                    remaining -= isStackable ? Item.MAX_STACK_SIZE : 1;
+                    if (remaining <= 0) return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     public ItemData getSelectedItem(int hotbarSlot) {
         synchronized (inventoryLock) {
             if (hotbarSlot >= 0 && hotbarSlot < 9) {

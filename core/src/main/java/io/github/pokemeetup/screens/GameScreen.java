@@ -135,7 +135,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private Actor houseToggleButton;
     private GLProfiler glProfiler;
     private boolean initialChunksLoadedOnce = false;
-    private ControllerInputProcessor controllerInputProcessor;
 
     public GameScreen(CreatureCaptureGame game, String username, GameClient gameClient) {
         this.game = game;
@@ -249,9 +248,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameContext.get().setCraftingScreen(craftingScreen);
     }
 
-    public BattleTable getBattleTable() {
-        return battleTable;
-    }
 
     public GameMenu getGameMenu() {
         return GameContext.get().getGameMenu();
@@ -282,7 +278,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     }
 
     public void openChestScreen(Vector2 chestPosition, ChestData chestData) {
-        // Dispose of the old chest screen if it exists.
         if (chestScreen != null) {
             chestScreen.dispose();  // or hide() and then remove references if appropriate
         }
@@ -298,7 +293,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         inputManager.setUIState(InputManager.UIState.NORMAL);
     }
 
-    // In GameScreen.java
     public void openExpandedCrafting(Vector2 craftingTablePosition) {
         if (GameContext.get().getCraftingScreen() == null) {
             GameContext.get().setCraftingScreen(new CraftingTableScreen(
@@ -332,7 +326,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                     initializationComplete.set(false);
                     Gdx.app.postRunnable(() -> {
                         try {
-                            // Even if an old starterTable is present, remove it.
                             if (starterTable != null) {
                                 starterTable.remove();
                             }
@@ -372,72 +365,86 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     @Override
     public void show() {
-        Gdx.input.setCatchKey(Input.Keys.F3, true);
-        // Reinitialize player resources if needed
-        if (GameContext.get().getPlayer() != null) {
-            GameContext.get().getPlayer().initializeResources();
-        }
-        // Initialize Build Mode UI (if not already)
-        initializeBuildMode();
+        GameLogger.info("GameScreen show() called. Setting up UI and input.");
 
-        // Get or create a valid UI stage
+        // Re-establish a valid UI Stage from the persistent GameContext
         Stage uiStage = GameContext.get().getUiStage();
         if (uiStage == null) {
-            uiStage = new Stage(new ScreenViewport());
+            GameLogger.error("UI Stage is null in GameScreen.show(), re-creating.");
+            uiStage = new Stage(new ScreenViewport(), new SpriteBatch());
             GameContext.get().setUiStage(uiStage);
         }
-        Gdx.input.setInputProcessor(uiStage);
 
+        // --- Re-initialize or re-attach all UI components ---
 
-        if (GameContext.get().getChatSystem() != null) {
-            GameContext.get().getChatSystem().remove();
-            GameContext.get().setChatSystem(null);
+        // 1. Hotbar System
+        // If it's null or belongs to a disposed stage, create a new one.
+        HotbarSystem hotbar = GameContext.get().getHotbarSystem();
+        if (hotbar == null || hotbar.getHotbarTable().getStage() == null) {
+            GameLogger.info("Re-initializing HotbarSystem.");
+            hotbar = new HotbarSystem(uiStage, skin);
+            GameContext.get().setHotbarSystem(hotbar);
+        } else if (hotbar.getHotbarTable().getStage() != uiStage) {
+            // Re-add to the current stage if it was detached
+            hotbar.getHotbarTable().remove();
+            uiStage.addActor(hotbar.getHotbarTable().getParent());
         }
-        // Now (re)initialize the chat system so it is always fresh
+
+        // 2. Chat System
+        if (GameContext.get().getChatSystem() != null && GameContext.get().getChatSystem().getStage() != null) {
+            GameContext.get().getChatSystem().remove(); // Remove from old stage if it exists
+        }
         initializeChatSystem();
-        // Reinitialize the GameMenu
+        if(GameContext.get().getChatSystem().getStage() != uiStage) {
+            uiStage.addActor(GameContext.get().getChatSystem());
+        }
+
+
+        // 3. Game Menu
         if (GameContext.get().getGameMenu() != null) {
             GameContext.get().getGameMenu().dispose();
-            GameContext.get().setGameMenu(null);
         }
-        GameContext.get().setGameMenu(new GameMenu(game, uiSkin, inputManager));
-        if (GameContext.get().getPlayer() != null) {
-            // If the player's hotbar is null or its stage isn’t the current UI stage, recreate it.
-            if (GameContext.get().getPlayer().getHotbarSystem() == null) {
-                HotbarSystem newHotbar = new HotbarSystem(uiStage, skin);
-                GameContext.get().setHotbarSystem(newHotbar);
-                GameLogger.info("Hotbar system reinitialized on the new UI stage");
+        GameContext.get().setGameMenu(new GameMenu(game, skin, inputManager));
+
+        // 4. Build Mode UI
+        if (GameContext.get().getBuildModeUI() != null) {
+            GameContext.get().getBuildModeUI().remove();
+        }
+        initializeBuildMode();
+        if(GameContext.get().getBuildModeUI().getStage() != uiStage) {
+            uiStage.addActor(GameContext.get().getBuildModeUI());
+        }
+        GameContext.get().getBuildModeUI().setVisible(false);
+
+
+        // 5. Party Display
+        updatePartyDisplay();
+
+        // 6. Android Controls
+        if (Gdx.app.getType() == Application.ApplicationType.Android) {
+            if (movementController == null) {
+                movementController = new AndroidMovementController(GameContext.get().getPlayer(), inputHandler);
+            }
+            if (!controlsInitialized) {
+                initializeAndroidControls();
             }
         }
-        // If the player is new (has zero Pokémon), show the starter selection UI
-        Player player = GameContext.get().getPlayer();
-        if (player != null && player.getPokemonParty().getSize() == 0) {
-            // Only create the starter table if one is not already active
+
+        // 7. Starter Selection (if applicable)
+        if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
             if (starterTable == null) {
                 handleNewPlayer();
             }
-            // Ensure the UI stage gives keyboard focus to the starter table
-            uiStage.setKeyboardFocus(starterTable);
             inputManager.setUIState(InputManager.UIState.STARTER_SELECTION);
         } else {
             inputManager.setUIState(InputManager.UIState.NORMAL);
         }
 
-        // Reattach BuildModeUI
-        if (GameContext.get().getBuildModeUI() == null) {
-            GameContext.get().setBuildModeUI(new BuildModeUI(skin));
-            GameContext.get().getBuildModeUI().setVisible(false);
-            uiStage.addActor(GameContext.get().getBuildModeUI());
-        } else if (GameContext.get().getBuildModeUI().getStage() != uiStage) {
-            GameContext.get().getBuildModeUI().remove();
-            uiStage.addActor(GameContext.get().getBuildModeUI());
-        }
-
-        // Finally, update the input processors
+        // Finally, update the input processors to reflect the new state
         inputManager.updateInputProcessors();
-
-        GameLogger.info("GameScreen show() completed – UI elements reattached and input set.");
+        GameLogger.info("GameScreen show() completed successfully.");
     }
+
 
     private void handleNewPlayer() {
         // Only create the starter table if one is not already present
@@ -559,11 +566,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             initializationComplete.set(true);
             GameLogger.info("Game initialization complete");
 
-            // ★ Initialize our global system message display.
-            SystemMessageDisplay.init(skin);
-
-            // (Optionally, if you already create a dummy BattleTable for battle messages,
-            // you might remove or disable its displayMessage calls outside battle.)
         } catch (Exception e) {
             GameLogger.error("Failed to complete initialization: " + e.getMessage());
             game.setScreen(new LoginScreen(game));
@@ -775,8 +777,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         this.chestHandler = new ChestInteractionHandler();
         this.inputHandler = new InputHandler(this, this, this, chestHandler, inputManager);
 
-        this.controllerInputProcessor = new ControllerInputProcessor(inputManager, getInputHandler());
-        // 4. UI Components
         createPartyDisplay();
 
         // 5. Battle assets
@@ -976,7 +976,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         List<Pokemon> party = GameContext.get().getPlayer().getPokemonParty().getParty();
 
         for (int i = 0; i < PokemonParty.MAX_PARTY_SIZE; i++) {
-            // For example, mark the first slot as selected (or however you decide)
             boolean isSelected = (i == 0);
             Pokemon pokemon = (party.size() > i) ? party.get(i) : null;
             PokemonPartySlot slot = new PokemonPartySlot(pokemon, isSelected, skin);
@@ -1202,6 +1201,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         return null;
     }
+// In GameScreen.java
 
     private void setupBattleCallbacks(WildPokemon wildPokemon) {
         if (battleTable == null) {
@@ -1214,50 +1214,39 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             public void onBattleEnd(boolean playerWon) {
                 if (playerWon) {
                     handleBattleVictory(wildPokemon);
-                    wildPokemon.startDespawnAnimation();
-
-                    Timer.schedule(new Timer.Task() {
-                        @Override
-                        public void run() {
-                            if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getPokemonSpawnManager() != null) {
-                                GameContext.get().getWorld().getPokemonSpawnManager().removePokemon(wildPokemon.getUuid());
-                            }
-                        }
-                    }, 1.5f);
-
-                    if (GameContext.get().getChatSystem() != null) {
+                    Pokemon victoriousPokemon = GameContext.get().getPlayer().getPokemonParty().getFirstHealthyPokemon();
+                    if (victoriousPokemon != null) {
                         NetworkProtocol.ChatMessage message = createSystemMessage(
-                            "Victory! " + GameContext.get().getPlayer().getPokemonParty().getFirstPokemon().getName() +
+                            "Victory! " + victoriousPokemon.getName() +
                                 " defeated " + wildPokemon.getName() + "!"
                         );
                         GameContext.get().getChatSystem().handleIncomingMessage(message);
                     }
                 } else {
-                    // Handle defeat
                     handleBattleDefeat();
-
-                    // Release wild Pokemon
-                    if (wildPokemon.getAi() != null) {
-                        wildPokemon.getAi().setPaused(false);
-                    }
-
                     if (GameContext.get().getChatSystem() != null) {
+                        // FIX: Use a safe message that doesn't rely on getting a Pokémon, preventing a crash.
                         NetworkProtocol.ChatMessage message = createSystemMessage(
-                            GameContext.get().getPlayer().getPokemonParty().getFirstPokemon().getName() +
-                                " was defeated by wild " + wildPokemon.getName() + "!"
+                            GameContext.get().getPlayer().getUsername() + " has no more usable Pokémon and blacks out!"
                         );
                         GameContext.get().getChatSystem().handleIncomingMessage(message);
                     }
                 }
 
-                // Clean up battle state
+                // Despawn the wild Pokemon regardless of win or loss.
+                wildPokemon.startDespawnAnimation();
+                Timer.schedule(new Timer.Task() {
+                    @Override
+                    public void run() {
+                        if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getPokemonSpawnManager() != null) {
+                            GameContext.get().getWorld().getPokemonSpawnManager().removePokemon(wildPokemon.getUuid());
+                        }
+                    }
+                }, 1.5f);
+
+                // Clean up battle state and initiate the fade-out and cleanup sequence.
                 battleSystem.endBattle();
                 endBattle(playerWon, wildPokemon);
-                Gdx.app.postRunnable(() -> {
-                    inputManager.setUIState(InputManager.UIState.NORMAL);
-                    inputManager.updateInputProcessors();
-                    GameLogger.info("Battle ended; UI state reset to NORMAL");
-                });
             }
 
             @Override
@@ -1276,18 +1265,15 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                     GameContext.get().getChatSystem().handleIncomingMessage(createSystemMessage(statusMessage));
                 }
 
-                // Play status effect sound
-                if (newStatus != null) {
-                    switch (newStatus) {
-                        case BURNED:
-                            AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
-                            break;
-                        case PARALYZED:
-                        case POISONED:
-                        case BADLY_POISONED:
-                            AudioManager.getInstance().playSound(AudioManager.SoundEffect.NOT_EFFECTIVE);
-                            break;
-                    }
+                switch (newStatus) {
+                    case BURNED:
+                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
+                        break;
+                    case PARALYZED:
+                    case POISONED:
+                    case BADLY_POISONED:
+                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.NOT_EFFECTIVE);
+                        break;
                 }
             }
 
@@ -1313,14 +1299,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 Actions.fadeOut(BATTLE_UI_FADE_DURATION),
                 Actions.run(() -> {
                     try {
-                        if (playerWon) {
-                            handleBattleVictory(wildPokemon);
-                        } else {
-                            handleBattleDefeat();
-                        }
-
                         cleanup();
-
                     } catch (Exception e) {
                         GameLogger.error("Error ending battle: " + e.getMessage());
                         cleanup();
@@ -1328,7 +1307,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 })
             ));
             battleUIFading = true;
-            inBattle = false;
         } else {
             cleanup();
         }
@@ -1340,25 +1318,23 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         Gdx.app.postRunnable(() -> {
             try {
-                // Remove and clear BattleTable from its parent
                 if (battleTable != null) {
-                    battleTable.remove();
                     battleTable.clear();
+                    // Ensure it is removed from the stage it was added to.
+                    if (battleStage != null) {
+                        battleTable.remove();
+                    }
                 }
 
-                // Clear, dispose, and null out the battle Stage so it no longer captures input
                 if (battleStage != null) {
                     battleStage.clear();
                     battleStage.dispose();
                     battleStage = null;
                 }
 
-                // End battle in the battle system (and unlock any locked Pokemon)
                 if (battleSystem != null) {
                     battleSystem.endBattle();
                 }
-
-                // Reset battle flags
                 inBattle = false;
                 transitioning = false;
                 inputBlocked = false;
@@ -1392,19 +1368,96 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
-    private void handleBattleDefeat() {
-        // Heal the party
-        GameContext.get().getPlayer().getPokemonParty().healAllPokemon();
+    private void teleportPlayerToSpawn(Player player, World world) {
+        try {
+            GameLogger.info("Teleporting player to spawn...");
+            if (player == null || world == null) {
+                GameLogger.error("Cannot teleport: player or world is null.");
+                return;
+            }
 
-        // Play defeat sound and show message
-        AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
-        if (GameContext.get().getChatSystem() != null) {
-            GameContext.get().getChatSystem().handleIncomingMessage(createSystemMessage(
-                "Your Pokémon have been healed!"
-            ));
+            // Get spawn coordinates from the world configuration.
+            int tileX = world.getWorldData().getConfig().getTileSpawnX();
+            int tileY = world.getWorldData().getConfig().getTileSpawnY();
+            float pixelX = tileX * World.TILE_SIZE;
+            float pixelY = tileY * World.TILE_SIZE;
+
+            // Teleport the player.
+            player.getPosition().set(pixelX, pixelY);
+            player.setTileX(tileX);
+            player.setTileY(tileY);
+            player.setX(pixelX);
+            player.setY(pixelY);
+            player.setMoving(false);
+            player.setRenderPosition(new Vector2(pixelX, pixelY));
+
+            GameLogger.info("Player teleported to spawn: (" + pixelX + ", " + pixelY + ")");
+
+            // Reset the chunk state to force a reload around the new position.
+            world.clearChunks();
+            world.loadChunksAroundPlayer();
+
+            // If in multiplayer mode, update the server.
+            if (GameContext.get().isMultiplayer()) {
+                GameContext.get().getGameClient().sendPlayerUpdate();
+                GameContext.get().getGameClient().savePlayerState(player.getPlayerData());
+            }
+        } catch (Exception e) {
+            GameLogger.error("Teleport to spawn failed: " + e.getMessage());
         }
     }
 
+
+    // Find the existing handleBattleDefeat() method and replace it with this new version.
+    private void handleBattleDefeat() {
+        Player player = GameContext.get().getPlayer();
+        World world = GameContext.get().getWorld();
+
+        if (player == null || world == null) {
+            GameLogger.error("Cannot handle battle defeat: Player or World is null.");
+            return;
+        }
+
+        // 1. Get player's location for dropping items
+        float dropX = player.getX();
+        float dropY = player.getY();
+
+        // 2. Get a copy of all items from inventory to drop
+        List<ItemData> itemsToDrop = new ArrayList<>();
+        for (ItemData item : player.getInventory().getAllItems()) {
+            if (item != null) {
+                itemsToDrop.add(item.copy());
+            }
+        }
+
+        // 3. Clear the player's inventory
+        player.getInventory().clear();
+        if (player.getHotbarSystem() != null) {
+            player.getHotbarSystem().updateHotbar(); // Visually update the hotbar
+        }
+
+        // 4. Drop all items on the ground with a small random offset
+        Random rand = new Random();
+        for (ItemData item : itemsToDrop) {
+            float offsetX = (rand.nextFloat() - 0.5f) * 64; // Scatter within one tile
+            float offsetY = (rand.nextFloat() - 0.5f) * 64;
+            world.getItemEntityManager().spawnItemEntity(item, dropX + offsetX, dropY + offsetY);
+        }
+
+        // 5. Heal the party so they are usable after respawning
+        player.getPokemonParty().healAllPokemon();
+
+        // 6. Play defeat sound and show a message
+        AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
+        if (GameContext.get().getChatSystem() != null) {
+            GameContext.get().getChatSystem().handleIncomingMessage(createSystemMessage(
+                player.getUsername() + " blacked out, dropped all items, and was teleported to spawn!"
+            ));
+        }
+
+        // 7. Teleport the player to the world spawn
+        teleportPlayerToSpawn(player, world);
+    }
     private int calculateExperienceGain(WildPokemon wildPokemon) {
         // Basic experience calculation
         return wildPokemon.getBaseExperience() * wildPokemon.getLevel() / 7;
@@ -1494,16 +1547,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             return;
         }
         if (!initialChunksLoadedOnce) {
-            if (GameContext.get().getPlayer() != null &&
-                !GameContext.get().getWorld().areInitialChunksLoaded()) {
-                // Do not re-request chunks every frame; just display the loading screen
-                renderLoadingScreen();
-                return;
-            } else {
-                // Once the chunks are loaded, set the flag so we never go back to the loading screen.
-                initialChunksLoadedOnce = true;
-                GameLogger.info("Initial chunks loaded; proceeding with normal game rendering.");
-            }
+            // Just draw an overlay, but do NOT skip the rest of the logic
+            renderLoadingOverlay();
         }
 
         if (GameContext.get().getWorld() == null) {
@@ -1511,11 +1556,21 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         if (GameContext.get().getPlayer() != null) {
             if (!GameContext.get().getWorld().areInitialChunksLoaded()) {
-                GameContext.get().getWorld().requestInitialChunks();
-                renderLoadingScreen();
-                return;
+                long elapsed = System.currentTimeMillis() - GameContext.get().getWorld().getInitialChunkRequestTime();
+                if (elapsed > 5000) {
+                    // Force synchronous load of the player's current chunk (this works for both singleplayer and multiplayer)
+                    int playerTileX = GameContext.get().getPlayer().getTileX();
+                    int playerTileY = GameContext.get().getPlayer().getTileY();
+                    int playerChunkX = Math.floorDiv(playerTileX, World.CHUNK_SIZE);
+                    int playerChunkY = Math.floorDiv(playerTileY, World.CHUNK_SIZE);
+                } else {
+                    GameContext.get().getWorld().requestInitialChunks();
+                    renderLoadingScreen();
+                    return;
+                }
             }
         }
+
 
         // Clear screen
         Gdx.gl.glClearColor(0, 0, 0, 1);
@@ -1569,9 +1624,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         GameContext.get().getBatch().end();
 
-        if(controllerInputProcessor != null) {
-            controllerInputProcessor.update();
-        }
         if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
             if (GameContext.get().getBuildModeUI() != null) {
                 GameContext.get().getBuildModeUI().render(GameContext.get().getBatch(), camera);
@@ -1691,7 +1743,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
             updateTimer += delta;
 
-            // Handle multiplayer updates
             if (isMultiplayer && updateTimer >= UPDATE_INTERVAL) {
                 updateTimer = 0;
                 NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
@@ -1731,6 +1782,21 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             }
         }
     }
+    private void renderLoadingOverlay() {
+        // Just draw a big semi-transparent rectangle with “Loading…” text.
+        GameContext.get().getBatch().begin();
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0, 0, 0, 0.5f);
+        shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        shapeRenderer.end();
+
+        // You can also draw text:
+        font.draw(GameContext.get().getBatch(), "Loading world...",
+            Gdx.graphics.getWidth() * 0.5f - 50,
+            Gdx.graphics.getHeight() * 0.5f);
+        GameContext.get().getBatch().end();
+    }
+
 
     private void renderPlayerListOverlay() {
         // Create a table for the overlay
@@ -1838,13 +1904,15 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         int tileX = (int) Math.floor(pixelX / TILE_SIZE);
         int tileY = (int) Math.floor(pixelY / TILE_SIZE);
         Biome currentBiome = GameContext.get().getWorld().getBiomeAt(tileX, tileY);
+        // Use the primary biome's name from the result
+        String biomeName = (currentBiome != null) ? currentBiome.getName() : "Unknown";
         font.draw(GameContext.get().getBatch(), String.format("Pixels: (%d, %d)", (int) pixelX, (int) pixelY), 10, debugY);
         debugY += 20;
         font.draw(GameContext.get().getBatch(), String.format("Tiles: (%d, %d)", tileX, tileY), 10, debugY);
         debugY += 20;
         font.draw(GameContext.get().getBatch(), "Direction: " + GameContext.get().getPlayer().getDirection(), 10, debugY);
         debugY += 20;
-        font.draw(GameContext.get().getBatch(), "Biome: " + currentBiome.getName(), 10, debugY);
+        font.draw(GameContext.get().getBatch(), "Biome: " + biomeName, 10, debugY); // Use the fetched name
         debugY += 20;
 
         font.draw(GameContext.get().getBatch(), "Active Pokemon: " + getTotalPokemonCount(), 10, debugY);
@@ -2109,81 +2177,44 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         if (isDisposing) return;
         isDisposing = true;
 
-        try {
-            if (GameContext.get().getGameClient().isSinglePlayer() && GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
-                // Convert Player to data
-                PlayerData finalState = getCurrentPlayerState();
-                // Save into the world
-                GameContext.get().getWorld().getWorldData()
-                    .savePlayerData(GameContext.get().getPlayer().getUsername(), finalState, false);
-                // Then save the entire world
-                GameContext.get().getWorld().save();
-                GameLogger.info("Singleplayer final save complete for " + username);
-            }
-            if (GameContext.get().getUiStage() != null) {
-                GameContext.get().getUiStage().clear();
-                GameContext.get().getUiStage().dispose();
-                GameContext.get().setUiStage(null);
-            }
+        GameLogger.info("Disposing GameScreen...");
 
-            Gdx.app.postRunnable(() -> {
-                try {
-                    if (chestScreen != null) {
-                        chestScreen.dispose();
-                    }
-                    if (GameContext.get().getBuildModeUI() != null) {
-                        GameContext.get().getBuildModeUI().dispose();
-                        GameContext.get().setBuildModeUI(null);
-                    }
-
-                    if (pokemonPartyStage != null) {
-                        pokemonPartyStage.clear();
-                        pokemonPartyStage.dispose();
-                        pokemonPartyStage = null;
-                    }
-
-
-                    if (GameContext.get().getBatch() != null) {
-                        GameContext.get().getBatch().dispose();
-                        GameContext.get().setBatch(null);
-                    }
-
-                    if (shapeRenderer != null) {
-                        shapeRenderer.dispose();
-                        shapeRenderer = null;
-                    }
-
-                    if (GameContext.get().getPlayer() != null) {
-                        GameContext.get().getPlayer().dispose();
-                        GameContext.get().setPlayer(null);
-                    }
-
-                    for (OtherPlayer op : GameContext.get().getGameClient().getOtherPlayers().values()) {
-                        if (op != null) op.dispose();
-                    }
-                    if (GameContext.get().isMultiplayer()) {
-                        GameContext.get().getGameClient().dispose();
-                    }
-                    if (!screenInitScheduler.isShutdown()) {
-                        screenInitScheduler.shutdown();
-                        try {
-                            if (!screenInitScheduler.awaitTermination(2, TimeUnit.SECONDS)) {
-                                screenInitScheduler.shutdownNow();
-                            }
-                        } catch (InterruptedException e) {
-                            screenInitScheduler.shutdownNow();
-                            Thread.currentThread().interrupt();
-                        }
-                    }
-
-                    WorldManager.getInstance().disposeStorage();
-                } catch (Exception e) {
-                    GameLogger.error("Error during GameScreen disposal: " + e.getMessage());
-                }
-            });
-        } catch (Exception e) {
-            GameLogger.error("Error during disposal: " + e.getMessage());
+        // Dispose of resources OWNED BY THIS SCREEN, not shared resources.
+        if (shapeRenderer != null) {
+            shapeRenderer.dispose();
+            shapeRenderer = null;
         }
+
+        if (battleStage != null) {
+            battleStage.dispose();
+            battleStage = null;
+        }
+
+        if (pokemonPartyStage != null) {
+            pokemonPartyStage.dispose();
+            pokemonPartyStage = null;
+        }
+
+        if (GameContext.get().getInventoryScreen() != null) {
+            GameContext.get().getInventoryScreen().dispose();
+            GameContext.get().setInventoryScreen(null);
+        }
+
+        if (GameContext.get().getCraftingScreen() != null) {
+            GameContext.get().getCraftingScreen().dispose();
+            GameContext.get().setCraftingScreen(null);
+        }
+
+        // The GameMenu will be disposed and recreated by the show() method, but we can clean it up here.
+        if (GameContext.get().getGameMenu() != null) {
+            GameContext.get().getGameMenu().dispose();
+            GameContext.get().setGameMenu(null);
+        }
+
+        // The world and player are managed by CreatureCaptureGame, so we don't dispose them here.
+        // The uiStage, skin, and batches are also managed by the main game/context.
+
+        GameLogger.info("GameScreen disposed.");
     }
 
     private void initializeAndroidControls() {
@@ -2382,7 +2413,11 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
                 float absoluteX = event.getStageX();
                 float absoluteY = event.getStageY();
-                movementController.handleTouchDown(absoluteX, absoluteY);
+                if (movementController != null) {
+                    movementController.handleTouchDown(absoluteX, absoluteY);
+                } else {
+                    GameLogger.error("movementController is null on touchDown!");
+                }
                 return true;
             }
 

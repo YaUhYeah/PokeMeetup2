@@ -1,3 +1,4 @@
+// File: src/main/java/io/github/pokemeetup/managers/BiomeRenderer.java
 package io.github.pokemeetup.managers;
 
 import com.badlogic.gdx.Gdx;
@@ -67,7 +68,7 @@ public class BiomeRenderer {
         // 1) Re‐apply “sand_shore” autotiling with the updated frame
         //    so we see the 8–frame animation:
         AutoTileSystem autoTileSystem = new AutoTileSystem();
-        autoTileSystem.applyShorelineAutotiling(chunk, shoreFrameIndex);
+        autoTileSystem.applyShorelineAutotiling(chunk, shoreFrameIndex, world);
 
         // Update animation indexes
         updateAnimations();

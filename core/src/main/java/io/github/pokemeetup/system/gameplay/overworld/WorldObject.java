@@ -83,6 +83,18 @@ public class WorldObject {
                     textureCache.put(ObjectType.APRICORN_TREE, atlas.findRegion("apricorn_tree_grown"));
                     textureCache.put(ObjectType.CHERRY_TREE, atlas.findRegion("CherryTree"));
                     textureCache.put(ObjectType.BEACH_TREE, atlas.findRegion("beach_tree"));
+                    textureCache.put(ObjectType.DESERT_TALL_GRASS, atlas.findRegion("desert_grass_overlay"));
+                    textureCache.put(ObjectType.SNOW_TALL_GRASS, atlas.findRegion("snow_tall_grass_overlay"));
+                    textureCache.put(ObjectType.TALL_GRASS, atlas.findRegion("tall_grass_overlay"));
+                    textureCache.put(ObjectType.FOREST_TALL_GRASS, atlas.findRegion("forest_tall_grass_overlay"));
+                    textureCache.put(ObjectType.HAUNTED_TALL_GRASS, atlas.findRegion("haunted_tall_grass_overlay"));
+                    textureCache.put(ObjectType.RAIN_FOREST_TALL_GRASS, atlas.findRegion("rain_forest_tall_grass_overlay"));
+                    textureCache.put(ObjectType.TALL_GRASS_2, atlas.findRegion("tall_grass_2_overlay"));
+                    textureCache.put(ObjectType.TALL_GRASS_3, atlas.findRegion("tall_grass_3_overlay"));
+                    textureCache.put(ObjectType.DESERT_ROCK, atlas.findRegion("desert_rock_overlay"));
+                    textureCache.put(ObjectType.CRYSTAL_ROCK, atlas.findRegion("crystal_overlay"));
+                    textureCache.put(ObjectType.FAIRY_ROCK, atlas.findRegion("fairy_rock_overlay"));
+                    textureCache.put(ObjectType.RUINS_TALL_GRASS, atlas.findRegion("ruins_tall_grass_overlay"));
                     // Add other object types as needed
                 }
             }
@@ -408,12 +420,24 @@ public class WorldObject {
         RAIN_TREE(true, true, 2, 3, RenderLayer.LAYERED),
         CHERRY_TREE(true, true, 2, 3, RenderLayer.LAYERED),
         SUNFLOWER(true, false, 1, 2, RenderLayer.BELOW_PLAYER),
+        DESERT_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        SNOW_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        FOREST_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        HAUNTED_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        RAIN_FOREST_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        RUINS_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        TALL_GRASS_2(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        TALL_GRASS_3(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
+        DESERT_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
+        CRYSTAL_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
+        FAIRY_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
         BEACH_TREE(true, true, 2, 3, RenderLayer.LAYERED);
 
         public final boolean isPermanent;    // Permanent or temporary object
         public final boolean isCollidable;   // Has collision or not
         public final int widthInTiles;       // Width in tiles
-        public final int heightInTiles;      // Height in tiles
+        public final int heightInTiles;
 
         public final RenderLayer renderLayer;
 
@@ -468,7 +492,31 @@ public class WorldObject {
             objectTextures.put(ObjectType.RUINS_TREE, atlas.findRegion("ruins_tree"));
             objectTextures.put(ObjectType.APRICORN_TREE, atlas.findRegion("apricorn_tree_grown"));
             objectTextures.put(ObjectType.BEACH_TREE, atlas.findRegion("beach_tree"));
+            objectTextures.put(ObjectType.DESERT_TALL_GRASS, atlas.findRegion("desert_grass_overlay"));
+            objectTextures.put(ObjectType.SNOW_TALL_GRASS, atlas.findRegion("snow_tall_grass_overlay"));
+            objectTextures.put(ObjectType.TALL_GRASS, atlas.findRegion("tall_grass_overlay"));
+            objectTextures.put(ObjectType.FOREST_TALL_GRASS, atlas.findRegion("forest_tall_grass_overlay"));
+            objectTextures.put(ObjectType.HAUNTED_TALL_GRASS, atlas.findRegion("haunted_tall_grass_overlay"));
+            objectTextures.put(ObjectType.RAIN_FOREST_TALL_GRASS, atlas.findRegion("rain_forest_tall_grass_overlay"));
+            objectTextures.put(ObjectType.TALL_GRASS_2, atlas.findRegion("tall_grass_2_overlay"));
+            objectTextures.put(ObjectType.TALL_GRASS_3, atlas.findRegion("tall_grass_3_overlay"));
+            objectTextures.put(ObjectType.DESERT_ROCK, atlas.findRegion("desert_rock_overlay"));
+            objectTextures.put(ObjectType.CRYSTAL_ROCK, atlas.findRegion("crystal_overlay"));
+            objectTextures.put(ObjectType.FAIRY_ROCK, atlas.findRegion("fairy_rock_overlay"));
+            objectTextures.put(ObjectType.RUINS_TALL_GRASS, atlas.findRegion("ruins_tall_grass_overlay"));
 
+        }
+
+        public List<WorldObject> getObjectsForChunkType(WorldObject.ObjectType type) {
+            List<WorldObject> filteredObjects = new ArrayList<>();
+            for (List<WorldObject> objects : objectsByChunk.values()) {
+                for (WorldObject obj : objects) {
+                    if (obj.getType() == type) {
+                        filteredObjects.add(obj);
+                    }
+                }
+            }
+            return filteredObjects;
         }
 
         private void sendChunkObjectSync(List<WorldObject> objects) {
@@ -879,45 +927,27 @@ public class WorldObject {
             pokeballSpawnTimer += Gdx.graphics.getDeltaTime();
             while ((operation = operationQueue.poll()) != null) {
                 try {
-                    switch (operation.type) {
-                        case REMOVE:
-                            RemoveOperation removeOp = (RemoveOperation) operation;
-                            List<WorldObject> removeList = objectsByChunk.get(removeOp.chunkPos);
-                            if (removeList != null) {
-                                removeList.removeIf(obj -> obj.getId().equals(removeOp.objectId));
-                                objectsByChunk.put(removeOp.chunkPos, new CopyOnWriteArrayList<>(removeList));
+                    if (Objects.requireNonNull(operation.type) == WorldObjectOperation.OperationType.REMOVE) {
+                        RemoveOperation removeOp = (RemoveOperation) operation;
+                        List<WorldObject> removeList = objectsByChunk.get(removeOp.chunkPos);
+                        if (removeList != null) {
+                            removeList.removeIf(obj -> obj.getId().equals(removeOp.objectId));
+                            objectsByChunk.put(removeOp.chunkPos, new CopyOnWriteArrayList<>(removeList));
 
-                                if (GameContext.get().isMultiplayer()) {
-                                    if (
-                                        GameContext.get().getGameClient() != null &&
-                                            GameContext.get().getGameClient().getCurrentWorld() != null) {
-                                        Chunk chunk =
-                                            GameContext.get().getGameClient().getCurrentWorld().getChunkAtPosition(
-                                                removeOp.chunkPos.x, removeOp.chunkPos.y);
-                                        if (chunk != null) {
+                            if (GameContext.get().isMultiplayer()) {
+                                if (
+                                    GameContext.get().getGameClient() != null &&
+                                        GameContext.get().getGameClient().getCurrentWorld() != null) {
+                                    Chunk chunk =
+                                        GameContext.get().getGameClient().getCurrentWorld().getChunkAtPosition(
+                                            removeOp.chunkPos.x, removeOp.chunkPos.y);
+                                    if (chunk != null) {
 
-                                            GameContext.get().getGameClient().getCurrentWorld().saveChunkData(removeOp.chunkPos, chunk);
-                                        }
+                                        GameContext.get().getGameClient().getCurrentWorld().saveChunkData(removeOp.chunkPos, chunk);
                                     }
                                 }
                             }
-                            break;
-
-                        case PERSIST:
-                            PersistOperation persistOp = (PersistOperation) operation;
-                            updateChunkObjectsList(persistOp.chunkPos, persistOp.objects);
-                            break;
-
-                        case ADD:
-                            AddOperation addOp = (AddOperation) operation;
-                            List<WorldObject> addList = objectsByChunk.computeIfAbsent(
-                                addOp.chunkPos, k -> new CopyOnWriteArrayList<>());
-                            addList.add(addOp.object);
-                            break;
-
-                        case UPDATE:
-                            handleUpdateOperation((UpdateOperation) operation);
-                            break;
+                        }
                     }
                 } catch (Exception e) {
                     GameLogger.error("Error processing operation: " + e.getMessage());
@@ -946,23 +976,7 @@ public class WorldObject {
             cleanupUnloadedChunks(loadedChunks);
         }
 
-        private void handleUpdateOperation(UpdateOperation updateOp) {
-            try {
-                List<WorldObject> updateList = objectsByChunk.get(updateOp.chunkPos);
-                if (updateList != null) {
-                    for (WorldObject obj : updateList) {
-                        if (obj.getId().equals(updateOp.update.objectId)) {
-                            obj.updateFromNetwork(updateOp.update);
-                            // Queue persist after update
-                            operationQueue.add(new PersistOperation(updateOp.chunkPos, new ArrayList<>(updateList)));
-                            break;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                GameLogger.error("Error handling update operation: " + e.getMessage());
-            }
-        }
+
 
         private void cleanupUnloadedChunks(Map<Vector2, Chunk> loadedChunks) {
             // Identify chunks to remove

@@ -5,8 +5,11 @@ import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Intersector;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Json;
@@ -27,6 +30,8 @@ import io.github.pokemeetup.system.data.*;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntityManager;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
+import io.github.pokemeetup.system.gameplay.overworld.mechanics.AutoTileSystem;
+import io.github.pokemeetup.system.gameplay.overworld.multiworld.PokemonSpawnManager;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.JsonConfig;
@@ -34,6 +39,7 @@ import io.github.pokemeetup.utils.textures.BlockTextureManager;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.utils.textures.TileType;
 
+import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -48,7 +54,10 @@ public class World {
     private static final float COLOR_TRANSITION_SPEED = 2.0f;
     private static final int MAX_CHUNK_LOAD_RADIUS = 16;  // or 10, adjust as needed
     private static final int MAX_LOADED_CHUNKS = 200;         // or whatever limit you want
-    private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000; // how long to keep an unused chunk
+    private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000;
+    private static final int MAX_CHUNKS_INTEGRATED_PER_FRAME = 8;
+    // Maximum number of asynchronous retries per chunk
+    private static final int MAX_CHUNK_RETRY = 3;
     public static int DEFAULT_X_POSITION = 0;
     public static int DEFAULT_Y_POSITION = 0;
     private final Map<Vector2, Long> lastChunkAccess = new ConcurrentHashMap<>();
@@ -59,6 +68,7 @@ public class World {
     private final Map<Vector2, BiomeTransitionResult> biomeTransitions = new ConcurrentHashMap<>();
     private final Rectangle tempChunkRect = new Rectangle();
     private final WaterEffectsRenderer waterEffectsRendererForOthers = new WaterEffectsRenderer();
+    private final ConcurrentLinkedQueue<Map.Entry<Vector2, Chunk>> integrationQueue = new ConcurrentLinkedQueue<>();
     public Map<Vector2, Chunk> chunks;
     private FootstepEffectManager footstepEffectManager;
     private Color currentWorldColor = new Color(1, 1, 1, 1);
@@ -68,7 +78,6 @@ public class World {
     private Map<Vector2, Future<Chunk>> loadingChunks;
     private Queue<Vector2> initialChunkLoadQueue = new LinkedList<>();
     private ExecutorService chunkLoadExecutor = Executors.newFixedThreadPool(2); // limit to 2 threads
-
     private PlayerData currentPlayerData;
     private WorldObject nearestPokeball;
     private long lastPlayed;
@@ -88,6 +97,8 @@ public class World {
     private int cachedChunkCount = 0;
     private float lightLevelUpdateTimer = 0f;
     private float manageChunksTimer = 0f;
+    private long initialChunkRequestTime;
+    private BitmapFont loadingFont;
 
     public World(WorldData worldData) {
         try {
@@ -96,7 +107,7 @@ public class World {
             this.name = worldData.getName();
             this.worldSeed = worldData.getConfig().getSeed();
             this.blockManager = new BlockManager();
-          GameContext.get().setBiomeManager(new BiomeManager(this.worldSeed));
+            GameContext.get().setBiomeManager(new BiomeManager(this.worldSeed));
             this.biomeRenderer = new BiomeRenderer();
             this.chunks = new ConcurrentHashMap<>();
             this.loadingChunks = new ConcurrentHashMap<>();
@@ -112,6 +123,7 @@ public class World {
             this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
             this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
             this.weatherSystem = new WeatherSystem();
+            this.weatherSystem.setWorld(this);
             this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
 
             GameLogger.info("Multiplayer world initialization complete");
@@ -126,126 +138,129 @@ public class World {
         waterEffects = new WaterEffectsRenderer();
     }
 
-    private boolean isTallGrassTile(int tileType) {
-        return tileType == TileType.TALL_GRASS ||
-            tileType == TileType.FOREST_TALL_GRASS ||
-            tileType == TileType.RAIN_FOREST_TALL_GRASS ||
-            tileType == TileType.SNOW_TALL_GRASS ||
-            tileType == TileType.TALL_GRASS_2 ||
-            tileType == TileType.TALL_GRASS_3 ||
-            tileType == TileType.RUINS_TALL_GRASS ||
-            tileType == TileType.DESERT_GRASS ||
-            tileType == TileType.BEACH_GRASS;
+    public World(String name, long seed) {
+        try {
+            GameLogger.info("Initializing singleplayer world: " + name);
+            this.name = name;
+            this.itemEntityManager = new ItemEntityManager();
+            this.worldSeed = seed;
+
+            this.worldData = new WorldData(name);
+            WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
+            this.worldData.setConfig(config);
+            // Initialize basic managers
+            this.blockManager = new BlockManager();
+            this.biomeRenderer = new BiomeRenderer();
+            loadingFont = new BitmapFont();
+
+            footstepEffectManager = new FootstepEffectManager();
+            this.chunks = new ConcurrentHashMap<>();
+            this.loadingChunks = new ConcurrentHashMap<>();
+
+            WorldData existingData = JsonConfig.loadWorldData(name);
+            if (existingData != null) {
+                GameLogger.info("Found existing world data for: " + name);
+                this.worldData = existingData;
+                loadChunksFromWorldData();
+                if (worldData != null && worldData.getBlockData() != null) {
+                    migrateBlocksToChunks();
+                }
+            }
+
+            this.weatherSystem = new WeatherSystem();
+            this.weatherSystem.setWorld(this);
+            this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
+            this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
+            this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
+
+            footstepEffectManager = new FootstepEffectManager();
+            // Generate initial chunks if needed
+            if (chunks.isEmpty()) {
+                initializeChunksAroundOrigin();
+            }
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to initialize singleplayer world: " + e.getMessage());
+            throw new RuntimeException("World initialization failed", e);
+        }
+        this.waterEffectManager = new WaterEffectManager();
+
+        waterEffects = new WaterEffectsRenderer();
     }
 
 
-    /**
-     * Renders a continuous tall grass overlay over the player’s lower half
-     * using a dedicated overlay tile. Instead of following the player’s exact
-     * pixel position, the overlay is drawn relative to the tile grid so that it
-     * appears smooth as the player moves.
-     */
-    private void renderTallGrassOverlayForPlayer(SpriteBatch batch, Player player) {
-        // Determine which tile the player is currently on.
-        int tileX = player.getTileX();
-        int tileY = player.getTileY();
+    private enum RenderableType {
+        TREE_BASE(0),
+        WORLD_OBJECT(1),
+        PLAYER(2),
+        OTHER_PLAYER(2),
+        WILD_POKEMON(2),
+        TALL_GRASS_TOP(3),
+        TREE_TOP(4);
 
-        // Calculate the world coordinates of that tile.
-        float worldX = tileX * TILE_SIZE;
-        float worldY = tileY * TILE_SIZE;
+        final int layerIndex;
 
-        // Only continue if the base tile is tall grass.
-        int baseTileType = getTileTypeAt(tileX, tileY);
-        if (!isTallGrassTile(baseTileType)) {
-            return;
-        }
-
-        // Get the dedicated overlay tile for this type.
-        int overlayTile = getTallGrassOverlayTile(baseTileType);
-        if (overlayTile == -1) {
-            return;
-        }
-
-        // Retrieve the overlay texture region.
-        TextureRegion overlayRegion = TextureManager.getTileTexture(overlayTile);
-        if (overlayRegion == null) {
-            return;
-        }
-
-        // Calculate the source rectangle so that only the bottom half of the overlay is used.
-        int regionWidth = overlayRegion.getRegionWidth();
-        int regionHeight = overlayRegion.getRegionHeight();
-        int srcHeight = regionHeight / 2; // use bottom half
-        int srcX = overlayRegion.getRegionX();
-        int srcY = overlayRegion.getRegionY() + (regionHeight - srcHeight);
-
-        // Instead of using the player’s pixel position directly, we use the tile’s position.
-        // To get the Gen III “fixed” look, we shift the overlay 16 pixels to the left (half a tile)
-        // relative to the tile’s world coordinates.
-        // aligns with the bottom of the tile
-        float destWidth = TILE_SIZE;
-        float destHeight = TILE_SIZE / 2f;
-
-        // Save the current batch color.
-        Color originalColor = batch.getColor().cpy();
-        // Optionally, set the batch color based on world lighting:
-        // batch.setColor(getCurrentWorldColor());
-
-        // Draw the overlay (only the bottom half of the overlayRegion).
-        batch.draw(
-            overlayRegion.getTexture(), // overlay texture
-            worldX, worldY,               // destination bottom–left (snapped to the tile grid and shifted left)
-            destWidth, destHeight,      // destination dimensions
-            srcX, srcY,                 // source position (bottom half)
-            regionWidth, srcHeight,     // source dimensions
-            false, false                // no flipping
-        );
-
-        batch.setColor(originalColor);
-    }
-
-    /**
-     * Returns the dedicated overlay tile index for the given base tall–grass tile.
-     * Adjust the mapping if needed.
-     */
-    private int getTallGrassOverlayTile(int baseTileType) {
-        switch (baseTileType) {
-            case TileType.TALL_GRASS:
-                return TileType.TALL_GRASS_OVERLAY;
-            case TileType.FOREST_TALL_GRASS:
-                return TileType.FOREST_TALL_GRASS_OVERLAY;
-            case TileType.RAIN_FOREST_TALL_GRASS:
-                return TileType.RAINFOREST_TALL_GRASS_OVERLAY;
-            case TileType.SNOW_TALL_GRASS:
-                return TileType.SNOW_TALL_GRASS_OVERLAY;
-            case TileType.TALL_GRASS_2:
-                return TileType.TALL_GRASS_OVERLAY_2;
-            case TileType.TALL_GRASS_3:
-                return TileType.TALL_GRASS_OVERLAY_3;
-            case TileType.RUINS_TALL_GRASS:
-                return TileType.RUINS_TALL_GRASS_OVERLAY;
-            case TileType.DESERT_GRASS:
-                return TileType.DESERT_TALL_GRASS_OVERLAY;
-            case TileType.BEACH_GRASS:
-                return TileType.BEACH_TALL_GRASS_OVERLAY;
-            case TileType.HAUNTED_TALL_GRASS:
-                return TileType.HAUNTED_TALL_GRASS_OVERLAY;
-            default:
-                return -1;
+        RenderableType(int index) {
+            this.layerIndex = index;
         }
     }
 
+    private static class RenderableEntity implements Comparable<RenderableEntity> {
+        final Object entity;
+        final float y;
+        final RenderableType type;
 
-    public int getWorldWidthInTiles() {
-        // WORLD_SIZE is in pixels.  Our tile size is TILE_SIZE.
-        // Because the world is centered, the total width (in tiles) is:
-        return (HALF_WORLD_SIZE * 2) / TILE_SIZE;
+        RenderableEntity(Object entity, float y, RenderableType type) {
+            this.entity = entity;
+            this.y = y;
+            this.type = type;
+        }
+
+        @Override
+        public int compareTo(RenderableEntity other) {
+            int yCompare = Float.compare(other.y, this.y);
+            if (yCompare != 0) {
+                return yCompare;
+            }
+
+            return Integer.compare(this.type.layerIndex, other.type.layerIndex);
+        }
+    }
+    private void renderTallGrassLowerHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
+        for (WorldObject obj : tallGrassObjects) {
+            TextureRegion region = obj.getTexture();
+            if (region == null) continue;
+            int regionWidth = region.getRegionWidth();
+            int regionHeight = region.getRegionHeight();
+            // Source: bottom half of the texture
+            int srcX = region.getRegionX();
+            int srcY = region.getRegionY() + regionHeight / 2;
+            int srcHeight = regionHeight / 2;
+            // Destination: same width as a tile; lower half drawn at object's pixel position.
+            float destX = obj.getPixelX();
+            float destY = obj.getPixelY();
+            batch.draw(region.getTexture(), destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f,
+                srcX, srcY, regionWidth, srcHeight, false, false);
+        }
     }
 
-    public int getWorldHeightInTiles() {
-        return (HALF_WORLD_SIZE * 2) / TILE_SIZE;
+    private void renderTallGrassUpperHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
+        for (WorldObject obj : tallGrassObjects) {
+            TextureRegion region = obj.getTexture();
+            if (region == null) continue;
+            int regionWidth = region.getRegionWidth();
+            int regionHeight = region.getRegionHeight();
+            // Source: top half of the texture
+            int srcX = region.getRegionX();
+            int srcY = region.getRegionY();
+            int srcHeight = regionHeight / 2;
+            // Destination: draw the upper half offset upward by half a tile.
+            float destX = obj.getPixelX();
+            float destY = obj.getPixelY() + World.TILE_SIZE / 2f;
+            batch.draw(region.getTexture(), destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f,
+                srcX, srcY, regionWidth, srcHeight, false, false);
+        }
     }
-
     /**
      * Returns true if the given tile coordinates are within the world border.
      * This implementation assumes that the world is centered at (0,0).
@@ -321,30 +336,6 @@ public class World {
         return weatherSystem;
     }
 
-    public void requestInitialChunks() {
-        if (GameContext.get().isMultiplayer()) {
-            if (initialChunksRequested) {
-                return;
-            }
-            initialChunksRequested = true;
-        }
-
-        int playerTileX = GameContext.get().getPlayer().getTileX();
-        int playerTileY = GameContext.get().getPlayer().getTileY();
-        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
-        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
-        List<Vector2> chunkOrder = generateSpiralChunkOrder(playerChunkX, playerChunkY, INITIAL_LOAD_RADIUS);
-        for (Vector2 chunkPos : chunkOrder) {
-            if (!chunks.containsKey(chunkPos)) {
-                if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
-                    GameContext.get().getGameClient().requestChunk(chunkPos);
-                } else {
-                    loadChunkAsync(chunkPos);
-                }
-            }
-        }
-    }
-
     private List<Vector2> generateSpiralChunkOrder(int centerX, int centerY, int radius) {
         List<Vector2> order = new ArrayList<>();
         int x = 0, y = 0, dx = 0, dy = -1;
@@ -389,60 +380,360 @@ public class World {
         return GameContext.get().isMultiplayer();
     }
 
-    public void storeBiomeTransition(Vector2 chunkPos, BiomeTransitionResult transition) {
-        if (transition == null) {
-            biomeTransitions.remove(chunkPos);
-            return;
+    public BiomeTransitionResult getBiomeTransitionAt(float worldX, float worldY) {
+        int chunkX = Math.floorDiv((int) worldX, Chunk.CHUNK_SIZE * World.TILE_SIZE);
+        int chunkY = Math.floorDiv((int) worldY, Chunk.CHUNK_SIZE * World.TILE_SIZE);
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+        // First check if we have a stored transition for this chunk
+        BiomeTransitionResult stored = biomeTransitions.get(chunkPos);
+        if (stored != null) {
+            return stored;
         }
-        biomeTransitions.put(chunkPos, transition);
+
+        // If not found in stored transitions, use BiomeManager to calculate
+        return GameContext.get().getBiomeManager().getBiomeAt(worldX, worldY);
     }
 
+    // Fix in World.java - processChunkData method
     public void processChunkData(NetworkProtocol.ChunkData chunkData) {
         Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
-
-        Gdx.app.postRunnable(() -> {
-            try {
-                World world = GameContext.get().getWorld();
-                if (world == null) return;
-
-                // Create the chunk with proper biome
-                Biome biome = world.getBiomeManager().getBiome(chunkData.primaryBiomeType);
-                if (biome == null) {
-                    biome = world.getBiomeManager().getBiome(BiomeType.PLAINS);
-                }
-                Chunk chunk = new Chunk(chunkData.chunkX, chunkData.chunkY, biome,
-                    chunkData.generationSeed);
-
-                // Set tile data
-                chunk.setTileData(chunkData.tileData);
-
-                // Process blocks
-                if (chunkData.blockData != null) {
-                    for (BlockSaveData.BlockData bd : chunkData.blockData) {
-                        processBlockData(chunk, bd);
-                    }
-                }
-
-                // Process world objects
-                List<WorldObject> objects = new ArrayList<>();
-                if (chunkData.worldObjects != null) {
-                    for (Map<String, Object> objData : chunkData.worldObjects) {
-                        WorldObject obj = new WorldObject();
-                        obj.updateFromData(objData);
-                        obj.ensureTexture();
-                        objects.add(obj);
-                    }
-                }
-
-                // Update chunk and object storage
-                world.getChunks().put(chunkPos, chunk);
-                world.getObjectManager().setObjectsForChunk(chunkPos, objects);
-
-            } catch (Exception e) {
-                GameLogger.error("Error processing chunk data: " + e.getMessage());
+        try {
+            // Step 1: Get or create biome based on data from server
+            Biome primaryBiome = GameContext.get().getBiomeManager().getBiome(chunkData.primaryBiomeType);
+            if (primaryBiome == null) {
+                primaryBiome = GameContext.get().getBiomeManager().getBiome(BiomeType.PLAINS);
+                GameLogger.error("Using fallback PLAINS biome for null type: " + chunkData.primaryBiomeType);
             }
-        });
 
+            // Step 2: Create the chunk with proper biome and server seed
+            Chunk chunk = new Chunk(chunkData.chunkX, chunkData.chunkY, primaryBiome, chunkData.generationSeed);
+
+            // Step 3: Set the provided tile data with validation
+            if (chunkData.tileData != null && chunkData.tileData.length == Chunk.CHUNK_SIZE) {
+                // Validate and clone the tile data
+                int[][] validatedTiles = new int[Chunk.CHUNK_SIZE][Chunk.CHUNK_SIZE];
+                for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
+                    if (chunkData.tileData[x] != null && chunkData.tileData[x].length == Chunk.CHUNK_SIZE) {
+                        System.arraycopy(chunkData.tileData[x], 0, validatedTiles[x], 0, Chunk.CHUNK_SIZE);
+                    } else {
+                        // Fill invalid rows with default tiles based on biome
+                        Arrays.fill(validatedTiles[x], getDefaultTileForBiome(primaryBiome));
+                        GameLogger.error("Invalid tile data row at " + x + " for chunk " + chunkPos);
+                    }
+                }
+                chunk.setTileData(validatedTiles);
+            } else {
+                GameLogger.error("Invalid tile data for chunk " + chunkPos + ", generating fallback tiles");
+                // Generate fallback tile data
+                generateFallbackTileData(chunk, primaryBiome);
+            }
+
+            // Step 4: Process blocks with error handling
+            if (chunkData.blockData != null) {
+                for (BlockSaveData.BlockData bd : chunkData.blockData) {
+                    try {
+                        processBlockData(chunk, bd);
+                    } catch (Exception e) {
+                        GameLogger.error("Failed to process block data in chunk " + chunkPos + ": " + e.getMessage());
+                    }
+                }
+            }
+
+            // Step 5: Process and place world objects with validation
+            List<WorldObject> objects = new ArrayList<>();
+            if (chunkData.worldObjects != null) {
+                for (Map<String, Object> objData : chunkData.worldObjects) {
+                    try {
+                        if (objData != null) {
+                            WorldObject obj = new WorldObject();
+                            obj.updateFromData(objData);
+                            obj.ensureTexture();
+                            objects.add(obj);
+                        }
+                    } catch (Exception e) {
+                        GameLogger.error("Failed to process world object in chunk " + chunkPos + ": " + e.getMessage());
+                    }
+                }
+            }
+
+            // Step 6: Register objects with world object manager
+            getObjectManager().setObjectsForChunk(chunkPos, objects);
+
+            // Step 7: Handle existing chunk if present
+            Chunk existingChunk = chunks.get(chunkPos);
+            if (existingChunk != null && existingChunk.isDirty()) {
+                mergeChunkData(existingChunk, chunk);
+            }
+
+            // Store the new/merged chunk
+            chunks.put(chunkPos, chunk);
+
+            // Step 8: CRITICAL FIX - Create and store biome transition for consistent rendering
+            BiomeTransitionResult transition = new BiomeTransitionResult(
+                primaryBiome,
+                chunkData.secondaryBiomeType != null ?
+                    GameContext.get().getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null,
+                chunkData.secondaryBiomeType != null ?
+                    MathUtils.clamp(chunkData.biomeTransitionFactor, 0f, 1f) : 1f
+            );
+
+            // Store biome transition in global map for consistent rendering
+            storeBiomeTransition(chunkPos, transition);
+
+            // Step 9: Apply auto-tiling for visual consistency
+            try {
+                new AutoTileSystem().applyShorelineAutotiling(chunk, 0, this);
+            } catch (Exception e) {
+                GameLogger.error("Failed to apply auto-tiling for chunk " + chunkPos + ": " + e.getMessage());
+            }
+
+            // Step 10: Mark chunk as clean
+            chunk.setDirty(false);
+
+            GameLogger.info("Successfully processed chunk " + chunkPos +
+                " with biome " + primaryBiome.getType() +
+                (transition.getSecondaryBiome() != null ?
+                    " blended with " + transition.getSecondaryBiome().getType() +
+                        " at " + transition.getTransitionFactor() : ""));
+
+        } catch (Exception e) {
+            GameLogger.error("Error processing chunk data for " + chunkPos + ": " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Improve storeBiomeTransition method
+    public void storeBiomeTransition(Vector2 chunkPos, BiomeTransitionResult transition) {
+        if (chunkPos != null && transition != null && transition.getPrimaryBiome() != null) {
+            biomeTransitions.put(chunkPos, transition);
+            // Optional: Log storing
+            // GameLogger.info("Stored biome transition for chunk " + chunkPos + ": " + transition.getPrimaryBiome().getType());
+        } else {
+            GameLogger.error("Attempted to store invalid biome transition for chunk: " + chunkPos);
+        }
+    }
+    private int getDefaultTileForBiome(Biome biome) {
+        if (biome == null) return TileType.GRASS;
+
+        List<Integer> allowedTiles = biome.getAllowedTileTypes();
+        if (allowedTiles != null && !allowedTiles.isEmpty()) {
+            return allowedTiles.get(0);
+        }
+
+        // Fallbacks based on biome type
+        switch (biome.getType()) {
+            case SNOW: return TileType.SNOW;
+            case DESERT: return TileType.DESERT_SAND;
+            case BEACH: return TileType.BEACH_SAND;
+            case FOREST: return TileType.FOREST_GRASS;
+            case HAUNTED: return TileType.HAUNTED_GRASS;
+            case RAIN_FOREST: return TileType.RAIN_FOREST_GRASS;
+            case RUINS: return TileType.RUINS_GRASS;
+            case OCEAN: return TileType.WATER;
+            default: return TileType.GRASS;
+        }
+    }
+
+    /**
+     * Generates fallback tile data for a chunk when server data is invalid
+     */
+    private void generateFallbackTileData(Chunk chunk, Biome biome) {
+        int defaultTile = getDefaultTileForBiome(biome);
+        int[][] tiles = new int[Chunk.CHUNK_SIZE][Chunk.CHUNK_SIZE];
+
+        for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
+            for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
+                tiles[x][y] = defaultTile;
+            }
+        }
+
+        chunk.setTileData(tiles);
+    }
+
+    private void mergeChunkData(Chunk source, Chunk target) {
+        if (source == null || target == null) {
+            GameLogger.error("Cannot merge chunks: null chunk provided");
+            return;
+        }
+
+        try {
+            // Preserve the target's basic properties (from server)
+            Vector2 chunkPos = new Vector2(target.getChunkX(), target.getChunkY());
+
+            // 1. Tile data - Server is authoritative but handle missing/corrupted data
+            if (source.getTileData() != null && target.getTileData() == null) {
+                // If target has no tile data but source does, use source's data as fallback
+                GameLogger.error("Target chunk missing tile data, using source data");
+                target.setTileData(cloneTileData(source.getTileData()));
+            }
+
+            // 2. Preserve elevation bands from client - these are client-generated for mountains
+            int[][] sourceBands = getElevationBands(source);
+            if (sourceBands != null) {
+                GameLogger.info("Preserved elevation bands for chunk " + chunkPos);
+            }
+
+            // 3. Auto-tile regions (texture mapping) - client-side rendering data
+            if (source.getAutotileRegions() != null && target.getAutotileRegions() == null) {
+                target.setAutotileRegions(source.getAutotileRegions());
+            }
+
+            // 4. Sea-tile regions (water animations) - client-side rendering data
+            if (source.getSeatileRegions() != null && target.getSeatileRegions() == null) {
+                target.setSeatileRegions(source.getSeatileRegions());
+            }
+
+            // 5. Handle blocks - merge any client blocks not in the server data
+            mergeBlockData(source, target);
+
+            // 6. Biome handling - server is authoritative, but handle edge cases
+            if (target.getBiome() == null && source.getBiome() != null) {
+                // If target has no biome (shouldn't happen), use source's as fallback
+                target.setBiome(source.getBiome());
+                GameLogger.error("Target chunk missing biome, using source biome: " + source.getBiome().getType());
+            }
+
+            // 7. Handle world objects - server is authoritative
+            // We don't need to do anything here as the server's objects are already in the target
+
+            // 8. Mark as dirty to ensure proper rendering
+            target.setDirty(true);
+
+            GameLogger.info("Successfully merged chunk data for " + chunkPos);
+        } catch (Exception e) {
+            GameLogger.error("Error merging chunk data: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Retrieves elevation bands from a chunk, handling potential reflection if not directly accessible
+     */
+    private int[][] getElevationBands(Chunk chunk) {
+        // First attempt direct access if there's a getter
+        try {
+            // This is the preferred approach if you've added a getter method to Chunk
+            // return chunk.getElevationBands();
+
+            // If there's no getter, we'll use reflection as a fallback
+            Field elevationField = Chunk.class.getDeclaredField("elevationBands");
+            elevationField.setAccessible(true);
+            return (int[][]) elevationField.get(chunk);
+        } catch (Exception e) {
+            // Elevation bands might not exist or be accessible
+            return null;
+        }
+    }
+
+    /**
+     * Creates a deep copy of tile data to prevent cross-reference issues
+     */
+    private int[][] cloneTileData(int[][] source) {
+        if (source == null) return null;
+
+        int[][] clone = new int[source.length][];
+        for (int i = 0; i < source.length; i++) {
+            if (source[i] != null) {
+                clone[i] = source[i].clone();
+            }
+        }
+        return clone;
+    }
+
+    /**
+     * Creates a deep copy of elevation bands
+     */
+    private int[][] cloneElevationBands(int[][] source) {
+        return cloneTileData(source); // Reuse the same cloning logic
+    }
+
+    /**
+     * Merges block data between chunks, preserving client-side blocks that aren't in server data
+     */
+    private void mergeBlockData(Chunk source, Chunk target) {
+        Map<Vector2, PlaceableBlock> sourceBlocks = source.getBlocks();
+        Map<Vector2, PlaceableBlock> targetBlocks = target.getBlocks();
+
+        if (sourceBlocks == null || sourceBlocks.isEmpty()) {
+            return; // No source blocks to merge
+        }
+
+        if (targetBlocks == null) {
+            // Create blocks map if needed
+            targetBlocks = new HashMap<>();
+            target.setBlocks(targetBlocks);
+        }
+
+        // For each source block, check if it exists in target
+        for (Map.Entry<Vector2, PlaceableBlock> entry : sourceBlocks.entrySet()) {
+            Vector2 blockPos = entry.getKey();
+            PlaceableBlock sourceBlock = entry.getValue();
+
+            // Only preserve blocks that aren't in the target (server data is authoritative)
+            if (!targetBlocks.containsKey(blockPos)) {
+                // Clone the block to avoid sharing references
+                PlaceableBlock clonedBlock = cloneBlock(sourceBlock);
+                if (clonedBlock != null) {
+                    targetBlocks.put(blockPos, clonedBlock);
+                }
+            } else {
+                // Block exists in both - merge any client-specific data like chest contents
+                PlaceableBlock targetBlock = targetBlocks.get(blockPos);
+                mergeBlockProperties(sourceBlock, targetBlock);
+            }
+        }
+    }
+
+    /**
+     * Creates a clone of a PlaceableBlock with all its properties
+     */
+    private PlaceableBlock cloneBlock(PlaceableBlock source) {
+        if (source == null) return null;
+
+        try {
+            // Create a new block of the same type and position
+            PlaceableBlock clone = new PlaceableBlock(
+                source.getType(),
+                new Vector2(source.getPosition()),
+                source.getTexture(),
+                source.isFlipped()
+            );
+
+            // Copy chest data if it exists
+            if (source.getType() == PlaceableBlock.BlockType.CHEST && source.getChestData() != null) {
+                clone.setChestData(source.getChestData().copy());
+                clone.setChestOpen(source.isChestOpen());
+            }
+
+            return clone;
+        } catch (Exception e) {
+            GameLogger.error("Failed to clone block: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Merges properties from a source block to a target block
+     */
+    private void mergeBlockProperties(PlaceableBlock source, PlaceableBlock target) {
+        if (source == null || target == null || source.getType() != target.getType()) {
+            return;
+        }
+
+        // For chest blocks, we want to merge chest contents if appropriate
+        if (source.getType() == PlaceableBlock.BlockType.CHEST) {
+            // Preserve chest state and data if target doesn't have it
+            if (target.getChestData() == null && source.getChestData() != null) {
+                target.setChestData(source.getChestData().copy());
+                target.setChestOpen(source.isChestOpen());
+            }
+        }
+
+        // Set the texture if needed
+        if (target.getTexture() == null && source.getTexture() != null) {
+            target.setTexture(source.getTexture());
+        }
     }
 
     private void processBlockData(Chunk chunk, BlockSaveData.BlockData bd) {
@@ -457,34 +748,6 @@ public class World {
 
             chunk.addBlock(block);
         }
-    }
-
-    public boolean areInitialChunksLoaded() {
-        if (GameContext.get().isMultiplayer()) {
-            int playerTileX = GameContext.get().getPlayer().getTileX();
-            int playerTileY = GameContext.get().getPlayer().getTileY();
-            int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
-            int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
-            Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
-            // Require that the current chunk is fully loaded (present in chunks)
-            return chunks.containsKey(currentChunk);
-        }
-        // Otherwise (singleplayer) use the full grid
-        int playerTileX = GameContext.get().getPlayer().getTileX();
-        int playerTileY = GameContext.get().getPlayer().getTileY();
-        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
-        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
-        int totalRequired = (INITIAL_LOAD_RADIUS * 2 + 1) * (INITIAL_LOAD_RADIUS * 2 + 1);
-        int loadedChunks = 0;
-        for (int dx = -INITIAL_LOAD_RADIUS; dx <= INITIAL_LOAD_RADIUS; dx++) {
-            for (int dy = -INITIAL_LOAD_RADIUS; dy <= INITIAL_LOAD_RADIUS; dy++) {
-                Vector2 expectedKey = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                if (chunks.containsKey(expectedKey) || loadingChunks.containsKey(expectedKey)) {
-                    loadedChunks++;
-                }
-            }
-        }
-        return loadedChunks == totalRequired;
     }
 
 
@@ -519,57 +782,177 @@ public class World {
             GameLogger.info("Cleared all loaded chunks and reset initialChunksRequested flag.");
         }
     }
-
     public void loadChunksAroundPlayer() {
         Player player = GameContext.get().getPlayer();
         if (player == null) return;
 
         int playerTileX = player.getTileX();
         int playerTileY = player.getTileY();
-        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
-        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
+        int playerChunkX = Math.floorDiv(playerTileX, CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(playerTileY, CHUNK_SIZE);
 
-        for (int dx = -INITIAL_LOAD_RADIUS; dx <= INITIAL_LOAD_RADIUS; dx++) {
-            for (int dy = -INITIAL_LOAD_RADIUS; dy <= INITIAL_LOAD_RADIUS; dy++) {
-                Vector2 chunkKey = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                if (!chunks.containsKey(chunkKey)) {
-                    if (GameContext.get().isMultiplayer()) {
-                        GameContext.get().getGameClient().requestChunk(chunkKey);
-                    } else {
-                        loadChunkAsync(chunkKey);
+        // Log the player's position for debugging
+        GameLogger.info("Loading chunks around player at tile (" + playerTileX + "," + playerTileY +
+            "), chunk (" + playerChunkX + "," + playerChunkY + ")");
+
+        // Generate loading order using optimized spiral pattern
+        List<Vector2> spiralOrder = generateOptimizedSpiralOrder(playerChunkX, playerChunkY, INITIAL_LOAD_RADIUS);
+
+        // First ensure the player's current chunk is loaded first
+        Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
+        if (!chunks.containsKey(currentChunk)) {
+            if (GameContext.get().isMultiplayer()) {
+                GameLogger.info("Requesting player's current chunk at: " + currentChunk + " (PRIORITY)");
+                GameContext.get().getGameClient().requestChunk(currentChunk);
+
+                // Give a small delay to prioritize the current chunk request
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            } else {
+                loadChunkAsync(currentChunk);
+            }
+        }
+
+        // Then start loading the rest in spiral order
+        int requestCount = 0;
+        for (Vector2 chunkKey : spiralOrder) {
+            if (!chunks.containsKey(chunkKey)) {
+                if (GameContext.get().isMultiplayer()) {
+                    GameLogger.info("Requesting chunk at: " + chunkKey);
+                    GameContext.get().getGameClient().requestChunk(chunkKey);
+
+                    // Limit request rate to prevent network flooding
+                    requestCount++;
+                    if (requestCount % 3 == 0) {
+                        try {
+                            Thread.sleep(30);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                     }
-                    GameLogger.info("Requested chunk at: " + chunkKey);
+                } else {
+                    loadChunkAsync(chunkKey);
                 }
             }
         }
     }
 
+    /**
+     * Generates an optimized spiral loading order that prioritizes the closest chunks
+     * but still follows a spiral pattern for aesthetic loading
+     */
+    private List<Vector2> generateOptimizedSpiralOrder(int centerX, int centerY, int radius) {
+        List<Vector2> order = new ArrayList<>();
+
+        // Start at center and spiral outward
+        int x = 0, y = 0, dx = 0, dy = -1;
+        int maxSteps = (2 * radius + 1) * (2 * radius + 1);
+        int steps = 0;
+
+        while (steps < maxSteps) {
+            if ((-radius <= x && x <= radius) && (-radius <= y && y <= radius)) {
+                order.add(new Vector2(centerX + x, centerY + y));
+                steps++;
+            }
+
+            // Classic spiral algorithm
+            if (x == y || (x < 0 && x == -y) || (x > 0 && x == 1 - y)) {
+                int temp = dx;
+                dx = -dy;
+                dy = temp;
+            }
+            x += dx;
+            y += dy;
+        }
+
+        // Remove the center point as we'll load it separately
+        order.removeIf(v -> v.x == centerX && v.y == centerY);
+
+        // Sort by Manhattan distance from center for better loading priority
+        order.sort((a, b) -> {
+            float distA = Math.abs(a.x - centerX) + Math.abs(a.y - centerY);
+            float distB = Math.abs(b.x - centerX) + Math.abs(b.y - centerY);
+            return Float.compare(distA, distB);
+        });
+
+        return order;
+    }
+
+    /**
+     * Forces loading of missing chunks in the area around the player
+     * with intelligent prioritization and error recovery
+     */
     public void forceLoadMissingChunks() {
         GameLogger.info("Forcing load of any missing chunks...");
-        int loaded = 0;
         Player player = GameContext.get().getPlayer();
         if (player == null) return;
+
         int playerChunkX = Math.floorDiv(player.getTileX(), Chunk.CHUNK_SIZE);
         int playerChunkY = Math.floorDiv(player.getTileY(), Chunk.CHUNK_SIZE);
+        Vector2 playerChunkPos = new Vector2(playerChunkX, playerChunkY);
 
+        // Collect all chunks that need loading
+        List<Vector2> missingChunks = new ArrayList<>();
         for (int dx = -INITIAL_LOAD_RADIUS; dx <= INITIAL_LOAD_RADIUS; dx++) {
             for (int dy = -INITIAL_LOAD_RADIUS; dy <= INITIAL_LOAD_RADIUS; dy++) {
                 Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
                 if (!chunks.containsKey(chunkPos)) {
-                    try {
-                        if (GameContext.get().isMultiplayer()) {
-                            GameContext.get().getGameClient().requestChunk(chunkPos);
-                        } else {
-                            loadChunkAsync(chunkPos);
-                        }
-                    } catch (Exception e) {
-                        GameLogger.error("Failed to force load chunk at " + chunkPos + ": " + e.getMessage());
-                    }
+                    missingChunks.add(chunkPos);
                 }
             }
         }
-        GameLogger.info("Force loaded " + loaded + " missing chunks");
+
+        // Sort by distance to player for priority loading
+        missingChunks.sort((a, b) -> {
+            float distA = Vector2.dst(a.x, a.y, playerChunkPos.x, playerChunkPos.y);
+            float distB = Vector2.dst(b.x, b.y, playerChunkPos.x, playerChunkPos.y);
+            return Float.compare(distA, distB);
+        });
+
+        // First make sure the player's immediate chunk is loaded
+        if (!chunks.containsKey(playerChunkPos)) {
+            Chunk playerChunk = loadOrGenerateChunk(playerChunkPos);
+            if (playerChunk != null) {
+                chunks.put(playerChunkPos, playerChunk);
+                GameLogger.info("Force-loaded player's current chunk " + playerChunkPos);
+            }
+        }
+
+        // Then load a limited number of missing chunks per frame
+        final int MAX_CHUNKS_PER_SYNC = 4;
+        int loadedThisFrame = 0;
+        Iterator<Vector2> iter = missingChunks.iterator();
+
+        while (iter.hasNext() && loadedThisFrame < MAX_CHUNKS_PER_SYNC) {
+            Vector2 chunkPos = iter.next();
+            // Skip player's chunk as we already handled it
+            if (chunkPos.equals(playerChunkPos)) continue;
+
+            try {
+                Chunk chunk;
+                if (GameContext.get().isMultiplayer()) {
+                    // In multiplayer, we request from server and continue
+                    GameContext.get().getGameClient().requestChunk(chunkPos);
+                    GameLogger.info("Requested missing chunk " + chunkPos + " from server");
+                } else {
+                    // In singleplayer, we load/generate synchronously
+                    chunk = loadOrGenerateChunk(chunkPos);
+                    if (chunk != null) {
+                        chunks.put(chunkPos, chunk);
+                        loadedThisFrame++;
+                        GameLogger.info("Force-loaded chunk " + chunkPos);
+                    }
+                }
+            } catch (Exception e) {
+                GameLogger.error("Failed to force-load chunk " + chunkPos + ": " + e.getMessage());
+            }
+        }
     }
+
+
 
     public WildPokemon getNearestInteractablePokemon(Player player) {
         // Convert player position to pixels
@@ -618,39 +1001,43 @@ public class World {
         return blockManager;
     }
 
+
     public void save() {
         if (isMultiplayerOperation()) {
             return;
         }
 
-        try {
-            if (GameContext.get().getPlayer() != null) {
-                PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
-                currentState.updateFromPlayer(GameContext.get().getPlayer());
-                worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
-            }
+            try {
+                GameLogger.info("Saving world data for '" + name + "'...");
 
-            // Only save dirty chunks in singleplayer
-            if (!isMultiplayerOperation()) {
+                // Update and save player data into the world data object
+                if (GameContext.get().getPlayer() != null) {
+                    PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
+                    currentState.updateFromPlayer(GameContext.get().getPlayer());
+                    worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
+                }
+
+                // Save all dirty chunks
                 for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
                     if (entry.getValue().isDirty()) {
                         saveChunkData(entry.getKey(), entry.getValue());
+                        entry.getValue().setDirty(false); // Mark as clean after saving
                     }
                 }
-            }
 
-            worldData.setLastPlayed(System.currentTimeMillis());
-            worldData.setDirty(true);
-
-            if (!isMultiplayerOperation()) {
+                // Update last played time and save the main world file
+                worldData.setLastPlayed(System.currentTimeMillis());
+                worldData.setDirty(true);
                 WorldManager.getInstance().saveWorld(worldData);
-            }
 
-        } catch (Exception e) {
-            GameLogger.error("Failed to save world: " + name + " - " + e.getMessage());
-            e.printStackTrace();
-        }
+                GameLogger.info("Successfully saved world: " + name);
+
+            } catch (Exception e) {
+                GameLogger.error("Failed to save world '" + name + "': " + e.getMessage());
+                e.printStackTrace();
+            }
     }
+
 
     public void dispose() {
         try {
@@ -833,55 +1220,6 @@ public class World {
         }
     }
 
-
-    public World(String name, long seed) {
-        try {
-            GameLogger.info("Initializing singleplayer world: " + name);
-            this.name = name;
-            this.itemEntityManager = new ItemEntityManager();
-            this.worldSeed = seed;
-
-            this.worldData = new WorldData(name);
-            WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
-            this.worldData.setConfig(config);
-            // Initialize basic managers
-            this.blockManager = new BlockManager();
-            this.biomeRenderer = new BiomeRenderer();
-
-            footstepEffectManager = new FootstepEffectManager();
-            this.chunks = new ConcurrentHashMap<>();
-            this.loadingChunks = new ConcurrentHashMap<>();
-
-            WorldData existingData = JsonConfig.loadWorldData(name);
-            if (existingData != null) {
-                GameLogger.info("Found existing world data for: " + name);
-                this.worldData = existingData;
-                loadChunksFromWorldData();
-                if (worldData != null && worldData.getBlockData() != null) {
-                    migrateBlocksToChunks();
-                }
-            }
-
-            this.weatherSystem = new WeatherSystem();
-            this.weatherAudioSystem = new WeatherAudioSystem(AudioManager.getInstance());
-            this.objectManager = new WorldObject.WorldObjectManager(worldSeed);
-            this.pokemonSpawnManager = new PokemonSpawnManager(TextureManager.pokemonoverworld);
-
-            footstepEffectManager = new FootstepEffectManager();
-            // Generate initial chunks if needed
-            if (chunks.isEmpty()) {
-                initializeChunksAroundOrigin();
-            }
-
-        } catch (Exception e) {
-            GameLogger.error("Failed to initialize singleplayer world: " + e.getMessage());
-            throw new RuntimeException("World initialization failed", e);
-        }
-        this.waterEffectManager = new WaterEffectManager();
-
-        waterEffects = new WaterEffectsRenderer();
-    }
-
     private Chunk loadChunkData(Vector2 chunkPos) {
         if (GameContext.get().isMultiplayer()) {
             return null;
@@ -930,7 +1268,7 @@ public class World {
                         // Create the PlaceableBlock instance without texture
                         PlaceableBlock block = new PlaceableBlock(blockType, pos, null, blockDataItem.isFlipped);
 
-                        // Set isChestOpen
+                        // Set isChestOpen for chests
                         if (blockType == PlaceableBlock.BlockType.CHEST) {
                             block.setChestOpen(blockDataItem.isChestOpen);
 
@@ -1119,21 +1457,47 @@ public class World {
         return GameContext.get().getBiomeManager();
     }
 
+
     public Biome getBiomeAt(int tileX, int tileY) {
-        // In multiplayer, try to get biome from the chunk.
-        if (GameContext.get().isMultiplayer()) {
-            int chunkX = tileX / Chunk.CHUNK_SIZE;
-            int chunkY = tileY / Chunk.CHUNK_SIZE;
-            Vector2 chunkKey = new Vector2(chunkX, chunkY);
-            Chunk chunk = chunks.get(chunkKey);
-            if (chunk != null) return chunk.getBiome();
+        int chunkX = Math.floorDiv(tileX, CHUNK_SIZE);
+        int chunkY = Math.floorDiv(tileY, CHUNK_SIZE);
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+        // 1. Check stored transitions first (most authoritative for MP)
+        BiomeTransitionResult storedTransition = biomeTransitions.get(chunkPos);
+        if (storedTransition != null && storedTransition.getPrimaryBiome() != null) {
+            return storedTransition.getPrimaryBiome();
         }
-        // Otherwise use the biome manager (note: tile coordinates converted to world pixels).
-        float worldX = tileX * TILE_SIZE;
-        float worldY = tileY * TILE_SIZE;
-        BiomeTransitionResult btr = GameContext.get().getBiomeManager().getBiomeAt(worldX, worldY);
-        return btr.getPrimaryBiome();
+
+        // 2. Check the chunk's assigned biome (useful for SP or if transition data missing)
+        Chunk chunk = chunks.get(chunkPos);
+        if (chunk != null && chunk.getBiome() != null) {
+            // Optional: Store this as a transition if not already stored
+            if (!biomeTransitions.containsKey(chunkPos)) {
+                storeBiomeTransition(chunkPos, new BiomeTransitionResult(chunk.getBiome(), null, 1f));
+            }
+            return chunk.getBiome();
+        }
+
+        // 3. Fallback to BiomeManager calculation (less reliable for MP consistency)
+        // GameLogger.info("Falling back to BiomeManager for biome at tile: " + tileX + "," + tileY); // Add logging
+        BiomeManager bm = GameContext.get().getBiomeManager();
+        if (bm != null) {
+            BiomeTransitionResult calculatedResult = bm.getBiomeAtTile(tileX, tileY); // Use tile-based query
+            if (calculatedResult != null && calculatedResult.getPrimaryBiome() != null) {
+                // Store the calculated result for future queries on this chunk
+                storeBiomeTransition(chunkPos, calculatedResult);
+                return calculatedResult.getPrimaryBiome();
+            }
+        }
+
+        // 4. Absolute fallback
+        // GameLogger.error("Absolute fallback to PLAINS biome for tile: " + tileX + "," + tileY); // Add logging
+        return GameContext.get().getBiomeManager() != null
+            ? GameContext.get().getBiomeManager().getBiome(BiomeType.PLAINS)
+            : null; // Or handle null case appropriately
     }
+
 
 
     private void initializeChunksAroundOrigin() {
@@ -1161,16 +1525,42 @@ public class World {
     }
 
     public Chunk loadOrGenerateChunk(Vector2 chunkPos) {
+        // If we're in multiplayer, try to get the chunk from the server.
+        // But if after a timeout no chunk is available in our local chunks map,
+        // generate it locally as a fallback.
         if (GameContext.get().isMultiplayer()) {
+            // First, check if a chunk was already received from the server.
+            if (chunks.containsKey(chunkPos)) {
+                return chunks.get(chunkPos);
+            }
+            // If not, check if enough time has passed since the initial chunk request.
+            // (initialChunkRequestTime is recorded when requestInitialChunks() is called.)
+            if (System.currentTimeMillis() - initialChunkRequestTime > 5000) {
+                GameLogger.info("Fallback: generating chunk locally for " + chunkPos + " in multiplayer mode.");
+                Chunk generated = UnifiedWorldGenerator.generateChunk(
+                    (int) chunkPos.x,
+                    (int) chunkPos.y,
+                    this.worldSeed,
+                    GameContext.get().getBiomeManager()
+                );
+                getObjectManager().setObjectsForChunk(chunkPos, generated.getWorldObjects());
+                // Save the chunk locally so that future loads will get it.
+                saveChunkData(chunkPos, generated);
+                // Also add it to our local chunks map
+                chunks.put(chunkPos, generated);
+                return generated;
+            }
+            // Otherwise, request the chunk from the server and return null for now.
             GameContext.get().getGameClient().requestChunk(chunkPos);
             return null;
         }
-        // Step A: try to load from disk
+
+        // Singleplayer: try to load from disk first...
         Chunk loaded = loadChunkData(chunkPos);
         if (isChunkValid(loaded)) {
             return loaded;
         }
-        // Step B: If not found or invalid, generate from scratch
+        // ...and if that fails, generate it.
         Chunk generated = UnifiedWorldGenerator.generateChunk(
             (int) chunkPos.x,
             (int) chunkPos.y,
@@ -1178,9 +1568,34 @@ public class World {
             GameContext.get().getBiomeManager()
         );
         getObjectManager().setObjectsForChunk(chunkPos, generated.getWorldObjects());
-        // Then save it so next time we won't re-generate
         saveChunkData(chunkPos, generated);
         return generated;
+    }
+
+    public void requestInitialChunks() {
+        if (GameContext.get().isMultiplayer()) {
+            if (initialChunksRequested) {
+                return;
+            }
+            initialChunksRequested = true;
+        }
+        // Record the time at which we began requesting initial chunks.
+        initialChunkRequestTime = System.currentTimeMillis();
+
+        int playerTileX = GameContext.get().getPlayer().getTileX();
+        int playerTileY = GameContext.get().getPlayer().getTileY();
+        int playerChunkX = Math.floorDiv(playerTileX, CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(playerTileY, CHUNK_SIZE);
+        List<Vector2> chunkOrder = generateSpiralChunkOrder(playerChunkX, playerChunkY, INITIAL_LOAD_RADIUS);
+        for (Vector2 chunkPos : chunkOrder) {
+            if (!chunks.containsKey(chunkPos)) {
+                if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
+                    GameContext.get().getGameClient().requestChunk(chunkPos);
+                } else {
+                    loadChunkAsync(chunkPos);
+                }
+            }
+        }
     }
 
 
@@ -1229,96 +1644,175 @@ public class World {
         }
     }
 
-
     public void loadChunkAsync(final Vector2 chunkPos) {
-        if (isDisposed) return;
-        // If we are already loading this chunk, skip
+        loadChunkAsyncWithRetry(chunkPos, 0);
+    }
+
+    private void loadChunkAsyncWithRetry(final Vector2 chunkPos, int retryCount) {
+        if (isDisposed || (chunkLoadExecutor != null && chunkLoadExecutor.isShutdown())) {
+            return;
+        }
         if (loadingChunks.containsKey(chunkPos)) return;
 
-        // Mark the chunk as "in progress" (store a placeholder future)
+        // Mark this chunk as being loaded
         loadingChunks.put(chunkPos, CompletableFuture.completedFuture(null));
 
-        // Offload heavy generation to our dedicated executor
-        CompletableFuture.supplyAsync(() -> {
-                // This heavy work (noise calls, island checks, auto–tiling, etc.) runs off the main thread
-                return loadOrGenerateChunk(chunkPos);
-            }, chunkLoadExecutor)
-            .thenApply(chunk -> {
-                // If the chunk is not valid (e.g. noise returned bad values), try regenerating it
-                if (chunk != null && !isChunkValid(chunk)) {
-                    chunk = loadOrGenerateChunk(chunkPos);
-                }
-                return chunk;
-            })
-            .thenAccept(chunk -> {
-                // Post the update to the main LibGDX thread
-                Gdx.app.postRunnable(() -> {
-                    if (chunk != null) {
-                        chunks.put(chunkPos, chunk);
+        try {
+            CompletableFuture.supplyAsync(() -> {
+                    // Heavy work: load or generate the chunk.
+                    return loadOrGenerateChunk(chunkPos);
+                }, chunkLoadExecutor)
+                .thenApply(chunk -> {
+                    // If chunk is invalid or null, check if we can retry.
+                    if (chunk == null || !isChunkValid(chunk)) {
+                        if (retryCount < MAX_CHUNK_RETRY) {
+                            throw new RuntimeException("Chunk invalid on retry " + retryCount);
+                        } else {
+                            // Last resort: generate synchronously.
+                            return loadOrGenerateChunk(chunkPos);
+                        }
                     }
-                    // Remove from the loading map so we can try again if needed.
+                    return chunk;
+                })
+                .thenAccept(chunk -> {
+                    // Enqueue the loaded chunk for integration on the main thread.
+                    Gdx.app.postRunnable(() -> {
+                        if (chunk != null) {
+                            integrationQueue.add(new AbstractMap.SimpleEntry<>(chunkPos, chunk));
+                        }
+                        loadingChunks.remove(chunkPos);
+                    });
+                })
+                .exceptionally(ex -> {
+                    GameLogger.error("Error loading chunk at " + chunkPos + " on retry " + retryCount + ": " + ex.getMessage());
                     loadingChunks.remove(chunkPos);
+                    if (retryCount < MAX_CHUNK_RETRY) {
+                        // Schedule a retry after a short delay.
+                        Gdx.app.postRunnable(() -> loadChunkAsyncWithRetry(chunkPos, retryCount + 1));
+                    } else {
+                        // Final fallback: perform synchronous load.
+                        Gdx.app.postRunnable(() -> {
+                            Chunk chunk = loadOrGenerateChunk(chunkPos);
+                            if (chunk != null) {
+                                integrationQueue.add(new AbstractMap.SimpleEntry<>(chunkPos, chunk));
+                            }
+                        });
+                    }
+                    return null;
                 });
-            })
-            .exceptionally(ex -> {
-                GameLogger.error("Error in asynchronous chunk load for " + chunkPos + ": " + ex.getMessage());
-                loadingChunks.remove(chunkPos);
-                return null;
-            });
+        } catch (RejectedExecutionException e) {
+            GameLogger.error("Rejected execution for chunk " + chunkPos + ": " + e.getMessage());
+            loadingChunks.remove(chunkPos);
+        }
     }
+    // --- In your World class ---
+
+    // 1. Modify getChunkAtPosition() to force a synchronous load if needed.
+    public Chunk getChunkAtPosition(float x, float y) {
+        int chunkX = Math.floorDiv((int) x, Chunk.CHUNK_SIZE);
+        int chunkY = Math.floorDiv((int) y, Chunk.CHUNK_SIZE);
+        Vector2 pos = new Vector2(chunkX, chunkY);
+        Chunk chunk = chunks.get(pos);
+
+        if (chunk == null) {
+            // In singleplayer, load the chunk synchronously
+            chunk = loadOrGenerateChunk(pos);
+            if (chunk != null) {
+                chunks.put(pos, chunk);
+            }
+        } else if (!isChunkValid(chunk)) {
+            // If the chunk exists but is invalid, regenerate it synchronously.
+            chunk = loadOrGenerateChunk(pos);
+            if (chunk != null) {
+                chunks.put(pos, chunk);
+            }
+        }
+        return chunk;
+    }
+
+    public boolean areInitialChunksLoaded() {
+        int playerTileX = GameContext.get().getPlayer().getTileX();
+        int playerTileY = GameContext.get().getPlayer().getTileY();
+        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
+        Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
+        return chunks.containsKey(currentChunk);
+    }
+
+
     public void update(float delta, Vector2 playerPosition, float viewportWidth, float viewportHeight, GameScreen gameScreen) {
         if (isDisposed) {
             return;
         }
+
+        // Integrate a limited number of newly loaded chunks each frame
+        int integratedThisFrame = 0;
+        while (!integrationQueue.isEmpty() && integratedThisFrame < MAX_CHUNKS_INTEGRATED_PER_FRAME) {
+            Map.Entry<Vector2, Chunk> entry = integrationQueue.poll();
+            if (entry != null && entry.getValue() != null) {
+                chunks.put(entry.getKey(), entry.getValue());
+            }
+            integratedThisFrame++;
+        }
+
         validateChunkState();
         itemEntityManager.update(delta);
 
-        // Request initial chunks if needed.
-        if (GameContext.get().isMultiplayer()) {
-            if (!initialChunksRequested) {
+        if (!GameContext.get().isMultiplayer() && !isPlayerChunkLoaded()) {
+            if (initialChunkRequestTime == 0) {
                 requestInitialChunks();
-                return;
             }
-        } else {
-            if (!areInitialChunksLoaded()) {
-                requestInitialChunks();
-                return;
+            // After 5 seconds, force-load the player’s current chunk synchronously.
+            if (System.currentTimeMillis() - initialChunkRequestTime > 5000) {
+                GameLogger.info("Forcing synchronous load for player's current chunk");
+                int playerTileX = GameContext.get().getPlayer().getTileX();
+                int playerTileY = GameContext.get().getPlayer().getTileY();
+                int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
+                int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
+                Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
+                Chunk chunk = loadOrGenerateChunk(currentChunk);
+                if (chunk != null) {
+                    chunks.put(currentChunk, chunk);
+                }
             }
         }
 
+
+        // Update world time and color transitions
         if (worldData != null) {
-            // Update world time (you might throttle this further if needed)
             worldData.updateTime(delta);
         }
         updateWorldColor();
 
-        // Throttle light level updates: update only every 2 seconds instead of every frame.
+        // Throttle light level updates
         lightLevelUpdateTimer += delta;
         if (lightLevelUpdateTimer >= 2.0f) {
             updateLightLevels();
             lightLevelUpdateTimer = 0f;
         }
 
-        // Weather updates – you may also throttle these if desired.
+        // Weather and footstep updates
         updateWeather(delta, playerPosition, gameScreen);
         footstepEffectManager.update(delta);
 
-        // Throttle chunk management: update every 0.2 seconds instead of every 0.1 sec.
+        // Manage chunk loading/unloading every 0.2s
         manageChunksTimer += delta;
         if (manageChunksTimer >= 0.2f) {
-            int currentChunkX = GameContext.get().getPlayer().getTileX() / Chunk.CHUNK_SIZE;
-            int currentChunkY = GameContext.get().getPlayer().getTileY() / Chunk.CHUNK_SIZE;
+            int currentChunkX = GameContext.get().getPlayer().getTileX() / CHUNK_SIZE;
+            int currentChunkY = GameContext.get().getPlayer().getTileY() / CHUNK_SIZE;
             manageChunks(currentChunkX, currentChunkY);
             manageChunksTimer = 0f;
         }
+
         waterEffectManager.update(delta);
 
+        // Optional water ripple effect…
         int playerTileX = (int) playerPosition.x;
         int playerTileY = (int) playerPosition.y;
         Chunk currentChunk = getChunkAtPosition(playerTileX, playerTileY);
         if (currentChunk != null) {
-            int localX = Math.floorMod(playerTileX, Chunk.CHUNK_SIZE);
-            int localY = Math.floorMod(playerTileY, Chunk.CHUNK_SIZE);
+            int localX = Math.floorMod(playerTileX, CHUNK_SIZE);
+            int localY = Math.floorMod(playerTileY, CHUNK_SIZE);
             if (TileType.isWaterPuddle(currentChunk.getTileType(localX, localY))) {
                 if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().isMoving()) {
                     waterEffectManager.createRipple(
@@ -1328,8 +1822,25 @@ public class World {
                 }
             }
         }
+
+        // Update other game systems
         updateGameSystems(delta, playerPosition);
     }
+
+    public boolean isPlayerChunkLoaded() {
+        int playerTileX = GameContext.get().getPlayer().getTileX();
+        int playerTileY = GameContext.get().getPlayer().getTileY();
+        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
+        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
+        Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
+        return chunks.containsKey(currentChunk);
+    }
+
+    public long getInitialChunkRequestTime() {
+        return initialChunkRequestTime;
+    }
+
+
 
     public void updateGameSystems(float delta, Vector2 playerPosition) {
         BiomeTransitionResult currentBiomeTransition = GameContext.get().getBiomeManager().getBiomeAt(playerPosition.x * TILE_SIZE, playerPosition.y * TILE_SIZE);
@@ -1346,6 +1857,7 @@ public class World {
         objectManager.update(chunks);
         checkPlayerInteractions(playerPosition);
     }// --- Modified manageChunks method in World.java ---
+
     private void manageChunks(int playerChunkX, int playerChunkY) {
         int loadRadius = INITIAL_LOAD_RADIUS + 1;
         PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(
@@ -1382,15 +1894,20 @@ public class World {
         unloadDistantChunks(playerChunkX, playerChunkY);
     }
 
+    private void renderLoadingOverlay(SpriteBatch batch) {
+        // Here you can also draw a semi-transparent rectangle background if desired.
+        loadingFont.draw(batch, "Loading world...", Gdx.graphics.getWidth() / 2f - 50, Gdx.graphics.getHeight() / 2f);
 
+    }
 
     public PokemonSpawnManager getPokemonSpawnManager() {
         return pokemonSpawnManager;
     }
 
     public void render(SpriteBatch batch, Rectangle viewBounds, Player player) {
+
         if (chunks.isEmpty()) {
-            GameLogger.error("No chunks available for rendering!");
+            renderLoadingOverlay(batch);
             return;
         }
         Color originalColor = batch.getColor().cpy();
@@ -1425,9 +1942,8 @@ public class World {
 
             // === RENDER PASS 3: Characters and Mid-Layer Objects ===
             renderMidLayer(batch, player, expandedBounds);
-            renderTallGrassOverlayForPlayer(batch, player);
             // === RENDER PASS 4: High Objects and Tree Tops ===
-
+            renderHighObjects(batch,expandedBounds);
             // === RENDER PASS 5: Effects and Overlays ===
             //            weatherSystem.render(batch, gameScreen.getCamera());
 
@@ -1449,8 +1965,9 @@ public class World {
     }
 
     public void render(SpriteBatch batch, Rectangle viewBounds, Player player, GameScreen gameScreen) {
+        if (isDisposed) return;
         if (chunks.isEmpty()) {
-            GameLogger.error("No chunks available for rendering!");
+            renderLoadingOverlay(batch); // Keep your loading screen logic
             return;
         }
 
@@ -1461,59 +1978,121 @@ public class World {
             if (currentWorldColor != null) {
                 batch.setColor(currentWorldColor);
             }
+
+            // --- PASS 1: Base Terrain and Ground-level effects ---
             Rectangle expandedBounds = getExpandedViewBounds(viewBounds);
             List<Map.Entry<Vector2, Chunk>> sortedChunks = getSortedChunks();
-
-            sortedChunks.sort(Comparator.comparingDouble(entry -> entry.getKey().y));
-
             renderTerrainLayer(batch, sortedChunks, expandedBounds);
-
             if (blockManager != null) {
                 blockManager.render(batch, worldData.getWorldTimeInMinutes());
             }
-
             itemEntityManager.render(batch);
-            // **Render Objects Behind Player**
-            renderLowObjects(batch, expandedBounds);
-
-            // **Render Wild Pokémon Behind Player**
-            // **Render Bottom Part of Tall Grass Over Player**
-//            renderTallGrassOverPlayer(batch, playerTileX, playerTileY);
-
             footstepEffectManager.render(batch);
-            renderMidLayer(batch, player, expandedBounds);
-            renderTallGrassOverlayForPlayer(batch, player);
 
-            // **Render Water Effects (e.g., puddle splashes)**
-            if (waterEffects != null && waterEffects.isInitialized()) {
-                waterEffects.update(Gdx.graphics.getDeltaTime());
-                waterEffects.render(batch, player, this);
-            }
+            // --- PASS 2: Collect, Sort, and Render All Entities ---
+            renderSortedEntities(batch, player, expandedBounds);
 
-            // **Render High Objects (Trees, etc.)**
-            renderHighObjects(batch, expandedBounds);
-
-            // **Render Weather Effects, Water Effects, etc.**
+            // --- PASS 3: Overlays and Weather Effects ---
             if (weatherSystem != null && gameScreen != null) {
                 weatherSystem.render(batch, gameScreen.getCamera());
             }
-
             if (weatherAudioSystem != null) {
                 weatherAudioSystem.renderLightningEffect(batch, viewBounds.width, viewBounds.height);
             }
-            Rectangle worldBorderRect = new Rectangle(-HALF_WORLD_SIZE, -HALF_WORLD_SIZE, WORLD_SIZE, WORLD_SIZE);
-            // If the camera’s view bounds (or expanded bounds) overlap the border,
-            // then render it.
-            if (viewBounds.overlaps(worldBorderRect)) {
-                // IMPORTANT: Do not mix SpriteBatch and ShapeRenderer without ending one.
-                // Here we create and dispose a ShapeRenderer. In production you’d probably want to cache it.
-                if (viewBounds.overlaps(worldBorderRect)) {
-                    renderWorldBorderWithBatch(batch, gameScreen.getCamera());
-                }
-            }
+            // renderWorldBorderWithBatch is fine if you need it
+            renderWorldBorderWithBatch(batch, gameScreen.getCamera());
+
         } finally {
             batch.setColor(originalColor);
         }
+    }
+
+// In src/main/java/io/github/pokemeetup/system/gameplay/overworld/World.java
+
+    private void renderSortedEntities(SpriteBatch batch, Player player, Rectangle expandedBounds) {
+        List<RenderableEntity> renderQueue = new ArrayList<>();
+
+        // 1. Collect all entities into the render queue
+        renderQueue.add(new RenderableEntity(player, player.getY(), RenderableType.PLAYER));
+
+        if (GameContext.get().isMultiplayer()) {
+            for (OtherPlayer other : GameContext.get().getGameClient().getOtherPlayers().values()) {
+                if (expandedBounds.contains(other.getX(), other.getY())) {
+                    renderQueue.add(new RenderableEntity(other, other.getY(), RenderableType.OTHER_PLAYER));
+                }
+            }
+        }
+
+        for (WildPokemon pokemon : pokemonSpawnManager.getAllWildPokemon()) {
+            if (expandedBounds.contains(pokemon.getX(), pokemon.getY())) {
+                renderQueue.add(new RenderableEntity(pokemon, pokemon.getY(), RenderableType.WILD_POKEMON));
+            }
+        }
+
+        for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
+            if (isChunkVisible(entry.getKey(), expandedBounds)) {
+                for (WorldObject obj : objectManager.getObjectsForChunk(entry.getKey())) {
+                    if (isTreeObject(obj)) {
+                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.TREE_BASE));
+                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.TREE_TOP));
+                    } else if (isTallGrassType(obj.getType())) {
+                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
+                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.TALL_GRASS_TOP));
+                    } else {
+                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
+                    }
+                }
+            }
+        }
+
+        // 2. Sort the entire queue
+        Collections.sort(renderQueue);
+
+        // 3. Render entities from the sorted queue
+        for (RenderableEntity item : renderQueue) {
+            switch (item.type) {
+                case PLAYER:
+                    ((Player) item.entity).render(batch);
+                    if (waterEffects != null) waterEffects.render(batch, (Player)item.entity, this);
+                    break;
+                case OTHER_PLAYER:
+                    ((OtherPlayer) item.entity).render(batch);
+                    if (waterEffectsRendererForOthers != null) waterEffectsRendererForOthers.render(batch, (OtherPlayer)item.entity, this);
+                    break;
+                case WILD_POKEMON:
+                    ((WildPokemon) item.entity).render(batch);
+                    if (waterEffectsRendererForOthers != null) waterEffectsRendererForOthers.render(batch, (WildPokemon)item.entity, this);
+                    break;
+                case TREE_BASE:
+                    objectManager.renderTreeBase(batch, (WorldObject) item.entity, this);
+                    break;
+                case WORLD_OBJECT:
+                    WorldObject obj = (WorldObject) item.entity;
+                    if (isTallGrassType(obj.getType())) {
+                        renderTallGrassUpperHalf(batch, Collections.singletonList(obj));
+                    } else {
+                        objectManager.renderObject(batch, obj, this);
+                    }
+                    break;
+                case TREE_TOP:
+                    objectManager.renderTreeTop(batch, (WorldObject) item.entity, this);
+                    break;
+                case TALL_GRASS_TOP:
+                    renderTallGrassLowerHalf(batch, Collections.singletonList((WorldObject)item.entity));
+                    break;
+            }
+        }
+    }
+    private boolean isTallGrassType(WorldObject.ObjectType type) {
+        return type == WorldObject.ObjectType.TALL_GRASS ||
+            type == WorldObject.ObjectType.FOREST_TALL_GRASS ||
+            type == WorldObject.ObjectType.RAIN_FOREST_TALL_GRASS ||
+            type == WorldObject.ObjectType.SNOW_TALL_GRASS ||
+            type == WorldObject.ObjectType.TALL_GRASS_2 ||
+            type == WorldObject.ObjectType.TALL_GRASS_3 ||
+            type == WorldObject.ObjectType.RUINS_TALL_GRASS ||
+            type == WorldObject.ObjectType.DESERT_TALL_GRASS ||
+            type == WorldObject.ObjectType.HAUNTED_TALL_GRASS;
     }
     public void updateLightLevels() {
         lightLevelMap.clear();
@@ -1715,6 +2294,7 @@ public class World {
         return obj.getType() == WorldObject.ObjectType.TREE_0 || obj.getType() == WorldObject.ObjectType.TREE_1 || obj.getType() == WorldObject.ObjectType.SNOW_TREE || obj.getType() == WorldObject.ObjectType.HAUNTED_TREE || obj.getType() == WorldObject.ObjectType.RAIN_TREE || obj.getType() == WorldObject.ObjectType.RUINS_TREE || obj.getType() == WorldObject.ObjectType.APRICORN_TREE || obj.getType() == WorldObject.ObjectType.BEACH_TREE || obj.getType() == WorldObject.ObjectType.CHERRY_TREE;
     }
 
+
     private void renderMidLayer(SpriteBatch batch, Player player, Rectangle expandedBounds) {
         List<ObjectWithYPosition> behindPlayerQueue = new ArrayList<>();
         List<ObjectWithYPosition> frontPlayerQueue = new ArrayList<>();
@@ -1760,18 +2340,56 @@ public class World {
         if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
             renderOtherPlayers(GameContext.get().getBatch(), expandedBounds);
         }
-        player.render(batch);
-        batch.setColor(originalColor);
+        List<WorldObject> tallGrass = getTallGrassObjects();
 
-        // Render tree tops above the player:
-        for (ObjectWithYPosition item : frontPlayerQueue) {
-            if (item.renderType == RenderType.TREE_TOP) {
-                objectManager.renderTreeTop(batch, (WorldObject) item.object, this);
+// -------------------
+// PASS A: Draw behind
+// -------------------
+        for (WorldObject grass : tallGrass) {
+            boolean sameTile = (grass.getTileX() == player.getTileX()
+                && grass.getTileY() == player.getTileY());
+            if (sameTile) {
+                // Player is in the same tile => draw ONLY the top half behind the player
+                renderTallGrassUpperHalf(batch, Collections.singletonList(grass));
+            } else {
+                // Player is not in this tile => draw the entire grass tile behind
+                renderTallGrassUpperHalf(batch, Collections.singletonList(grass));
+                renderTallGrassLowerHalf(batch, Collections.singletonList(grass));
             }
         }
+
+// Always render the player once, no matter what
+        player.render(batch);
+
+// ---------------------
+// PASS B: Draw in front
+// ---------------------
+        for (WorldObject grass : tallGrass) {
+            boolean sameTile = (grass.getTileX() == player.getTileX()
+                && grass.getTileY() == player.getTileY());
+            if (sameTile) {
+                // Draw bottom half in front of the player
+                renderTallGrassLowerHalf(batch, Collections.singletonList(grass));
+            }
+        }
+
         batch.setColor(originalColor);
 
         // Now, render wild Pokémon in their own pass (if needed):
+    }
+
+    List<WorldObject> getTallGrassObjects() {
+        List<WorldObject> tallGrass = new ArrayList<>();
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.TALL_GRASS));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.TALL_GRASS_2));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.TALL_GRASS_3));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.FOREST_TALL_GRASS));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.RAIN_FOREST_TALL_GRASS));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.HAUNTED_TALL_GRASS));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.DESERT_TALL_GRASS));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.SNOW_TALL_GRASS));
+        tallGrass.addAll(objectManager.getObjectsForChunkType(WorldObject.ObjectType.RUINS_TALL_GRASS));
+        return tallGrass;
     }
 
 
@@ -1925,7 +2543,7 @@ public class World {
         return GameContext.get().getGameClient();
     }
 
-    private boolean isPositionLoaded(int worldX, int worldY) {
+    boolean isPositionLoaded(int worldX, int worldY) {
         int chunkX = Math.floorDiv(worldX, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv(worldY, Chunk.CHUNK_SIZE);
         return chunks.containsKey(new Vector2(chunkX, chunkY));
@@ -2014,6 +2632,7 @@ public class World {
         }
     }
 
+
     public void initializeFromServer(long seed, double worldTimeInMinutes, float dayLength) {
         try {
             GameLogger.info("Initializing multiplayer world with seed: " + seed);
@@ -2031,7 +2650,10 @@ public class World {
 
             // Update core properties
             this.worldSeed = seed;
-            GameContext.get().setBiomeManager(new BiomeManager(seed));
+
+            // CRITICAL: Create a new BiomeManager with the correct seed
+            BiomeManager biomeManager = new BiomeManager(seed);
+            GameContext.get().setBiomeManager(biomeManager);
 
             // Initialize managers if needed
             if (blockManager == null) blockManager = new BlockManager();
@@ -2041,8 +2663,10 @@ public class World {
 
             // Clear any existing chunks to prevent singleplayer data persistence
             chunks.clear();
+            biomeTransitions.clear(); // Clear biome transitions as well
 
-            GameLogger.info("Multiplayer world initialization complete - " + "Time: " + worldTimeInMinutes + " Day Length: " + dayLength + " Seed: " + seed);
+            GameLogger.info("Multiplayer world initialization complete - " +
+                "Time: " + worldTimeInMinutes + " Day Length: " + dayLength + " Seed: " + seed);
 
         } catch (Exception e) {
             GameLogger.error("Failed to initialize multiplayer world: " + e.getMessage());
@@ -2133,36 +2757,6 @@ public class World {
         return true;
     }
 
-    public Chunk getChunkAtPosition(float x, float y) {
-        int chunkX = Math.floorDiv((int) x, Chunk.CHUNK_SIZE);
-        int chunkY = Math.floorDiv((int) y, Chunk.CHUNK_SIZE);
-        Vector2 pos = new Vector2(chunkX, chunkY);
-        Chunk chunk = chunks.get(pos);
-        if (chunk == null) {
-            if (GameContext.get().isMultiplayer()) {
-                GameContext.get().getGameClient().requestChunk(pos);
-                return null;
-            } else {
-                chunk = loadOrGenerateChunk(pos);
-                if (chunk != null) {
-                    chunks.put(pos, chunk);
-                }
-            }
-        }
-        if (chunk != null && !isChunkValid(chunk)) {
-            if (GameContext.get().isMultiplayer()) {
-                GameLogger.info("Chunk at " + pos + " is invalid in multiplayer; requesting from server.");
-                GameContext.get().getGameClient().requestChunk(pos);
-                return null;
-            } else {
-                chunk = loadOrGenerateChunk(pos);
-                if (chunk != null) {
-                    chunks.put(pos, chunk);
-                }
-            }
-        }
-        return chunk;
-    }
 
     public WorldObject getNearestPokeball() {
         return nearestPokeball;

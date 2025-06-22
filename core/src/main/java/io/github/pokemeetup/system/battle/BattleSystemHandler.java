@@ -1,8 +1,7 @@
 package io.github.pokemeetup.system.battle;
 
-import io.github.pokemeetup.pokemon.Pokemon;
-import io.github.pokemeetup.pokemon.PokemonParty;
 import io.github.pokemeetup.pokemon.WildPokemon;
+import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 
 public class BattleSystemHandler {
     private boolean isInBattle = false;
@@ -13,8 +12,8 @@ public class BattleSystemHandler {
     public void lockPokemonForBattle(WildPokemon pokemon) {
         if (pokemon != null) {
             pokemon.setMoving(false);
-            if (pokemon.getAi() != null) {
-                pokemon.getAi().setPaused(true);
+            if (pokemon.getAi() instanceof PokemonAI) {
+                ((PokemonAI) pokemon.getAi()).setPaused(true);
             }
             pokemon.setX(pokemon.getX());
             pokemon.setY(pokemon.getY());
@@ -24,8 +23,8 @@ public class BattleSystemHandler {
 
     public void unlockPokemon() {
         if (lockedPokemon != null) {
-            if (lockedPokemon.getAi() != null) {
-                lockedPokemon.getAi().setPaused(false);
+            if (lockedPokemon.getAi() instanceof PokemonAI) {
+                ((PokemonAI) lockedPokemon.getAi()).setPaused(false);
             }
             lockedPokemon = null;
         }

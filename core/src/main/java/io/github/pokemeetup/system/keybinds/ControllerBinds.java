@@ -29,7 +29,6 @@ import java.util.Map;
  * Modify these values as needed based on your testing with the actual device.
  */
 public class ControllerBinds {
-    // Action names (matching your game actions)
     public static final String MOVE_UP = "Move Up";
     public static final String MOVE_DOWN = "Move Down";
     public static final String MOVE_LEFT = "Move Left";
@@ -47,9 +46,6 @@ public class ControllerBinds {
     private static Map<String, Integer> currentBinds = new HashMap<>();
 
     static {
-        // Default controller bindings for the ROG Ally controller:
-
-        // D-Pad bindings (assuming these indices for the D-Pad):
         defaultBinds.put(MOVE_UP, 19);    // D-pad Up
         defaultBinds.put(MOVE_DOWN, 20);  // D-pad Down
         defaultBinds.put(MOVE_LEFT, 21);  // D-pad Left

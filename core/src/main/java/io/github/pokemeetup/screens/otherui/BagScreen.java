@@ -1,15 +1,11 @@
 package io.github.pokemeetup.screens.otherui;
 
 import com.badlogic.gdx.scenes.scene2d.Actor;
-import com.badlogic.gdx.scenes.scene2d.InputEvent;
-import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.utils.Align;
-import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
-import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.ArrayList;
 import java.util.Arrays;

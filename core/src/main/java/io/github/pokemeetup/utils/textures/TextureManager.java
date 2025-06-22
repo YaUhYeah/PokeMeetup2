@@ -68,6 +68,7 @@ public class TextureManager {
     public static TextureAtlas ui;
     public static TextureAtlas pokemonback;
     public static TextureAtlas buildings;
+    public static TextureAtlas owFx;
     public static TextureAtlas pokemonfront;
     public static TextureAtlas pokemonicon;
     public static TextureAtlas girl;
@@ -125,70 +126,6 @@ public class TextureManager {
         TYPE_COLORS.put(Pokemon.PokemonType.FAIRY, new Color(0.940f, 0.627f, 0.940f, 1));     // F0B6BC
         TYPE_COLORS.put(Pokemon.PokemonType.UNKNOWN, new Color(0.470f, 0.470f, 0.470f, 1));   // 68A090
 
-    }
-
-    /**
-     * Slice one 96×128 frame of a Pokémon Essentials‐style autotile into
-     * the sub‐tiles we actually want:
-     *   - Skip top‐left 32×32 (editor preview).
-     *   - Skip top‐middle 32×32 (often unused).
-     *   - Use the top‐right 32×32 block for 4 inside corners (each 16×16).
-     *   - Then use rows=1..3 & cols=0..2 → 9 blocks of 32×32 (the 3×3 region).
-     *   - Subdivide each 32×32 into four 16×16 sub‐tiles → total ~40 sub‐tiles.
-     *   - If you need 48 always, just fill leftover with null or duplicates.
-     */
-    private static TextureRegion[] sliceRMXPAutotile(TextureRegion frame) {
-        // We'll gather the final sub‐tiles in an array of length 48.
-        // The last 8 might remain null if we only produce 40.
-        TextureRegion[] result = new TextureRegion[48];
-        ArrayList<TextureRegion> big32List = new ArrayList<>(10);
-
-        // 1) Grab the top‐right 32×32 block => (x=64, y=0) for inside corners
-        TextureRegion topRight32 = new TextureRegion(
-            frame.getTexture(),
-            frame.getRegionX() + 64,
-            frame.getRegionY(),
-            32, 32
-        );
-        big32List.add(topRight32);
-
-        // 2) Grab the 3×3 region below => row=1..3, col=0..2 => 9 blocks of 32×32
-        for (int row = 1; row <= 3; row++) {
-            for (int col = 0; col < 3; col++) {
-                int bx = frame.getRegionX() + col * 32;
-                int by = frame.getRegionY() + row * 32;
-                TextureRegion block32 = new TextureRegion(
-                    frame.getTexture(), bx, by, 32, 32
-                );
-                big32List.add(block32);
-            }
-        }
-        // We now have 1 block (top‐right corners) + 9 blocks (3×3 area) = 10 blocks.
-
-        // 3) Subdivide each 32×32 block into four 16×16 sub‐tiles
-        int index = 0;
-        for (TextureRegion block32 : big32List) {
-            for (int sy = 0; sy < 2; sy++) {
-                for (int sx = 0; sx < 2; sx++) {
-                    if (index >= 48) break; // don't exceed array length
-                    TextureRegion sub16 = new TextureRegion(
-                        block32.getTexture(),
-                        block32.getRegionX() + sx * 16,
-                        block32.getRegionY() + sy * 16,
-                        16, 16
-                    );
-                    result[index++] = sub16;
-                }
-            }
-            if (index >= 48) break;
-        }
-
-        // Optionally fill any remaining slots to 48 with null
-        while (index < 48) {
-            result[index++] = null;
-        }
-
-        return result;
     }
 
     /**
@@ -285,7 +222,6 @@ public class TextureManager {
         }
         return frames;
     }
-
     /**
      * Splits a single 96×128 frame into 48 sub-tiles (16×16 each).
      */
@@ -304,6 +240,7 @@ public class TextureManager {
         }
         return result;
     }
+
 
     /**
      * Returns one sub‐tile from the given autotile key, frame, and (col,row) within that frame.
@@ -327,6 +264,7 @@ public class TextureManager {
         // For sand_shore the sub-tiles are already 32×32 so no scaling is required.
         return subtiles[index];
     }
+
 
     /**
      * Splits a single frame into sub‐tiles given custom parameters.
@@ -520,8 +458,8 @@ public class TextureManager {
 
 
     private static void loadTypeAndStatusIcons() {
-        TextureRegion typesSheet = ui.findRegion("types");
-        TextureRegion statusSheet = ui.findRegion("statuses");
+        TextureRegion typesSheet = ui.findRegion("pokemon-type-icons");
+        TextureRegion statusSheet = ui.findRegion("status-icons");
 
         if (typesSheet == null || statusSheet == null) {
             GameLogger.info("Sprite sheets not found, using fallback system");
@@ -677,7 +615,7 @@ public class TextureManager {
                                   TextureAtlas pokemonback, TextureAtlas pokemonfront, TextureAtlas pokemonicon,
                                   TextureAtlas pokemonoverworld, TextureAtlas items, TextureAtlas boy,
                                   TextureAtlas tiles, TextureAtlas effects, TextureAtlas mountains
-        , TextureAtlas blocks, TextureAtlas characters, TextureAtlas clothing, TextureAtlas hairstyles, TextureAtlas buildings, TextureAtlas girl, TextureAtlas autotiles, TextureAtlas capsuleThrow) {
+        , TextureAtlas blocks, TextureAtlas characters, TextureAtlas clothing, TextureAtlas hairstyles, TextureAtlas buildings, TextureAtlas girl, TextureAtlas autotiles, TextureAtlas capsuleThrow, TextureAtlas owFx) {
         TextureManager.steps = steps;
         TextureManager.effects = effects;
         TextureManager.battlebacks = battlebacks;
@@ -698,6 +636,7 @@ public class TextureManager {
         TextureManager.capsuleThrow = capsuleThrow;
         TextureManager.autotiles = autotiles;
         TextureManager.girl = girl;
+        TextureManager.owFx = owFx;
         // Create white pixel texture
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(Color.WHITE);

@@ -3,18 +3,17 @@ package io.github.pokemeetup.pokemon;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.attacks.Move;
 import io.github.pokemeetup.pokemon.data.PokemonDatabase;
+import io.github.pokemeetup.screens.otherui.BattleTable;
 import io.github.pokemeetup.system.gameplay.PokemonAnimations;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 
 public class Pokemon {
     private static Weather currentWeather = Weather.CLEAR;
@@ -32,6 +31,13 @@ public class Pokemon {
     private boolean flinched = false;
     private int confusedTurns = 0;
     private String nature;
+    // NEW: Stat stage tracking (-6 to +6)
+    private Map<String, Integer> statStages; // "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
+
+    // NEW: Status duration counters
+    private int paralysisTurns = 0; // Example, may not be needed depending on paralysis implementation
+    private int confusionTurns = 0;
+    private boolean confused = false; // Separate flag for confusion state
     private boolean isShiny;
     private UUID uuid;
     private int currentExperience;
@@ -74,6 +80,8 @@ public class Pokemon {
         this.isShiny = calculateShinyStatus();
         this.stats = new Stats();
         this.moves = new ArrayList<>();
+        this.statStages = new HashMap<>();
+        resetStatStages(); // Initialize all stages to 0
         TextureRegion iconSheet = TextureManager.getPokemonicon().findRegion(name.toUpperCase() + "_icon");
         iconFrames = new TextureRegion[2];
         iconFrames[0] = new TextureRegion(iconSheet, 0, 0, iconSheet.getRegionWidth() / 2, iconSheet.getRegionHeight());
@@ -95,10 +103,19 @@ public class Pokemon {
         calculateStats();
         this.currentHp = stats.getHp();
     }
-
+    public void resetStatStages() {
+        statStages.put("attack", 0);
+        statStages.put("defense", 0);
+        statStages.put("spAtk", 0);
+        statStages.put("spDef", 0);
+        statStages.put("speed", 0);
+        statStages.put("accuracy", 0); // Often handled differently, but include for completeness
+        statStages.put("evasion", 0);  // Often handled differently
+    }
     protected Pokemon(boolean noTexture) {
         // We assume 'noTexture' is true
         this.uuid = UUID.randomUUID();
+        this.statStages = new HashMap<>(); // Initialize stages here too
         this.name = "";         // Will be set later by the subclass
         this.level = 1;         // Will be overwritten later
         this.nature = generateNature();
@@ -244,12 +261,28 @@ public class Pokemon {
         return currentExperience;
     }
 
+
     public void heal() {
         this.currentHp = this.stats.getHp();
         this.status = Status.NONE;
         this.toxicCounter = 1;
         this.flinched = false;
-        this.confusedTurns = 0;
+        this.confused = false;
+        this.confusionTurns = 0;
+        this.sleepTurns = 0;
+        resetStatStages(); // Reset stat stages on heal
+        calculateStats(); // Recalculate stats after resetting stages
+    }
+    public void heal(int amount) {
+        this.currentHp = this.currentHp+amount;
+        this.status = Status.NONE;
+        this.toxicCounter = 1;
+        this.flinched = false;
+        this.confused = false;
+        this.confusionTurns = 0;
+        this.sleepTurns = 0;
+        resetStatStages(); // Reset stat stages on heal
+        calculateStats(); // Recalculate stats after resetting stages
     }
 
     public boolean hasStatus() {
@@ -259,37 +292,51 @@ public class Pokemon {
     public Status getStatus() {
         return status;
     }
-
     public void setStatus(Status newStatus) {
-        if (newStatus == null) {
-            GameLogger.error("Attempted to set a null status on " + name + "; ignoring.");
+        if (newStatus == null || this.status != Status.NONE) {
+            if (newStatus == Status.ASLEEP && this.status == Status.ASLEEP) {
+                // Allow refreshing sleep duration maybe? Or just ignore.
+            } else if (newStatus != Status.NONE) {
+                GameLogger.info(name + " is already " + this.status + ", cannot apply " + newStatus);
+            }
             return;
         }
-        // Some types are immune to certain statuses
-        if (newStatus == Status.PARALYZED &&
-            (primaryType == PokemonType.ELECTRIC || secondaryType == PokemonType.ELECTRIC)) {
-            return;
-        }
-        if (newStatus == Status.POISONED &&
+
+        // Check type immunities
+        if ((newStatus == Status.POISONED || newStatus == Status.BADLY_POISONED) &&
             (primaryType == PokemonType.POISON || secondaryType == PokemonType.POISON ||
                 primaryType == PokemonType.STEEL || secondaryType == PokemonType.STEEL)) {
+            GameLogger.info(name + " is immune to poison!");
             return;
         }
         if (newStatus == Status.BURNED &&
             (primaryType == PokemonType.FIRE || secondaryType == PokemonType.FIRE)) {
+            GameLogger.info(name + " is immune to burn!");
+            return;
+        }
+        if (newStatus == Status.PARALYZED &&
+            (primaryType == PokemonType.ELECTRIC || secondaryType == PokemonType.ELECTRIC)) {
+            GameLogger.info(name + " is immune to paralysis!");
             return;
         }
         if (newStatus == Status.FROZEN &&
             (primaryType == PokemonType.ICE || secondaryType == PokemonType.ICE)) {
+            GameLogger.info(name + " is immune to freeze!");
             return;
         }
 
         this.status = newStatus;
 
+        if (GameContext.get() != null && GameContext.get().getBattleTable() != null) {
+            GameContext.get().getBattleTable().queueMessage(name + " was " + newStatus.name().toLowerCase() + "!");
+        } else {
+            GameLogger.info(name + " is now " + newStatus);
+        }
+
         // Initialize status-specific counters
         switch (newStatus) {
             case ASLEEP:
-                sleepTurns = new Random().nextInt(3) + 2; // Sleep lasts 2-4 turns
+                sleepTurns = MathUtils.random(1, 3); // Standard sleep 1-3 turns
                 break;
             case BADLY_POISONED:
                 toxicCounter = 1;
@@ -297,7 +344,184 @@ public class Pokemon {
             default:
                 break;
         }
+        // Recalculate stats if status affects them (e.g., paralysis, burn)
+        calculateStats();
     }
+
+    /**
+     * Modifies a specific stat stage, clamped between -6 and +6.
+     * @param statName "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
+     * @param change Amount to change by (e.g., -1 for Growl, +2 for Swords Dance)
+     * @return True if the stage was changed, false if it was already at the limit.
+     */
+    public boolean modifyStatStage(String statName, int change) {
+        String key = statName.toLowerCase();
+        if (!statStages.containsKey(key)) {
+            GameLogger.error("Attempted to modify unknown stat stage: " + statName);
+            return false;
+        }
+
+        int currentStage = statStages.get(key);
+        int newStage = MathUtils.clamp(currentStage + change, -6, 6);
+
+        if (newStage == currentStage) {
+            // Already at max or min, stage didn't change
+            GameLogger.info(name + "'s " + statName + " won't go any " + (change > 0 ? "higher!" : "lower!"));
+            return false;
+        }
+
+        statStages.put(key, newStage);
+        // Recalculate stats potentially affected by the stage change (like speed for paralysis)
+        calculateStats();
+        GameLogger.info(name + "'s " + statName + (change > 0 ? " rose!" : " fell!"));
+        // TODO: Add BattleTable message display here
+        return true;
+    }
+
+    /**
+     * Gets the multiplier for a stat based on its current stage.
+     * Formula: stage > 0 ? (2 + stage) / 2 : 2 / (2 - stage)
+     * Accuracy/Evasion use a different formula: stage > 0 ? (3 + stage) / 3 : 3 / (3 - stage)
+     * @param statName "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
+     * @return The multiplier (e.g., 1.0 for stage 0, 1.5 for stage +1, 0.66 for stage -1)
+     */
+    public float getStatModifier(String statName) {
+        String key = statName.toLowerCase();
+        int stage = statStages.getOrDefault(key, 0);
+
+        if (key.equals("accuracy") || key.equals("evasion")) {
+            if (stage > 0) {
+                return (3.0f + stage) / 3.0f;
+            } else if (stage < 0) {
+                return 3.0f / (3.0f - stage); // Note: stage is negative here
+            } else {
+                return 1.0f;
+            }
+        } else { // Attack, Defense, SpAtk, SpDef, Speed
+            if (stage > 0) {
+                return (2.0f + stage) / 2.0f;
+            } else if (stage < 0) {
+                return 2.0f / (2.0f - stage); // Note: stage is negative here
+            } else {
+                return 1.0f;
+            }
+        }
+    }
+    public boolean canAttack() {
+        if (currentHp <= 0) {
+            return false;
+        }
+
+        // Flinch has highest priority
+        if (flinched) {
+            flinched = false; // Flinch lasts only one turn
+            GameContext.get().getBattleTable().queueMessage(name + " flinched!");
+            return false;
+        }
+
+        // Check major status conditions
+        switch (status) {
+            case ASLEEP:
+                sleepTurns--;
+                if (sleepTurns <= 0) {
+                    GameContext.get().getBattleTable().queueMessage(name + " woke up!");
+                    cureStatus(); // Clears sleep status
+                    return true; // Can attack this turn
+                } else {
+                    GameContext.get().getBattleTable().queueMessage(name + " is fast asleep.");
+                    return false;
+                }
+            case FROZEN:
+                if (MathUtils.random() < 0.20f) { // 20% chance to thaw
+                    GameContext.get().getBattleTable().queueMessage(name + " thawed out!");
+                    cureStatus(); // Clears frozen status
+                    return true; // Can attack this turn
+                } else {
+                    GameContext.get().getBattleTable().queueMessage(name + " is frozen solid!");
+                    return false;
+                }
+            case PARALYZED:
+                if (MathUtils.random() < 0.25f) { // 25% chance of full paralysis
+                    GameContext.get().getBattleTable().queueMessage(name + " is fully paralyzed!");
+                    return false;
+                }
+                break;
+            default:
+                break;
+        }
+
+        // Check confusion (handled after major statuses)
+        if (confused) {
+            GameContext.get().getBattleTable().queueMessage(name + " is confused!");
+            confusionTurns--;
+            if (confusionTurns <= 0) {
+                GameContext.get().getBattleTable().queueMessage(name + " snapped out of its confusion!", 1.0f, () -> this.confused = false);
+            } else {
+                if (MathUtils.random() < 0.33f) { // 33% chance to hit self
+                    GameContext.get().getBattleTable().queueMessage("It hurt itself in its confusion!");
+                    float damage = calculateConfusionDamage();
+                    GameContext.get().getBattleTable().applyDamage(this, damage);
+                    if (currentHp <= 0) {
+                        setStatus(Status.FAINTED);
+                    }
+                    return false; // Cannot attack this turn
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private float calculateConfusionDamage() {
+        int level = this.getLevel();
+        float attackStat = this.getStats().getAttack();
+        float defenseStat = this.getStats().getDefense();
+        int basePower = 40;
+
+        float baseDamage = (((2 * level) / 5f + 2) * basePower * attackStat / defenseStat) / 50f + 2;
+        return baseDamage * MathUtils.random(0.85f, 1.0f);
+    }
+
+    public void setConfused(boolean confused) {
+        if (confused && !this.confused) {
+            this.confused = true;
+            this.confusionTurns = MathUtils.random(1, 4);
+            GameLogger.info(name + " became confused!");
+        } else if (!confused) {
+            this.confused = false;
+            this.confusionTurns = 0;
+        }
+    }
+
+    public void applyEndOfTurnEffects() {
+        if (currentHp <= 0) return;
+
+        BattleTable battleTable = GameContext.get().getBattleTable();
+        switch (status) {
+            case POISONED:
+                battleTable.queueMessage(name + " was hurt by poison!");
+                battleTable.applyDamage(this, stats.getHp() / 8f);
+                break;
+            case BADLY_POISONED:
+                battleTable.queueMessage(name + " was badly hurt by poison!");
+                battleTable.applyDamage(this, (stats.getHp() * toxicCounter) / 16f);
+                toxicCounter = Math.min(toxicCounter + 1, 15);
+                break;
+            case BURNED:
+                battleTable.queueMessage(name + " was hurt by its burn!");
+                battleTable.applyDamage(this, stats.getHp() / 16f);
+                break;
+            default:
+                break;
+        }
+
+        if (currentHp <= 0) {
+            status = Status.FAINTED;
+            battleTable.queueMessage(name + " fainted!");
+        }
+    }
+
+
 
     public void cureStatus() {
         this.status = Status.NONE;
@@ -306,82 +530,6 @@ public class Pokemon {
         this.flinched = false;
         this.confusedTurns = 0;
     }
-
-    public boolean canAttack() {
-        if (currentHp <= 0) {
-            return false;
-        }
-
-        if (flinched) {
-            flinched = false; // Reset flinch
-            return false;
-        }
-
-        // Handle confusion
-        if (confusedTurns > 0) {
-            confusedTurns--;
-            if (new Random().nextFloat() < 0.33f) { // 33% chance to hurt itself
-                float damage = calculateStat(40, 0, 0); // Base power of confusion self-hit
-                currentHp = Math.max(0, currentHp - damage);
-                return false;
-            }
-        }
-
-        // Handle status effects
-        switch (status) {
-            case PARALYZED:
-                if (new Random().nextFloat() < 0.25f) { // 25% chance to be fully paralyzed
-                    return false;
-                }
-                break;
-
-            case FROZEN:
-                if (new Random().nextFloat() < 0.20f) { // 20% chance to thaw each turn
-                    status = Status.NONE;
-                    return true;
-                }
-                return false;
-
-            case ASLEEP:
-                sleepTurns--;
-                if (sleepTurns <= 0) {
-                    status = Status.NONE;
-                    return true;
-                }
-                return false;
-
-            default:
-                break;
-        }
-
-        return true;
-    }
-    public void applyEndOfTurnEffects() {
-        switch (status) {
-            case POISONED:
-                currentHp = Math.max(0, currentHp - (stats.getHp() / 8));
-                break;
-            case BADLY_POISONED:
-                currentHp = Math.max(0, currentHp - ((float) (stats.getHp() * toxicCounter) / 16));
-                toxicCounter = Math.min(toxicCounter + 1, 15);
-                break;
-            case BURNED:
-                currentHp = Math.max(0, currentHp - ((float) stats.getHp() / 16));
-                break;
-            case LEECH_SEED:
-                // For example, take 1/8th max HP damage each turn.
-                int leechDamage = stats.getHp() / 8;
-                currentHp = Math.max(0, currentHp - leechDamage);
-                // Optionally, add healing to the attacker.
-                break;
-            default:
-                break;
-        }
-        if (currentHp <= 0) {
-            status = Status.FAINTED;
-        }
-    }
-
 
     public float getStatusModifier(Move move) {
         if (status == Status.BURNED && !move.isSpecial()) {
@@ -439,8 +587,9 @@ public class Pokemon {
         showStatIncrease("Sp. Def", oldSpDef, stats.getSpecialDefense());
         showStatIncrease("Speed", oldSpeed, stats.getSpeed());
 
-        // Heal the Pokémon upon level-up
-        currentHp = stats.getHp();
+        calculateStats();
+        int hpIncrease = stats.getHp() - oldHp;
+        currentHp += hpIncrease; // Also increase current HP
 
         // Check for new moves
         learnNewMovesAtLevel(level);
@@ -750,19 +899,40 @@ public class Pokemon {
         return (int) (((2 * base + iv + (float) ev / 4) * level / 100f + 5) * natureModifier);
     }
 
+    // --- Modified calculateStats ---
+    // Apply stat stage modifiers AND status modifiers
     public void calculateStats() {
+        // Calculate base stats from IVs/EVs/Level/Nature (keep existing logic)
         stats.setHp(((2 * speciesBaseHp + stats.ivs[0] + stats.evs[0] / 4) * level / 100) + level + 10);
-        stats.setAttack(calculateStat(speciesBaseAttack, stats.ivs[1], stats.evs[1]));
-        stats.setDefense(calculateStat(speciesBaseDefense, stats.ivs[2], stats.evs[2]));
-        stats.setSpecialAttack(calculateStat(speciesBaseSpAtk, stats.ivs[3], stats.evs[3]));
-        stats.setSpecialDefense(calculateStat(speciesBaseSpDef, stats.ivs[4], stats.evs[4]));
-        stats.setSpeed(calculateStat(speciesBaseSpeed, stats.ivs[5], stats.evs[5]));
+        int baseAttack = calculateStat(speciesBaseAttack, stats.ivs[1], stats.evs[1]);
+        int baseDefense = calculateStat(speciesBaseDefense, stats.ivs[2], stats.evs[2]);
+        int baseSpAtk = calculateStat(speciesBaseSpAtk, stats.ivs[3], stats.evs[3]);
+        int baseSpDef = calculateStat(speciesBaseSpDef, stats.ivs[4], stats.evs[4]);
+        int baseSpeed = calculateStat(speciesBaseSpeed, stats.ivs[5], stats.evs[5]);
 
-        // For example, if paralyzed, halve the speed
+        // Apply stat stage modifiers
+        stats.setAttack(Math.max(1, (int) (baseAttack * getStatModifier("attack"))));
+        stats.setDefense(Math.max(1, (int) (baseDefense * getStatModifier("defense"))));
+        stats.setSpecialAttack(Math.max(1, (int) (baseSpAtk * getStatModifier("spAtk"))));
+        stats.setSpecialDefense(Math.max(1, (int) (baseSpDef * getStatModifier("spDef"))));
+        stats.setSpeed(Math.max(1, (int) (baseSpeed * getStatModifier("speed"))));
+
+        // Apply status condition modifiers (e.g., paralysis halves speed)
         if (status == Status.PARALYZED) {
             stats.setSpeed(stats.getSpeed() / 2);
         }
+        // Apply burn attack reduction (halves physical attack)
+        if (status == Status.BURNED) {
+            stats.setAttack(stats.getAttack() / 2);
+        }
+        // Ensure stats don't drop below 1
+        stats.setAttack(Math.max(1, stats.getAttack()));
+        stats.setDefense(Math.max(1, stats.getDefense()));
+        stats.setSpecialAttack(Math.max(1, stats.getSpecialAttack()));
+        stats.setSpecialDefense(Math.max(1, stats.getSpecialDefense()));
+        stats.setSpeed(Math.max(1, stats.getSpeed()));
     }
+
     public enum Status {
         NONE,
         PARALYZED,

@@ -1,19 +1,15 @@
+// File: src/main/java/io/github/pokemeetup/system/gameplay/overworld/mechanics/AutoTileSystem.java
 package io.github.pokemeetup.system.gameplay.overworld.mechanics;
 
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.utils.textures.TileType;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Pokémon Essentials–style “sand_shore” autotile:
- * - Uses a 4-bit mask for Up/Right/Down/Left
- * - Maps that bitmask to one of 47 mini-tiles in the RMXP format
- * - Also applies "inside corner" overlays if needed
- */
 public class AutoTileSystem {
 
     /**
@@ -25,18 +21,17 @@ public class AutoTileSystem {
      * Then pass that mask to TextureManager.getAutoTileRegion("sand_shore", mask, animFrame)
      * which returns a 32×32 region scaled from the correct 16×16 piece.
      */
-    public void applyShorelineAutotiling(Chunk chunk, int animFrame) {
+    public void applyShorelineAutotiling(Chunk chunk, int animFrame, World world) {
         final int size = Chunk.CHUNK_SIZE;
-        int[][] tiles = chunk.getTileData();
 
-        // Step 1: Identify "beach" vs. "shore"
-        boolean[][] beachMap = new boolean[size][size];
+        // Step 1: Identify "shore" tiles. A shore tile is any non-water tile with a water neighbor.
         boolean[][] shoreMap = new boolean[size][size];
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
-                if (isBeach(tiles[x][y])) {
-                    beachMap[x][y] = true;
-                    if (hasWaterNeighbor(tiles, x, y)) {
+                int worldX = chunk.getChunkX() * size + x;
+                int worldY = chunk.getChunkY() * size + y;
+                if (world.getTileTypeAt(worldX, worldY) != TileType.WATER) { // Any land tile
+                    if (hasWaterNeighbor(world, worldX, worldY)) {
                         shoreMap[x][y] = true;
                     }
                 }
@@ -57,7 +52,9 @@ public class AutoTileSystem {
                     overlay[x][y] = null;
                     continue;
                 }
-                int mask = computeEdgeMask(tiles, x, y);
+                int worldX = chunk.getChunkX() * size + x;
+                int worldY = chunk.getChunkY() * size + y;
+                int mask = computeEdgeMask(world, worldX, worldY);
                 TextureRegion base32 = TextureManager.getAutoTileRegion("sand_shore", mask, animFrame);
                 // FIX: Check for null base region before using it.
                 if (base32 == null) {
@@ -83,16 +80,18 @@ public class AutoTileSystem {
                     TextureRegion reg = overlay[x][y];
                     if (!(reg instanceof CompositeRegion)) continue;
                     CompositeRegion comp = (CompositeRegion) reg;
-                    if (isInnerCornerTopLeft(tiles, x, y)) {
+                    int worldX = chunk.getChunkX() * size + x;
+                    int worldY = chunk.getChunkY() * size + y;
+                    if (isInnerCornerTopLeft(world, worldX, worldY)) {
                         comp.addMiniOverlay(miniTL, 0, 16);
                     }
-                    if (isInnerCornerTopRight(tiles, x, y)) {
+                    if (isInnerCornerTopRight(world, worldX, worldY)) {
                         comp.addMiniOverlay(miniTR, 16, 16);
                     }
-                    if (isInnerCornerBottomLeft(tiles, x, y)) {
+                    if (isInnerCornerBottomLeft(world, worldX, worldY)) {
                         comp.addMiniOverlay(miniBL, 0, 0);
                     }
-                    if (isInnerCornerBottomRight(tiles, x, y)) {
+                    if (isInnerCornerBottomRight(world, worldX, worldY)) {
                         comp.addMiniOverlay(miniBR, 16, 0);
                     }
                 }
@@ -101,27 +100,30 @@ public class AutoTileSystem {
     }
 
     /** 4-bit mask => bit 1=Up, bit2=Right, bit4=Down, bit8=Left */
-    private int computeEdgeMask(int[][] tiles, int x, int y) {
-        int mask=0;
-        if (isWaterSafe(tiles, x,   y+1)) mask |= 1;  // up
-        if (isWaterSafe(tiles, x+1, y  )) mask |= 2;  // right
-        if (isWaterSafe(tiles, x,   y-1)) mask |= 4;  // down
-        if (isWaterSafe(tiles, x-1, y  )) mask |= 8;  // left
+    private int computeEdgeMask(World world, int worldX, int worldY) {
+        int mask = 0;
+        if (isWater(world, worldX, worldY + 1)) mask |= 1;  // up
+        if (isWater(world, worldX + 1, worldY)) mask |= 2;  // right
+        if (isWater(world, worldX, worldY - 1)) mask |= 4;  // down
+        if (isWater(world, worldX - 1, worldY)) mask |= 8;  // left
         return mask;
     }
 
     // Inside corner checks: diagonal is water, but the two orthogonal neighbors are beach
-    private boolean isInnerCornerTopLeft(int[][] t, int x, int y) {
-        return isBeachSafe(t,x,y+1) && isBeachSafe(t,x-1,y) && isWater(t,x-1,y+1);
+    private boolean isInnerCornerTopLeft(World world, int worldX, int worldY) {
+        return isBeach(world, worldX, worldY + 1) && isBeach(world, worldX - 1, worldY) && isWater(world, worldX - 1, worldY + 1);
     }
-    private boolean isInnerCornerTopRight(int[][] t, int x, int y) {
-        return isBeachSafe(t,x,y+1) && isBeachSafe(t,x+1,y) && isWater(t,x+1,y+1);
+
+    private boolean isInnerCornerTopRight(World world, int worldX, int worldY) {
+        return isBeach(world, worldX, worldY + 1) && isBeach(world, worldX + 1, worldY) && isWater(world, worldX + 1, worldY + 1);
     }
-    private boolean isInnerCornerBottomLeft(int[][] t, int x, int y) {
-        return isBeachSafe(t,x,y-1) && isBeachSafe(t,x-1,y) && isWater(t,x-1,y-1);
+
+    private boolean isInnerCornerBottomLeft(World world, int worldX, int worldY) {
+        return isBeach(world, worldX, worldY - 1) && isBeach(world, worldX - 1, worldY) && isWater(world, worldX - 1, worldY - 1);
     }
-    private boolean isInnerCornerBottomRight(int[][] t, int x, int y) {
-        return isBeachSafe(t,x,y-1) && isBeachSafe(t,x+1,y) && isWater(t,x+1,y-1);
+
+    private boolean isInnerCornerBottomRight(World world, int worldX, int worldY) {
+        return isBeach(world, worldX, worldY - 1) && isBeach(world, worldX + 1, worldY) && isWater(world, worldX + 1, worldY - 1);
     }
 
     // Basic checks
@@ -130,90 +132,32 @@ public class AutoTileSystem {
             tileID == TileType.BEACH_GRASS ||
             tileID == TileType.BEACH_GRASS_2 ||
             tileID == TileType.BEACH_STARFISH ||
-            tileID == TileType.BEACH_SHELL );
+            tileID == TileType.BEACH_SHELL);
     }
-    private boolean isBeachSafe(int[][] t, int x, int y) {
-        if (x<0||y<0||x>=t.length||y>=t[0].length) return false;
-        return isBeach(t[x][y]);
+
+    private boolean isBeach(World world, int worldX, int worldY) {
+        return isBeach(world.getTileTypeAt(worldX, worldY));
     }
-    private boolean isWater(int[][] t, int x, int y) {
-        if (x<0||y<0||x>=t.length||y>=t[0].length) return false;
-        return (t[x][y] == TileType.WATER);
+
+    private boolean isWater(World world, int worldX, int worldY) {
+        return world.getTileTypeAt(worldX, worldY) == TileType.WATER;
     }
-    private boolean isWaterSafe(int[][] t,int x,int y){
-        if (x<0||y<0||x>=t.length||y>=t[0].length) return false;
-        return (t[x][y] == TileType.WATER);
-    }
-    private boolean hasWaterNeighbor(int[][] t, int x, int y) {
+
+    private boolean hasWaterNeighbor(World world, int worldX, int worldY) {
         int[][] offsets = {
-            { 0,  1}, { 1,  0}, { 0, -1}, {-1,  0},  // orthogonal
-            { 1,  1}, { 1, -1}, {-1,  1}, {-1, -1}   // diagonal
+            {0, 1}, {1, 0}, {0, -1}, {-1, 0},  // orthogonal
+            {1, 1}, {1, -1}, {-1, 1}, {-1, -1}   // diagonal
         };
         for (int[] off : offsets) {
-            int nx = x + off[0];
-            int ny = y + off[1];
-            if (nx < 0 || ny < 0 || nx >= t.length || ny >= t[0].length) continue;
-            if (t[nx][ny] == TileType.WATER) return true;
+            if (isWater(world, worldX + off[0], worldY + off[1])) return true;
         }
         return false;
     }
-    public void applySeaAutotiling(Chunk chunk, int animFrame) {
-        final int size = Chunk.CHUNK_SIZE;
-        int[][] tiles = chunk.getTileData();
-        // Retrieve or create a separate sea overlay array (you’ll need to add these in your Chunk class)
-        TextureRegion[][] seaOverlay = chunk.getSeatileRegions();
-        if (seaOverlay == null) {
-            seaOverlay = new TextureRegion[size][size];
-            chunk.setAutotileRegions(seaOverlay);
-        }
 
-        // Process each tile in the chunk.
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
-                // We only process water tiles.
-                if (tiles[x][y] != TileType.WATER) {
-                    seaOverlay[x][y] = null;
-                    continue;
-                }
 
-                // Determine if this water tile is on an edge.
-                // (An edge tile has at least one orthogonal neighbor that is not water
-                // and is not a beach tile.)
-                boolean isEdge = false;
-                int[][] offsets = { {0, 1}, {1, 0}, {0, -1}, {-1, 0} };
-                for (int[] off : offsets) {
-                    int nx = x + off[0], ny = y + off[1];
-                    if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
-                    int neighborTile = tiles[nx][ny];
-                    // If neighbor is land and not a beach tile, then this is an edge.
-                    if (neighborTile != TileType.WATER && !isBeach(neighborTile)) {
-                        isEdge = true;
-                        break;
-                    }
-                }
-                if (isEdge) {
-                    int mask = computeSeaEdgeMask(tiles, x, y);
-                    TextureRegion seaTile = TextureManager.getAutoTileRegion("sea", mask, animFrame);
-                    seaOverlay[x][y] = seaTile;
-                } else {
-                    // Center water – no overlay needed.
-                    seaOverlay[x][y] = null;
-                }
-            }
-        }
-    }
-
-    /**
-     * Computes a 4–bit mask for a water tile at (x,y) based on its orthogonal neighbors.
-     * For each neighbor that is water, a bit is set.
-     */
-    private int computeSeaEdgeMask(int[][] tiles, int x, int y) {
-        int mask = 0;
-        if (isWaterSafe(tiles, x, y + 1)) mask |= 1;  // Up
-        if (isWaterSafe(tiles, x + 1, y)) mask |= 2;  // Right
-        if (isWaterSafe(tiles, x, y - 1)) mask |= 4;  // Down
-        if (isWaterSafe(tiles, x - 1, y)) mask |= 8;  // Left
-        return mask;
+    private boolean isWaterSafe(int[][] t, int x, int y) {
+        if (x < 0 || y < 0 || x >= t.length || y >= t[0].length) return false;
+        return (t[x][y] == TileType.WATER);
     }
 
 

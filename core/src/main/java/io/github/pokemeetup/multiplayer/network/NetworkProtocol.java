@@ -17,8 +17,6 @@ import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
-import io.github.pokemeetup.utils.ChunkPos;
-import io.github.pokemeetup.utils.UUIDSerializer;
 
 import java.io.Serializable;
 import java.util.*;
@@ -27,7 +25,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
 
     public static void registerClasses(Kryo kryo) {
         // Basic and commonly used classes
-        kryo.register(UUID.class, new UUIDSerializer());
         kryo.register(Vector2.class);
         kryo.register(PlayerInfo.class);
         kryo.register(PingRequest.class);
@@ -36,7 +33,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(BuildingPlacement.class);
         kryo.register(CompressedChunkData.class);
         kryo.register(List.class);
-        kryo.register(ChunkPos.class);
         kryo.register(int[][].class); // For the tileData 2D array
         kryo.register(HashMap.class);
         kryo.register(Map.class);

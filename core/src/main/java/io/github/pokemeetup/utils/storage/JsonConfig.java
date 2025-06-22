@@ -118,7 +118,6 @@ public class JsonConfig {
                     world.setPlayers(players);
                 }
 
-                // PokemonData
                 PokemonData pokemonData = json.readValue(PokemonData.class, jsonData.get("pokemonData"));
                 if (pokemonData == null) {
                     pokemonData = new PokemonData();

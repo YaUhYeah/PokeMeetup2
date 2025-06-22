@@ -78,7 +78,7 @@ public class PlaceableBlock {
             if (isFlipped) {
                 batch.draw(texture,
                     x + width, y,        // Position (x + width for flip)
-                    -width, height);     // Negative width for horizontal flip
+                    -width, height);
             } else {
                 batch.draw(texture, x, y);
             }

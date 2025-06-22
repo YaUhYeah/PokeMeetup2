@@ -84,112 +84,69 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         GameLogger.info("Game initialization complete");
     }
 
-    public void saveAndDispose() {
-        try {
-            GameLogger.info("Starting game state save...");
-            if (GameContext.get().isMultiplayer()) {
-                return;
+    /**
+     * Saves the current world, disposes the game screen, and transitions back to the world selection screen.
+     * This is the proper way to "quit" a world without closing the application.
+     */
+    public void exitToMenu() {
+        GameLogger.info("Exiting game to menu...");
+        if (getScreen() instanceof GameScreen) {
+            World currentWorld = GameContext.get().getWorld();
+            if (currentWorld != null && !isMultiplayerMode()) {
+                currentWorld.save(); // Centralized save logic
             }
-            World world = GameContext.get().getWorld();
-            if (world != null) {
-                // Save all chunks
-                for (Map.Entry<Vector2, Chunk> entry : world.getChunks().entrySet()) {
-                    try {
-                        Vector2 chunkPos = entry.getKey();
-                        Chunk chunk = entry.getValue();
-                        world.saveChunkData(chunkPos, chunk);
-                    } catch (Exception e) {
-                        GameLogger.error("Failed to save chunk: " + e.getMessage());
-                    }
-                }
-                WorldData worldData = world.getWorldData();
-                Player player = GameContext.get().getPlayer();
-                if (player != null) {
-                    worldData.savePlayerData(player.getUsername(), player.getPlayerData(), false);
-                }
-                GameContext.get().getWorldManager().saveWorld(worldData);
-                // (Optionally: flush or check that the file exists here.)
-                world.dispose();
-                GameLogger.info("World disposed successfully");
-            }
-        } catch (Exception e) {
-            GameLogger.error("Error during game state save: " + e.getMessage());
         }
-    }
-    public void reinitializeGame() {
-        try {
-            // Reinitialize managers, etc.
-            GameContext.get().setWorldManager(WorldManager.getInstance());
-            long seed = GameContext.get().getWorld().getWorldData().getConfig().getSeed();
-            this.biomeManager = new BiomeManager(seed);
-            GameContext.get().getWorldManager().init();
 
-            // Reinitialize the GameClient for singleplayer if needed.
-            if (GameContext.get().getGameClient() == null || !GameContext.get().isMultiplayer()) {
-                GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance());
-                GameLogger.info("Reinitialized singleplayer GameClient in reinitializeGame()");
-            }
-
-            // Dispose of the old UI stage
-            Stage oldStage = GameContext.get().getUiStage();
-            if (oldStage != null) {
-                oldStage.clear();
-                oldStage.dispose();
-            }
-
-            // Create a new UI stage and update input processor
-            Stage newUiStage = new Stage(new ScreenViewport(), new SpriteBatch());
-            GameContext.get().setUiStage(newUiStage);
-            Gdx.input.setInputProcessor(newUiStage);
-
-            // Ensure skin is available.
-            Skin skin = GameContext.get().getSkin();
-            if (skin == null) {
-                skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
-                GameContext.get().setSkin(skin);
-            }
-
-            // Reinitialize the player's hotbar system.
-            if (GameContext.get().getPlayer() != null) {
-                GameContext.get().setHotbarSystem(new HotbarSystem(newUiStage, skin));
-                GameLogger.info("Hotbar system reinitialized on the new UI stage");
-            }
-
-            // (Optionally update input processors in your InputManager)
-            // GameContext.get().getGameScreen().getInputManager().updateInputProcessors();
-
-            GameLogger.info("Game state reinitialized");
-        } catch (Exception e) {
-            GameLogger.error("Failed to reinitialize game: " + e.getMessage());
+        // Dispose the current screen
+        if (getScreen() != null) {
+            getScreen().dispose();
         }
+
+        // Reset game-specific context but keep application-level context
+        // This prevents holding onto disposed objects like the old GameScreen
+        if (GameContext.get() != null) {
+            GameContext.get().setWorld(null);
+            GameContext.get().setPlayer(null);
+            GameContext.get().setHotbarSystem(null);
+            GameContext.get().setGameMenu(null);
+            GameContext.get().setInventoryScreen(null);
+            GameContext.get().setCraftingScreen(null);
+            GameContext.get().setChatSystem(null);
+            // DO NOT dispose the uiStage, batch, or skin here. They persist.
+        }
+
+        // Transition to the world selection screen
+        setScreen(new WorldSelectionScreen(this));
     }
 
 
-
+    /**
+     * Fully saves the game state and closes the application.
+     */
     public void shutdown() {
-        try {
-            saveAndDispose();
-
-            Gdx.app.postRunnable(() -> {
-                try {
-                    if (assetManager != null) {
-                        assetManager.dispose();
-                        assetManager = null;
-                    }
-
-                    AudioManager audioManager = AudioManager.getInstance();
-                    if (audioManager != null) {
-                        audioManager.dispose();
-                    }
-
-                    Gdx.app.exit();
-                } catch (Exception e) {
-                    GameLogger.error("Error during final shutdown: " + e.getMessage());
+        Gdx.app.postRunnable(() -> {
+            try {
+                // Save the current world if we are in a GameScreen
+                if (getScreen() instanceof GameScreen && GameContext.get().getWorld() != null && !isMultiplayerMode()) {
+                    GameLogger.info("Performing final save before shutdown...");
+                    GameContext.get().getWorld().save();
                 }
-            });
-        } catch (Exception e) {
-            GameLogger.error("Error during shutdown: " + e.getMessage());
-        }
+
+                if (assetManager != null) {
+                    assetManager.dispose();
+                    assetManager = null;
+                }
+
+                AudioManager audioManager = AudioManager.getInstance();
+                if (audioManager != null) {
+                    audioManager.dispose();
+                }
+
+                Gdx.app.exit();
+            } catch (Exception e) {
+                GameLogger.error("Error during final shutdown: " + e.getMessage());
+            }
+        });
     }
 
 
@@ -204,7 +161,9 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
                 Gdx.app.postRunnable(() -> {
                     try {
-                        saveAndDispose();
+                        if (getScreen() instanceof GameScreen && GameContext.get().getWorld() != null && !isMultiplayerMode()) {
+                            GameContext.get().getWorld().save();
+                        }
                         if (assetManager != null) {
                             assetManager.dispose();
                         }
@@ -213,7 +172,9 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                     }
                 });
             } else {
-                saveAndDispose();
+                if (getScreen() instanceof GameScreen && GameContext.get().getWorld() != null && !isMultiplayerMode()) {
+                    GameContext.get().getWorld().save();
+                }
                 if (assetManager != null) {
                     assetManager.dispose();
                 }
@@ -329,6 +290,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             "atlas/girl.atlas",
             "atlas/autotiles_sheets.atlas",
             "atlas/capsule_throw.atlas",
+            "atlas/ow-effects.atlas"
         };
 
         for (String path : atlasFiles) {
@@ -427,14 +389,13 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             TextureAtlas mountains = assetManager.get("atlas/mountain-atlas.atlas", TextureAtlas.class);
             TextureAtlas tilesAtlas = assetManager.get("atlas/tiles-gfx-atlas", TextureAtlas.class);
             TextureAtlas blocks = assetManager.get("atlas/blocks.atlas", TextureAtlas.class);
+            TextureAtlas characters = assetManager.get("atlas/characters.atlas", TextureAtlas.class);
             TextureAtlas clothing = assetManager.get("atlas/clothing.atlas", TextureAtlas.class);
+            TextureAtlas hairstyles = assetManager.get("atlas/hairstyles.atlas", TextureAtlas.class);
             TextureAtlas buildings = assetManager.get("atlas/buildings.atlas", TextureAtlas.class);
             TextureAtlas autotiles = assetManager.get("atlas/autotiles_sheets.atlas", TextureAtlas.class);
             TextureAtlas capsuleThrow = assetManager.get("atlas/capsule_throw.atlas", TextureAtlas.class);
-
-            TextureAtlas characters = assetManager.get("atlas/characters.atlas", TextureAtlas.class);
-
-            TextureAtlas hairstyles = assetManager.get("atlas/hairstyles.atlas", TextureAtlas.class);
+            TextureAtlas owEffectAtlas = assetManager.get("atlas/ow-effects.atlas", TextureAtlas.class);
 
 
             if (!verifyAtlas(boyAtlas)) {
@@ -453,7 +414,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 boyAtlas,
                 tilesAtlas,
                 effects,
-                mountains, blocks, characters, clothing, hairstyles, buildings, girlAtlas, autotiles, capsuleThrow
+                mountains, blocks, characters, clothing, hairstyles, buildings, girlAtlas, autotiles, capsuleThrow, owEffectAtlas
 
             );
 
@@ -464,9 +425,12 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             SpriteBatch mainBatch = new SpriteBatch();
             SpriteBatch uiBatch = new SpriteBatch();
-            Stage uiStage = new Stage();
+            // This UI Stage will persist across screens.
+            Stage uiStage = new Stage(new ScreenViewport(), uiBatch);
             Stage battleStage = new Stage();
-            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null, WorldManager.getInstance(), null, null, new DisconnectionManager(this), false, null, null, null, new BiomeManager(System.currentTimeMillis()));
+            Skin skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
+
+            GameContext.init(this, this.gameClient, this.currentWorld, this.player, mainBatch, uiBatch, uiStage, battleStage, null, null, null, null, null, null, null, WorldManager.getInstance(), null, null, new DisconnectionManager(this), false, skin, null, null, new BiomeManager(System.currentTimeMillis()));
 
             GameContext.get().getWorldManager().init();
 
@@ -512,4 +476,3 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
         return GameContext.get().getWorldManager();
     }
 }
-

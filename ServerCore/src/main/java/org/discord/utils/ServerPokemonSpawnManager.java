@@ -7,14 +7,15 @@ import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.DayNightCycle;
-import io.github.pokemeetup.system.gameplay.overworld.PokemonSpawnManager;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
+import io.github.pokemeetup.system.gameplay.overworld.multiworld.PokemonSpawnManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PokemonLevelCalculator;
 import org.discord.context.ServerGameContext;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static io.github.pokemeetup.CreatureCaptureGame.MULTIPLAYER_WORLD_NAME;
 
@@ -28,6 +29,12 @@ import static io.github.pokemeetup.CreatureCaptureGame.MULTIPLAYER_WORLD_NAME;
  * is broadcast so that clients update their local world.
  */
 public class ServerPokemonSpawnManager {
+    private static final float MOVEMENT_UPDATE_INTERVAL = 0.1f; // Send updates 10 times per second maximum
+    private static final float MOVEMENT_THRESHOLD = 1.0f;
+    private final Map<UUID, Vector2> lastSentPositions = new ConcurrentHashMap<>();
+
+    // Movement update accumulator
+    private float movementUpdateTimer = 0f;
     // Check for new spawns every 5 seconds.
     private static final float SPAWN_INTERVAL = 5f;
     // Maximum wild Pokémon per chunk.
@@ -64,8 +71,84 @@ public class ServerPokemonSpawnManager {
             trySpawnPokemon();
             removeExpiredPokemon();
         }
+        movementUpdateTimer += delta;
+
+        // If it's time to check for movement updates
+        if (movementUpdateTimer >= MOVEMENT_UPDATE_INTERVAL) {
+            movementUpdateTimer = 0f;
+            checkForMovementUpdates();
+        }
     }
 
+    private void checkForMovementUpdates() {
+        List<NetworkProtocol.PokemonUpdate> updates = new ArrayList<>();
+
+        for (WildPokemon pokemon : activePokemon.values()) {
+            Vector2 lastPos = lastSentPositions.getOrDefault(pokemon.getUuid(), new Vector2(Float.MAX_VALUE, Float.MAX_VALUE));
+
+            // Check if the Pokemon has moved enough to warrant an update
+            float distance = Vector2.dst(lastPos.x, lastPos.y, pokemon.getX(), pokemon.getY());
+            boolean directionChanged = !pokemon.getDirection().equals(syncedPokemonData
+                .getOrDefault(pokemon.getUuid(), new PokemonSpawnManager.NetworkSyncData()).direction);
+            boolean movingChanged = pokemon.isMoving() != syncedPokemonData
+                .getOrDefault(pokemon.getUuid(), new PokemonSpawnManager.NetworkSyncData()).isMoving;
+
+            // Send update if position changed significantly or direction/moving state changed
+            if (distance > MOVEMENT_THRESHOLD || directionChanged || movingChanged) {
+                NetworkProtocol.PokemonUpdate update = createPokemonUpdate(pokemon);
+                updates.add(update);
+
+                // Update the last sent position and state
+                lastSentPositions.put(pokemon.getUuid(), new Vector2(pokemon.getX(), pokemon.getY()));
+
+                // Update the synced data
+                PokemonSpawnManager.NetworkSyncData syncData = syncedPokemonData.computeIfAbsent(pokemon.getUuid(), k -> new PokemonSpawnManager.NetworkSyncData());
+                syncData.direction = pokemon.getDirection();
+                syncData.isMoving = pokemon.isMoving();
+            }
+        }
+
+        // If there are updates to send, send them as a batch
+        if (!updates.isEmpty()) {
+            broadcastPokemonUpdates(updates);
+        }
+    }  private NetworkProtocol.PokemonUpdate createPokemonUpdate(WildPokemon pokemon) {
+        NetworkProtocol.PokemonUpdate update = new NetworkProtocol.PokemonUpdate();
+        update.uuid = pokemon.getUuid();
+        update.x = pokemon.getX();
+        update.y = pokemon.getY();
+        update.direction = pokemon.getDirection();
+        update.isMoving = pokemon.isMoving();
+        update.level = pokemon.getLevel();
+        update.timestamp = System.currentTimeMillis();
+        return update;
+    }// Add this inner class at the bottom of ServerPokemonSpawnManager
+    private static class NetworkSyncData {
+        Vector2 targetPosition;
+        String direction;
+        boolean isMoving;
+        long lastUpdateTime;
+
+        NetworkSyncData() {
+            this.lastUpdateTime = System.currentTimeMillis();
+            this.direction = "down";
+            this.isMoving = false;
+        }
+    }
+    private final Map<UUID, PokemonSpawnManager.NetworkSyncData> syncedPokemonData = new ConcurrentHashMap<>();
+    /**
+     * Broadcast a batch of Pokemon updates to all clients
+     */
+    private void broadcastPokemonUpdates(List<NetworkProtocol.PokemonUpdate> updates) {
+        if (updates.isEmpty()) return;
+
+        // Use batch update to reduce network overhead
+        NetworkProtocol.PokemonBatchUpdate batchUpdate = new NetworkProtocol.PokemonBatchUpdate();
+        batchUpdate.updates = updates;
+
+        // Broadcast to all connected clients
+        ServerGameContext.get().getGameServer().getNetworkServer().sendToAllTCP(batchUpdate);
+    }
     /**
      * Iterates over all active wild Pokémon and builds a batch update message,
      * then broadcasts it to all clients.

@@ -334,6 +334,11 @@ public class OtherPlayer implements Positionable {
         return isMoving.get();
     }
 
+    @Override
+    public void setCharacterType(String characterType) {
+
+    }
+
     public boolean isWantsToRun() {
         return wantsToRun;
     }

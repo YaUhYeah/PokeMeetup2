@@ -64,7 +64,26 @@ public class RecipeGlossaryUI {
         recipeList.clear();
         List<RecipeManager.CraftingRecipe> recipes = RecipeManager.getInstance().getAllRecipes();
 
+        // Compute available grid dimension (e.g., 2 for a 2x2 grid, 3 for a 3x3 grid)
+        int availableDimension = (int) Math.sqrt(craftingSystem.getCraftingGrid().getSize());
+
         for (RecipeManager.CraftingRecipe recipe : recipes) {
+            if (recipe.isShaped()) {
+                // Get the dimensions of the recipe's pattern
+                int patternRows = recipe.getPattern().length;
+                int patternCols = recipe.getPattern()[0].length;
+
+                // If the recipe requires a grid larger than what is available, skip it.
+                if (patternRows > availableDimension || patternCols > availableDimension) {
+                    continue;
+                }
+            } else {
+                // For shapeless recipes, ensure the total ingredient count fits in the grid
+                int totalIngredients = recipe.getIngredients().values().stream().mapToInt(Integer::intValue).sum();
+                if (totalIngredients > availableDimension * availableDimension) {
+                    continue;
+                }
+            }
             createRecipeEntry(recipe);
         }
     }
@@ -120,6 +139,9 @@ public class RecipeGlossaryUI {
         return craftButton;
     }
 
+    /**
+     * [FIXED] This method now correctly uses the new crafting system.
+     */
     private void attemptAutoCraft(RecipeManager.CraftingRecipe recipe) {
         Inventory inventory = screenInterface.getInventory();
         Map<String, Integer> required = recipe.getIngredients();
@@ -129,14 +151,26 @@ public class RecipeGlossaryUI {
         boolean hasAll = required.entrySet().stream()
             .allMatch(entry -> hasEnoughItems(inventory, entry.getKey(), entry.getValue()));
 
-        if (hasAll) {
-            // Auto-place items in crafting grid
+        // [NEW] Check if the player's inventory has space for the result
+        boolean hasSpace = inventory.hasSpaceFor(recipe.getResult());
+
+        if (hasAll && hasSpace) {
+            // Auto-place items in the crafting grid (this consumes them from the inventory)
             placeItemsInGrid(pattern, recipe.isShaped());
-            // Trigger craft
-            craftingSystem.craftOneItem();
-        } else {
-            // Show missing ingredients message
+
+            // [FIXED] Trigger the craft, which consumes grid items and returns the result
+            ItemData craftedItem = craftingSystem.craftAndConsume();
+
+            // [FIXED] Add the crafted item to the player's inventory
+            if (craftedItem != null) {
+                inventory.addItem(craftedItem);
+            }
+        } else if (!hasAll) {
+            // Show a "missing ingredients" message if materials are insufficient
             showMissingIngredientsDialog(required);
+        } else {
+            // [NEW] Show an "inventory full" message if there's no space
+            showInventoryFullDialog();
         }
     }
 
@@ -252,6 +286,16 @@ public class RecipeGlossaryUI {
         });
 
         dialog.getContentTable().add(content);
+        dialog.button("OK");
+        dialog.show(stage);
+    }
+
+    /**
+     * [NEW] Shows a dialog informing the user their inventory is full.
+     */
+    private void showInventoryFullDialog() {
+        Dialog dialog = new Dialog("Inventory Full", skin);
+        dialog.text("Not enough space in your inventory to craft this item.");
         dialog.button("OK");
         dialog.show(stage);
     }

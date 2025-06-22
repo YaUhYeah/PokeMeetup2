@@ -107,10 +107,6 @@ public class GameMenu extends Actor {
             GameContext.get().setInventoryScreen(null);
             GameContext.get().setCraftingScreen(null);
             GameContext.get().setBuildModeUI(null);
-            if (isSinglePlayer) {
-                game.saveAndDispose();
-                game.reinitializeGame();
-            }
             game.setScreen(new io.github.pokemeetup.screens.ModeSelectionScreen(game));
             isDisposing = false;
         } catch (Exception e) {
@@ -214,7 +210,8 @@ public class GameMenu extends Actor {
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                handleExit();
+                // MODIFIED: Call the clean exit-to-menu method
+                game.exitToMenu();
             }
         });
         optionsButton.addListener(new ClickListener() {
@@ -277,7 +274,6 @@ public class GameMenu extends Actor {
         loadingDialog.show(stage);
         new Thread(() -> {
             try {
-                game.saveAndDispose();
                 Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, true));
             } catch (Exception e) {
                 GameLogger.error("Save failed: " + e.getMessage());

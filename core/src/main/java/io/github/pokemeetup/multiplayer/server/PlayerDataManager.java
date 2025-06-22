@@ -39,7 +39,6 @@ public class PlayerDataManager {
     }
 
     public synchronized PlayerData loadPlayerData(UUID uuid) {
-        // Check cache first
         PlayerData cached = playerCache.get(uuid);
         if (cached != null) {
             return cached.copy(); // Return copy to prevent direct cache modification

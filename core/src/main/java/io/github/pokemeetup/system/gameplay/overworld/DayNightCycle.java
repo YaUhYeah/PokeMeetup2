@@ -11,7 +11,6 @@ public class DayNightCycle {
     private static final float DUSK_START = 18.0f;   // 6:00 PM
     private static final float NIGHT_START = 19.0f;  // 7:00 PM
 
-    // Base colors with proper ambient lighting
     private static final Color DAY_COLOR = new Color(1.0f, 1.0f, 1.0f, 1.0f);
     private static final Color NIGHT_COLOR = new Color(0.25f, 0.25f, 0.45f, 1.0f);
     private static final Color DAWN_COLOR = new Color(0.85f, 0.75f, 0.65f, 1.0f);
@@ -48,7 +47,7 @@ public class DayNightCycle {
 
         // Dawn transition
         if (hourOfDay >= DAWN_START && hourOfDay < DAY_START) {
-            float progress = (hourOfDay - DAWN_START) / (DAY_START - DAWN_START);
+            float progress = (hourOfDay - DAWN_START);
             return result.set(DAWN_COLOR).lerp(DAY_COLOR, progress);
         }
 
@@ -58,7 +57,7 @@ public class DayNightCycle {
         }
 
         // Dusk transition
-        float progress = (hourOfDay - DUSK_START) / (NIGHT_START - DUSK_START);
+        float progress = (hourOfDay - DUSK_START);
         return result.set(DAY_COLOR).lerp(NIGHT_COLOR, progress);
     }
 

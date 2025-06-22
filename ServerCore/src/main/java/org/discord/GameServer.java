@@ -587,7 +587,7 @@ public class GameServer {
             }
         }
     }
-
+    // Modify handleChunkRequest in GameServer.java
     public void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
         Vector2 chunkPos = new Vector2(request.chunkX, request.chunkY);
         try {
@@ -597,33 +597,64 @@ public class GameServer {
                 return;
             }
 
-            // Load or generate the chunk.
+            // CRITICAL FIX: Generate a deterministic chunk seed based on world seed and position
+            // This ensures the same chunk is generated every time for the same coordinates
+            long chunkSeed = worldData.getConfig().getSeed() +
+                (((long)request.chunkX << 32) | ((long)request.chunkY & 0xFFFFFFFFL));
+
+            // Load or generate chunk with proper error handling
             Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
             if (chunk == null) {
                 GameLogger.error("Failed to load/generate chunk at " + chunkPos);
                 return;
             }
 
-            // Ensure that any world objects are generated.
+            // Calculate precise biome transition at chunk center for consistency
+            float centerPixelX = (request.chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+            float centerPixelY = (request.chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+            BiomeTransitionResult transition = ServerGameContext.get().getWorldManager().getBiomeTransitionAt(
+                centerPixelX, centerPixelY
+            );
+
+            // FIX: Save biome info to the chunk to ensure it's consistently stored
+            if (transition != null && transition.getPrimaryBiome() != null) {
+                chunk.setBiome(transition.getPrimaryBiome());
+            }
+
+            // Ensure world objects are consistently generated
             List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
                 .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
             if (objects == null || objects.isEmpty()) {
                 objects = ServerGameContext.get().getWorldObjectManager()
                     .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
+                GameLogger.info("Generated " + objects.size() + " objects for chunk " + chunkPos);
             }
 
-            // Build a new ChunkData including the new biome info.
+            // Build comprehensive chunk data with all necessary information
             NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
             chunkData.chunkX = request.chunkX;
             chunkData.chunkY = request.chunkY;
+
+            // CRITICAL FIX: Always provide biome information from the chunk
             chunkData.primaryBiomeType = chunk.getBiome().getType();
-            // If your system supports a secondary biome or a transition factor:
-            chunkData.secondaryBiomeType = null; // or assign if applicable
-            chunkData.tileData = chunk.getTileData();
+
+            // Include complete biome transition data for visual consistency
+            if (transition != null && transition.getSecondaryBiome() != null) {
+                chunkData.secondaryBiomeType = transition.getSecondaryBiome().getType();
+                chunkData.biomeTransitionFactor = transition.getTransitionFactor();
+            } else {
+                chunkData.secondaryBiomeType = null;
+                chunkData.biomeTransitionFactor = 1.0f;
+            }
+
+            chunkData.tileData = chunk.getTileData().clone(); // Send a clone to prevent modifications
             chunkData.blockData = chunk.getBlockDataForSave();
-            chunkData.generationSeed = worldData.getConfig().getSeed();
+
+            // IMPORTANT: Save the deterministic seed with the chunk data
+            chunkData.generationSeed = chunkSeed;
             chunkData.timestamp = System.currentTimeMillis();
-            chunkData.biomeTransitionFactor = 1;
+
+            // Include all world objects with complete data
             chunkData.worldObjects = new ArrayList<>();
             if (objects != null) {
                 for (WorldObject obj : objects) {
@@ -636,15 +667,21 @@ public class GameServer {
                 }
             }
 
-            // Compress the ChunkData.
+            // Compress and send
             NetworkProtocol.CompressedChunkData compressed = compressChunkData(chunkData);
             if (compressed == null) {
                 GameLogger.error("Failed to compress chunk data for " + chunkPos);
                 return;
             }
 
-            // Send the compressed chunk data to the client.
+            // Send to client and log success with detailed information
             connection.sendTCP(compressed);
+            GameLogger.info("Sent chunk " + chunkPos + " to client with " +
+                (objects != null ? objects.size() : 0) + " objects and biome: " +
+                chunkData.primaryBiomeType + (chunkData.secondaryBiomeType != null ?
+                " blended with " + chunkData.secondaryBiomeType + " at " +
+                    chunkData.biomeTransitionFactor : ""));
+
         } catch (Exception e) {
             GameLogger.error("Error processing chunk request at " + chunkPos + ": " + e.getMessage());
             e.printStackTrace();

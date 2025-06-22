@@ -4,7 +4,6 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
 
 public class ResponsiveLayout {
-    // Screen size breakpoints
     public static final int SMALL_SCREEN_WIDTH = 800;
     public static final int MEDIUM_SCREEN_WIDTH = 1280;
 

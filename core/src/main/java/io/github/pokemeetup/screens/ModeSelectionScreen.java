@@ -29,7 +29,6 @@ public class ModeSelectionScreen implements Screen {
     public ModeSelectionScreen(CreatureCaptureGame game) {
         this.game = game;
         this.stage = new Stage(new ScreenViewport());
-        game.reinitializeGame();
         Gdx.input.setInputProcessor(stage);
 
         this.skin = new Skin();

@@ -646,7 +646,10 @@
       "pp": 15,
       "isSpecial": true,
       "description": "Drains half the damage inflicted to heal the user.",
-      "effects": {}
+      "effects": {
+        "type": "drain",
+        "drainPercent": 0.5
+      }
     },
     "Leech-Seed": {
       "type": "GRASS",
@@ -2977,7 +2980,11 @@
       "pp": 30,
       "isSpecial": false,
       "description": "Hits 2-5 times in one turn.",
-      "effects": {}
+      "effects": {
+        "type": "multi_hit",
+        "minHits": 2,
+        "maxHits": 5
+      }
     },
     "Aerial-Ace": {
       "type": "FLYING",
@@ -2995,7 +3002,11 @@
       "pp": 30,
       "isSpecial": false,
       "description": "Hits 2-5 times in one turn.",
-      "effects": {}
+      "effects": {
+        "type": "multi_hit",
+        "minHits": 2,
+        "maxHits": 5
+      }
     },
     "Iron-Defense": {
       "type": "STEEL",

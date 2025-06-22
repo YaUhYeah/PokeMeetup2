@@ -23,6 +23,7 @@ import io.github.pokemeetup.system.gameplay.inventory.secureinventories.Inventor
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventorySlotDataObserver;
 import io.github.pokemeetup.system.gameplay.inventory.secureinventories.ItemContainer;
 import io.github.pokemeetup.utils.GameLogger;
+import io.github.pokemeetup.utils.storage.InventoryConverter;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.util.UUID;
@@ -41,9 +42,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     private Label itemNameLabel;
     private Label durabilityLabel;
     private Image durabilityBar;
-    /**
-     * @param slotSize the computed size (in pixels) for this slot (e.g., from InventoryScreen)
-     */
+
     public InventorySlotUI(InventorySlotData slotData, Skin skin, InventoryScreenInterface screenInterface, int slotSize) {
         this.slotData = slotData;
         this.skin = skin;
@@ -345,24 +344,41 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         }
     }
 
+    /**
+     * [FIXED] Handles crafting one item and putting it on the cursor.
+     */
     private void pickUpOneCraftedItem() {
         CraftingSystem cs = screenInterface.getCraftingSystem();
         if (cs == null) return;
-        ItemData result = cs.getCraftingResult();
-        if (result == null) return;
-        Item heldItem = screenInterface.getHeldItemObject();
-        if (heldItem != null) return; // Do nothing if the hand isn’t empty
 
-        if (cs.craftOneItem()) {
-            Item crafted = new Item(result.getItemId());
-            crafted.setCount(1);
-            crafted.setUuid(UUID.randomUUID());
-            crafted.setDurability(result.getDurability());
-            crafted.setMaxDurability(result.getMaxDurability());
-            screenInterface.setHeldItem(crafted);
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.CRAFT);
+        ItemData craftableResult = cs.getCraftingResult();
+        if (craftableResult == null) return;
+
+        Item heldItem = screenInterface.getHeldItemObject();
+
+        if (heldItem == null) {
+            // Cursor is empty, craft one and put it on the cursor.
+            ItemData craftedItemData = cs.craftAndConsume();
+            if (craftedItemData != null) {
+                Item newItem = InventoryConverter.itemDataToItem(craftedItemData);
+                screenInterface.setHeldItem(newItem);
+            }
+        } else {
+            // Cursor has an item, check if we can stack.
+            if (heldItem.getName().equals(craftableResult.getItemId()) && heldItem.isStackable()) {
+                int potentialNewCount = heldItem.getCount() + craftableResult.getCount();
+                if (potentialNewCount <= Item.MAX_STACK_SIZE) {
+                    ItemData craftedItemData = cs.craftAndConsume();
+                    if (craftedItemData != null) {
+                        heldItem.setCount(potentialNewCount);
+                        screenInterface.setHeldItem(heldItem); // Update held item view
+                    }
+                }
+                // If it would over-stack, do nothing.
+            }
         }
     }
+
 
     private void handleShiftClickMove(ItemData currentSlotItem) {
         InventorySlotData.SlotType slotType = slotData.getSlotType();
@@ -398,19 +414,32 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         }
     }
 
+    /**
+     * [FIXED] Handles crafting as many items as possible and moving them to the inventory.
+     */
     private void handleMassCraftToInventory() {
         CraftingSystem cs = screenInterface.getCraftingSystem();
         if (cs == null) return;
-        ItemData result = cs.getCraftingResult();
-        if (result == null) return;
 
-        while (cs.craftOneItem()) {
-            ItemData single = result.copy();
-            single.setCount(1);
-            single.setUuid(UUID.randomUUID());
-            int remainder = fullyTryAddItem(screenInterface.getInventory(), single);
-            if (remainder > 0) {
-                // If the inventory can’t fully accept the item, stop.
+        int maxCrafts = cs.calculateMaxCrafts();
+        if (maxCrafts == 0) return;
+
+        ItemData craftableResult = cs.getCraftingResult();
+        if (craftableResult == null) return;
+
+        for (int i = 0; i < maxCrafts; i++) {
+            // Before each craft, check if the inventory has space.
+            if (screenInterface.getInventory().hasSpaceFor(craftableResult)) {
+                ItemData craftedItem = cs.craftAndConsume(); // This now returns the crafted item.
+                if (craftedItem != null) {
+                    // Add the item directly to the inventory.
+                    screenInterface.getInventory().addItem(craftedItem);
+                } else {
+                    // Stop if crafting fails for any reason.
+                    break;
+                }
+            } else {
+                // Stop if there's no more space.
                 break;
             }
         }
@@ -612,6 +641,9 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP);
     }
 
+    /**
+     * [FIXED] Handles both single and mass crafting from the result slot.
+     */
     private void handleCraftingResultClick(boolean shiftHeld) {
         CraftingSystem cs = screenInterface.getCraftingSystem();
         if (cs == null) return;
@@ -622,6 +654,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             pickUpOneCraftedItem();
         }
     }
+
 
     private ItemData getSlotItemData() {
         InventorySlotData.SlotType type = slotData.getSlotType();

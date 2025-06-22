@@ -1,10 +1,7 @@
 package io.github.pokemeetup.pokemon.data;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
-import com.google.gson.Gson;
 import io.github.pokemeetup.FileSystemDelegate;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.attacks.Move;
@@ -12,7 +9,6 @@ import io.github.pokemeetup.pokemon.attacks.MoveLoader;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
 
-import java.io.IOException;
 import java.util.*;
 
 public class PokemonDatabase {

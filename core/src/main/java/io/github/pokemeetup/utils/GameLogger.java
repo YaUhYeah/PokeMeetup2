@@ -6,8 +6,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 
 public class GameLogger {
-    // By default, only error logging is enabled.
-    // You can enable info logging by passing -Dgame.log.info=true on the command line.
     public static boolean isInfoEnabled;
     public static boolean isErrorEnabled;
 

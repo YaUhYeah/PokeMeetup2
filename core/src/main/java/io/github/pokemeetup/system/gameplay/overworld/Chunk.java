@@ -3,7 +3,6 @@ package io.github.pokemeetup.system.gameplay.overworld;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.blocks.PlaceableBlock;
-import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.system.data.BlockSaveData;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
@@ -146,8 +145,6 @@ public class Chunk {
     }
 
 
-    public void setElevationBands(int[][] elevationBands) {
-    }
 
     public boolean isPassable(int localX, int localY) {
         localX = (localX + CHUNK_SIZE) % CHUNK_SIZE;
@@ -156,4 +153,11 @@ public class Chunk {
         return TileType.isPassableTile(tType);
     }
 
+    public BiomeType[][] getFinalBiomeTypes() {
+        return finalBiomeTypes;
+    }
+
+    public void setFinalBiomeTypes(BiomeType[][] finalBiomeTypes) {
+        this.finalBiomeTypes = finalBiomeTypes;
+    }
 }

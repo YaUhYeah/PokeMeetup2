@@ -149,32 +149,23 @@ public class TileType {
 
         // Initialize special terrain names
         tileTypeNames.put(HAUNTED_GRASS, "haunted_grass");
-        tileTypeNames.put(SNOW_TALL_GRASS, "snow_tall_grass");
-        tileTypeNames.put(HAUNTED_TALL_GRASS, "haunted_tall_grass");
         tileTypeNames.put(HAUNTED_SHROOM, "haunted_shroom");
         tileTypeNames.put(HAUNTED_SHROOMS, "haunted_shrooms");
-        tileTypeNames.put(TALL_GRASS, "tall_grass");
 
         // Initialize forest names
         tileTypeNames.put(FOREST_GRASS, "forest_grass");
-        tileTypeNames.put(FOREST_TALL_GRASS, "forest_tall_grass");
 
         // Initialize rain forest names
         tileTypeNames.put(RAIN_FOREST_GRASS, "rainforest_grass");
-        tileTypeNames.put(RAIN_FOREST_TALL_GRASS, "rain_forest_tall_grass");
         tileTypeNames.put(STAIRS, "tile052");
 
         // Initialize desert names
         tileTypeNames.put(DESERT_SAND, "desert_sand");
-        tileTypeNames.put(DESERT_ROCKS, "desert_rock");
-        tileTypeNames.put(DESERT_GRASS, "desert_grass");
 
         // Initialize decorative names with indices where needed
         tileTypeNames.put(FLOWER, "flower");
         tileTypeNames.put(FLOWER_1, "flower");
         tileTypeNames.put(FLOWER_2, "flower");
-        tileTypeNames.put(TALL_GRASS_2, "tall_grass_two");
-        tileTypeNames.put(TALL_GRASS_3, "tall_grass_three");
         tileTypeNames.put(SNOW_2, "snow_grass");
         tileTypeNames.put(SNOW_3, "snow_base");
         tileTypeNames.put(GRASS_2, "grass");
@@ -200,7 +191,6 @@ public class TileType {
         tileTypeNames.put(MOUNTAIN_EDGE_BOTTOM, "tile051");
         tileTypeNames.put(RUINS_GRASS, "ruins_grass");
         tileTypeNames.put(RUINS_GRASS_0, "ruins_grass");
-        tileTypeNames.put(RUINS_TALL_GRASS, "ruins_tall_grass");
         tileTypeNames.put(RUINS_BRICKS, "ruin_bricks");
         tileTypeNames.put(CAVE_ENTRANCE, "cave_entrance");
         tileTypeNames.put(MOUNTAIN_TILE_TOP_LEFT_ROCK_BG, "MOUNTAIN_TILE_TOP_LEFT_ROCK_BG");
@@ -219,8 +209,6 @@ public class TileType {
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT, "MOUNTAIN_TILE_CONNECTING_CORNER_TOP_RIGHT");
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_LEFT, "MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_LEFT");
         tileTypeNames.put(MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT, "MOUNTAIN_TILE_CONNECTING_CORNER_BOTTOM_RIGHT");
-        tileTypeNames.put(FAIRY_ROCK, "fairy_rock");
-        tileTypeNames.put(CRYSTAL_ROCK, "crystal");
         tileTypeNames.put(SNOWY_GRASS, "snowy_grass");
         tileTypeNames.put(BEACH_SAND, "beach_sand");
         tileTypeNames.put(BEACH_GRASS, "beach_tall_grass");

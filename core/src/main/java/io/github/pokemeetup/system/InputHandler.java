@@ -337,37 +337,6 @@ public class InputHandler extends InputAdapter {
         return false;
     }
 
-    private void togglePartyWindow() {
-        Stage uiStage = GameContext.get().getUiStage();
-        if (uiStage == null) {
-            GameLogger.info("UI stage is null, cannot show party window.");
-            return;
-        }
-        if (partyWindow == null) {
-            // Create and show the party window.
-            partyWindow = new PokemonPartyWindow(
-                GameContext.get().getSkin(),                                   // Skin to use
-                GameContext.get().getPlayer().getPokemonParty(),                 // The player's party
-                false,                                                           // Not in battle mode
-                new PokemonPartyWindow.PartySelectionListener() {                // Selection listener (if needed)
-                    @Override
-                    public void onPokemonSelected(Pokemon pokemon) {
-                        // (In battle mode you might handle selecting a Pokémon)
-                    }
-                },
-                new Runnable() {                                                 // Cancel callback
-                    @Override
-                    public void run() {
-                        closePartyWindow();
-                    }
-                }
-            );
-            partyWindow.show(uiStage); // show() centers and fades in the window.
-        } else {
-            // Already showing? Remove (close) it.
-            closePartyWindow();
-        }
-    }
 
     private void closePartyWindow() {
         if (partyWindow != null) {

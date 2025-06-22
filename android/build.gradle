@@ -84,6 +84,7 @@ dependencies {
   // LibGDX dependencies
   implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
   implementation "com.badlogicgames.gdx:gdx:$gdxVersion"
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-android:$gdxControllersVersion"
 
   // Native libraries
   natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
