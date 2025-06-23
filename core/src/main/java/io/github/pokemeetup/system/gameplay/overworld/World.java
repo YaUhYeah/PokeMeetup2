@@ -226,6 +226,7 @@ public class World {
             return Integer.compare(this.type.layerIndex, other.type.layerIndex);
         }
     }
+
     private void renderTallGrassLowerHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
         for (WorldObject obj : tallGrassObjects) {
             TextureRegion region = obj.getTexture();
@@ -261,6 +262,7 @@ public class World {
                 srcX, srcY, regionWidth, srcHeight, false, false);
         }
     }
+
     /**
      * Returns true if the given tile coordinates are within the world border.
      * This implementation assumes that the world is centered at (0,0).
@@ -468,6 +470,7 @@ public class World {
             e.printStackTrace();
         }
     }
+
     public void storeBiomeTransition(Vector2 chunkPos, BiomeTransitionResult transition) {
         if (chunkPos != null && transition != null && transition.getPrimaryBiome() != null) {
             biomeTransitions.put(chunkPos, transition);
@@ -477,6 +480,7 @@ public class World {
             GameLogger.error("Attempted to store invalid biome transition for chunk: " + chunkPos);
         }
     }
+
     private int getDefaultTileForBiome(Biome biome) {
         if (biome == null) return TileType.GRASS;
 
@@ -487,15 +491,24 @@ public class World {
 
         // Fallbacks based on biome type
         switch (biome.getType()) {
-            case SNOW: return TileType.SNOW;
-            case DESERT: return TileType.DESERT_SAND;
-            case BEACH: return TileType.BEACH_SAND;
-            case FOREST: return TileType.FOREST_GRASS;
-            case HAUNTED: return TileType.HAUNTED_GRASS;
-            case RAIN_FOREST: return TileType.RAIN_FOREST_GRASS;
-            case RUINS: return TileType.RUINS_GRASS;
-            case OCEAN: return TileType.WATER;
-            default: return TileType.GRASS;
+            case SNOW:
+                return TileType.SNOW;
+            case DESERT:
+                return TileType.DESERT_SAND;
+            case BEACH:
+                return TileType.BEACH_SAND;
+            case FOREST:
+                return TileType.FOREST_GRASS;
+            case HAUNTED:
+                return TileType.HAUNTED_GRASS;
+            case RAIN_FOREST:
+                return TileType.RAIN_FOREST_GRASS;
+            case RUINS:
+                return TileType.RUINS_GRASS;
+            case OCEAN:
+                return TileType.WATER;
+            default:
+                return TileType.GRASS;
         }
     }
 
@@ -746,6 +759,7 @@ public class World {
             GameLogger.info("Cleared all loaded chunks and reset initialChunksRequested flag.");
         }
     }
+
     public void loadChunksAroundPlayer() {
         Player player = GameContext.get().getPlayer();
         if (player == null) return;
@@ -917,7 +931,6 @@ public class World {
     }
 
 
-
     public WildPokemon getNearestInteractablePokemon(Player player) {
         // Convert player position to pixels
         float playerPixelX = player.getTileX() * TILE_SIZE + (Player.FRAME_WIDTH / 2f);
@@ -971,35 +984,35 @@ public class World {
             return;
         }
 
-            try {
-                GameLogger.info("Saving world data for '" + name + "'...");
+        try {
+            GameLogger.info("Saving world data for '" + name + "'...");
 
-                // Update and save player data into the world data object
-                if (GameContext.get().getPlayer() != null) {
-                    PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
-                    currentState.updateFromPlayer(GameContext.get().getPlayer());
-                    worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
-                }
-
-                // Save all dirty chunks
-                for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
-                    if (entry.getValue().isDirty()) {
-                        saveChunkData(entry.getKey(), entry.getValue());
-                        entry.getValue().setDirty(false); // Mark as clean after saving
-                    }
-                }
-
-                // Update last played time and save the main world file
-                worldData.setLastPlayed(System.currentTimeMillis());
-                worldData.setDirty(true);
-                WorldManager.getInstance().saveWorld(worldData);
-
-                GameLogger.info("Successfully saved world: " + name);
-
-            } catch (Exception e) {
-                GameLogger.error("Failed to save world '" + name + "': " + e.getMessage());
-                e.printStackTrace();
+            // Update and save player data into the world data object
+            if (GameContext.get().getPlayer() != null) {
+                PlayerData currentState = new PlayerData(GameContext.get().getPlayer().getUsername());
+                currentState.updateFromPlayer(GameContext.get().getPlayer());
+                worldData.savePlayerData(GameContext.get().getPlayer().getUsername(), currentState, false);
             }
+
+            // Save all dirty chunks
+            for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
+                if (entry.getValue().isDirty()) {
+                    saveChunkData(entry.getKey(), entry.getValue());
+                    entry.getValue().setDirty(false); // Mark as clean after saving
+                }
+            }
+
+            // Update last played time and save the main world file
+            worldData.setLastPlayed(System.currentTimeMillis());
+            worldData.setDirty(true);
+            WorldManager.getInstance().saveWorld(worldData);
+
+            GameLogger.info("Successfully saved world: " + name);
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to save world '" + name + "': " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
 
@@ -1463,7 +1476,6 @@ public class World {
     }
 
 
-
     private void initializeChunksAroundOrigin() {
         validateChunkState();
         GameLogger.info("Starting chunk initialization around player");
@@ -1805,7 +1817,6 @@ public class World {
     }
 
 
-
     public void updateGameSystems(float delta, Vector2 playerPosition) {
         BiomeTransitionResult currentBiomeTransition = GameContext.get().getBiomeManager().getBiomeAt(playerPosition.x * TILE_SIZE, playerPosition.y * TILE_SIZE);
 
@@ -1907,7 +1918,7 @@ public class World {
             // === RENDER PASS 3: Characters and Mid-Layer Objects ===
             renderMidLayer(batch, player, expandedBounds);
             // === RENDER PASS 4: High Objects and Tree Tops ===
-            renderHighObjects(batch,expandedBounds);
+            renderHighObjects(batch, expandedBounds);
             // === RENDER PASS 5: Effects and Overlays ===
             //            weatherSystem.render(batch, gameScreen.getCamera());
 
@@ -1980,9 +1991,11 @@ public class World {
         renderQueue.add(new RenderableEntity(player, player.getY(), RenderableType.PLAYER));
 
         if (GameContext.get().isMultiplayer()) {
-            for (OtherPlayer other : GameContext.get().getGameClient().getOtherPlayers().values()) {
-                if (expandedBounds.contains(other.getX(), other.getY())) {
-                    renderQueue.add(new RenderableEntity(other, other.getY(), RenderableType.OTHER_PLAYER));
+            if (GameContext.get() != null) {
+                for (OtherPlayer other : GameContext.get().getGameClient().getOtherPlayers().values()) {
+                    if (expandedBounds.contains(other.getX(), other.getY())) {
+                        renderQueue.add(new RenderableEntity(other, other.getY(), RenderableType.OTHER_PLAYER));
+                    }
                 }
             }
         }
@@ -2017,15 +2030,17 @@ public class World {
             switch (item.type) {
                 case PLAYER:
                     ((Player) item.entity).render(batch);
-                    if (waterEffects != null) waterEffects.render(batch, (Player)item.entity, this);
+                    if (waterEffects != null) waterEffects.render(batch, (Player) item.entity, this);
                     break;
                 case OTHER_PLAYER:
                     ((OtherPlayer) item.entity).render(batch);
-                    if (waterEffectsRendererForOthers != null) waterEffectsRendererForOthers.render(batch, (OtherPlayer)item.entity, this);
+                    if (waterEffectsRendererForOthers != null)
+                        waterEffectsRendererForOthers.render(batch, (OtherPlayer) item.entity, this);
                     break;
                 case WILD_POKEMON:
                     ((WildPokemon) item.entity).render(batch);
-                    if (waterEffectsRendererForOthers != null) waterEffectsRendererForOthers.render(batch, (WildPokemon)item.entity, this);
+                    if (waterEffectsRendererForOthers != null)
+                        waterEffectsRendererForOthers.render(batch, (WildPokemon) item.entity, this);
                     break;
                 case TREE_BASE:
                     objectManager.renderTreeBase(batch, (WorldObject) item.entity, this);
@@ -2042,11 +2057,12 @@ public class World {
                     objectManager.renderTreeTop(batch, (WorldObject) item.entity, this);
                     break;
                 case TALL_GRASS_TOP:
-                    renderTallGrassLowerHalf(batch, Collections.singletonList((WorldObject)item.entity));
+                    renderTallGrassLowerHalf(batch, Collections.singletonList((WorldObject) item.entity));
                     break;
             }
         }
     }
+
     private boolean isTallGrassType(WorldObject.ObjectType type) {
         return type == WorldObject.ObjectType.TALL_GRASS ||
             type == WorldObject.ObjectType.FOREST_TALL_GRASS ||
@@ -2058,6 +2074,7 @@ public class World {
             type == WorldObject.ObjectType.DESERT_TALL_GRASS ||
             type == WorldObject.ObjectType.HAUNTED_TALL_GRASS;
     }
+
     public void updateLightLevels() {
         lightLevelMap.clear();
         // Only recalc lighting during night.
