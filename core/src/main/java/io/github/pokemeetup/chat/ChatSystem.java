@@ -1,3 +1,4 @@
+
 package io.github.pokemeetup.chat;
 
 import com.badlogic.gdx.Application;
@@ -14,7 +15,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.system.InputManager;  // <--- For setUIState
+import io.github.pokemeetup.system.InputManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.TimeUtils;
 
@@ -24,12 +25,6 @@ import java.util.List;
 import java.util.Queue;
 
 public class ChatSystem extends Table {
-    public void prefillField(String text) {
-        if (inputField != null) {
-            inputField.setText(text);
-            inputField.setCursorPosition(text.length());
-        }
-    }
     public static final float CHAT_PADDING = 10f;
     public static final float MIN_CHAT_WIDTH = 250f;
     public static final float MIN_CHAT_HEIGHT = 200f;
@@ -57,7 +52,7 @@ public class ChatSystem extends Table {
     private final CommandManager commandManager;
     private boolean commandsEnabled;
 
-    private int messageHistoryIndex = -1; // -1 => no history selected
+    private int messageHistoryIndex = -1;
     private Table chatWindow;
     private ScrollPane messageScroll;
     private Table messageTable;
@@ -76,7 +71,6 @@ public class ChatSystem extends Table {
         this.commandsEnabled = commandsEnabled;
         this.commandManager = commandManager;
 
-        // top alignment
         this.top();
 
         createChatUI();
@@ -96,14 +90,11 @@ public class ChatSystem extends Table {
         if (chatWindow != null) {
             chatWindow.setSize(width, height);
             if (messageScroll != null) {
-                messageScroll.setSize(width, height - 40); // reserve input field space
+                messageScroll.setSize(width, height - 40);
             }
             chatWindow.invalidateHierarchy();
         }
     }
-
-    // FIX: Removed the hit() method override. The default implementation is sufficient
-    // and the original one prevented the ClickListener from working when the chat was inactive.
 
     @Override
     public void setPosition(float x, float y) {
@@ -117,7 +108,6 @@ public class ChatSystem extends Table {
         float chatWidth = Math.max(MIN_CHAT_WIDTH, width * 0.25f);
         float chatHeight = Math.max(MIN_CHAT_HEIGHT, height * 0.3f);
         setSize(chatWidth, chatHeight);
-        // Place near top-left
         setPosition(CHAT_PADDING, height - chatHeight - CHAT_PADDING);
     }
 
@@ -126,20 +116,20 @@ public class ChatSystem extends Table {
     }
 
     private void setupChatHandler() {
-        gameClient.setChatMessageHandler(this::handleIncomingMessage);
+        if (gameClient != null) {
+            gameClient.setChatMessageHandler(this::handleIncomingMessage);
+        }
     }
 
     public void sendMessage(String content) {
         GameLogger.info("sendMessage called with content: " + content);
         if (content.isEmpty()) return;
 
-        // store in local message history if not duplicate
         if (messageHistory.isEmpty() || !content.equals(messageHistory.get(messageHistory.size() - 1))) {
             messageHistory.add(content);
             messageHistoryIndex = messageHistory.size();
         }
 
-        // handle commands:
         if (content.startsWith("/")) {
             if (commandsEnabled || GameContext.get().isMultiplayer()) {
                 String command = content.substring(1);
@@ -170,14 +160,13 @@ public class ChatSystem extends Table {
             }
         }
 
-        // normal chat
         NetworkProtocol.ChatMessage chatMessage = new NetworkProtocol.ChatMessage();
         chatMessage.sender = username;
         chatMessage.content = content;
         chatMessage.timestamp = System.currentTimeMillis();
         chatMessage.type = NetworkProtocol.ChatType.NORMAL;
 
-        if (!GameContext.get().isMultiplayer()) {
+        if (gameClient == null || gameClient.isSinglePlayer()) {
             handleIncomingMessage(chatMessage);
         } else {
             gameClient.sendMessage(chatMessage);
@@ -239,7 +228,9 @@ public class ChatSystem extends Table {
         }
         while (messages.size() > MAX_MESSAGES) {
             ((LinkedList<ChatMessage>) messages).removeFirst();
-            messageTable.getChildren().first().remove();
+            if (messageTable.hasChildren()) {
+                messageTable.getChildren().first().remove();
+            }
         }
     }
 
@@ -249,7 +240,6 @@ public class ChatSystem extends Table {
         }
         chatWindow = new Table();
         chatWindow.top();
-        // Background
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(WINDOW_BACKGROUND);
         pixmap.fill();
@@ -260,14 +250,12 @@ public class ChatSystem extends Table {
         Table contentTable = new Table();
         contentTable.pad(10);
 
-        // message area
         messageTable = new Table();
         messageScroll = new ScrollPane(messageTable, skin);
         messageScroll.setFadeScrollBars(false);
         messageScroll.setScrollingDisabled(true, false);
         contentTable.add(messageScroll).expand().fill().padBottom(5).row();
 
-        // input field
         TextField.TextFieldStyle textFieldStyle =
             new TextField.TextFieldStyle(skin.get(TextField.TextFieldStyle.class));
         textFieldStyle.background = skin.newDrawable("white", new Color(0.2f, 0.2f, 0.2f, 0.8f));
@@ -275,14 +263,13 @@ public class ChatSystem extends Table {
         textFieldStyle.cursor = skin.newDrawable("white", Color.WHITE);
 
         inputField = new TextField("", textFieldStyle);
-        inputField.setMessageText("Press T to chat...");
+        inputField.setMessageText("Press 'T' to chat...");
         inputField.setTouchable(Touchable.enabled);
 
-        // Add capture listener for key input
-        inputField.addCaptureListener(new InputListener() {
+        inputField.addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
-                if (!isActive) return false; // Only intercept if chat is active.
+                if (!isActive) return false;
 
                 switch (keycode) {
                     case Input.Keys.UP:
@@ -292,8 +279,6 @@ public class ChatSystem extends Table {
                             inputField.setText(upMsg);
                             inputField.setCursorPosition(upMsg.length());
                         }
-                        // **Notice we do NOT call event.stop()** so other input
-                        // processors can see keyUp if needed. We'll just return true.
                         return true;
 
                     case Input.Keys.DOWN:
@@ -311,20 +296,15 @@ public class ChatSystem extends Table {
                         return true;
 
                     case Input.Keys.ENTER:
-                        // Send chat, then deactivate
                         String content = inputField.getText().trim();
                         if (!content.isEmpty()) {
                             sendMessage(content);
                             inputField.setText("");
                         }
                         deactivateChat();
-
-                        // DO NOT call event.stop() here. Let the event pass through
-                        // so other input can see it if needed
                         return true;
 
                     case Input.Keys.ESCAPE:
-                        // Esc just deactivates chat
                         deactivateChat();
                         return true;
                 }
@@ -333,7 +313,6 @@ public class ChatSystem extends Table {
 
             @Override
             public boolean keyTyped(InputEvent event, char character) {
-                // If user typed something, set messageHistoryIndex to end
                 if (character != '\0' && character != '\r' && character != '\n') {
                     messageHistoryIndex = messageHistory.size();
                 }
@@ -341,7 +320,6 @@ public class ChatSystem extends Table {
             }
         });
 
-        // For mobile: if user taps chat window, we show onscreen keyboard
         chatWindow.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -394,14 +372,26 @@ public class ChatSystem extends Table {
     }
 
     private void setupInputHandling() {
-        // The logic for opening the chat with 'T' or '/' has been moved to GlobalInputProcessor.
-        // This listener now only handles clicks for mobile activation.
-        chatWindow.addListener(new ClickListener() {
+        stage.addListener(new InputListener() {
             @Override
-            public void clicked(InputEvent event, float x, float y) {
-                if (!isActive && (Gdx.app.getType() == Application.ApplicationType.Android || Gdx.app.getType() == Application.ApplicationType.iOS)) {
+            public boolean keyDown(InputEvent event, int keycode) {
+                if (!isActive && (keycode == Input.Keys.T || keycode == Input.Keys.SLASH)) {
                     activateChat();
+                    if (keycode == Input.Keys.SLASH) {
+                        inputField.setText("/");
+                        inputField.setCursorPosition(1);
+                    }
+                    // This is a crucial change. We must `stop()` the event so that
+                    // the game's movement input handler doesn't also process the 'T' key.
+                    event.stop();
+                    return true;
                 }
+                if (isActive && keycode == Input.Keys.ESCAPE) {
+                    deactivateChat();
+                    event.stop();
+                    return true;
+                }
+                return false;
             }
         });
     }

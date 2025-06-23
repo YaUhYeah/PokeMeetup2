@@ -724,150 +724,59 @@ public class GameClient {
             }, REGISTRATION_CONNECT_TIMEOUT_MS);
         }
     }
-    /**
-     * Improved handling of compressed chunk data from server
-     * Ensures proper biome transitions and object placement
-     */
+
     private void handleCompressedChunkData(NetworkProtocol.CompressedChunkData compressed) {
         try {
-            // Step 1: Create LZ4 decompressor
             LZ4Factory factory = LZ4Factory.fastestInstance();
             LZ4SafeDecompressor decompressor = factory.safeDecompressor();
 
-            // Step 2: Prepare buffer for decompressed data with proper size
             byte[] restored = new byte[compressed.originalLength];
             int decompressedSize = decompressor.decompress(
                 compressed.data, 0, compressed.data.length,
                 restored, 0, compressed.originalLength
             );
 
-            // Step 3: Verify complete decompression
             if (decompressedSize != compressed.originalLength) {
-                GameLogger.error("Incomplete decompression: got " + decompressedSize +
-                    " bytes, expected " + compressed.originalLength + " - requesting chunk again");
-
-                // Request the chunk again since decompression failed
-                Vector2 chunkPos = new Vector2(compressed.chunkX, compressed.chunkY);
-                pendingChunks.remove(chunkPos);
-                requestChunk(chunkPos);
+                GameLogger.error("Incomplete decompression for chunk " + compressed.chunkX + "," + compressed.chunkY);
+                pendingChunks.remove(new Vector2(compressed.chunkX, compressed.chunkY));
                 return;
             }
 
-            // Step 4: Deserialize with Kryo
             ByteArrayInputStream bais = new ByteArrayInputStream(restored);
             Input input = new Input(bais);
             Kryo kryo = new Kryo();
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
-
-            // Try to read the chunk data - handle possible errors
             NetworkProtocol.ChunkData chunkData;
             try {
                 chunkData = kryo.readObject(input, NetworkProtocol.ChunkData.class);
-            } catch (Exception e) {
-                GameLogger.error("Failed to deserialize chunk data: " + e.getMessage());
-
-                // Request the chunk again if deserialization fails
-                Vector2 chunkPos = new Vector2(compressed.chunkX, compressed.chunkY);
-                pendingChunks.remove(chunkPos);
-                requestChunk(chunkPos);
-                return;
             } finally {
                 input.close();
                 bais.close();
             }
 
-            // Get the chunk position for reference
             final Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
-            GameLogger.info("Successfully decompressed chunk at " + chunkPos);
 
-            // Process on main thread to avoid concurrency issues
             Gdx.app.postRunnable(() -> {
-                try {
-                    World world = GameContext.get().getWorld();
-                    if (world == null) {
-                        GameLogger.error("World is null when processing chunk " + chunkPos);
-                        pendingChunks.remove(chunkPos);
-                        return;
-                    }
-
-                    // Process chunk data
-                    world.processChunkData(chunkData);
-
-                    // Create biome transition result with complete information
-                    BiomeTransitionResult transition = new BiomeTransitionResult(
-                        world.getBiomeManager().getBiome(chunkData.primaryBiomeType),
-                        (chunkData.secondaryBiomeType != null ?
-                            world.getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null),
-                        chunkData.biomeTransitionFactor
-                    );
-
-                    // Store the transition in the world for future reference
-                    world.storeBiomeTransition(chunkPos, transition);
-
-                    // Apply auto-tiling to ensure smooth edges
-                    Chunk chunk = world.getChunks().get(chunkPos);
-                    if (chunk != null) {
-                        try {
-                            new AutoTileSystem().applyShorelineAutotiling(chunk, 0, world);
-                            chunk.setDirty(true);
-                        } catch (Exception e) {
-                            GameLogger.error("Auto-tiling failed for chunk " + chunkPos + ": " + e.getMessage());
-                            // Continue processing - non-fatal error
-                        }
-                    }
-
-                    // Mark chunk as processed
+                World world = GameContext.get().getWorld();
+                if (world == null) {
+                    GameLogger.error("World is null when processing chunk " + chunkPos);
                     pendingChunks.remove(chunkPos);
-
-                    // Log success with detailed information
-                    GameLogger.info("Processed chunk " + chunkPos + " with " +
-                        (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) + " objects, " +
-                        "biome: " + chunkData.primaryBiomeType +
-                        (chunkData.secondaryBiomeType != null ?
-                            " blended with " + chunkData.secondaryBiomeType +
-                                " at " + chunkData.biomeTransitionFactor : ""));
-
-                    // Request adjacent chunks for smoother transitions
-                    requestAdjacentChunksIfNeeded(chunkPos);
-
-                } catch (Exception e) {
-                    GameLogger.error("Error processing chunk " + chunkPos + ": " + e.getMessage());
-                    e.printStackTrace();
-
-                    // Clear pending status to allow retry, but delay to prevent spam
-                    pendingChunks.remove(chunkPos);
-
-                    // Schedule a retry after a short delay
-                    scheduler.schedule(() -> {
-                        if (GameContext.get().isMultiplayer() &&
-                            GameContext.get().getWorld() != null &&
-                            !GameContext.get().getWorld().getChunks().containsKey(chunkPos)) {
-                            GameLogger.info("Retrying chunk request for " + chunkPos);
-                            requestChunk(chunkPos);
-                        }
-                    }, 1000, TimeUnit.MILLISECONDS);
+                    return;
                 }
+
+                // Process the authoritative chunk data from the server
+                world.processChunkData(chunkData);
+                pendingChunks.remove(chunkPos);
             });
         } catch (Exception e) {
             GameLogger.error("Error handling compressed chunk data: " + e.getMessage());
-            e.printStackTrace();
-
-            // Request the chunk again, but delayed to prevent request spam
             if (compressed != null) {
-                Vector2 chunkPos = new Vector2(compressed.chunkX, compressed.chunkY);
-                pendingChunks.remove(chunkPos);
-
-                scheduler.schedule(() -> {
-                    if (GameContext.get().isMultiplayer() &&
-                        GameContext.get().getWorld() != null &&
-                        !GameContext.get().getWorld().getChunks().containsKey(chunkPos)) {
-                        requestChunk(chunkPos);
-                    }
-                }, 2000, TimeUnit.MILLISECONDS);
+                pendingChunks.remove(new Vector2(compressed.chunkX, compressed.chunkY));
             }
         }
     }
+
 
     /**
      * Request adjacent chunks if needed to ensure smooth transitions

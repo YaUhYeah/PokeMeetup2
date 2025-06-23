@@ -406,35 +406,28 @@ public class World {
 
         Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
         try {
-            // Step 1: Get or create biome based on authoritative server data.
             Biome primaryBiome = getBiomeManager().getBiome(chunkData.primaryBiomeType);
             if (primaryBiome == null) {
                 GameLogger.error("Client using fallback PLAINS biome for null type: " + chunkData.primaryBiomeType);
                 primaryBiome = getBiomeManager().getBiome(BiomeType.PLAINS);
             }
 
-            // Step 2: Get or create the chunk instance.
             Biome finalPrimaryBiome = primaryBiome;
             Chunk chunk = chunks.computeIfAbsent(chunkPos, k -> new Chunk(chunkData.chunkX, chunkData.chunkY, finalPrimaryBiome, chunkData.generationSeed));
-            chunk.setBiome(primaryBiome); // Always trust the server's primary biome
-
-            // Step 3: Set tile data from server.
+            chunk.setBiome(primaryBiome);
             chunk.setTileData(chunkData.tileData);
 
-            // --- WORLD OBJECTS & BLOCKS AUTHORITATIVE FIX ---
-            // Clear all local blocks and objects for this chunk before applying server state.
+            // --- AUTHORITATIVE FIX: Clear local state before applying server state ---
             chunk.getBlocks().clear();
             chunk.getWorldObjects().clear();
             getObjectManager().getObjectsForChunk(chunkPos).clear();
 
-            // Repopulate blocks from server data.
             if (chunkData.blockData != null) {
                 for (BlockSaveData.BlockData bd : chunkData.blockData) {
-                    processBlockData(chunk, bd); // Use your existing helper for this.
+                    processBlockData(chunk, bd);
                 }
             }
 
-            // Repopulate world objects from server data.
             List<WorldObject> newObjects = new ArrayList<>();
             if (chunkData.worldObjects != null) {
                 for (Map<String, Object> objData : chunkData.worldObjects) {
@@ -448,21 +441,16 @@ public class World {
             }
             chunk.setWorldObjects(newObjects);
             getObjectManager().setObjectsForChunk(chunkPos, newObjects);
-            // --- END AUTHORITATIVE FIX ---
 
-            // Step 4: Store biome transition info for smooth rendering.
             BiomeTransitionResult transition = new BiomeTransitionResult(
                 primaryBiome,
                 chunkData.secondaryBiomeType != null ? getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null,
                 chunkData.biomeTransitionFactor
             );
             storeBiomeTransition(chunkPos, transition);
-
-            // Step 5: Apply auto-tiling for visual consistency.
             new AutoTileSystem().applyShorelineAutotiling(chunk, 0, this);
 
-            chunk.setDirty(true); // Mark for re-rendering.
-
+            chunk.setDirty(true);
             GameLogger.info("Client processed chunk " + chunkPos + " with " + newObjects.size() + " objects.");
 
         } catch (Exception e) {
@@ -470,6 +458,7 @@ public class World {
             e.printStackTrace();
         }
     }
+
 
     public void storeBiomeTransition(Vector2 chunkPos, BiomeTransitionResult transition) {
         if (chunkPos != null && transition != null && transition.getPrimaryBiome() != null) {
@@ -1501,42 +1490,21 @@ public class World {
     }
 
     public Chunk loadOrGenerateChunk(Vector2 chunkPos) {
-        // If we're in multiplayer, try to get the chunk from the server.
-        // But if after a timeout no chunk is available in our local chunks map,
-        // generate it locally as a fallback.
+        // **FIX**: In multiplayer, never generate chunks on the client. Only request them.
         if (GameContext.get().isMultiplayer()) {
-            // First, check if a chunk was already received from the server.
-            if (chunks.containsKey(chunkPos)) {
-                return chunks.get(chunkPos);
+            if (!chunks.containsKey(chunkPos)) {
+                GameContext.get().getGameClient().requestChunk(chunkPos);
             }
-            // If not, check if enough time has passed since the initial chunk request.
-            // (initialChunkRequestTime is recorded when requestInitialChunks() is called.)
-            if (System.currentTimeMillis() - initialChunkRequestTime > 5000) {
-                GameLogger.info("Fallback: generating chunk locally for " + chunkPos + " in multiplayer mode.");
-                Chunk generated = UnifiedWorldGenerator.generateChunk(
-                    (int) chunkPos.x,
-                    (int) chunkPos.y,
-                    this.worldSeed,
-                    GameContext.get().getBiomeManager()
-                );
-                getObjectManager().setObjectsForChunk(chunkPos, generated.getWorldObjects());
-                // Save the chunk locally so that future loads will get it.
-                saveChunkData(chunkPos, generated);
-                // Also add it to our local chunks map
-                chunks.put(chunkPos, generated);
-                return generated;
-            }
-            // Otherwise, request the chunk from the server and return null for now.
-            GameContext.get().getGameClient().requestChunk(chunkPos);
-            return null;
+            // Return whatever is currently in the map (might be null if not yet received).
+            return chunks.get(chunkPos);
         }
 
-        // Singleplayer: try to load from disk first...
+        // Single-player logic remains the same.
         Chunk loaded = loadChunkData(chunkPos);
         if (isChunkValid(loaded)) {
             return loaded;
         }
-        // ...and if that fails, generate it.
+
         Chunk generated = UnifiedWorldGenerator.generateChunk(
             (int) chunkPos.x,
             (int) chunkPos.y,
