@@ -323,8 +323,8 @@ public class GameServer {
             return;
         }
 
-        // Broadcast the drop to all other players
-        networkServer.sendToAllExceptTCP(connection.getID(), drop);
+        // FIX: Broadcast the drop to ALL clients, making the server authoritative.
+        networkServer.sendToAllTCP(drop);
     }
 
     private void serverDestroyBlock(PlaceableBlock block) {

@@ -1838,8 +1838,6 @@ public class World {
     }
 
     private void renderLoadingOverlay(SpriteBatch batch) {
-        // Here you can also draw a semi-transparent rectangle background if desired.
-        loadingFont.draw(batch, "Loading world...", Gdx.graphics.getWidth() / 2f - 50, Gdx.graphics.getHeight() / 2f);
 
     }
 

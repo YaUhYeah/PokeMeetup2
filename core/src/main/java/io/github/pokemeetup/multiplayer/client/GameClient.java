@@ -1048,14 +1048,12 @@ public class GameClient {
     }
 
     private void handleItemDrop(NetworkProtocol.ItemDrop drop) {
-        if (drop.username.equals(getLocalUsername())) {
-            // This is our own drop, already handled locally
-            return;
-        }
+        // FIX: Removed the check that ignored drops from the local player.
+        // The server is now the source of truth, so all clients must listen.
 
-        // Spawn the dropped item for other players
+        // Spawn the dropped item using the new network-safe method.
         GameContext.get().getWorld().getItemEntityManager()
-            .spawnItemEntity(drop.itemData, drop.x, drop.y);
+            .spawnItemEntityFromNetwork(drop.itemData, drop.x, drop.y);
 
         // Play drop sound for nearby drops
         float distance = Vector2.dst(

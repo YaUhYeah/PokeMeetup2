@@ -105,6 +105,10 @@ public class ItemEntityManager {
         }
     }
 
+    public void spawnItemEntityFromNetwork(ItemData itemData, float x, float y) {
+        ItemEntity entity = new ItemEntity(itemData, x, y);
+        itemEntities.put(entity.getEntityId(), entity);
+    }
     public ItemEntity getClosestPickableItem(float x, float y, float range) {
         ItemEntity closest = null;
         float closestDist = range;
