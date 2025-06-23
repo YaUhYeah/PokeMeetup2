@@ -51,24 +51,24 @@ public class WorldSelectionScreen implements Screen {
     private static final float MIN_BUTTON_HEIGHT = 40f;
     private static final float MIN_WORLD_LIST_WIDTH = 300f;
     private static final float MIN_INFO_PANEL_WIDTH = 200f;
-    private final CreatureCaptureGame game;
-    private final Stage stage;
-    private final Skin skin;
+    final CreatureCaptureGame game;
+    final Stage stage;
+    final Skin skin;
     private final Map<String, Texture> worldThumbnails = new HashMap<>();
     private Table mainTable;
     private ScrollPane worldListScroll;
     private Table worldListTable;
     private Table infoPanel;
-    private WorldData selectedWorld;
+    WorldData selectedWorld;
     // Buttons
     private TextButton playButton;
     private TextButton createButton;
     private TextButton deleteButton;
     private TextButton backButton;
     private ButtonGroup<TextButton> tabGroup;
-    private String currentTab = "All";
+    String currentTab = "All";
     private ButtonGroup<TextButton> sortGroup;
-    private String currentSort = "Name";
+    String currentSort = "Name";
     private float screenWidth;
     private float screenHeight;
     private Table contentTable;
@@ -499,7 +499,7 @@ public class WorldSelectionScreen implements Screen {
         updateInfoPanel();
     }
 
-    private boolean shouldShowWorld(WorldData world) {
+    boolean shouldShowWorld(WorldData world) {
         switch (currentTab) {
             case "Recent":
                 return (System.currentTimeMillis() - world.getLastPlayed()) < (7L * 24 * 60 * 60 * 1000);
@@ -510,7 +510,7 @@ public class WorldSelectionScreen implements Screen {
         }
     }
 
-    private void selectWorld(WorldData world) {
+    void selectWorld(WorldData world) {
         if (world == null) return;
 
         selectedWorld = world;
@@ -568,7 +568,7 @@ public class WorldSelectionScreen implements Screen {
         infoPanel.add(usernameLabel).row();
     }
 
-    private String formatPlayedTime(long millis) {
+    String formatPlayedTime(long millis) {
         long seconds = millis / 1000;
         long minutes = seconds / 60;
         long hours = minutes / 60;
@@ -579,12 +579,12 @@ public class WorldSelectionScreen implements Screen {
         return String.format("%02dh %02dm %02ds", hours, minutes, seconds);
     }
 
-    private String formatDate(long timestamp) {
+    String formatDate(long timestamp) {
         if (timestamp == 0) return "Never";
         return new SimpleDateFormat("MMM d, yyyy HH:mm").format(new Date(timestamp));
     }
 
-    private long getSeedFromWorld(WorldData world) {
+    long getSeedFromWorld(WorldData world) {
         if (world == null) return System.currentTimeMillis();
         WorldData.WorldConfig config = world.getConfig();
         if (config == null) {
@@ -679,7 +679,7 @@ public class WorldSelectionScreen implements Screen {
         dialog.button("Cancel", false);
         dialog.show(stage);
     }
-    private void showDeleteConfirmDialog() {
+    void showDeleteConfirmDialog() {
         Dialog dialog = new Dialog("Delete World", skin) {
             @Override
             protected void result(Object object) {
@@ -936,7 +936,7 @@ public class WorldSelectionScreen implements Screen {
     }
 
 
-    private void showError(String message) {
+    void showError(String message) {
         Dialog dialog = new Dialog("Error", skin);
         dialog.text(message);
         dialog.button("OK");
