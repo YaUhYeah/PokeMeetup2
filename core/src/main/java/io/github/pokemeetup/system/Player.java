@@ -645,40 +645,35 @@ public class Player implements Positionable {
             bufferedTime = 0f;
         }
     }
-
     public void render(SpriteBatch batch) {
         synchronized (resourceLock) {
-            if (!initialized) return;
-            if (!fontInitialized) {
-                initializeGLResources();
+            if (!initialized || disposed || animations == null || animations.isDisposed() || currentFrame == null) {
                 return;
             }
-            if (!resourcesInitialized || disposed || animations == null || animations.isDisposed()) {
-                initializeResources();
+
+            Color originalColor = batch.getColor().cpy();
+            if (world != null) {
+                batch.setColor(world.getCurrentWorldColor());
             }
-            if (currentFrame != null) {
-                Color originalColor = batch.getColor().cpy();
-                if (world != null) {
-                    Color baseColor = world.getCurrentWorldColor();
-                    batch.setColor(baseColor);
-                }
-                float scale = 1f;
-                if (getCharacterType().equalsIgnoreCase("girl")) {
-                    scale = 2f;
-                }
-                float regionW = currentFrame.getRegionWidth() * scale;
-                float regionH = currentFrame.getRegionHeight() * scale;
-                float drawX = renderPosition.x - (regionW / 2f);
-                float drawY = renderPosition.y;
-                batch.draw(currentFrame, drawX, drawY, regionW, regionH);
-                batch.setColor(originalColor);
-                if (username != null && !username.isEmpty() && !username.equals("Player") && font != null) {
-                    layout.setText(font, username);
-                    float textWidth = layout.width;
-                    float nameX = drawX + (regionW - textWidth) / 2f;
-                    float nameY = drawY + regionH + 15;
-                    font.draw(batch, username, nameX, nameY);
-                }
+
+            float scale = getCharacterType().equalsIgnoreCase("girl") ? 2f : 1f;
+            float regionW = currentFrame.getRegionWidth() * scale;
+            float regionH = currentFrame.getRegionHeight() * scale;
+
+            // [MODIFIED] Use renderPosition for drawing to get smooth interpolation.
+            float drawX = renderPosition.x - (regionW / 2f);
+            float drawY = renderPosition.y;
+
+            batch.draw(currentFrame, drawX, drawY, regionW, regionH);
+            batch.setColor(originalColor);
+
+            // Render username (unchanged)
+            if (username != null && !username.isEmpty() && !username.equals("Player") && font != null) {
+                layout.setText(font, username);
+                float textWidth = layout.width;
+                float nameX = drawX + (regionW - textWidth) / 2f;
+                float nameY = drawY + regionH + 15;
+                font.draw(batch, username, nameX, nameY);
             }
         }
     }
@@ -703,23 +698,7 @@ public class Player implements Positionable {
         this.tileY = tileY;
     }
 
-    public void selectBlockItem(int slot) {
-        if (!buildMode) return;
-        ItemData itemData = buildInventory.getItemAt(slot);
-        Item heldBlock = null;
-        if (itemData != null) {
-            Item baseItem = ItemManager.getItem(itemData.getItemId());
-            if (baseItem == null) {
-                GameLogger.error("Failed to get base item for: " + itemData.getItemId());
-                return;
-            }
-            heldBlock = baseItem.copy();
-            heldBlock.setCount(itemData.getCount());
-            GameLogger.info("Selected block item: " + itemData.getItemId() + " x" + itemData.getCount());
-        } else {
-            GameLogger.info("Cleared held block");
-        }
-    }
+
 
     public boolean canPickupItem(float itemX, float itemY) {
         float playerCenterX = x + (FRAME_WIDTH / 2f);

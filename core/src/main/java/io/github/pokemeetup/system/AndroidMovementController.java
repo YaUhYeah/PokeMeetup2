@@ -1,3 +1,4 @@
+// File: src/main/java/io/github/pokemeetup/system/AndroidMovementController.java
 package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.math.Vector2;
@@ -6,23 +7,15 @@ import com.badlogic.gdx.math.MathUtils;
 public class AndroidMovementController {
     private static final float DEADZONE = 0.2f;
     private static final float MAX_JOYSTICK_RADIUS = 100f;
-    private static final float DIRECTION_THRESHOLD = 0.5f;
 
-    private final Player player;
-    private final Vector2 joystickCenter;
-    private final Vector2 joystickCurrent;
-    private final Vector2 movementVector;
-    private boolean isActive;
-    private String currentDirection;
-    private float magnitude;
+    private final InputHandler inputHandler;
+    private final Vector2 joystickCenter = new Vector2();
+    private final Vector2 joystickCurrent = new Vector2();
+    private final Vector2 movementVector = new Vector2();
+    private boolean isActive = false;
 
     public AndroidMovementController(Player player, InputHandler inputHandler) {
-        this.player = player;
-        this.joystickCenter = new Vector2();
         this.inputHandler = inputHandler;
-        this.joystickCurrent = new Vector2();
-        this.movementVector = new Vector2();
-        this.isActive = false;
     }
 
     public void handleTouchDown(float x, float y) {
@@ -36,106 +29,68 @@ public class AndroidMovementController {
         if (!isActive) return;
 
         joystickCurrent.set(x, y);
+
+        // [FIX] Clamp the joystick knob to stay within the max radius
+        Vector2 diff = new Vector2(joystickCurrent).sub(joystickCenter);
+        if (diff.len() > MAX_JOYSTICK_RADIUS) {
+            diff.setLength(MAX_JOYSTICK_RADIUS);
+            joystickCurrent.set(joystickCenter).add(diff);
+        }
+
         updateJoystick();
     }
 
+    public void handleTouchUp() {
+        isActive = false;
+        inputHandler.resetMovementFlags(); // [FIX] This clears all directional flags
+    }
 
-
-    private final InputHandler inputHandler;
+    // [MODIFIED] This method no longer controls the player directly.
+    // It now sets boolean flags in the InputHandler, just like the keyboard.
     private void updateJoystick() {
+        if (!isActive) return;
+
         movementVector.set(joystickCurrent).sub(joystickCenter);
+        float magnitude = movementVector.len() / MAX_JOYSTICK_RADIUS;
 
-        // Calculate magnitude (0 to 1)
-        magnitude = movementVector.len() / MAX_JOYSTICK_RADIUS;
-        magnitude = MathUtils.clamp(magnitude, 0, 1);
-
-        // Apply deadzone
         if (magnitude < DEADZONE) {
-            magnitude = 0;
-            movementVector.setZero();
-            currentDirection = null;
-            // Reset movement flags
-            resetMovementFlags();
+            inputHandler.resetMovementFlags();
             return;
         }
 
-        // Normalize vector
-        movementVector.nor();
+        movementVector.nor(); // Normalize to get a direction vector
 
-        updateDirection();
+        float angle = movementVector.angleDeg();
 
-        // Set running based on magnitude
-        if (inputHandler != null) {
-            inputHandler.setRunning(magnitude > 0.8f);
-        }
-    } private void resetMovementFlags() {
+        // Reset all directions before setting the new one
         inputHandler.moveUp(false);
         inputHandler.moveDown(false);
         inputHandler.moveLeft(false);
         inputHandler.moveRight(false);
-    }
-    private void updateDirection() {
-        float x = movementVector.x;
-        float y = movementVector.y;
 
-        // Reset movement flags
-        resetMovementFlags();
-
-        // Determine direction and set flags
-        if (Math.abs(x) > DIRECTION_THRESHOLD) {
-            if (x > 0) {
-                inputHandler.moveRight(true);
-            } else {
-                inputHandler.moveLeft(true);
-            }
+        // Determine the primary direction and set the corresponding flag
+        if (angle > 45 && angle <= 135) {
+            inputHandler.moveUp(true);
+        } else if (angle > 135 && angle <= 225) {
+            inputHandler.moveLeft(true);
+        } else if (angle > 225 && angle <= 315) {
+            inputHandler.moveDown(true);
+        } else {
+            inputHandler.moveRight(true);
         }
-        if (Math.abs(y) > DIRECTION_THRESHOLD) {
-            if (y > 0) {
-                inputHandler.moveUp(true);
-            } else {
-                inputHandler.moveDown(true);
-            }
-        }
-    }
-    public void handleTouchUp() {
-        isActive = false;
-        movementVector.setZero();
-        magnitude = 0;
-        currentDirection = null;
-        resetMovementFlags();
-        if (player != null) {
-            player.setMoving(false);
-        }
+
+        // [FIX] Set running state based on how far the joystick is pushed
+        inputHandler.setRunning(magnitude > 0.8f);
     }
 
-    public void update() {
-        if (!isActive || magnitude < DEADZONE || currentDirection == null) {
-            return;
-        }
-        if (!player.isMoving() && currentDirection != null) {
-            player.move(currentDirection);
-        } else if (player.isMoving()) {
-            player.setDirection(currentDirection);
-        }
-    }
-
-    public Vector2 getJoystickCenter() {
-        return joystickCenter;
-    }
-
-    public Vector2 getJoystickCurrent() {
-        return joystickCurrent;
-    }
-
-    public float getMaxRadius() {
-        return MAX_JOYSTICK_RADIUS;
-    }
-
-    public boolean isActive() {
-        return isActive;
-    }
-
+    // These getters are for the GameScreen to render the joystick UI
+    public boolean isActive() { return isActive; }
+    public Vector2 getJoystickCenter() { return joystickCenter; }
+    public Vector2 getJoystickCurrent() { return joystickCurrent; }
+    public float getMaxRadius() { return MAX_JOYSTICK_RADIUS; }
     public float getMagnitude() {
-        return magnitude;
+        return MathUtils.clamp(movementVector.len() / MAX_JOYSTICK_RADIUS, 0, 1);
     }
+
+    // [REMOVED] The `update()` method is no longer needed here, as the `InputHandler`'s update loop now drives player movement.
 }

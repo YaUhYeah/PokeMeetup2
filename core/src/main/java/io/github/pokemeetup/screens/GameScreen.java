@@ -1633,9 +1633,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         // Clear screen
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        if (movementController != null) {
-            movementController.update();
-        }
         if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
             Gdx.gl.glClearColor(0.1f, 0.1f, 0.2f, 1);
             Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
@@ -1766,7 +1763,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         // Game state updates
         if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
             float deltaTime = Gdx.graphics.getDeltaTime();
-            GameContext.get().getPlayer().update(deltaTime);
             // Camera update
             if (!inBattle && !transitioning) {
                 updateCamera();
@@ -1791,10 +1787,17 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             }
 
             handleInput();
-            if (inputHandler != null &&
-                (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
-                    inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE)) {
+            if (inputHandler != null) {
+                // This call will check the upPressed, downPressed, etc. flags
+                // and tell the player to move if necessary. It also handles
+                // the progress of actions like chopping.
                 inputHandler.update(delta);
+            }
+
+            // [MODIFIED] Move the player update call here. It should happen AFTER the input handler has
+            // had a chance to start a move.
+            if (GameContext.get().getPlayer() != null) {
+                GameContext.get().getPlayer().update(delta);
             }
 
             updateTimer += delta;
