@@ -139,13 +139,12 @@ public class InputManager {
         // Clear any previously added processors.
         inputMultiplexer.clear();
 
-        // 1) ChatSystem first, if it exists and has a Stage
-        if (GameContext.get().getChatSystem() != null &&
-            GameContext.get().getChatSystem().getStage() != null) {
-            inputMultiplexer.addProcessor(
-                GameContext.get().getChatSystem().getStage()
-            );
+        if (currentState == UIState.CHAT && GameContext.get().getChatSystem() != null) {
+            inputMultiplexer.addProcessor(GameContext.get().getChatSystem().getStage());
+            Gdx.input.setInputProcessor(inputMultiplexer);
+            return; // When chat is active, it gets exclusive input priority.
         }
+
 
         // 2) The main UI Stage (HUD, overlays, etc.)
         if (GameContext.get().getUiStage() != null) {
@@ -229,6 +228,7 @@ public class InputManager {
         MENU,
         STARTER_SELECTION,
         CHEST_SCREEN,
-        BATTLE
+        BATTLE,
+        CHAT // <-- ADD THIS
     }
 }

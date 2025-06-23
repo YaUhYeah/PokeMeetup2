@@ -199,10 +199,9 @@ public class ChatSystem extends Table {
         inactiveTimer = 0;
         chatWindow.getColor().a = 1f;
 
-        // FIX: When chat is active, disable the click listener on the window to prevent re-activation.
-        chatWindow.setTouchable(Touchable.disabled);
+        // Use the InputManager to set the state
+        GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.CHAT);
 
-        // set keyboard focus to inputField and show keyboard on mobile
         Gdx.app.postRunnable(() -> {
             stage.setKeyboardFocus(inputField);
             if (Gdx.app.getType() == Application.ApplicationType.Android) {
@@ -213,31 +212,16 @@ public class ChatSystem extends Table {
 
     public void deactivateChat() {
         isActive = false;
-        // FIX: Re-enable touchable on the window so it can be tapped again to activate.
-        chatWindow.setTouchable(Touchable.enabled);
-
         inputField.setVisible(false);
         stage.setKeyboardFocus(null);
-
-        // Hide on-screen keyboard on mobile
         if (Gdx.app.getType() == Application.ApplicationType.Android) {
             Gdx.input.setOnscreenKeyboardVisible(false);
         }
 
-        // Restore normal movement or “UIState.NORMAL”
-        if (GameContext.get().getGameScreen() != null &&
-            GameContext.get().getGameScreen().getInputManager() != null) {
-            // This line is crucial: forcibly set the game’s InputManager to NORMAL
-            GameContext.get().getGameScreen().getInputManager()
-                .setUIState(InputManager.UIState.NORMAL);
-        }
-
-        // Optionally reset movement flags to be safe
-        if (GameContext.get().getGameScreen() != null &&
-            GameContext.get().getGameScreen().getInputHandler() != null) {
-            GameContext.get().getGameScreen().getInputHandler().resetMovementFlags();
-        }
+        // Restore the input state to normal via the InputManager
+        GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.NORMAL);
     }
+
 
     private void update(float delta) {
         if (!isActive) {

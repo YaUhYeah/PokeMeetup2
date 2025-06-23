@@ -834,127 +834,63 @@ public class GameServer {
             e.printStackTrace();
         }
     }
+    // In GameServer.java
+
     private void broadcastWorldState() {
-        // For each active player, compute personalized weather based on their position.
-        for (Map.Entry<String, ServerPlayer> entry : activePlayers.entrySet()) {
-            String username = entry.getKey();
-            ServerPlayer player = entry.getValue();
-            Vector2 pos = player.getPosition(); // player's position in pixels
+        // Determine a global biome to base the weather on.
+        // A simple strategy is to use the most common biome among all active players.
+        if (activePlayers.isEmpty()) {
+            // No players online, no need to update weather.
+            return;
+        }
 
-            // Retrieve the biome transition using the new method in ServerWorldManager.
-            BiomeTransitionResult biomeTransition =
-                ServerGameContext.get().getWorldManager().getBiomeTransitionAt(pos.x, pos.y);
-
-            // Use global world time for time-of–day.
-            double worldTime = worldData.getWorldTimeInMinutes();
-            // Compute a temperature based on the primary biome.
-            float temperature = computeTemperatureForBiome(biomeTransition.getPrimaryBiome().getType());
-
-            // Decide weather based on the primary biome type.
-            WeatherSystem.WeatherType weatherType;
-            float intensity;
-            float rand = MathUtils.random();
-            switch (biomeTransition.getPrimaryBiome().getType()) {
-                case RAIN_FOREST:
-                    if (rand < 0.75f) {
-                        weatherType = WeatherSystem.WeatherType.HEAVY_RAIN;
-                        intensity = 0.8f;
-                    } else {
-                        weatherType = WeatherSystem.WeatherType.RAIN;
-                        intensity = 0.6f;
-                    }
-                    break;
-                case HAUNTED:
-                    if (worldTime >= 18 || worldTime < 6) {
-                        if (rand < 0.7f) {
-                            weatherType = WeatherSystem.WeatherType.FOG;
-                            intensity = 0.8f;
-                        } else {
-                            weatherType = WeatherSystem.WeatherType.THUNDERSTORM;
-                            intensity = 0.9f;
-                        }
-                    } else {
-                        if (rand < 0.5f) {
-                            weatherType = WeatherSystem.WeatherType.FOG;
-                            intensity = 0.6f;
-                        } else {
-                            weatherType = WeatherSystem.WeatherType.THUNDERSTORM;
-                            intensity = 0.7f;
-                        }
-                    }
-                    break;
-                case SNOW:
-                    if (temperature < 0) {
-                        weatherType = WeatherSystem.WeatherType.BLIZZARD;
-                        intensity = 0.7f;
-                    } else {
-                        weatherType = WeatherSystem.WeatherType.SNOW;
-                        intensity = 0.5f;
-                    }
-                    break;
-                case DESERT:
-                    if (temperature > 35 && rand < 0.4f) {
-                        weatherType = WeatherSystem.WeatherType.SANDSTORM;
-                        intensity = 0.7f;
-                    } else {
-                        // Clear (sunny) conditions for desert when not stormy.
-                        weatherType = WeatherSystem.WeatherType.CLEAR;
-                        intensity = 0f;
-                    }
-                    break;
-                case PLAINS:
-                case BEACH:
-                    // For these biomes, use clear (sunny) weather.
-                    weatherType = WeatherSystem.WeatherType.CLEAR;
-                    intensity = 0f;
-                    break;
-                case FOREST:
-                    if (rand < 0.4f) {
-                        weatherType = WeatherSystem.WeatherType.RAIN;
-                        intensity = 0.4f;
-                    } else {
-                        weatherType = WeatherSystem.WeatherType.CLEAR;
-                        intensity = 0f;
-                    }
-                    break;
-                default:
-                    weatherType = WeatherSystem.WeatherType.CLEAR;
-                    intensity = 0f;
-                    break;
-            }
-
-            // Compute accumulation (for clear weather, accumulation is 0).
-            float accumulation;
-            if (weatherType == WeatherSystem.WeatherType.SNOW || weatherType == WeatherSystem.WeatherType.BLIZZARD) {
-                accumulation = 0.1f * intensity;
-            } else if (weatherType == WeatherSystem.WeatherType.RAIN) {
-                accumulation = 0.05f * intensity;
-            } else if (weatherType == WeatherSystem.WeatherType.HEAVY_RAIN || weatherType == WeatherSystem.WeatherType.THUNDERSTORM) {
-                accumulation = 0.15f * intensity;
-            } else {
-                accumulation = 0f;
-            }
-
-            // Build the personalized world state update message.
-            NetworkProtocol.WorldStateUpdate update = new NetworkProtocol.WorldStateUpdate();
-            update.seed = worldData.getConfig().getSeed();
-            update.worldTimeInMinutes = worldData.getWorldTimeInMinutes();
-            update.dayLength = worldData.getDayLength();
-            update.currentWeather = weatherType;
-            update.intensity = intensity;
-            update.accumulation = accumulation;
-            update.timestamp = System.currentTimeMillis();
-
-            // Send the update only to the connection associated with this player.
-            for (Connection conn : networkServer.getConnections()) {
-                if (username.equals(connectedPlayers.get(conn.getID()))) {
-                    conn.sendTCP(update);
-                    break;
-                }
+        // Find the most common biome among players.
+        Map<BiomeType, Integer> biomeCounts = new HashMap<>();
+        for (ServerPlayer player : activePlayers.values()) {
+            BiomeTransitionResult btr = ServerGameContext.get().getWorldManager().getBiomeTransitionAt(player.getPosition().x, player.getPosition().y);
+            if (btr != null && btr.getPrimaryBiome() != null) {
+                biomeCounts.merge(btr.getPrimaryBiome().getType(), 1, Integer::sum);
             }
         }
-    }
 
+        // Find the biome with the highest count.
+        BiomeType dominantBiomeType = biomeCounts.entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .map(Map.Entry::getKey)
+            .orElse(BiomeType.PLAINS); // Default to PLAINS if no players or biomes found.
+
+        // Get a representative temperature for this biome.
+        float temperature = computeTemperatureForBiome(dominantBiomeType);
+
+        // --- THIS IS THE CORRECTED LINE ---
+        // It now calls the new getBiome() method on ServerWorldManager.
+        Biome dominantBiome = ServerGameContext.get().getWorldManager().getBiome(dominantBiomeType);
+        if (dominantBiome == null) {
+            GameLogger.error("Could not retrieve dominant biome object. Aborting weather update.");
+            return;
+        }
+
+        weatherSystem.update(1.0f, // Use a fixed delta of 1 second for each update cycle
+            new BiomeTransitionResult(dominantBiome, null, 1.0f),
+            temperature,
+            (float) (worldData.getWorldTimeInMinutes() % (24 * 60)) / 60f,
+            null // GameScreen is null on server, the logic inside updateWeatherType doesn't need it
+        );
+        // --- END OF CORRECTION ---
+
+        // Create one global update message.
+        NetworkProtocol.WorldStateUpdate update = new NetworkProtocol.WorldStateUpdate();
+        update.seed = worldData.getConfig().getSeed();
+        update.worldTimeInMinutes = worldData.getWorldTimeInMinutes();
+        update.dayLength = worldData.getDayLength();
+        update.currentWeather = weatherSystem.getCurrentWeather();
+        update.intensity = weatherSystem.getIntensity();
+        update.accumulation = weatherSystem.getAccumulation();
+        update.timestamp = System.currentTimeMillis();
+
+        // Broadcast the single state to ALL players.
+        networkServer.sendToAllTCP(update);
+    }
     /**
      * Example helper that computes a temperature (in °C) based on a given biome type.
      */
@@ -1090,6 +1026,7 @@ public class GameServer {
                     }
                     if (object instanceof NetworkProtocol.BlockPlacement) {
                         handleBlockPlacement(connection, (NetworkProtocol.BlockPlacement) object);
+                        return;
                     }
                     if (object instanceof NetworkProtocol.ItemDrop) {
                         handleItemDrop(connection, (NetworkProtocol.ItemDrop) object);
@@ -1112,7 +1049,7 @@ public class GameServer {
                     if (object instanceof NetworkProtocol.PlayerInfoUpdate) {
                         NetworkProtocol.PlayerInfoUpdate update = (NetworkProtocol.PlayerInfoUpdate) object;
                         playerPingMap.put(update.username, update.ping);
-                        broadcastPlayerList();
+                        broadcastPlayerList();return;
                     }
 
                     if (object instanceof NetworkProtocol.PingRequest) {

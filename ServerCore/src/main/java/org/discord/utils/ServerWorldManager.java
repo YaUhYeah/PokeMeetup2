@@ -201,7 +201,14 @@ public class ServerWorldManager {
         timed.lastAccess = System.currentTimeMillis();
         return timed.chunk;
     }
-
+    /**
+     * Retrieves a Biome object by its type from the internal BiomeManager.
+     * @param type The BiomeType to retrieve.
+     * @return The Biome object, or a fallback if not found.
+     */
+    public Biome getBiome(BiomeType type) {
+        return biomeManager.getBiome(type);
+    }
     private Chunk generateNewChunk(int chunkX, int chunkY, long seed) {
         int worldTileX = chunkX * Chunk.CHUNK_SIZE;
         int worldTileY = chunkY * Chunk.CHUNK_SIZE;
