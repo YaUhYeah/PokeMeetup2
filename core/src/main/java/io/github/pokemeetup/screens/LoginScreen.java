@@ -53,11 +53,11 @@ public class LoginScreen implements Screen {
     public ServerConnectionConfig selectedServer;
     private Table serverListTable;
     private Table mainTable;
-    private TextButton loginButton;
-    private TextButton registerButton;
-    private TextButton backButton;
-    private ProgressBar connectionProgress;
-    private Label statusLabel;
+    TextButton loginButton;
+    TextButton registerButton;
+    TextButton backButton;
+    ProgressBar connectionProgress;
+    Label statusLabel;
     private float connectionTimer;
     private boolean isConnecting = false;
     private int connectionAttempts = 0;
@@ -339,7 +339,7 @@ public class LoginScreen implements Screen {
 
     // == Server Management ==
 
-    private void showServerDialog(ServerConnectionConfig editServer) {
+    void showServerDialog(ServerConnectionConfig editServer) {
         ServerManagementDialog dialog = new ServerManagementDialog(
             skin,
             editServer,
@@ -355,7 +355,7 @@ public class LoginScreen implements Screen {
         dialog.show(stage);
     }
 
-    private void deleteServer(ServerConnectionConfig server) {
+    void deleteServer(ServerConnectionConfig server) {
         if (server.isDefault()) {
             showError("Cannot delete default server");
             return;
@@ -598,7 +598,7 @@ public class LoginScreen implements Screen {
     }
 
     // == Login Flow ==
-    private void attemptLogin() {
+    void attemptLogin() {
         final String username = usernameField.getText().trim();
         final String password = passwordField.getText().trim();
 
@@ -695,7 +695,7 @@ public class LoginScreen implements Screen {
 
     // == Registration Flow ==
 
-    private void attemptRegistration() {
+    void attemptRegistration() {
         if (isConnecting) return;
         final String username = usernameField.getText().trim();
         final String password = passwordField.getText().trim();
