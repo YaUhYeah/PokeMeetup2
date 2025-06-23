@@ -72,7 +72,7 @@ public class WorldSelectionScreen implements Screen {
     private float screenWidth;
     private float screenHeight;
     private Table contentTable;
-    private TextureRegion placeholderRegion;
+    TextureRegion placeholderRegion;
 
     public WorldSelectionScreen(CreatureCaptureGame game) {
         this.game = game;
@@ -93,6 +93,11 @@ public class WorldSelectionScreen implements Screen {
             GameLogger.error("Failed to load skin JSON 'uiskin.json': " + e.getMessage());
             throw new RuntimeException("Skin JSON loading failed.", e);
         }
+        Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        pixmap.setColor(Color.WHITE);
+        pixmap.fill();
+        skin.add("white", new Texture(pixmap));
+        pixmap.dispose();
         List<String> requiredDrawables = Arrays.asList(
             "default-round", "default-round-down", "default-rect",
             "default-window", "default-scroll", "default-round-large",
@@ -594,7 +599,7 @@ public class WorldSelectionScreen implements Screen {
         }
         return config.getSeed();
     }
-    private void showCreateWorldDialog() {
+    void showCreateWorldDialog() {
         CharacterPreviewDialog characterDialog = new CharacterPreviewDialog(stage, skin,
             (selectedCharacterType) -> {
                 // Show the world creation dialog after character selection

@@ -27,7 +27,7 @@ public class ServerManagementDialog extends Dialog {
 
         // Title
         content.add(new Label(editServer == null ? "Add Server" : "Edit Server",
-            skin, "title")).colspan(2).pad(10).row();
+            skin)).colspan(2).pad(10).row();
 
         // Fields
         nameField = new TextField(editServer != null ? editServer.getServerName() : "", skin);
