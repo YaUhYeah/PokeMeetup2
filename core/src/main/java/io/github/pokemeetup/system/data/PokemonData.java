@@ -599,14 +599,35 @@ public class PokemonData {
             Move.Builder builder = new Move.Builder(name, type)
                 .power(power)
                 .accuracy(accuracy)
-                .pp(pp)
+                .pp(pp) // This incorrectly sets maxPp = pp, which we will correct below.
                 .special(isSpecial)
                 .description(description)
                 .canFlinch(canFlinch);
 
-            return builder.build();
-        }
+            // This part is missing in your original code but is a latent bug where effects aren't loaded.
+            if (this.effect != null) {
+                builder.effect(this.effect.toMoveEffect());
+            }
 
+            Move move = builder.build();
+
+            // FIX: The Builder's pp() method incorrectly sets maxPp. We override it here
+            // with the correct maxPp value that was saved.
+            if (this.maxPp > 0) {
+                move.setMaxPp(this.maxPp);
+            } else {
+                // Fallback for older save files that might not have maxPp.
+                // In this case, the max PP will be the last-saved current PP.
+                move.setMaxPp(this.pp);
+            }
+
+            // As a safety check, ensure the current PP does not exceed the (now correct) max PP.
+            if (move.getPp() > move.getMaxPp()) {
+                move.setPp(move.getMaxPp());
+            }
+
+            return move;
+        }
 
         public MoveData copy() {
             return new MoveData(name, type, power, accuracy, pp, maxPp, isSpecial, description, effect, canFlinch);

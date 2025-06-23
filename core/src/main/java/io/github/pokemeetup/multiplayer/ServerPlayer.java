@@ -1,10 +1,14 @@
+// ... inside file: src/main/java/io/github/pokemeetup/multiplayer/ServerPlayer.java
+
 package io.github.pokemeetup.multiplayer;
 
 import com.badlogic.gdx.math.Vector2;
+import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
+import io.github.pokemeetup.system.gameplay.inventory.ItemManager; // Added import
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.utils.GameLogger;
@@ -23,6 +27,7 @@ public class ServerPlayer {
     private final Object dataLock = new Object();
     private PlayerData playerData;
     private WorldObject choppingObject;
+    private PlaceableBlock breakingBlock; // This field was added in the previous step
 
     public ServerPlayer(String username, PlayerData playerData) {
         List<PokemonData> partyPokemon1;
@@ -50,6 +55,32 @@ public class ServerPlayer {
 
     public void setChoppingObject(WorldObject object) {
         this.choppingObject = object;
+    }
+
+    public PlaceableBlock getBreakingBlock() {
+        return breakingBlock;
+    }
+
+    public void setBreakingBlock(PlaceableBlock block) {
+        this.breakingBlock = block;
+    }
+
+    /**
+     * Checks if the player has a functional wooden axe in their inventory.
+     * @return true if a non-broken axe is found, false otherwise.
+     */
+    public boolean hasAxe() {
+        synchronized (inventoryLock) {
+            for (ItemData item : inventory.getAllItems()) {
+                if (item != null && item.getItemId().equals(ItemManager.ItemIDs.WOODEN_AXE)) {
+                    // Also check if the axe has durability left
+                    if (item.getDurability() > 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     public UUID getUUID() {

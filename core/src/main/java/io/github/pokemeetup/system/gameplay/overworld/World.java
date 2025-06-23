@@ -2421,13 +2421,9 @@ public class World {
     }
 
     public boolean isPokemonAt(int worldX, int worldY) {
-        float pixelX = worldX * World.TILE_SIZE;
-        float pixelY = worldY * World.TILE_SIZE;
-        Rectangle tileBox = new Rectangle(pixelX, pixelY, World.TILE_SIZE, World.TILE_SIZE);
-        Collection<WildPokemon> nearbyPokemon = pokemonSpawnManager.getPokemonInRange(pixelX + ((float) World.TILE_SIZE / 2), pixelY + ((float) World.TILE_SIZE / 2), World.TILE_SIZE * 2);
-
-        for (WildPokemon pokemon : nearbyPokemon) {
-            if (pokemon.getBoundingBox().overlaps(tileBox)) {
+        // This check is now based on the tile the Pokémon is standing on, not a bounding box.
+        for (WildPokemon pokemon : pokemonSpawnManager.getAllWildPokemon()) {
+            if (pokemon.getTileX() == worldX && pokemon.getTileY() == worldY) {
                 return true;
             }
         }

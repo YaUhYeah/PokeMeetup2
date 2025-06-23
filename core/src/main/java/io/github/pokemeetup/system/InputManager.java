@@ -39,15 +39,25 @@ public class InputManager {
     }
 
     private void handleUIStateChange() {
+        // First, hide all UIs to ensure a clean state
+        hideAllUI();
+
         switch (currentState) {
             case NORMAL:
-                hideAllUI();
+                // Show the regular hotbar
+                if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
+                    GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(true);
+                }
+                break;
+            case BUILD_MODE:
+                // Show the build mode UI (which contains its own hotbars)
+                if (GameContext.get().getBuildModeUI() != null) {
+                    GameContext.get().getBuildModeUI().setVisible(true);
+                    GameContext.get().getBuildModeUI().refreshBuildInventory();
+                }
                 break;
             case INVENTORY:
                 showInventoryScreen();
-                break;
-            case BUILD_MODE:
-                showBuildModeUI();
                 break;
             case CRAFTING:
                 showCraftingScreen();
@@ -59,10 +69,8 @@ public class InputManager {
                 showChestScreen();
                 break;
             case BATTLE:
-                // Battle UI is managed separately
-                break;
             case STARTER_SELECTION:
-                // Starter selection is shown during initialization
+                // These are managed separately
                 break;
         }
         if (gameScreen.getInputHandler() != null) {
@@ -71,14 +79,20 @@ public class InputManager {
     }
 
     public void hideAllUI() {
+        // Hide regular hotbar
+        if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
+            GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(false);
+        }
+        // Hide build mode UI
+        if (GameContext.get().getBuildModeUI() != null) {
+            GameContext.get().getBuildModeUI().setVisible(false);
+        }
+        // Hide other screens...
         if (gameScreen.getInventoryScreen() != null) {
             gameScreen.getInventoryScreen().hide();
         }
         if (gameScreen.getGameMenu() != null) {
             gameScreen.getGameMenu().hide();
-        }
-        if (gameScreen.getBuildModeUI() != null) {
-            gameScreen.getBuildModeUI().hide();
         }
         if (gameScreen.getCraftingScreen() != null) {
             gameScreen.getCraftingScreen().hide();
@@ -95,12 +109,6 @@ public class InputManager {
         gameScreen.getInventoryScreen().show();
     }
 
-    private void showBuildModeUI() {
-        if (GameContext.get().getBuildModeUI() == null) {
-            GameContext.get().setBuildModeUI(new BuildModeUI(gameScreen.getSkin()));
-        }
-        GameContext.get().getBuildModeUI().show();
-    }
 
     private void showCraftingScreen() {
         if (gameScreen.getCraftingScreen() == null) {
@@ -111,7 +119,7 @@ public class InputManager {
 
     private void showGameMenu() {
         if (GameContext.get().getGameMenu() == null) {
-                GameContext.get().setGameMenu(new GameMenu(
+            GameContext.get().setGameMenu(new GameMenu(
                 gameScreen.getGame(),
                 gameScreen.getSkin(),
                 this

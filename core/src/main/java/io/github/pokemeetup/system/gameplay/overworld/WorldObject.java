@@ -401,24 +401,23 @@ public class WorldObject {
     // Add this to your WorldObject class
     public enum ObjectType {
         // Static objects
-        TREE_0(true, true, 2, 3, RenderLayer.LAYERED),
-        TREE_1(true, true, 2, 3, RenderLayer.LAYERED),
-        SNOW_TREE(true, true, 2, 3, RenderLayer.LAYERED),
-        HAUNTED_TREE(true, true, 2, 3, RenderLayer.LAYERED),
-        RUINS_TREE(true, true, 2, 3, RenderLayer.LAYERED),
-        APRICORN_TREE(true, true, 3, 3, RenderLayer.LAYERED),
-
-        // Environmental objects
-        CACTUS(true, true, 1, 2, RenderLayer.BELOW_PLAYER),
-        DEAD_TREE(true, true, 1, 2, RenderLayer.BELOW_PLAYER),
-        SMALL_HAUNTED_TREE(true, true, 1, 2, RenderLayer.BELOW_PLAYER),
+        TREE_0(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        TREE_1(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        SNOW_TREE(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        HAUNTED_TREE(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        RUINS_TREE(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        APRICORN_TREE(true, true, 3, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 2),
+        RAIN_TREE(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        CHERRY_TREE(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        BEACH_TREE(true, true, 2, 3, RenderLayer.LAYERED, 5.0f, "wooden_planks", 1),
+        DEAD_TREE(true, true, 1, 2, RenderLayer.BELOW_PLAYER, 3.0f, "stick", 2),
+        SMALL_HAUNTED_TREE(true, true, 1, 2, RenderLayer.BELOW_PLAYER, 3.0f, "stick", 2),
+        CACTUS(true, true, 1, 2, RenderLayer.BELOW_PLAYER, 3.0f, "stick", 1),
         BUSH(true, true, 3,
             2, RenderLayer.BELOW_PLAYER),
         VINES(true, false, 1, 2, RenderLayer.BELOW_PLAYER),
         RUIN_POLE(true, true, 1, 3, RenderLayer.BELOW_PLAYER),
         POKEBALL(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
-        RAIN_TREE(true, true, 2, 3, RenderLayer.LAYERED),
-        CHERRY_TREE(true, true, 2, 3, RenderLayer.LAYERED),
         SUNFLOWER(true, false, 1, 2, RenderLayer.BELOW_PLAYER),
         DESERT_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
         SNOW_TALL_GRASS(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
@@ -431,23 +430,34 @@ public class WorldObject {
         TALL_GRASS_3(true, false, 1, 1, RenderLayer.BELOW_PLAYER),
         DESERT_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
         CRYSTAL_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
-        FAIRY_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER),
-        BEACH_TREE(true, true, 2, 3, RenderLayer.LAYERED);
+        FAIRY_ROCK(true, true, 1, 1, RenderLayer.BELOW_PLAYER);
 
         public final boolean isPermanent;    // Permanent or temporary object
         public final boolean isCollidable;   // Has collision or not
         public final int widthInTiles;       // Width in tiles
         public final int heightInTiles;
 
+        public final float breakTime;
+        public final String dropItemId;
+        public final int dropItemCount;
         public final RenderLayer renderLayer;
-
-        ObjectType(boolean isPermanent, boolean isCollidable,
-                   int widthInTiles, int heightInTiles, RenderLayer renderLayer) {
+        ObjectType(boolean isPermanent, boolean isCollidable, int widthInTiles, int heightInTiles, RenderLayer renderLayer, float breakTime, String dropItemId, int dropItemCount) {
             this.isPermanent = isPermanent;
             this.isCollidable = isCollidable;
             this.widthInTiles = widthInTiles;
             this.heightInTiles = heightInTiles;
             this.renderLayer = renderLayer;
+            this.breakTime = breakTime;
+            this.dropItemId = dropItemId;
+            this.dropItemCount = dropItemCount;
+        }
+        ObjectType(boolean isPermanent, boolean isCollidable, int widthInTiles, int heightInTiles, RenderLayer renderLayer) {
+            this(isPermanent, isCollidable, widthInTiles, heightInTiles, renderLayer, 9999f, null, 0);
+        }  public float getBreakTime(boolean hasAxe) {
+            if (breakTime >= 9999f) {
+                return Float.MAX_VALUE;
+            }
+            return hasAxe ? breakTime * 0.5f : breakTime * 1.5f;
         }
 
         public enum RenderLayer {
@@ -456,6 +466,7 @@ public class WorldObject {
             LAYERED,
             ABOVE_TALL_GRASS
         }
+
     }
 
     public static class WorldObjectManager {

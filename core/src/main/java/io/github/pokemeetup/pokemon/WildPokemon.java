@@ -24,7 +24,9 @@ public class WildPokemon extends Pokemon implements Positionable {
     private static final float SCALE = 2.0f;
     private static final float TILE_SIZE = 32f;
     private static final float MOVEMENT_DURATION = 0.75f;
-    private static final float COLLISION_SCALE = 0.8f;
+    // FIX: Adjusted collision scale to be more accurate, similar to the player's.
+    private static final float COLLISION_SCALE = 0.6f;
+    private static final float COLLISION_HEIGHT_SCALE = 0.4f;
     private static final float FRAME_WIDTH = World.TILE_SIZE;
     private static final float FRAME_HEIGHT = World.TILE_SIZE;
     private static final float IDLE_BOUNCE_HEIGHT = 2f;
@@ -93,7 +95,8 @@ public class WildPokemon extends Pokemon implements Positionable {
         // Snap position to tile grid
         int tileX = MathUtils.floor((float) pixelX / World.TILE_SIZE);
         int tileY = MathUtils.floor((float) pixelY / World.TILE_SIZE);
-        this.pixelX = tileX * World.TILE_SIZE;
+        // FIX: Align position to the bottom-center of the tile, just like the player.
+        this.pixelX = tileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
         this.pixelY = tileY * World.TILE_SIZE;
         this.x = this.pixelX;
         this.y = this.pixelY;
@@ -113,20 +116,20 @@ public class WildPokemon extends Pokemon implements Positionable {
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, TextureRegion overworldSprite) {
         super(name, level);
-        this.pixelX = pixelX;
+        // FIX: Align position to the bottom-center of the tile.
+        this.pixelX = pixelX + (World.TILE_SIZE / 2f);
         this.pixelY = pixelY;
-        this.x = pixelX;
-        this.y = pixelY;
+        this.x = this.pixelX;
+        this.y = this.pixelY;
         this.networkSync = new PokemonNetworkSyncComponent(this);
         this.isNetworkControlled = false;
-        this.startPosition = new Vector2(pixelX, pixelY);
-        this.targetPosition = new Vector2(pixelX, pixelY);
+        this.startPosition = new Vector2(this.x, this.y);
+        this.targetPosition = new Vector2(this.x, this.y);
         this.direction = "down";
         this.animations = new PokemonAnimations(overworldSprite);
         this.width = World.TILE_SIZE * SCALE;
         this.height = World.TILE_SIZE * SCALE;
 
-        initializeBoundingBox();
         setSpawnTime((long) (System.currentTimeMillis() / 1000f));
         initializePokemonData(name, level);
 
@@ -171,10 +174,11 @@ public class WildPokemon extends Pokemon implements Positionable {
     }
 
     private void initializeBoundingBox() {
+        // FIX: Collision box is now sized relative to a tile and centered on the Pokemon's position.
         float collisionWidth = World.TILE_SIZE * COLLISION_SCALE;
-        float collisionHeight = World.TILE_SIZE * COLLISION_SCALE;
-        float bboxX = this.pixelX + (World.TILE_SIZE - collisionWidth) / 2f;
-        float bboxY = this.pixelY + (World.TILE_SIZE - collisionHeight) / 2f;
+        float collisionHeight = World.TILE_SIZE * COLLISION_HEIGHT_SCALE;
+        float bboxX = this.x - collisionWidth / 2f;
+        float bboxY = this.y;
         this.boundingBox = new Rectangle(bboxX, bboxY, collisionWidth, collisionHeight);
     }
 
@@ -195,7 +199,15 @@ public class WildPokemon extends Pokemon implements Positionable {
             this.legacyAI = ai;
             this.enhancedAI = null;
         }
+    }  public Rectangle getBoundingBox() {
+        return new Rectangle(
+            (float)getTileX() * World.TILE_SIZE,
+            (float)getTileY() * World.TILE_SIZE,
+            World.TILE_SIZE,
+            World.TILE_SIZE
+        );
     }
+
 
     public Object getAi() {
         return enhancedAI != null ? enhancedAI : legacyAI;
@@ -272,6 +284,7 @@ public class WildPokemon extends Pokemon implements Positionable {
             }
         }
 
+        updateWaterSoundTimer(delta);
         updateBoundingBox();
     }
 
@@ -329,7 +342,8 @@ public class WildPokemon extends Pokemon implements Positionable {
             lastUpdateX = x;
             lastUpdateY = y;
 
-            float targetPixelX = targetTileX * World.TILE_SIZE;
+            // FIX: Calculate target pixel coordinates to be bottom-center of the tile.
+            float targetPixelX = targetTileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
             float targetPixelY = targetTileY * World.TILE_SIZE;
             targetPosition.set(targetPixelX, targetPixelY);
 
@@ -345,15 +359,53 @@ public class WildPokemon extends Pokemon implements Positionable {
         }
     }
 
+
     public void updateBoundingBox() {
         if (boundingBox != null) {
+            // FIX: Update bounding box to be centered horizontally on the Pokemon's position.
             float collisionWidth = World.TILE_SIZE * COLLISION_SCALE;
-            float collisionHeight = World.TILE_SIZE * COLLISION_SCALE;
-            float newX = x + (World.TILE_SIZE - collisionWidth) / 2f;
-            float newY = y + (World.TILE_SIZE - collisionHeight) / 2f;
+            float collisionHeight = World.TILE_SIZE * COLLISION_HEIGHT_SCALE;
+            float newX = x - collisionWidth / 2f;
+            float newY = y;
             boundingBox.setPosition(newX, newY);
             boundingBox.setSize(collisionWidth, collisionHeight);
         }
+    }
+    private boolean wasOnWater = false;
+    private float waterSoundTimer = 0f;
+    @Override
+    public boolean wasOnWater() {
+        return wasOnWater;
+    }
+
+    @Override
+    public void setWasOnWater(boolean onWater) {
+        this.wasOnWater = onWater;
+    }
+
+    @Override
+    public float getWaterSoundTimer() {
+        return waterSoundTimer;
+    }
+
+    @Override
+    public void setWaterSoundTimer(float timer) {
+        this.waterSoundTimer = timer;
+    }
+
+    @Override
+    public void updateWaterSoundTimer(float delta) {
+        if (this.waterSoundTimer > 0) {
+            this.waterSoundTimer -= delta;
+        }
+    }
+
+    public int getTileX() {
+        return (int) (x / TILE_SIZE);
+    }
+
+    public int getTileY() {
+        return (int) (y / TILE_SIZE);
     }
 
     @Override
@@ -369,8 +421,8 @@ public class WildPokemon extends Pokemon implements Positionable {
         if (frame != null) {
             float renderWidth = this.width;
             float renderHeight = this.height;
-            float offsetX = (renderWidth - World.TILE_SIZE) / 2f;
-            float offsetY = (renderHeight - World.TILE_SIZE) / 2f;
+            // FIX: The render logic now correctly centers the sprite based on the new position anchor.
+            float offsetX = renderWidth / 2f;
             float renderY = y;
 
             // Apply idle bounce animation
@@ -395,11 +447,10 @@ public class WildPokemon extends Pokemon implements Positionable {
                 batch.setColor(baseColor);
             }
 
-            batch.draw(frame, x - offsetX, renderY - offsetY, renderWidth, renderHeight);
+            batch.draw(frame, x - offsetX, renderY, renderWidth, renderHeight);
             batch.setColor(originalColor);
         }
     }
-
     public TextureRegion getCurrentFrame() {
         if (animations != null) {
             return animations.getCurrentFrame(direction, isMoving);
@@ -430,17 +481,17 @@ public class WildPokemon extends Pokemon implements Positionable {
     public void setWorld(World world) { this.world = world; }
 
     public float getX() { return x; }
+
+
+    public float getY() { return y; }
     public void setX(float x) {
         this.pixelX = x;
         this.x = x;
-        updateBoundingBox();
     }
 
-    public float getY() { return y; }
     public void setY(float y) {
         this.pixelY = y;
         this.y = y;
-        updateBoundingBox();
     }
 
     @Override
@@ -460,7 +511,6 @@ public class WildPokemon extends Pokemon implements Positionable {
     public boolean isAddedToParty() { return isAddedToParty; }
     public void setAddedToParty(boolean addedToParty) { isAddedToParty = addedToParty; }
 
-    public Rectangle getBoundingBox() { return boundingBox; }
 
     @Override
     public PokemonAnimations getAnimations() { return animations; }

@@ -22,7 +22,6 @@ public class ItemEntity {
     private float timeAlive;
     private float pickupDelay;
     private boolean canBePickedUp;
-    // NEW: flag to ensure we only pick up once.
     private boolean pickedUp;
 
     public ItemEntity(ItemData itemData, float x, float y) {
@@ -70,7 +69,6 @@ public class ItemEntity {
         return timeAlive >= DESPAWN_TIME;
     }
 
-    // NEW: mark the item as picked up
     public void markPickedUp() {
         pickedUp = true;
     }

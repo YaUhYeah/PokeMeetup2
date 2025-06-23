@@ -31,6 +31,64 @@ public class Inventory implements ItemContainer {
     }
 
     /**
+     * [NEW] Checks if the inventory has enough of a specific item.
+     * @param itemId The ID of the item to check.
+     * @param requiredCount The amount required.
+     * @return true if the inventory contains at least the required amount.
+     */
+    public boolean hasEnoughItems(String itemId, int requiredCount) {
+        synchronized (inventoryLock) {
+            int total = 0;
+            for (Slot slot : slots) {
+                ItemData item = slot.getItemData();
+                if (item != null && item.getItemId().equals(itemId)) {
+                    total += item.getCount();
+                }
+            }
+            return total >= requiredCount;
+        }
+    }
+
+    /**
+     * [NEW] Removes a specified amount of an item from the inventory by its ID.
+     * @param itemId The ID of the item to remove.
+     * @param count The amount to remove.
+     * @return true if the items were successfully removed.
+     */
+    public boolean removeItem(String itemId, int count) {
+        synchronized (inventoryLock) {
+            if (!hasEnoughItems(itemId, count)) {
+                return false;
+            }
+
+            int remainingToRemove = count;
+            // Iterate backwards to safely remove items or reduce counts
+            for (int i = slots.size() - 1; i >= 0; i--) {
+                if (remainingToRemove <= 0) break;
+
+                Slot slot = slots.get(i);
+                ItemData item = slot.getItemData();
+
+                if (item != null && item.getItemId().equals(itemId)) {
+                    int countInSlot = item.getCount();
+                    if (countInSlot <= remainingToRemove) {
+                        // Remove the whole stack
+                        remainingToRemove -= countInSlot;
+                        setItemAt(i, null);
+                    } else {
+                        // Reduce the stack count
+                        item.setCount(countInSlot - remainingToRemove);
+                        remainingToRemove = 0;
+                        // Notify observers since we modified the item directly
+                        notifyObservers();
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    /**
      * [NEW] Checks if the inventory has space for a given item, considering stacking.
      * Does not modify the inventory.
      *

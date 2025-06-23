@@ -1,3 +1,5 @@
+// File: src/main/java/io/github/pokemeetup/system/gameplay/overworld/EnhancedWorldObjectSpawner.java
+
 package io.github.pokemeetup.system.gameplay.overworld;
 
 import com.badlogic.gdx.math.Rectangle;
@@ -272,32 +274,18 @@ public class EnhancedWorldObjectSpawner {
         int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
         int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
 
-        // Get tree dimensions
-        int treeWidth = getTreeWidth(type);
-        int treeHeight = getTreeHeight(type);
+        // Create a candidate object to get its placement bounding box
+        WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, type);
+        candidate.ensureTexture();
 
-        // Strict spacing check for the entire tree footprint
-        float minSpacing = (type == WorldObject.ObjectType.APRICORN_TREE) ?
-            APRICORN_TREE_SPACING : MIN_TREE_SPACING;
-
-        // Check for existing objects with strict spacing
-        for (WorldObject existing : existingObjects) {
-            if (!isTreeType(existing.getType())) continue;
-
-            float distX = Math.abs(existing.getTileX() - worldTileX);
-            float distY = Math.abs(existing.getTileY() - worldTileY);
-
-            // Calculate required spacing based on tree types
-            float requiredSpacing = minSpacing +
-                (getTreeWidth(existing.getType()) + treeWidth) / 2.0f;
-
-            // If too close to another tree, reject placement
-            if (distX < requiredSpacing && distY < requiredSpacing) {
-                return false;
-            }
+        // Check for collision with any existing object using its full bounding box.
+        if (collidesWithExistingObjects(candidate.getPlacementBoundingBox(), existingObjects)) {
+            return false;
         }
 
         // Check if the entire tree footprint is on valid terrain
+        int treeWidth = getTreeWidth(type);
+        int treeHeight = getTreeHeight(type);
         for (int dx = -1; dx <= treeWidth; dx++) {
             for (int dy = -1; dy <= treeHeight; dy++) {
                 int checkX = localX + dx;
@@ -341,56 +329,48 @@ public class EnhancedWorldObjectSpawner {
         if (!biome.getAllowedTileTypes().contains(tileType)) return false;
         if (!chunk.isPassable(localX, localY)) return false;
 
+        // Convert to world coordinates
+        int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
+        int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
+
+        // Create a candidate object to get its placement bounding box
+        WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, type);
+        candidate.ensureTexture();
+
+        // Check for collision with any existing object using its full bounding box.
+        if (collidesWithExistingObjects(candidate.getPlacementBoundingBox(), existingObjects)) {
+            return false;
+        }
+
         // Special case for tall grass
         if (isTallGrassType(type)) {
-            // Skip water but allow more flexible placement
+            // Don't spawn grass in water
             if (tileType == TileType.WATER) return false;
-
-            // Don't place tall grass too close to trees
-            int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
-            int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
-
-            for (WorldObject existing : existingObjects) {
-                if (isTreeType(existing.getType())) {
-                    float distX = Math.abs(existing.getTileX() - worldTileX);
-                    float distY = Math.abs(existing.getTileY() - worldTileY);
-
-                    // Keep grass away from tree trunks
-                    if (distX < 1.0f && distY < 1.0f) {
-                        return false;
-                    }
-                }
-
-                // Don't stack grass on itself - each position has at most one grass
-                if (isTallGrassType(existing.getType()) &&
-                    existing.getTileX() == worldTileX &&
-                    existing.getTileY() == worldTileY) {
-                    return false;
-                }
-            }
-
             // Apply a simple random pattern to make grass less uniform
             return rng.nextFloat() < 0.65f;
         }
 
-        // For other objects, use standard placement logic
+        // For other objects, don't spawn on water or sand
         if (tileType == TileType.WATER || tileType == TileType.BEACH_SAND) return false;
 
-        int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
-        int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
+        return true;
+    }
 
-        // Check for collision with other objects
+    /**
+     * Checks if a candidate object's bounds would overlap with any existing objects.
+     * This ensures that new objects, including large ones like trees, do not spawn on top of others.
+     * @param candidateBounds The bounding box of the object to be placed.
+     * @param existingObjects A list of objects already in the chunk.
+     * @return true if a collision is detected, false otherwise.
+     */
+    private static boolean collidesWithExistingObjects(Rectangle candidateBounds, List<WorldObject> existingObjects) {
         for (WorldObject existing : existingObjects) {
-            float distX = Math.abs(existing.getTileX() - worldTileX);
-            float distY = Math.abs(existing.getTileY() - worldTileY);
-
-            // Simple spacing check for non-tree objects
-            if (distX < 1.0f && distY < 1.0f) {
-                return false;
+            // Use the placement bounding box for the most accurate check of occupied space
+            if (candidateBounds.overlaps(existing.getPlacementBoundingBox())) {
+                return true;
             }
         }
-
-        return true;
+        return false;
     }
 
     /**

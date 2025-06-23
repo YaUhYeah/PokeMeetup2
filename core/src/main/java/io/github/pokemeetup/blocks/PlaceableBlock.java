@@ -172,6 +172,7 @@ public class PlaceableBlock {
 
 
         public static BlockType fromItemId(String itemId) {
+            if (itemId == null) return null;
             try {
                 return valueOf(itemId.toUpperCase());
             } catch (IllegalArgumentException e) {
@@ -196,4 +197,3 @@ public class PlaceableBlock {
     }
 
 }
-

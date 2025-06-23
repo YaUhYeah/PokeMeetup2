@@ -28,7 +28,6 @@ public class UnifiedWorldGenerator {
     public static final int CHUNK_SIZE = 16; // Must match Chunk.CHUNK_SIZE
     private static final int TEMP_SIZE = CHUNK_SIZE;
 
-    // We reuse a small array for smoothing/erosion steps
     private static final ThreadLocal<int[][]> smoothingTemp = ThreadLocal.withInitial(() -> {
         int[][] arr = new int[TEMP_SIZE][TEMP_SIZE];
         for (int i = 0; i < TEMP_SIZE; i++) {

@@ -31,7 +31,6 @@ public class ChatSystem extends Table {
     private static final float MESSAGE_FADE_TIME = 10f;
     private static final Color WINDOW_BACKGROUND = new Color(0, 0, 0, 0.8f);
 
-    // Some color array, etc...
     private static final Color[] CHAT_COLORS = {
         new Color(0.8f, 0.3f, 0.3f, 1), // Red
         new Color(0.3f, 0.8f, 0.3f, 1), // Green

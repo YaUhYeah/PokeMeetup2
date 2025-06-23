@@ -457,6 +457,8 @@ public class TextureManager {
     }
 
 
+
+    // FIX: This method has been rewritten to correctly load status icons from a horizontal sprite sheet.
     private static void loadTypeAndStatusIcons() {
         TextureRegion typesSheet = ui.findRegion("pokemon-type-icons");
         TextureRegion statusSheet = ui.findRegion("status-icons");
@@ -468,15 +470,22 @@ public class TextureManager {
             return;
         }
 
-        // Split the status sheet into frames of fixed size.
+        // Correctly load status icons from a horizontal sprite sheet.
         TextureRegion[][] statusFrames = statusSheet.split(STATUS_ICON_WIDTH, STATUS_ICON_HEIGHT);
-        // Here we assume that the status sheet’s rows (or columns) correspond in order to the Pokemon.Status values.
-        for (Pokemon.Status status : Pokemon.Status.values()) {
-            if (status != Pokemon.Status.NONE && (status.ordinal() - 1) < statusFrames.length) {
-                // For example, if the status order in the sheet starts at index 0 for SLEEP, then use ordinal()-1.
-                statusIcons.put(status, statusFrames[status.ordinal() - 1][0]);
-            } else if (status != Pokemon.Status.NONE) {
-                GameLogger.error("Missing status icon for: " + status.name());
+        if (statusFrames.length > 0) {
+            TextureRegion[] framesInFirstRow = statusFrames[0];
+            for (Pokemon.Status status : Pokemon.Status.values()) {
+                if (status == Pokemon.Status.NONE) continue;
+
+                // Enum ordinals start from 0. NONE is 0, PARALYZED is 1, etc.
+                // Spritesheet indices typically start from 0 for the first status icon.
+                int index = status.ordinal() - 1;
+
+                if (index >= 0 && index < framesInFirstRow.length) {
+                    statusIcons.put(status, framesInFirstRow[index]);
+                } else {
+                    GameLogger.error("Missing status icon for: " + status.name() + " at index " + index);
+                }
             }
         }
 
@@ -500,7 +509,6 @@ public class TextureManager {
             createFallbackIcons();
         }
     }
-
     public static TextureRegion getStatusIcon(Pokemon.Status status) {
         return statusIcons.get(status);
     }

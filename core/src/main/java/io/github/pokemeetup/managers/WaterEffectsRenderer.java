@@ -22,8 +22,6 @@ public class WaterEffectsRenderer {
     private TextureRegion standingTexture;
     private float stateTime = 0;
     private boolean initialized = false;
-    private float soundTimer = 0;
-    private boolean wasOnWater = false;
 
     public WaterEffectsRenderer() {
         initializeAnimations();
@@ -57,7 +55,7 @@ public class WaterEffectsRenderer {
     }
 
     /**
-     * Updates the animation timer and sound timer.
+     * Updates the animation timer.
      */
     public void update(float deltaTime) {
         if (!initialized) {
@@ -65,9 +63,6 @@ public class WaterEffectsRenderer {
             return;
         }
         stateTime += deltaTime;
-        if (soundTimer > 0) {
-            soundTimer -= deltaTime;
-        }
     }
 
     /**
@@ -87,18 +82,26 @@ public class WaterEffectsRenderer {
         }
         try {
             boolean onWater = isEntityOnWater(entity, world);
+
             if (onWater) {
-                if (!wasOnWater) {
+                // Play sound only once when entering water
+                if (!entity.wasOnWater()) {
                     playWaterSound();
-                } else if (entity.isMoving() && soundTimer <= 0) {
-                    playWaterSound();
-                    soundTimer = SOUND_INTERVAL;
+                }
+                // Play continuous sound while moving (but not for WildPokemon)
+                else if (entity.isMoving() && entity.getWaterSoundTimer() <= 0) {
+                    if (!(entity instanceof io.github.pokemeetup.pokemon.WildPokemon)) {
+                        playWaterSound();
+                        entity.setWaterSoundTimer(SOUND_INTERVAL);
+                    }
                 }
             }
-            wasOnWater = onWater;
+            entity.setWasOnWater(onWater);
+
             if (!onWater) {
                 return;
             }
+
             float effectWidth = World.TILE_SIZE * SCALE_FACTOR;
             float effectHeight = World.TILE_SIZE * 0.75f;
             // IMPORTANT: Because the entity’s x is at the center,

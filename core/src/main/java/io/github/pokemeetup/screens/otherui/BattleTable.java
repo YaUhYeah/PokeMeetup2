@@ -1240,6 +1240,7 @@ public class BattleTable extends Table {
         updateWeatherDisplay();
     }
 
+
     private void handleEnemyFaint() {
         enemyPokemon.setStatus(Pokemon.Status.FAINTED);
         queueMessage(enemyPokemon.getName() + " fainted!");
@@ -1259,8 +1260,8 @@ public class BattleTable extends Table {
                 playerPokemon.addExperience(expGained);
                 queueMessage(playerPokemon.getName() + " gained " + expGained + " EXP!");
                 updateExpBar();
-                // Directly trigger the end of the battle after the EXP message.
-                queueMessage("", 1.5f, this::finishBattle);
+                // -- MODIFY THIS LINE --
+                queueMessage("", 1.5f, () -> finishBattle(BattleOutcome.WIN));
             })
         ));
     }
@@ -1283,21 +1284,23 @@ public class BattleTable extends Table {
                 if (hasAvailablePokemon()) {
                     transitionToState(BattleState.FORCED_SWITCH); showForcedSwitchPartyScreen();
                 } else {
-                    finishBattle();
+                    // -- MODIFY THIS LINE --
+                    finishBattle(BattleOutcome.LOSS);
                 }
             })
         ));
     }
 
-    private void finishBattle() {
+
+
+    private void finishBattle(BattleOutcome outcome) {
         isAnimating = true;
-        boolean playerWon = playerPokemon.getCurrentHp() > 0 && enemyPokemon.getCurrentHp() <= 0;
         SequenceAction endSequence = Actions.sequence(
             // Add a small delay for final messages to be read
             Actions.delay(1.15f),
             Actions.run(() -> {
                 if (callback != null) {
-                    callback.onBattleEnd(playerWon);
+                    callback.onBattleEnd(outcome);
                 }
             })
         );
@@ -1358,32 +1361,28 @@ public class BattleTable extends Table {
 
         move.setPp(move.getPp() - 1);
 
-        // Check if attacker can move
         if (!attacker.canAttack()) {
             queueMessage("", 0.5f, () -> finishMoveExecution(isPlayerMove));
             return;
         }
 
-        // Build the sequence of events for the move
         SequenceAction moveSequence = Actions.sequence();
+        final float[] damageHolder = {0f}; // Use an array to make it effectively final for the lambda
 
-        // 1. Announce Move
         moveSequence.addAction(Actions.run(() -> queueMessage(attacker.getName() + " used " + move.getName() + "!")));
         moveSequence.addAction(Actions.delay(1.0f));
 
-        // 2. Accuracy Check
         moveSequence.addAction(Actions.run(() -> {
             if (MathUtils.random() * 100 >= move.getAccuracy()) {
                 queueMessage("The attack missed!", 1.0f, () -> finishMoveExecution(isPlayerMove));
-                moveSequence.getActions().clear(); // Stop further actions in this sequence
+                moveSequence.getActions().clear();
             }
         }));
 
-        // 3. Damage Calculation
         moveSequence.addAction(Actions.run(() -> {
-            float damage = calculateDamage(move, attacker, defender);
-            if (damage > 0) {
-                applyDamage(defender, damage);
+            damageHolder[0] = calculateDamage(move, attacker, defender);
+            if (damageHolder[0] > 0) {
+                applyDamage(defender, damageHolder[0]);
                 float effectiveness = calculateTypeEffectiveness(move, defender);
                 String effectivenessMessage = getEffectivenessMessage(effectiveness);
                 if (!effectivenessMessage.isEmpty()) {
@@ -1393,28 +1392,25 @@ public class BattleTable extends Table {
         }));
         moveSequence.addAction(Actions.delay(1.0f));
 
-        // 4. Check for Faint
         moveSequence.addAction(Actions.run(() -> {
             if (checkFaintConditions()) {
-                moveSequence.getActions().clear(); // Stop sequence if someone faints
+                moveSequence.getActions().clear();
             }
         }));
 
-        // 5. Apply Secondary Effects
         moveSequence.addAction(Actions.run(() -> {
-            if (move.getEffect() != null && MathUtils.random() < move.getEffect().getChance()) {
-                applyMoveEffect(move.getEffect(), attacker, defender);
-            }
+            // Pass the calculated damage to applyMoveEffect
+            applyMoveEffect(move.getEffect(), attacker, defender, damageHolder[0]);
         }));
         moveSequence.addAction(Actions.delay(1.0f));
 
-        // 6. Finish Turn
         moveSequence.addAction(Actions.run(() -> finishMoveExecution(isPlayerMove)));
 
         addAction(moveSequence);
     }
 
-    private void applyMoveEffect(Move.MoveEffect effect, Pokemon attacker, Pokemon target) {
+
+    private void applyMoveEffect(Move.MoveEffect effect, Pokemon attacker, Pokemon target, float damageDealt) {
         if (effect == null) return;
 
         // Apply Status Effect
@@ -1426,17 +1422,11 @@ public class BattleTable extends Table {
             if (target.getStatus() != previousStatus) {
                 queueMessage(target.getName() + " became " + statusToApply.name().toLowerCase() + "!");
 
-                // Play appropriate status sound effect
                 switch (statusToApply) {
-                    case PARALYZED:
-                    case BURNED:
-                    case FROZEN:
-                    case POISONED:
-                    case BADLY_POISONED:
+                    case PARALYZED: case BURNED: case FROZEN: case POISONED: case BADLY_POISONED:
                         AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
                         break;
                     case ASLEEP:
-                        // Add sleep sound if available
                         break;
                 }
 
@@ -1455,18 +1445,29 @@ public class BattleTable extends Table {
         Map<String, Integer> statChanges = effect.getStatModifiers();
         if (statChanges != null && !statChanges.isEmpty()) {
             Pokemon effectTarget = target;
-
             for (Map.Entry<String, Integer> entry : statChanges.entrySet()) {
                 String statName = entry.getKey();
                 int change = entry.getValue();
                 if (effectTarget.modifyStatStage(statName, change)) {
-                    queueMessage(effectTarget.getName() + "'s " + formatStatName(statName) +
-                        (change > 0 ? " rose!" : " fell!"));
+                    queueMessage(effectTarget.getName() + "'s " + formatStatName(statName) + (change > 0 ? " rose!" : " fell!"));
                     AudioManager.getInstance().playSound(AudioManager.SoundEffect.CURSOR_MOVE);
                 } else {
-                    queueMessage(effectTarget.getName() + "'s " + formatStatName(statName) +
-                        " won't go " + (change > 0 ? "higher!" : "lower!"));
+                    queueMessage(effectTarget.getName() + "'s " + formatStatName(statName) + " won't go " + (change > 0 ? "higher!" : "lower!"));
                 }
+            }
+        }
+
+        // NEW: Handle DRAIN effect
+        if (effect.getEffectType() != null && effect.getEffectType().equalsIgnoreCase("DRAIN")) {
+            int healAmount = Math.max(1, (int)(damageDealt * 0.5f)); // Heal 50% of damage, at least 1 HP
+            float oldHp = attacker.getCurrentHp();
+            attacker.restoreHealth(healAmount); // Use restoreHealth to avoid side effects
+            float newHp = attacker.getCurrentHp();
+
+            if (newHp > oldHp) {
+                queueMessage(attacker.getName() + "'s health was restored!");
+                ProgressBar attackerBar = (attacker == playerPokemon) ? playerHPBar : enemyHPBar;
+                animateHPChange(attackerBar, oldHp, newHp, attacker.getStats().getHp());
             }
         }
     }
@@ -1921,10 +1922,8 @@ public class BattleTable extends Table {
                 Actions.delay(1.0f),
                 Actions.run(() -> {
                     if (callback != null) {
-                        callback.onBattleEnd(false);
+                        callback.onBattleEnd(BattleOutcome.ESCAPE);
                     }
-                    cleanup();
-                    remove();
                 })
             );
             addAction(escapeSequence);
@@ -1934,6 +1933,7 @@ public class BattleTable extends Table {
             transitionToState(BattleState.ENEMY_TURN);
         }
     }
+// In src/main/java/io/github/pokemeetup/screens/otherui/BattleTable.java
 
     public void attemptCapture(WildPokemon wildPokemon, float captureChance) {
         if (currentState == BattleState.CATCHING) return;
@@ -1962,7 +1962,11 @@ public class BattleTable extends Table {
                     addAction(Actions.sequence(
                         Actions.delay(1.0f),
                         Actions.run(() -> {
-                            if (callback != null) callback.onBattleEnd(true);
+                            if (callback != null) {
+                                // *** FIX IS HERE ***
+                                // A successful capture is a WIN
+                                callback.onBattleEnd(BattleOutcome.WIN);
+                            }
                         })
                     ));
                 } else {
@@ -1974,7 +1978,9 @@ public class BattleTable extends Table {
         addActor(captureAnimation);
     }
 
-
+    public enum BattleOutcome {
+        WIN, LOSS, ESCAPE
+    }
     public void setCallback(BattleCallback callback) {
         this.callback = callback;
     }
@@ -2007,7 +2013,7 @@ public class BattleTable extends Table {
     }
 
     public interface BattleCallback {
-        void onBattleEnd(boolean playerWon);
+        void onBattleEnd(BattleOutcome outcome);
         void onTurnEnd(Pokemon activePokemon);
         void onStatusChange(Pokemon pokemon, Pokemon.Status newStatus);
         void onMoveUsed(Pokemon user, Move move, Pokemon target);

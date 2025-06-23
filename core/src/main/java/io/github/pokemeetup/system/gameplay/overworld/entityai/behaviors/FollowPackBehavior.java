@@ -7,8 +7,7 @@ import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
 
-import java.util.Collection;
-import java.util.UUID;
+import java.util.*;
 
 public class FollowPackBehavior implements PokemonBehavior {
     private static final float FOLLOW_DISTANCE = 3.0f * World.TILE_SIZE;
@@ -70,22 +69,31 @@ public class FollowPackBehavior implements PokemonBehavior {
         int dx = Integer.compare(leaderTileX, pokemonTileX);
         int dy = Integer.compare(leaderTileY, pokemonTileY);
 
+        // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
+        List<String> moveOptions = new ArrayList<>();
+        if (dx != 0) moveOptions.add("horizontal");
+        if (dy != 0) moveOptions.add("vertical");
+        Collections.shuffle(moveOptions);
         String direction;
-        int targetTileX = pokemonTileX;
-        int targetTileY = pokemonTileY;
 
-        if (Math.abs(dx) >= Math.abs(dy)) {
-            direction = dx > 0 ? "right" : "left";
-            targetTileX += dx;
-        } else {
-            direction = dy > 0 ? "up" : "down";
-            targetTileY += dy;
-        }
+        for (String move : moveOptions) {
+            int targetTileX = pokemonTileX;
+            int targetTileY = pokemonTileY;
 
-        if (world.isPassable(targetTileX, targetTileY)) {
-            pokemon.moveToTile(targetTileX, targetTileY, direction);
-            ai.setCurrentState(PokemonAI.AIState.FOLLOWING);
-            ai.setCooldown(getName(), 1.0f);
+            if (move.equals("horizontal")) {
+                targetTileX += dx;
+                direction = dx > 0 ? "right" : "left";
+            } else { // vertical
+                targetTileY += dy;
+                direction = dy > 0 ? "up" : "down";
+            }
+
+            if (world.isPassable(targetTileX, targetTileY)) {
+                pokemon.moveToTile(targetTileX, targetTileY, direction);
+                ai.setCurrentState(PokemonAI.AIState.FOLLOWING);
+                ai.setCooldown(getName(), 0.5f); // Was 1.0f
+                return; // Move made, exit
+            }
         }
     }
 

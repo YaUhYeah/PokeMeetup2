@@ -37,7 +37,36 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class Player implements Positionable {
     // Constants
-    public static final int FRAME_WIDTH = 32;
+    public static final int FRAME_WIDTH = 32;    @Override
+    public boolean wasOnWater() {
+        return wasOnWater;
+    }
+
+    @Override
+    public void setWasOnWater(boolean onWater) {
+        this.wasOnWater = onWater;
+    }
+
+    @Override
+    public float getWaterSoundTimer() {
+        return waterSoundTimer;
+    }
+
+    @Override
+    public void setWaterSoundTimer(float timer) {
+        this.waterSoundTimer = timer;
+    }
+
+    @Override
+    public void updateWaterSoundTimer(float delta) {
+        if (this.waterSoundTimer > 0) {
+            this.waterSoundTimer -= delta;
+        }
+    }
+    private float animationSpeedMultiplier = 0.75f;
+    private boolean inputHeld = false;
+    private boolean wasOnWater = false;
+    private float waterSoundTimer = 0f;
     public static final int FRAME_HEIGHT = 48;
     private static final float COLLISION_BOX_WIDTH_RATIO = 0.6f;
     private static final float COLLISION_BOX_HEIGHT_RATIO = 0.4f;
@@ -90,8 +119,6 @@ public class Player implements Positionable {
     private Stage stage;
     private float bufferedTime = 0f;
     private float animationTime = 0f;
-    private float animationSpeedMultiplier = 0.75f;
-    private boolean inputHeld = false;
 
     // Constructors
     public Player(int startTileX, int startTileY, World world) {
@@ -125,7 +152,6 @@ public class Player implements Positionable {
         this.playerData = new PlayerData(username);
 
         initFont();
-        initializeBuildInventory();
         Gdx.app.postRunnable(this::initializeGLResources);
         GameLogger.info("Player initialized: " + username + " at (0,0)");
     }
@@ -146,7 +172,6 @@ public class Player implements Positionable {
         this.buildInventory = new Inventory();
         this.pokemonParty = new PokemonParty();
 
-        initializeBuildInventory();
         initializeFromSavedState();
         this.renderPosition = new Vector2(x, y);
         this.lastPosition = new Vector2(x, y);
@@ -256,13 +281,6 @@ public class Player implements Positionable {
         this.setRunning(data.isWantsToRun());
         this.setCharacterType(data.getCharacterType());
         GameLogger.info("Updated player '" + username + "' from PlayerData.");
-    }
-
-    private void initializeBuildInventory() {
-        for (PlaceableBlock.BlockType blockType : PlaceableBlock.BlockType.values()) {
-            ItemData blockItem = new ItemData(blockType.getId(), 64);
-            buildInventory.addItem(blockItem);
-        }
     }
 
     private void initializePosition(int startTileX, int startTileY) {

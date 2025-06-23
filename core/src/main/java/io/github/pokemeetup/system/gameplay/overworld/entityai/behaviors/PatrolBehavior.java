@@ -7,6 +7,10 @@ import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 // Patrol Behavior
 public class PatrolBehavior implements PokemonBehavior {
     private final WildPokemon pokemon;
@@ -45,7 +49,7 @@ public class PatrolBehavior implements PokemonBehavior {
                 // Move to next patrol point
                 int nextIndex = (ai.getCurrentPatrolIndex() + 1) % ai.getPatrolRoute().size();
                 ai.setCurrentPatrolIndex(nextIndex);
-                ai.setCooldown(getName(), 2.0f); // Pause at patrol points
+                ai.setCooldown(getName(), 0.75f); // Was 2.0f
                 return;
             }
 
@@ -53,21 +57,30 @@ public class PatrolBehavior implements PokemonBehavior {
             int dx = Integer.compare(targetTileX, pokemonTileX);
             int dy = Integer.compare(targetTileY, pokemonTileY);
 
-            String direction;
-            int nextTileX = pokemonTileX;
-            int nextTileY = pokemonTileY;
+            // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
+            List<String> moveOptions = new ArrayList<>();
+            if (dx != 0) moveOptions.add("horizontal");
+            if (dy != 0) moveOptions.add("vertical");
+            Collections.shuffle(moveOptions);
 
-            if (Math.abs(dx) >= Math.abs(dy)) {
-                direction = dx > 0 ? "right" : "left";
-                nextTileX += dx;
-            } else {
-                direction = dy > 0 ? "up" : "down";
-                nextTileY += dy;
-            }
+            for (String move : moveOptions) {
+                int nextTileX = pokemonTileX;
+                int nextTileY = pokemonTileY;
+                String direction;
 
-            if (world.isPassable(nextTileX, nextTileY)) {
-                pokemon.moveToTile(nextTileX, nextTileY, direction);
-                ai.setCurrentState(PokemonAI.AIState.PATROLLING);
+                if (move.equals("horizontal")) {
+                    nextTileX += dx;
+                    direction = dx > 0 ? "right" : "left";
+                } else { // vertical
+                    nextTileY += dy;
+                    direction = dy > 0 ? "up" : "down";
+                }
+
+                if (world.isPassable(nextTileX, nextTileY)) {
+                    pokemon.moveToTile(nextTileX, nextTileY, direction);
+                    ai.setCurrentState(PokemonAI.AIState.PATROLLING);
+                    return; // Move made, exit
+                }
             }
         }
     }

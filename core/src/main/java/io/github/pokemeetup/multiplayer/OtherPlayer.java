@@ -18,6 +18,34 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class OtherPlayer implements Positionable {
 
+    @Override
+    public boolean wasOnWater() {
+        return wasOnWater;
+    }
+
+    @Override
+    public void setWasOnWater(boolean onWater) {
+        this.wasOnWater = onWater;
+    }
+
+    @Override
+    public float getWaterSoundTimer() {
+        return waterSoundTimer;
+    }
+
+    @Override
+    public void setWaterSoundTimer(float timer) {
+        this.waterSoundTimer = timer;
+    }
+
+    @Override
+    public void updateWaterSoundTimer(float delta) {
+        if (this.waterSoundTimer > 0) {
+            this.waterSoundTimer -= delta;
+        }
+    }
+    private boolean wasOnWater = false;
+    private float waterSoundTimer = 0f;
     private static final float ANIMATION_SPEED_MULTIPLIER = 0.75f;
     // Basic player data.
     private final String username;
@@ -130,6 +158,7 @@ public class OtherPlayer implements Positionable {
      */
     public void update(float deltaTime) {
         float clampedDelta = Math.min(deltaTime, 1f / 60f);
+        updateWaterSoundTimer(deltaTime);
         synchronized (positionLock) {
             float moveDuration = wantsToRun
                 ? PlayerAnimations.SLOW_RUN_ANIMATION_DURATION

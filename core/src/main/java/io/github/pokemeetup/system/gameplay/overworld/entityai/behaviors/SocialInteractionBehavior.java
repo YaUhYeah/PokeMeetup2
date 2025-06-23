@@ -13,7 +13,7 @@ import java.util.Collection;
 // Social Interaction Behavior - Pokemon interact with each other
 public class SocialInteractionBehavior implements PokemonBehavior {
     private static final float INTERACTION_RANGE = 2.0f * World.TILE_SIZE;
-    private static final float SOCIAL_COOLDOWN = 10.0f;
+    private static final float SOCIAL_COOLDOWN = 4.0f; // Was 10.0f
 
     private final WildPokemon pokemon;
     private final PokemonAI ai;
@@ -67,7 +67,7 @@ public class SocialInteractionBehavior implements PokemonBehavior {
     public boolean canExecute() {
         return !ai.hasPersonalityTrait(PokemonPersonalityTrait.SOLITARY) &&
             !ai.isOnCooldown(getName()) &&
-            MathUtils.random() < 0.05f; // 5% chance per update
+            MathUtils.random() < 0.2f; // Was 0.05f (5% chance)
     }
 
     @Override

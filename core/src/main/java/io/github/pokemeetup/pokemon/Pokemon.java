@@ -1,3 +1,4 @@
+
 package io.github.pokemeetup.pokemon;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -273,16 +274,16 @@ public class Pokemon {
         resetStatStages(); // Reset stat stages on heal
         calculateStats(); // Recalculate stats after resetting stages
     }
+
+    // FIX: This method previously also reset status effects, which is incorrect for drain moves.
+    // It is now an alias for restoreHealth.
     public void heal(int amount) {
-        this.currentHp = this.currentHp+amount;
-        this.status = Status.NONE;
-        this.toxicCounter = 1;
-        this.flinched = false;
-        this.confused = false;
-        this.confusionTurns = 0;
-        this.sleepTurns = 0;
-        resetStatStages(); // Reset stat stages on heal
-        calculateStats(); // Recalculate stats after resetting stages
+        restoreHealth(amount);
+    }
+
+    // NEW: A dedicated method to restore HP without affecting status.
+    public void restoreHealth(int amount) {
+        this.currentHp = Math.min(this.stats.getHp(), this.currentHp + amount);
     }
 
     public boolean hasStatus() {

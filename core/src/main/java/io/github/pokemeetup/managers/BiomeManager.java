@@ -15,7 +15,6 @@ import io.github.pokemeetup.utils.OpenSimplex2;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
 import io.github.pokemeetup.utils.textures.TileType;
 
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

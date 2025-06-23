@@ -1191,6 +1191,52 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
+
+    public void forceBattleInitiation(WildPokemon aggressor) {
+        if (!canInteract() || battleSystem.isInBattle()) {
+            GameLogger.info("Cannot start forced battle - player is busy or already in battle");
+            return;
+        }
+
+        // aggressor is passed in, so we use it instead of finding the nearest one.
+        if (aggressor == null || aggressor.isAddedToParty()) {
+            return;
+        }
+
+        // Check for valid player Pokemon
+        Pokemon validPokemon = findFirstValidPokemon(GameContext.get().getPlayer().getPokemonParty());
+        if (validPokemon == null) {
+            // Player has no healthy pokemon, maybe do nothing or show a message.
+            return;
+        }
+
+        // Stop any other player actions
+        if (GameContext.get().getPlayer().getAnimations().isChopping() ||
+            GameContext.get().getPlayer().getAnimations().isPunching()) {
+            GameContext.get().getPlayer().getAnimations().stopChopping();
+            GameContext.get().getPlayer().getAnimations().stopPunching();
+            if (inputHandler != null) {
+                inputHandler.stopChopOrPunch();
+            }
+        }
+
+        try {
+            initializeBattleComponents(validPokemon, aggressor); // Use aggressor here
+
+            inputManager.setUIState(InputManager.UIState.BATTLE);
+
+            battleSystem.startBattle();
+            inBattle = true;
+
+            GameLogger.info("Forced battle initiated by " + aggressor.getName() + " with " + validPokemon.getName());
+
+        } catch (Exception e) {
+            GameLogger.error("Failed to initialize forced battle: " + e.getMessage());
+            cleanup();
+            battleSystem.endBattle();
+        }
+    }
+
     private Pokemon findFirstValidPokemon(PokemonParty party) {
         if (party == null) return null;
 
@@ -1209,31 +1255,43 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             return;
         }
 
+
         battleTable.setCallback(new BattleTable.BattleCallback() {
             @Override
-            public void onBattleEnd(boolean playerWon) {
-                if (playerWon) {
-                    handleBattleVictory(wildPokemon);
-                    Pokemon victoriousPokemon = GameContext.get().getPlayer().getPokemonParty().getFirstHealthyPokemon();
-                    if (victoriousPokemon != null) {
-                        NetworkProtocol.ChatMessage message = createSystemMessage(
-                            "Victory! " + victoriousPokemon.getName() +
-                                " defeated " + wildPokemon.getName() + "!"
-                        );
-                        GameContext.get().getChatSystem().handleIncomingMessage(message);
-                    }
-                } else {
-                    handleBattleDefeat();
-                    if (GameContext.get().getChatSystem() != null) {
-                        // FIX: Use a safe message that doesn't rely on getting a Pokémon, preventing a crash.
-                        NetworkProtocol.ChatMessage message = createSystemMessage(
-                            GameContext.get().getPlayer().getUsername() + " has no more usable Pokémon and blacks out!"
-                        );
-                        GameContext.get().getChatSystem().handleIncomingMessage(message);
-                    }
+            public void onBattleEnd(BattleTable.BattleOutcome outcome) {
+                switch (outcome) {
+                    case WIN:
+                        handleBattleVictory(wildPokemon);
+                        Pokemon victoriousPokemon = GameContext.get().getPlayer().getPokemonParty().getFirstHealthyPokemon();
+                        if (victoriousPokemon != null) {
+                            NetworkProtocol.ChatMessage message = createSystemMessage(
+                                "Victory! " + victoriousPokemon.getName() +
+                                    " defeated " + wildPokemon.getName() + "!"
+                            );
+                            GameContext.get().getChatSystem().handleIncomingMessage(message);
+                        }
+                        break;
+                    case LOSS:
+                        handleBattleDefeat();
+                        if (GameContext.get().getChatSystem() != null) {
+                            NetworkProtocol.ChatMessage message = createSystemMessage(
+                                GameContext.get().getPlayer().getUsername() + " has no more usable Pokémon and blacks out!"
+                            );
+                            GameContext.get().getChatSystem().handleIncomingMessage(message);
+                        }
+                        break;
+                    case ESCAPE:
+                        GameLogger.info("Player escaped from battle.");
+                        if (GameContext.get().getChatSystem() != null) {
+                            GameContext.get().getChatSystem().handleIncomingMessage(createSystemMessage(
+                                "Got away safely!"
+                            ));
+                        }
+                        // No item loss, no respawn. Just end the battle.
+                        break;
                 }
 
-                // Despawn the wild Pokemon regardless of win or loss.
+                // Despawn the wild Pokemon regardless of win, loss, or escape.
                 wildPokemon.startDespawnAnimation();
                 Timer.schedule(new Timer.Task() {
                     @Override
@@ -1246,13 +1304,12 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
                 // Clean up battle state and initiate the fade-out and cleanup sequence.
                 battleSystem.endBattle();
-                endBattle(playerWon, wildPokemon);
+                endBattle(outcome == BattleTable.BattleOutcome.WIN, wildPokemon);
             }
 
             @Override
             public void onTurnEnd(Pokemon activePokemon) {
                 GameLogger.info("Turn ended for: " + activePokemon.getName());
-
             }
 
             @Override
@@ -1291,6 +1348,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                 }
             }
         });
+
     }
 
     public void endBattle(boolean playerWon, WildPokemon wildPokemon) {
@@ -1624,10 +1682,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         GameContext.get().getBatch().end();
 
-        if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
-            if (GameContext.get().getBuildModeUI() != null) {
-                GameContext.get().getBuildModeUI().render(GameContext.get().getBatch(), camera);
-            }
+        if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE && GameContext.get().getBuildModeUI() != null) {
+            GameContext.get().getBuildModeUI().renderPlacementPreview(GameContext.get().getBatch(), camera);
         }
         if (GameContext.get().getWorld() != null && !initializedworld) {
             if (GameContext.get().getWorld().areAllChunksLoaded()) {
@@ -1967,11 +2023,11 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     }
 
     public void initializeBuildMode() {
-        if (GameContext.get().getBuildModeUI() == null && GameContext.get().getPlayer() != null) {
-            GameContext.get().setBuildModeUI(new BuildModeUI(skin));
-            GameContext.get().getUiStage().addActor(GameContext.get().getBuildModeUI());
-            GameContext.get().getBuildModeUI().setVisible(false); // Start hidden
-            GameLogger.info("BuildModeUI initialized");
+        if (GameContext.get().getBuildModeUI() == null) {
+            BuildModeUI buildUI = new BuildModeUI(skin);
+            GameContext.get().setBuildModeUI(buildUI);
+            GameContext.get().getUiStage().addActor(buildUI);
+            buildUI.setVisible(false); // Initially hidden
         }
     }
 
@@ -2000,9 +2056,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             createDpad();
             createActionButtons();
         }
-        if (GameContext.get().getBuildModeUI() != null) {
-            GameContext.get().getBuildModeUI().resize(width);
-        }
+
 
         if (dpadTable != null) {
             dpadTable.clear();

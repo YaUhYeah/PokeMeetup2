@@ -11,7 +11,7 @@ import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalit
 
 // Investigate Behavior
 public class InvestigateBehavior implements PokemonBehavior {
-    private static final float INVESTIGATION_RANGE = 5.0f * World.TILE_SIZE;
+    private static final float INVESTIGATION_RANGE = 20.0f * World.TILE_SIZE;
 
     private final WildPokemon pokemon;
     private final PokemonAI ai;

@@ -8,9 +8,14 @@ import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
 
-// Wander Behavior
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
 public class WanderBehavior implements PokemonBehavior {
-    private static final float WANDER_COOLDOWN = 2.0f;
+    // Make Pokemon move more frequently by reducing cooldown.
+    private static final float WANDER_COOLDOWN = 0.4f; // Was 1.0f
 
     private final WildPokemon pokemon;
     private final PokemonAI ai;
@@ -32,40 +37,39 @@ public class WanderBehavior implements PokemonBehavior {
     }
 
     private void moveRandomDirection(World world) {
-        int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-        int currentTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-
-        String[] directions = {"up", "down", "left", "right"};
-
-        // Shuffle directions for randomness
-        for (int i = 0; i < directions.length; i++) {
-            int j = MathUtils.random(i, directions.length - 1);
-            String temp = directions[i];
-            directions[i] = directions[j];
-            directions[j] = temp;
+        // 15% chance to just stay idle for this tick, makes movement less predictable.
+        if (MathUtils.random() < 0.15f) {
+            ai.setCooldown(getName(), WANDER_COOLDOWN * 1.5f); // Slightly longer cooldown if idling
+            return;
         }
 
-        for (String direction : directions) {
+        int currentTileX = pokemon.getTileX();
+        int currentTileY = pokemon.getTileY();
+        String lastDirection = pokemon.getDirection();
+
+        // Create a list of potential directions
+        List<String> potentialDirections = new ArrayList<>(Arrays.asList("up", "down", "left", "right"));
+
+        // Shuffle to randomize the order of non-priority directions
+        Collections.shuffle(potentialDirections);
+
+        // Bias towards continuing in the same direction by moving it to the front
+        potentialDirections.remove(lastDirection);
+        potentialDirections.add(0, lastDirection);
+
+        // Try to move in the prioritized order
+        for (String direction : potentialDirections) {
             int targetTileX = currentTileX;
             int targetTileY = currentTileY;
 
             switch (direction) {
-                case "up":
-                    targetTileY++;
-                    break;
-                case "down":
-                    targetTileY--;
-                    break;
-                case "left":
-                    targetTileX--;
-                    break;
-                case "right":
-                    targetTileX++;
-                    break;
+                case "up":    targetTileY++; break;
+                case "down":  targetTileY--; break;
+                case "left":  targetTileX--; break;
+                case "right": targetTileX++; break;
             }
 
-            if (world.isPassable(targetTileX, targetTileY) &&
-                isWithinWanderRange(targetTileX, targetTileY)) {
+            if (world.isPassable(targetTileX, targetTileY) && isWithinWanderRange(targetTileX, targetTileY)) {
                 pokemon.moveToTile(targetTileX, targetTileY, direction);
                 ai.setCurrentState(PokemonAI.AIState.WANDERING);
                 return;
@@ -86,9 +90,10 @@ public class WanderBehavior implements PokemonBehavior {
 
     @Override
     public boolean canExecute() {
+        // Pokemon can decide to wander more quickly after stopping.
         return !pokemon.isMoving() &&
             !ai.isOnCooldown(getName()) &&
-            ai.getStateTimer() > 1.0f;
+            ai.getStateTimer() > 0.4f; // Was 1.0f
     }
 
     @Override

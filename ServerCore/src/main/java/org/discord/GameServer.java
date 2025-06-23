@@ -276,6 +276,94 @@ public class GameServer {
         networkServer.sendToAllExceptTCP(connection.getID(), drop);
     }
 
+    private void serverDestroyBlock(PlaceableBlock block) {
+        if (block == null) return;
+        Vector2 pos = block.getPosition();
+
+        // 1. Remove block from server state
+        ServerGameContext.get().getServerBlockManager().removeBlock((int)pos.x, (int)pos.y);
+
+        // 2. Broadcast block removal to all clients
+        NetworkProtocol.BlockPlacement removalMsg = new NetworkProtocol.BlockPlacement();
+        removalMsg.action = NetworkProtocol.BlockAction.REMOVE;
+        removalMsg.blockTypeId = block.getType().id;
+        removalMsg.tileX = (int)pos.x;
+        removalMsg.tileY = (int)pos.y;
+        networkServer.sendToAllTCP(removalMsg);
+
+        // 3. Create and broadcast the item drop
+        String itemId = block.getType().itemId;
+        if (itemId != null) {
+            ItemData dropData = new ItemData(itemId, 1);
+            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+            dropMsg.itemData = dropData;
+            dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f;
+            dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f;
+            networkServer.sendToAllTCP(dropMsg);
+        }
+
+        // 4. If it was a chest, drop its contents
+        if (block.getType() == PlaceableBlock.BlockType.CHEST) {
+            ChestData chestData = block.getChestData();
+            if (chestData != null && chestData.items != null) {
+                for (ItemData item : chestData.items) {
+                    if (item != null) {
+                        NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+                        dropMsg.itemData = item;
+                        dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
+                        dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
+                        networkServer.sendToAllTCP(dropMsg);
+                    }
+                }
+            }
+        }
+    }
+
+    private void serverDestroyObject(WorldObject object) {
+        if (object == null) return;
+
+        // 1. Remove object from server's world state
+        Vector2 chunkPos = new Vector2((int) Math.floor(object.getPixelX() / (CHUNK_SIZE * TILE_SIZE)), (int) Math.floor(object.getPixelY() / (CHUNK_SIZE * TILE_SIZE)));
+        ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, object.getId());
+
+        // 2. Broadcast object removal
+        NetworkProtocol.WorldObjectUpdate removalMsg = new NetworkProtocol.WorldObjectUpdate();
+        removalMsg.objectId = object.getId();
+        removalMsg.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
+        removalMsg.data = object.getSerializableData();
+        networkServer.sendToAllTCP(removalMsg);
+
+        // 3. Create and broadcast the item drop
+        String dropItemId = object.getType().dropItemId;
+        int dropCount = object.getType().dropItemCount;
+        if (dropItemId != null && dropCount > 0) {
+            ItemData dropData = new ItemData(dropItemId, dropCount);
+            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+            dropMsg.itemData = dropData;
+            dropMsg.x = object.getPixelX() + TILE_SIZE / 2f;
+            dropMsg.y = object.getPixelY();
+            networkServer.sendToAllTCP(dropMsg);
+        }
+    }
+
+    private WorldObject findServerChoppableObject(int tileX, int tileY) {
+        Vector2 chunkPos = new Vector2(
+            (int) Math.floor(tileX / (float)CHUNK_SIZE),
+            (int) Math.floor(tileY / (float)CHUNK_SIZE)
+        );
+
+        List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+        if (objects == null) return null;
+
+        for (WorldObject obj : objects) {
+            // A simple check to see if the target tile is part of the object's base
+            if (isChoppable(obj.getType()) && obj.getBoundingBox().contains(tileX * TILE_SIZE, tileY * TILE_SIZE)) {
+                return obj;
+            }
+        }
+        return null;
+    }
+
     private void cleanupPlayerSession(int connectionId, String username) {
         synchronized (activeUserConnections) {
             activeUserConnections.remove(username);
@@ -1347,66 +1435,145 @@ public class GameServer {
             connection.sendTCP(batchUpdate);
         }
     }
-
     private void handlePlayerAction(Connection connection, NetworkProtocol.PlayerAction action) {
-        if (action == null || action.playerId == null) {
-            GameLogger.error("Invalid player action received");
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null || !username.equals(action.playerId)) {
+            GameLogger.error("Unauthorized PlayerAction from connection " + connection.getID());
             return;
         }
-
-        ServerPlayer player = activePlayers.get(action.playerId);
-        if (player == null) {
-            GameLogger.error("No player found for action: " + action.playerId);
-            return;
-        }
+        ServerPlayer player = activePlayers.get(username);
+        if (player == null) return;
 
         switch (action.actionType) {
             case CHOP_START:
             case PUNCH_START:
-                // Find a choppable world object (e.g. a tree) near the player.
-                WorldObject targetObject = findServerChoppableObject(player, action.direction);
-                if (targetObject != null) {
-                    // Save the target object in the player’s state
-                    player.setChoppingObject(targetObject);
-                    GameLogger.info("Player " + action.playerId + " started chopping/punching object: " +
-                        targetObject.getId() + " at (" + targetObject.getTileX() + "," +
-                        targetObject.getTileY() + ")");
+                PlaceableBlock blockTarget = ServerGameContext.get().getServerBlockManager().getBlockAt(action.tileX, action.tileY);
+                if (blockTarget != null) {
+                    player.setBreakingBlock(blockTarget);
+                    player.setChoppingObject(null);
+                    GameLogger.info("Player " + username + " started breaking block at " + action.tileX + "," + action.tileY);
                 } else {
-                    GameLogger.error("No choppable object found near player " + action.playerId);
+                    WorldObject objectTarget = findServerChoppableObject(action.tileX, action.tileY);
+                    if (objectTarget != null) {
+                        player.setChoppingObject(objectTarget);
+                        player.setBreakingBlock(null);
+                        GameLogger.info("Player " + username + " started chopping object " + objectTarget.getId());
+                    } else {
+                        GameLogger.error("Player " + username + " tried to chop but no valid target was found on server.");
+                        player.setChoppingObject(null);
+                        player.setBreakingBlock(null);
+                        return;
+                    }
                 }
-                // Broadcast the start action to all clients (including the sender)
-                networkServer.sendToAllTCP(action);
+                networkServer.sendToAllExceptTCP(connection.getID(), action);
                 break;
 
             case CHOP_STOP:
             case PUNCH_STOP:
-                WorldObject choppedObject = player.getChoppingObject();
-                if (choppedObject != null) {
-                    Vector2 chunkPos = new Vector2(
-                        (int) Math.floor(choppedObject.getPixelX() / (World.CHUNK_SIZE * World.TILE_SIZE)),
-                        (int) Math.floor(choppedObject.getPixelY() / (World.CHUNK_SIZE * World.TILE_SIZE))
-                    );
-                    // Remove the object from the server’s world–object manager.
-                    ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, choppedObject.getId());
-                    NetworkProtocol.WorldObjectUpdate removalUpdate = new NetworkProtocol.WorldObjectUpdate();
-                    removalUpdate.objectId = choppedObject.getId();
-                    removalUpdate.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-                    removalUpdate.data = choppedObject.getSerializableData();
-                    // Reinsert the raw tile coordinates so the client computes the correct chunk:
-                    removalUpdate.data.put("tileX", choppedObject.getTileX());
-                    removalUpdate.data.put("tileY", choppedObject.getTileY());
-                    networkServer.sendToAllTCP(removalUpdate);
-                    player.setChoppingObject(null);
-                }
-                // Broadcast the stop action to all clients so that remote players can stop the animation.
-                networkServer.sendToAllTCP(action);
+                player.setChoppingObject(null);
+                player.setBreakingBlock(null);
+                networkServer.sendToAllExceptTCP(connection.getID(), action);
                 break;
 
-            default:
-                GameLogger.error("Unhandled player action type: " + action.actionType);
+            case CHOP_COMPLETE:
+                PlaceableBlock completedBlock = player.getBreakingBlock();
+                WorldObject completedObject = player.getChoppingObject();
+                boolean actionIsValid = false;
+
+                if (completedBlock != null && completedBlock.getPosition().x == action.tileX && completedBlock.getPosition().y == action.tileY) {
+                    serverDestroyBlock(completedBlock, player); // Pass the player
+                    actionIsValid = true;
+                } else if (completedObject != null) {
+                    float dist = Vector2.dst(action.tileX, action.tileY, completedObject.getTileX(), completedObject.getTileY());
+                    if (dist < 2.0f) {
+                        serverDestroyObject(completedObject, player); // Pass the player
+                        actionIsValid = true;
+                    }
+                }
+
+                if (!actionIsValid) {
+                    GameLogger.error("CHOP_COMPLETE received but target mismatch for " + username);
+                }
+
+                player.setChoppingObject(null);
+                player.setBreakingBlock(null);
                 break;
+
+            // ... other cases
         }
     }
+
+    private void serverDestroyBlock(PlaceableBlock block, ServerPlayer player) {
+        if (block == null || player == null) return;
+        Vector2 pos = block.getPosition();
+
+        ServerGameContext.get().getServerBlockManager().removeBlock((int) pos.x, (int) pos.y);
+
+        NetworkProtocol.BlockPlacement removalMsg = new NetworkProtocol.BlockPlacement();
+        removalMsg.action = NetworkProtocol.BlockAction.REMOVE;
+        removalMsg.blockTypeId = block.getType().id;
+        removalMsg.tileX = (int) pos.x;
+        removalMsg.tileY = (int) pos.y;
+        networkServer.sendToAllTCP(removalMsg);
+
+        String itemId = block.getType().itemId;
+        if (itemId != null) {
+            int dropCount = 1;
+
+            ItemData dropData = new ItemData(itemId, dropCount);
+            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+            dropMsg.itemData = dropData;
+            dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f;
+            dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f;
+            networkServer.sendToAllTCP(dropMsg);
+        }
+
+        if (block.getType() == PlaceableBlock.BlockType.CHEST) {
+            ChestData chestData = block.getChestData();
+            if (chestData != null && chestData.items != null) {
+                for (ItemData item : chestData.items) {
+                    if (item != null) {
+                        NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+                        dropMsg.itemData = item;
+                        dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
+                        dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
+                        networkServer.sendToAllTCP(dropMsg);
+                    }
+                }
+            }
+        }
+    }
+
+    private void serverDestroyObject(WorldObject object, ServerPlayer player) {
+        if (object == null || player == null) return;
+
+        Vector2 chunkPos = new Vector2((int) Math.floor(object.getPixelX() / (CHUNK_SIZE * TILE_SIZE)), (int) Math.floor(object.getPixelY() / (CHUNK_SIZE * TILE_SIZE)));
+        ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, object.getId());
+
+        NetworkProtocol.WorldObjectUpdate removalMsg = new NetworkProtocol.WorldObjectUpdate();
+        removalMsg.objectId = object.getId();
+        removalMsg.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
+        removalMsg.data = object.getSerializableData();
+        networkServer.sendToAllTCP(removalMsg);
+
+        String dropItemId = object.getType().dropItemId;
+        int dropCount = object.getType().dropItemCount;
+        if (dropItemId != null && dropCount > 0) {
+            if (player.hasAxe()) {
+                int bonus = MathUtils.random(1, 3);
+                dropCount += bonus;
+                GameLogger.info("Player " + player.getUsername() + " gets axe bonus! +" + bonus + " " + dropItemId);
+            }
+
+            ItemData dropData = new ItemData(dropItemId, dropCount);
+            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+            dropMsg.itemData = dropData;
+            dropMsg.x = object.getPixelX() + TILE_SIZE / 2f;
+            dropMsg.y = object.getPixelY();
+            networkServer.sendToAllTCP(dropMsg);
+        }
+    }
+
 
     private void handleWorldObjectUpdate(Connection connection, NetworkProtocol.WorldObjectUpdate update) {
         // Ensure that only authenticated users can send updates.
