@@ -1,3 +1,5 @@
+// Fixed: src/main/java/io/github/pokemeetup/system/InputHandler.java
+
 package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.Gdx;
@@ -583,11 +585,9 @@ public class InputHandler extends InputAdapter {
      * Handles the logic for incrementing break progress while the action key is held.
      */
     private void updateBreakingProgress(float deltaTime) {
-        // If the action key is released, stop the process.
-        if (!Gdx.input.isKeyPressed(KeyBinds.getBinding(KeyBinds.ACTION))) {
-            stopChopOrPunch();
-            return;
-        }
+        // [FIXED] The check for isKeyPressed was removed, as it's incorrect for touch input.
+        // The chopping state is now managed by the isChoppingOrBreaking flag, which is
+        // toggled by touchDown/touchUp and keyDown/keyUp events.
 
         // Validate that the target is still in range and exists.
         if (targetBlock != null) {
