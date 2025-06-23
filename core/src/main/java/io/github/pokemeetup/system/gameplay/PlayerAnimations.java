@@ -140,41 +140,42 @@ public class PlayerAnimations {
         GameLogger.info("Chopping animation stopped");
     }
 
+
     /**
-     * Returns the current frame based on the current action (chop, punch, or movement).
-     * For movement, the caller must supply an animation time based on movement progress.
+     * [MODIFIED] Returns the current frame based on state. This is the central logic for both local and remote players.
+     * The `time` parameter is a continuously increasing timer that dictates the animation frame.
      */
     public TextureRegion getCurrentFrame(String direction, boolean isMoving, boolean isRunning, float time) {
         if (!isInitialized || isDisposed) {
             loadAnimations(characterType);
         }
-        // 1) If chopping is active, it takes the highest priority.
+
+        // 1) Action animations (chopping/punching) have the highest priority.
         if (isChopping) {
             int dirIndex = getDirectionIndex(direction);
             if (chopAnimations != null && dirIndex >= 0 && dirIndex < chopAnimations.length) {
                 chopAnimationTime += Gdx.graphics.getDeltaTime();
-                // Use looping mode for chop animation as well.
-                TextureRegion frame = chopAnimations[dirIndex].getKeyFrame(chopAnimationTime, true);
-                return (frame != null) ? frame : getStandingFrame(direction);
+                // Loop the chopping animation for a continuous effect
+                return chopAnimations[dirIndex].getKeyFrame(chopAnimationTime, true);
             }
         }
-        // 2) If punching is active.
         if (isPunching) {
             int dirIndex = getDirectionIndex(direction);
             if (punchAnimations != null && dirIndex >= 0 && dirIndex < punchAnimations.length) {
                 punchAnimationTime += Gdx.graphics.getDeltaTime();
-                // Use looping mode for punch animation as well.
-                TextureRegion frame = punchAnimations[dirIndex].getKeyFrame(punchAnimationTime, true);
-                return (frame != null) ? frame : getStandingFrame(direction);
+                // Loop the punching animation
+                return punchAnimations[dirIndex].getKeyFrame(punchAnimationTime, true);
             }
         }
-        // 3) If not moving, simply return the standing frame.
+
+        // 2) If not moving, always return the standing frame for the current direction.
         if (!isMoving) {
             return getStandingFrame(direction);
         }
-        // 4) Otherwise, for movement animations use the provided time.
+
+        // 3) If moving, use the provided time to get the correct frame from the walk/run animation.
         Animation<TextureRegion> currentAnimation = getAnimation(direction, isRunning);
-        // *** The key change: set looping to 'true' so the walk/run animation cycles continuously.
+        // The key change: set looping to 'true' to ensure the animation cycles correctly.
         return currentAnimation.getKeyFrame(time, true);
     }
 

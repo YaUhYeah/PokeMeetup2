@@ -481,36 +481,24 @@ public class Player implements Positionable {
             }
             // When moving:
             else if (isMoving) {
+                // This is the core movement logic
                 float currentDuration = isRunning ? runStepDuration : walkStepDuration;
-                float progressIncrement = deltaTime / currentDuration;
-                movementProgress += progressIncrement;
-                if (movementProgress > 1.0f) {
-                    movementProgress = 1.0f;
-                }
-                updatePosition(movementProgress);
-                // Update animationTime for frame selection.
+                movementProgress = Math.min(1.0f, movementProgress + (deltaTime / currentDuration));
+
+                updatePosition(movementProgress); // This uses lerp to smooth movement
+
+                // [MODIFIED] Use a continuous animation timer for smooth animation cycles
                 animationTime += deltaTime * animationSpeedMultiplier;
 
-                // As soon as the tile's position is reached, complete the movement immediately.
                 if (movementProgress >= 1.0f) {
-                    completeMovement();
-                    // Immediately start a new move if a buffered direction exists...
+                    completeMovement(); // Finalize position
+                    // Check for buffered input or held keys to start the next move immediately
                     if (bufferedDirection != null) {
                         move(bufferedDirection);
                         bufferedDirection = null;
-                        bufferedTime = 0f;
-                    }
-                    // ...or if the movement key is still held.
-                    else if (isInputHeld()) {
+                    } else if (isInputHeld()) {
                         move(direction);
                     }
-                    // Otherwise, reset and display the standing frame.
-                    else {
-                        animationTime = 0f;
-                        currentFrame = animations.getStandingFrame(direction);
-                    }
-                } else {
-                    currentFrame = animations.getCurrentFrame(direction, true, isRunning, animationTime);
                 }
             }
             // Not moving – show standing frame.
@@ -519,6 +507,8 @@ public class Player implements Positionable {
                 animationTime = 0f;
                 currentFrame = animations.getStandingFrame(direction);
             }
+            currentFrame = animations.getCurrentFrame(direction, isMoving, isRunning, animationTime);
+
 
             // Existing item pickup logic.
             ItemEntity nearbyItem = world.getItemEntityManager().getClosestPickableItem(x, y, PICKUP_RANGE);
@@ -733,6 +723,7 @@ public class Player implements Positionable {
     public void updatePlayerData() {
         playerData.setX(x);
         playerData.setY(y);
+        playerData.setCharacterType(getCharacterType()); // [NEW]
         playerData.setDirection(direction);
         playerData.setMoving(isMoving);
         playerData.setWantsToRun(isRunning);

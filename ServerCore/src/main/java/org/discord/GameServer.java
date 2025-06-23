@@ -510,6 +510,7 @@ public class GameServer {
             playerData.setDirection(update.direction);
             playerData.setMoving(update.isMoving);
             playerData.setWantsToRun(update.wantsToRun);
+            playerData.setCharacterType(update.characterType); // [NEW] Update character type
 
             if (update.inventoryItems != null) {
                 playerData.setInventoryItems(Arrays.asList(update.inventoryItems));

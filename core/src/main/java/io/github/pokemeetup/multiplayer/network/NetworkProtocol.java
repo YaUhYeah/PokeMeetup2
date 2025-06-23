@@ -476,14 +476,10 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public String username;
         public float x;
         public float y;
-        public String characterType; // "boy", "girl", etc.
-
+        public String characterType; // [NEW] Add character type
         public String direction;
         public List<PokemonData> partyPokemon;
         public boolean isMoving;
-        // Add velocity for smoother movement
-        public float velocityX;
-        public float velocityY;
         public boolean wantsToRun;
         public ItemData[] inventoryItems;
         public ItemData[] hotbarItems;
