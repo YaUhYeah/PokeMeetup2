@@ -69,6 +69,7 @@ public class ItemEntityManager {
         }
     }
 
+
     public void removeItemEntity(UUID entityId) {
         ItemEntity entity = itemEntities.get(entityId);
         if (entity != null && !entity.canBePickedUp()) {
@@ -80,15 +81,11 @@ public class ItemEntityManager {
             entity.markPickedUp();
             // Remove it from the manager.
             itemEntities.remove(entityId);
-            // In multiplayer, broadcast the pickup to other clients.
-            if (GameContext.get().isMultiplayer()) {
-                NetworkProtocol.ItemPickup pickup = new NetworkProtocol.ItemPickup();
-                pickup.entityId = entityId;
-                GameContext.get().getGameClient().sendItemPickup(pickup);
-            }
+
+            // FIX: Removed the redundant network call from here.
+            // The Player class is now solely responsible for initiating the pickup message.
         }
     }
-
 
     public void handleRemoteItemDrop(NetworkProtocol.ItemDrop drop) {
         // Only handle drops from other players

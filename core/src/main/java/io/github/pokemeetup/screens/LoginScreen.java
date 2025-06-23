@@ -14,6 +14,7 @@
     import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
     import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
     import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
+    import com.badlogic.gdx.utils.Align;
     import com.badlogic.gdx.utils.Array;
     import com.badlogic.gdx.utils.Json;
     import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -23,6 +24,7 @@
     import io.github.pokemeetup.context.GameContext;
     import io.github.pokemeetup.multiplayer.client.GameClient;
     import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
+    import io.github.pokemeetup.multiplayer.server.config.ServerConfigManager;
     import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
     import io.github.pokemeetup.screens.otherui.ServerManagementDialog;
     import io.github.pokemeetup.utils.GameLogger;
@@ -30,8 +32,12 @@
 
     import java.io.IOException;
     import java.util.Base64;
+    import java.util.HashSet;
     import java.util.Map;
     import java.util.concurrent.ConcurrentHashMap;
+
+    import static io.github.pokemeetup.multiplayer.server.config.ServerConfigManager.CONFIG_DIR;
+    import static io.github.pokemeetup.multiplayer.server.config.ServerConfigManager.CONFIG_FILE;
 
 
     public class LoginScreen implements Screen {
@@ -43,7 +49,7 @@
         public static final float MAX_WIDTH = 500f;
         private static final String DEFAULT_SERVER_ICON = "ui/default-server-icon.png";
         private static final int MIN_HEIGHT = 600;
-        private static final float CONNECTION_TIMEOUT = 30f;
+        private static final float CONNECTION_TIMEOUT = 10f;
         private static final int MAX_CONNECTION_ATTEMPTS = 3;
 
         // Virtual resolution (for the FitViewport)
@@ -75,12 +81,10 @@
         private TextButton editServerButton;
         private TextButton deleteServerButton;
 
-        // == Constructor ==
         public LoginScreen(CreatureCaptureGame game) {
             this.game = game;
             this.stage = new Stage(new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
 
-    // Correctly load the skin by first loading its atlas, then the JSON definition.
             TextureAtlas atlas;
             try {
                 atlas = new TextureAtlas(Gdx.files.internal("Skins/uiskin.atlas"));
@@ -95,13 +99,17 @@
             } catch (Exception e) {
                 Gdx.app.error("LoginScreen", "Failed to load uiskin.json", e);
                 throw new RuntimeException("Could not load uiskin.json", e);
-            }this.prefs = Gdx.app.getPreferences("LoginPrefs");
+            }
+            this.prefs = Gdx.app.getPreferences("LoginPrefs");
             Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
             pixmap.setColor(Color.WHITE);
             pixmap.fill();
             skin.add("white", new Texture(pixmap));
             pixmap.dispose();
-            loadServers();
+
+            // Load servers from the manager
+            this.servers = ServerConfigManager.getInstance().getServers();
+
             createUIComponents();
             setupListeners();
             initializeUI();
@@ -110,21 +118,14 @@
             stage.addListener(new InputListener() {
                 @Override
                 public boolean scrolled(InputEvent event, float x, float y, float amountX, float amountY) {
-                    // Check if the mouse cursor is currently over the server list scroll pane
-                        // amountY is typically -1 for scroll down and 1 for scroll up.
-                        // We'll multiply by a sensitivity factor to control scroll speed.
-                        float scrollAmount = amountY * 30f; // Adjust 30f to make it faster or slower
-
-                        // Add the scroll amount to the current scroll position
-                        serverListScrollPane.setScrollY(serverListScrollPane.getScrollY() + scrollAmount);
-
-                        return true; // Event handled
+                    float scrollAmount = amountY * 30f; // Adjust sensitivity
+                    serverListScrollPane.setScrollY(serverListScrollPane.getScrollY() + scrollAmount);
+                    return true;
                 }
             });
 
             Gdx.input.setInputProcessor(stage);
         }
-
         // == Screen Implementation ==
 
         @Override
@@ -310,6 +311,7 @@
             topLeftTable.top().left();
             topLeftTable.add(backButton);
             stage.addActor(topLeftTable);
+            updateServerList();
         }
 
         private Table createLoginForm(float width) {
@@ -338,26 +340,16 @@
 
             return form;
         }
-
         private ScrollPane createServerList() {
             serverListTable = new Table();
             serverListTable.top();
-
-            for (ServerConnectionConfig server : servers) {
-                Table serverEntry = createServerEntry(server);
-                serverListTable.add(serverEntry).expandX().fillX().padBottom(2).row();
-            }
-
             ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle();
             scrollStyle.background = new TextureRegionDrawable(TextureManager.ui.findRegion("textfield"));
-
-
             ScrollPane scrollPane = new ScrollPane(serverListTable, scrollStyle);
             scrollPane.setFadeScrollBars(false);
             scrollPane.setScrollingDisabled(true, false);
             scrollPane.setForceScroll(false, true);
             scrollPane.setOverscroll(false, false);
-
             return scrollPane;
         }
 
@@ -369,10 +361,11 @@
                 editServer,
                 config -> {
                     if (editServer != null) {
-                        servers.removeValue(editServer, true);
+                        ServerConfigManager.getInstance().removeServer(editServer);
                     }
-                    servers.add(config);
-                    saveServers();
+                    ServerConfigManager.getInstance().addServer(config);
+                    // **REFRESH**: After saving, get the updated list from the manager and refresh the UI
+                    this.servers = ServerConfigManager.getInstance().getServers();
                     updateServerList();
                 }
             );
@@ -468,60 +461,57 @@
                 client.dispose();
             }
         }
+
         void deleteServer(ServerConnectionConfig server) {
-            if (server.isDefault()) {
-                showError("Cannot delete default server");
-                return;
-            }
             Dialog confirm = new Dialog("Confirm Delete", skin) {
                 @Override
                 protected void result(Object obj) {
                     if ((Boolean) obj) {
-                        servers.removeValue(server, true);
-                        saveServers();
+                        ServerConfigManager.getInstance().removeServer(server);
+                        servers.removeValue(server, true); // Update local copy
+                        if (selectedServer == server) {
+                            selectedServer = null;
+                        }
                         updateServerList();
                     }
                 }
             };
-            confirm.text("Are you sure you want to delete this server?");
+            confirm.text("Are you sure you want to delete '" + server.getServerName() + "'?");
             confirm.button("Yes", true);
             confirm.button("No", false);
             confirm.show(stage);
         }
 
+
+        // **This is the core of the "auto-refresh"**. It rebuilds the UI list from the `servers` array.
         private void updateServerList() {
             serverListTable.clear();
             serverListTable.top();
 
-            Label headerLabel = new Label("Available Servers", skin);
-            serverListTable.add(headerLabel).pad(10).row();
-
-            boolean hasServers = false;
-            for (ServerConnectionConfig server : servers) {
-                Table serverEntry = createServerEntry(server);
-                serverListTable.add(serverEntry).expandX().fillX().padBottom(2).row();
-                hasServers = true;
-            }
-
-            if (!hasServers) {
-                Label emptyLabel = new Label("No servers available.", skin);
+            if (servers.isEmpty()) {
+                Label emptyLabel = new Label("No servers found.\nClick 'Add Server' to begin.", skin);
                 emptyLabel.setColor(Color.GRAY);
-                serverListTable.add(emptyLabel).pad(20);
-            }
-
-            if (selectedServer == null && servers.size > 0) {
-                selectedServer = servers.first();
-                Cell<?> firstCell = serverListTable.getCells().first();
-                if (firstCell != null && firstCell.getActor() instanceof Table) {
-                    updateServerSelection((Table) firstCell.getActor());
+                emptyLabel.setAlignment(Align.center);
+                serverListTable.add(emptyLabel).pad(20).expand().fill();
+            } else {
+                for (ServerConnectionConfig server : servers) {
+                    Table serverEntry = createServerEntry(server);
+                    serverListTable.add(serverEntry).expandX().fillX().padBottom(2).row();
                 }
             }
 
-            serverListTable.invalidate();
-            serverListScrollPane.invalidate();
-            saveServers();
+            selectedServer = servers.isEmpty() ? null : servers.first();
 
-            GameLogger.info("Server list updated with " + servers.size + " servers");
+            editServerButton.setDisabled(selectedServer == null);
+            deleteServerButton.setDisabled(selectedServer == null);
+            loginButton.setDisabled(selectedServer == null);
+
+            if (selectedServer != null && !serverListTable.getChildren().isEmpty()) {
+                Actor firstEntry = serverListTable.getChildren().first();
+                if (firstEntry instanceof Table) {
+                    updateServerSelection((Table) firstEntry);
+                }
+            }
         }
 
 
@@ -1035,55 +1025,51 @@
             }
         }
 
-        public void loadServers() {
-            if (servers == null) {
-                servers = new Array<>();
-            }
-            servers.clear();
+        private void loadServers() {
+            try {
+                FileHandle file = Gdx.files.local(CONFIG_DIR + "/" + CONFIG_FILE);
+                if (file.exists() && file.length() > 0) {
+                    Json json = new Json();
+                    String fileContent = file.readString();
+                    GameLogger.info("Loading servers from: " + file.path());
 
-            // Ensure we have a default server
-            ServerConnectionConfig defaultServer = ServerConnectionConfig.getInstance();
-            defaultServer.setIconPath(DEFAULT_SERVER_ICON);
-            servers.add(defaultServer);
+                    @SuppressWarnings("unchecked")
+                    Array<ServerConnectionConfig> loadedServers = json.fromJson(Array.class,
+                        ServerConnectionConfig.class, fileContent);
 
-            Preferences serverPrefs = Gdx.app.getPreferences(SERVERS_PREFS);
-            String savedServers = serverPrefs.getString("servers", "");
-
-            if (!savedServers.isEmpty()) {
-                Json json = new Json();
-                for (String serverString : savedServers.split("\\|")) {
-                    try {
-                        if (!serverString.trim().isEmpty()) {
-                            ServerEntry entry = json.fromJson(ServerEntry.class, serverString);
-                            if (entry != null && !isDefaultServer(entry)) {
-                                ServerConnectionConfig config = getServerConnectionConfig(entry);
-                                servers.add(config);
+                    if (loadedServers != null && loadedServers.size > 0) {
+                        // Use a HashSet to automatically handle duplicates based on our new equals/hashCode
+                        HashSet<ServerConnectionConfig> uniqueSet = new HashSet<>();
+                        for (ServerConnectionConfig server : loadedServers) {
+                            if (!uniqueSet.add(server)) {
+                                GameLogger.info("Removed duplicate server on load: " + server.getServerName());
                             }
                         }
-                    } catch (Exception e) {
-                        GameLogger.error("Error loading saved server: " + e.getMessage());
+
+                        // If duplicates were found, the set size will be smaller.
+                        boolean wasCleaned = uniqueSet.size() < loadedServers.size;
+
+                        // Update the main server list with the unique servers
+                        servers.clear();
+                        for(ServerConnectionConfig uniqueServer : uniqueSet) {
+                            servers.add(uniqueServer);
+                        }
+
+                        GameLogger.info("Loaded " + servers.size + " unique servers.");
+
+                        // If the list was cleaned, save it back to the file.
+                        if(wasCleaned) {
+                            saveServers();
+                        }
                     }
                 }
+            } catch (Exception e) {
+                GameLogger.info("Error loading servers: " + e.getMessage());
+                e.printStackTrace();
             }
         }
 
-        private static ServerConnectionConfig getServerConnectionConfig(ServerEntry entry) {
-            ServerConnectionConfig config = new ServerConnectionConfig(
-                entry.ip,
-                entry.tcpPort,
-                entry.udpPort,
-                entry.name,
-                entry.isDefault,
-                entry.maxPlayers
-            );
-            config.setMotd(entry.motd);
-            config.setIconPath(entry.iconPath != null ? entry.iconPath : DEFAULT_SERVER_ICON);
-            return config;
-        }
 
-        private boolean isDefaultServer(ServerEntry entry) {
-            return entry.isDefault && "localhost".equals(entry.ip) && entry.tcpPort == 54555;
-        }
 
         private void saveServers() {
             try {
@@ -1096,7 +1082,6 @@
                         server.getTcpPort(),
                         server.getUdpPort(),
                         server.getMotd(),
-                        server.isDefault(),
                         server.getMaxPlayers(),
                         server.getIconPath()
                     );
@@ -1119,20 +1104,18 @@
             public int tcpPort;
             public int udpPort;
             public String motd;
-            public boolean isDefault;
             public int maxPlayers;
             public String iconPath;
 
             public ServerEntry() {}
 
             public ServerEntry(String name, String ip, int tcpPort, int udpPort,
-                               String motd, boolean isDefault, int maxPlayers, String iconPath) {
+                               String motd, int maxPlayers, String iconPath) {
                 this.name = name;
                 this.ip = ip;
                 this.tcpPort = tcpPort;
                 this.udpPort = udpPort;
                 this.motd = motd;
-                this.isDefault = isDefault;
                 this.maxPlayers = maxPlayers;
                 this.iconPath = iconPath;
             }

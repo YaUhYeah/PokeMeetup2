@@ -160,7 +160,6 @@ public class DeploymentHelper {
             54555,
             54556,
             "Pokemon Meetup Server",
-            true,
             100
         );
 

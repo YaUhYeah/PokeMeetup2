@@ -8,10 +8,11 @@ import com.badlogic.gdx.utils.JsonWriter;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.storage.JsonConfig;
 
+import java.util.HashSet;
 
 public class ServerConfigManager {
-    private static final String CONFIG_DIR = "configs";
-    private static final String CONFIG_FILE = "servers.json";
+    public static final String CONFIG_DIR = "configs";
+    public static final String CONFIG_FILE = "servers.json";
     private static ServerConfigManager instance;
     private Array<ServerConnectionConfig> servers;
 
@@ -21,18 +22,14 @@ public class ServerConfigManager {
             54555,
             54556,
             "Default Server",
-            true,
             100
         );
     }
+
     private ServerConfigManager() {
         servers = new Array<>();
         ensureConfigDirectory();
         loadServers();
-        if (servers.isEmpty()) {
-            addDefaultServer();
-            saveServers();
-        }
     }
 
     public static synchronized ServerConfigManager getInstance() {
@@ -42,16 +39,19 @@ public class ServerConfigManager {
         return instance;
     }
 
-
     public Array<ServerConnectionConfig> getServers() {
         return servers;
     }
 
     public void addServer(ServerConnectionConfig config) {
+        // The .equals() method in ServerConnectionConfig now checks IP and port.
+        // The 'false' argument ensures .equals() is used for comparison.
         if (!servers.contains(config, false)) {
             servers.add(config);
             saveServers();
             GameLogger.info("Added server: " + config.getServerName());
+        } else {
+            GameLogger.info("Attempted to add a duplicate server, ignoring: " + config.getServerName());
         }
     }
 
@@ -69,19 +69,39 @@ public class ServerConfigManager {
     private void loadServers() {
         try {
             FileHandle file = Gdx.files.local(CONFIG_DIR + "/" + CONFIG_FILE);
-            if (file.exists()) {
+            if (file.exists() && file.length() > 0) {
                 Json json = new Json();
                 String fileContent = file.readString();
                 GameLogger.info("Loading servers from: " + file.path());
-                GameLogger.info("File content: " + fileContent);
 
                 @SuppressWarnings("unchecked")
                 Array<ServerConnectionConfig> loadedServers = json.fromJson(Array.class,
                     ServerConnectionConfig.class, fileContent);
 
                 if (loadedServers != null && loadedServers.size > 0) {
-                    servers = loadedServers;
-                    GameLogger.info("Loaded " + servers.size + " servers");
+                    // Use a HashSet to automatically handle duplicates based on our new equals/hashCode
+                    HashSet<ServerConnectionConfig> uniqueSet = new HashSet<>();
+                    for (ServerConnectionConfig server : loadedServers) {
+                        if (!uniqueSet.add(server)) {
+                            GameLogger.info("Removed duplicate server on load: " + server.getServerName());
+                        }
+                    }
+
+                    // If duplicates were found, the set size will be smaller.
+                    boolean wasCleaned = uniqueSet.size() < loadedServers.size;
+
+                    // Update the main server list with the unique servers
+                    servers.clear();
+                    for(ServerConnectionConfig uniqueServer : uniqueSet) {
+                        servers.add(uniqueServer);
+                    }
+
+                    GameLogger.info("Loaded " + servers.size + " unique servers.");
+
+                    // If the list was cleaned, save it back to the file.
+                    if(wasCleaned) {
+                        saveServers();
+                    }
                 }
             }
         } catch (Exception e) {
@@ -89,20 +109,6 @@ public class ServerConfigManager {
             e.printStackTrace();
         }
     }
-
-
-    private void addDefaultServer() {
-        servers.add(new ServerConnectionConfig(
-            "170.64.156.89",
-            54555,
-            54556,
-            "Local Server",
-            true,
-            100
-        ));
-    }
-
-
 
     public void removeServer(ServerConnectionConfig server) {
         if (servers.removeValue(server, false)) {
@@ -114,17 +120,12 @@ public class ServerConfigManager {
     private void saveServers() {
         try {
             FileHandle file = Gdx.files.local(CONFIG_DIR + "/" + CONFIG_FILE);
-
             Json json = JsonConfig.getInstance();
             json.setOutputType(JsonWriter.OutputType.json);
-
-            // Create parent directories if they don't exist
             file.parent().mkdirs();
-
             String jsonStr = json.prettyPrint(servers);
             file.writeString(jsonStr, false);
             GameLogger.info("Saved " + servers.size + " servers to: " + file.path());
-            GameLogger.info("Content: " + jsonStr);
         } catch (Exception e) {
             GameLogger.info("Error saving servers: " + e.getMessage());
             e.printStackTrace();

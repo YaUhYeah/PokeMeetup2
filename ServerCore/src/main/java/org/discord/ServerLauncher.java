@@ -173,7 +173,6 @@ public class ServerLauncher {
                     54555,
                     54556,
                     "Pokemon Meetup Server",
-                    true,
                     100
                 );
             }
@@ -204,7 +203,6 @@ public class ServerLauncher {
                 54555,
                 54556,
                 "Pokemon Meetup Server",
-                true,
                 100
             );
             config.setMotd(DEFAULT_MOTD);

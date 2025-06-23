@@ -465,6 +465,21 @@ public class GameClient {
         client.sendTCP(drop);
     }
 
+    private void handleItemPickup(NetworkProtocol.ItemPickup pickup) {
+        // This message is broadcast by the server to all clients *except* the one who picked it up.
+        // Therefore, we just need to remove the entity from our local world.
+        if (pickup == null || pickup.entityId == null) {
+            return;
+        }
+
+        // Use Gdx.app.postRunnable to ensure this runs on the main render thread.
+        Gdx.app.postRunnable(() -> {
+            if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getItemEntityManager() != null) {
+                GameContext.get().getWorld().getItemEntityManager().removeItemEntity(pickup.entityId);
+                GameLogger.info("Removed item entity " + pickup.entityId + " picked up by " + pickup.username);
+            }
+        });
+    }
     public void sendPlayerUpdate() {
         if (!isConnected() || !isAuthenticated() || GameContext.get().getPlayer() == null) return;
 
@@ -928,6 +943,7 @@ public class GameClient {
             handleCompressedChunkData((NetworkProtocol.CompressedChunkData) object);
             return;
         }
+
         if (object instanceof NetworkProtocol.ServerShutdown) {
             NetworkProtocol.ServerShutdown shutdown = (NetworkProtocol.ServerShutdown) object;
             handleDisconnect(shutdown.reason);
@@ -950,7 +966,10 @@ public class GameClient {
                 return;
             }
         }
-
+        if (object instanceof NetworkProtocol.ItemPickup) {
+            handleItemPickup((NetworkProtocol.ItemPickup) object);
+            return; // Message handled
+        }
 
         try {
             if (object instanceof NetworkProtocol.LoginResponse) {

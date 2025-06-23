@@ -1,6 +1,7 @@
 package io.github.pokemeetup.multiplayer.server.config;
 
 import java.io.IOException;
+import java.util.Objects;
 
 public class ServerConnectionConfig {
     private static ServerConnectionConfig instance;
@@ -11,46 +12,15 @@ public class ServerConnectionConfig {
     private String motd;
     private String version;
     private String dataDirectory;
-
-    public void setIcon(String path) {
-        this.iconPath = path;
-    }
-
-    public void setMotd(String motd) {
-        this.motd = motd;
-    }
-
-    public String getIconPath() {
-        return iconPath;
-    }
-
-    public void setIconPath(String iconPath) {
-        this.iconPath = iconPath;
-    }
-
-    public String getMotd() {
-        return motd;
-    }
-
-    public String getVersion() {
-        return version;
-    }
-
-    public void setVersion(String version) {
-        this.version = version;
-    }
-
     private int udpPort;
     private String serverName;
-    private boolean isDefault;
 
-    public ServerConnectionConfig(String serverIP, int tcpPort, int udpPort, String serverName, boolean isDefault, int maxPlayers) {
+    public ServerConnectionConfig(String serverIP, int tcpPort, int udpPort, String serverName, int maxPlayers) {
         this.serverIP = serverIP;
         this.tcpPort = tcpPort;
         this.udpPort = udpPort;
         this.maxPlayers = maxPlayers;
         this.serverName = serverName;
-        this.isDefault = isDefault;
         setDataDirectory("worlds");
     }
 
@@ -67,25 +37,17 @@ public class ServerConnectionConfig {
                         54555,
                         54556,
                         "Default Server",
-                        false,
                         100
                     );
                 }
             }
         }
-
-
         return instance;
     }
 
     private static void validateServerConnection(ServerConnectionConfig config) throws IOException {
-        // Check if server is running
         try (java.net.Socket socket = new java.net.Socket()) {
-            // Set a short timeout
-            socket.connect(
-                new java.net.InetSocketAddress(config.getServerIP(), config.getTcpPort()),
-                2000
-            );
+            socket.connect(new java.net.InetSocketAddress(config.getServerIP(), config.getTcpPort()), 2000);
         } catch (IOException e) {
             throw new IOException("Cannot connect to server at " +
                 config.getServerIP() + ":" + config.getTcpPort() +
@@ -116,73 +78,44 @@ public class ServerConnectionConfig {
     }
 
     public static ServerConnectionConfig getDefault() {
-        return new ServerConnectionConfig("localhost", 55555, 55556, "Local Server", true, 100);
+        return new ServerConnectionConfig("localhost", 55555, 55556, "Local Server", 100);
     }
 
-
-    public int getMaxPlayers() {
-        return maxPlayers;
-    }
-
-    public void setMaxPlayers(int maxPlayers) {
-        this.maxPlayers = maxPlayers;
-    }
-
-    public String getDataDirectory() {
-        return dataDirectory;
-    }
-
-    public void setDataDirectory(String dataDirectory) {
-        this.dataDirectory = dataDirectory;
-    }
-
-    public String getServerIP() {
-        return serverIP;
-    }
-
-    public void setServerIP(String serverIP) {
-        this.serverIP = serverIP;
-    }
-
-    public int getTcpPort() {
-        return tcpPort;
-    }
-
-
-    public void setTcpPort(int tcpPort) {
-        this.tcpPort = tcpPort;
-    }
-
-    public int getUdpPort() {
-        return udpPort;
-    }
-
-
-    public void setUdpPort(int udpPort) {
-        this.udpPort = udpPort;
-    }
-
-    public String getServerName() {
-        return serverName;
-    }
-
-
-    public void setServerName(String serverName) {
-        this.serverName = serverName;
-    }
-
-    public boolean isDefault() {
-        return isDefault;
-    }
-
-    public void setDefault(boolean aDefault) {
-        isDefault = aDefault;
-    }
-
+    // Getters and Setters
+    public String getIconPath() { return iconPath; }
+    public void setIconPath(String iconPath) { this.iconPath = iconPath; }
+    public String getMotd() { return motd; }
+    public void setMotd(String motd) { this.motd = motd; }
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
+    public int getMaxPlayers() { return maxPlayers; }
+    public void setMaxPlayers(int maxPlayers) { this.maxPlayers = maxPlayers; }
+    public String getDataDirectory() { return dataDirectory; }
+    public void setDataDirectory(String dataDirectory) { this.dataDirectory = dataDirectory; }
+    public String getServerIP() { return serverIP; }
+    public void setServerIP(String serverIP) { this.serverIP = serverIP; }
+    public int getTcpPort() { return tcpPort; }
+    public void setTcpPort(int tcpPort) { this.tcpPort = tcpPort; }
+    public int getUdpPort() { return udpPort; }
+    public void setUdpPort(int udpPort) { this.udpPort = udpPort; }
+    public String getServerName() { return serverName; }
+    public void setServerName(String serverName) { this.serverName = serverName; }
 
     @Override
     public String toString() {
         return serverName + " (" + serverIP + ":" + tcpPort + ")";
     }
-}
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ServerConnectionConfig that = (ServerConnectionConfig) o;
+        return tcpPort == that.tcpPort && Objects.equals(serverIP, that.serverIP);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(serverIP, tcpPort);
+    }
+}

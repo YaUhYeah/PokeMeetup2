@@ -91,7 +91,7 @@ public class ServerManagementDialog extends Dialog {
 
             // Create config
             ServerConnectionConfig config = new ServerConnectionConfig(
-                ip, tcpPort, udpPort, name, false, 100
+                ip, tcpPort, udpPort, name,  100
             );
 
             onSave.accept(config);
