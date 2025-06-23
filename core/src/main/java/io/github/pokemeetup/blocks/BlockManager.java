@@ -164,6 +164,9 @@ public class BlockManager {
     }
 
     public void render(SpriteBatch batch, double worldTimeInMinutes) {
+        if (GameContext.get() == null) {
+            return;
+        }
         for (Chunk chunk : GameContext.get().getWorld().getChunks().values()) {
             for (PlaceableBlock block : chunk.getBlocks().values()) {
                 TextureRegion currentFrame = BlockTextureManager.getBlockFrame(

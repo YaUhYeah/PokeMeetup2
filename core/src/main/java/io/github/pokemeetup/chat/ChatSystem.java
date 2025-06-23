@@ -24,6 +24,12 @@ import java.util.List;
 import java.util.Queue;
 
 public class ChatSystem extends Table {
+    public void prefillField(String text) {
+        if (inputField != null) {
+            inputField.setText(text);
+            inputField.setCursorPosition(text.length());
+        }
+    }
     public static final float CHAT_PADDING = 10f;
     public static final float MIN_CHAT_WIDTH = 250f;
     public static final float MIN_CHAT_HEIGHT = 200f;
@@ -388,31 +394,16 @@ public class ChatSystem extends Table {
     }
 
     private void setupInputHandling() {
-        // We attach a general listener to the entire stage to open chat if T or slash
-        stage.addListener(new InputListener() {
+        // The logic for opening the chat with 'T' or '/' has been moved to GlobalInputProcessor.
+        // This listener now only handles clicks for mobile activation.
+        chatWindow.addListener(new ClickListener() {
             @Override
-            public boolean keyDown(InputEvent event, int keycode) {
-                // if chat is active, we handle it in inputField. If not active, check for T or slash
-                if (!isActive && (keycode == Input.Keys.T || keycode == Input.Keys.SLASH)) {
+            public void clicked(InputEvent event, float x, float y) {
+                if (!isActive && (Gdx.app.getType() == Application.ApplicationType.Android || Gdx.app.getType() == Application.ApplicationType.iOS)) {
                     activateChat();
-                    if (keycode == Input.Keys.SLASH) {
-                        inputField.setText("/");
-                        inputField.setCursorPosition(1);
-                    }
-                    // Here we do NOT call event.stop(). We just return true so other
-                    // processors know we've handled T or slash, but not forcibly stopping.
-                    return true;
                 }
-                // If chat is active and ESC pressed, we want to deactivate
-                if (isActive && keycode == Input.Keys.ESCAPE) {
-                    deactivateChat();
-                    return true;
-                }
-                return false;
             }
         });
-        // Also re‑attach the same capturing logic to inputField if you want
-        // That’s already done above in createChatUI() for ENTER, ESC, etc.
     }
 
     private static class ChatMessage {

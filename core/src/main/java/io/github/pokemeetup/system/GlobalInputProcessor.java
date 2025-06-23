@@ -2,6 +2,7 @@ package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.utils.GameLogger;
 
 public class GlobalInputProcessor extends InputAdapter {
@@ -15,6 +16,20 @@ public class GlobalInputProcessor extends InputAdapter {
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
 
+        // --- FIX: Add chat activation logic here ---
+        if (currentState == InputManager.UIState.NORMAL || currentState == InputManager.UIState.BUILD_MODE) {
+            if (keycode == Input.Keys.T || keycode == Input.Keys.SLASH) {
+                // Directly set the UI state to CHAT.
+                inputManager.setUIState(InputManager.UIState.CHAT);
+
+                // If slash was pressed, pre-fill the input field.
+                if (keycode == Input.Keys.SLASH && GameContext.get().getChatSystem() != null) {
+                    GameContext.get().getChatSystem().prefillField("/");
+                }
+                return true; // Event handled.
+            }
+        }
+        // --- END FIX ---
         // Handle ESCAPE key to toggle game menu
         if (keycode == Input.Keys.ESCAPE) {
             if (currentState != InputManager.UIState.MENU) {

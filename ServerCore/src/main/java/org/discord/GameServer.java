@@ -834,17 +834,13 @@ public class GameServer {
             e.printStackTrace();
         }
     }
-    // In GameServer.java
 
     private void broadcastWorldState() {
-        // Determine a global biome to base the weather on.
-        // A simple strategy is to use the most common biome among all active players.
         if (activePlayers.isEmpty()) {
-            // No players online, no need to update weather.
             return;
         }
 
-        // Find the most common biome among players.
+        // Find the most common biome among all active players.
         Map<BiomeType, Integer> biomeCounts = new HashMap<>();
         for (ServerPlayer player : activePlayers.values()) {
             BiomeTransitionResult btr = ServerGameContext.get().getWorldManager().getBiomeTransitionAt(player.getPosition().x, player.getPosition().y);
@@ -853,32 +849,28 @@ public class GameServer {
             }
         }
 
-        // Find the biome with the highest count.
         BiomeType dominantBiomeType = biomeCounts.entrySet().stream()
             .max(Map.Entry.comparingByValue())
             .map(Map.Entry::getKey)
-            .orElse(BiomeType.PLAINS); // Default to PLAINS if no players or biomes found.
+            .orElse(BiomeType.PLAINS);
 
-        // Get a representative temperature for this biome.
         float temperature = computeTemperatureForBiome(dominantBiomeType);
-
-        // --- THIS IS THE CORRECTED LINE ---
-        // It now calls the new getBiome() method on ServerWorldManager.
         Biome dominantBiome = ServerGameContext.get().getWorldManager().getBiome(dominantBiomeType);
+
         if (dominantBiome == null) {
             GameLogger.error("Could not retrieve dominant biome object. Aborting weather update.");
             return;
         }
 
-        weatherSystem.update(1.0f, // Use a fixed delta of 1 second for each update cycle
+        // --- FIX: Call the new server-safe update method ---
+        weatherSystem.updateServerState(1.0f, // Use a fixed delta of 1 second for each update cycle
             new BiomeTransitionResult(dominantBiome, null, 1.0f),
             temperature,
-            (float) (worldData.getWorldTimeInMinutes() % (24 * 60)) / 60f,
-            null // GameScreen is null on server, the logic inside updateWeatherType doesn't need it
+            (float) (worldData.getWorldTimeInMinutes() % (24 * 60)) / 60f
         );
-        // --- END OF CORRECTION ---
+        // --- END FIX ---
 
-        // Create one global update message.
+        // Create and broadcast the global update message
         NetworkProtocol.WorldStateUpdate update = new NetworkProtocol.WorldStateUpdate();
         update.seed = worldData.getConfig().getSeed();
         update.worldTimeInMinutes = worldData.getWorldTimeInMinutes();
@@ -888,7 +880,6 @@ public class GameServer {
         update.accumulation = weatherSystem.getAccumulation();
         update.timestamp = System.currentTimeMillis();
 
-        // Broadcast the single state to ALL players.
         networkServer.sendToAllTCP(update);
     }
     /**

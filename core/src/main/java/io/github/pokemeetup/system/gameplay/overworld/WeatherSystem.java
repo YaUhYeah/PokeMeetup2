@@ -37,6 +37,31 @@ public class WeatherSystem {
     private static final int LANDING_EFFECT_POOL_SIZE = 50;
     private static final float LANDING_EFFECT_DURATION = 0.3f;
 
+    public void updateServerState(float delta, BiomeTransitionResult biomeTransition, float temperature, float timeOfDay) {
+        // Handle manual override
+        if (manualOverrideTimer > 0) {
+            manualOverrideTimer -= delta;
+        } else {
+            weatherCheckTimer += delta;
+            if (weatherCheckTimer >= WEATHER_CHECK_INTERVAL) {
+                updateWeatherType(biomeTransition, temperature, timeOfDay);
+                weatherCheckTimer = 0f;
+                GameLogger.info(String.format("Server Weather Updated - Type: %s, Intensity: %.2f",
+                    currentWeather, intensity));
+            }
+        }
+
+        // Handle smooth weather transitions for state
+        if (transitionProgress < 1f) {
+            transitionProgress = Math.min(1f, transitionProgress + delta / WEATHER_TRANSITION_DURATION);
+            intensity = MathUtils.lerp(intensity, targetIntensity, transitionProgress);
+            if (transitionProgress >= 0.5f && currentWeather != targetWeather) {
+                currentWeather = targetWeather;
+            }
+        }
+
+        updateAccumulation(delta);
+    }
     private final List<WeatherParticle> particles;
     private final Pool<WeatherParticle> particlePool;
     private final List<LandingEffect> activeLandingEffects;
