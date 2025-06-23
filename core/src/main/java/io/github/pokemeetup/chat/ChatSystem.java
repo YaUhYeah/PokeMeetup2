@@ -96,14 +96,8 @@ public class ChatSystem extends Table {
         }
     }
 
-    @Override
-    public Actor hit(float x, float y, boolean touchable) {
-        if (!isActive) {
-            return null; // Let touches fall through when not active.
-        }
-        return super.hit(x, y, touchable);
-    }
-
+    // FIX: Removed the hit() method override. The default implementation is sufficient
+    // and the original one prevented the ClickListener from working when the chat was inactive.
 
     @Override
     public void setPosition(float x, float y) {
@@ -205,15 +199,22 @@ public class ChatSystem extends Table {
         inactiveTimer = 0;
         chatWindow.getColor().a = 1f;
 
-        // set keyboard focus to inputField
+        // FIX: When chat is active, disable the click listener on the window to prevent re-activation.
+        chatWindow.setTouchable(Touchable.disabled);
+
+        // set keyboard focus to inputField and show keyboard on mobile
         Gdx.app.postRunnable(() -> {
             stage.setKeyboardFocus(inputField);
+            if (Gdx.app.getType() == Application.ApplicationType.Android) {
+                Gdx.input.setOnscreenKeyboardVisible(true);
+            }
         });
     }
 
     public void deactivateChat() {
         isActive = false;
-        chatWindow.setTouchable(Touchable.disabled);
+        // FIX: Re-enable touchable on the window so it can be tapped again to activate.
+        chatWindow.setTouchable(Touchable.enabled);
 
         inputField.setVisible(false);
         stage.setKeyboardFocus(null);
@@ -356,7 +357,6 @@ public class ChatSystem extends Table {
             public void clicked(InputEvent event, float x, float y) {
                 if (Gdx.app.getType() == Application.ApplicationType.Android && !isActive) {
                     activateChat();
-                    Gdx.input.setOnscreenKeyboardVisible(true);
                 }
             }
         });
