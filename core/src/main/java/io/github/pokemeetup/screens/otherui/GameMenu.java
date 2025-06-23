@@ -61,6 +61,7 @@ public class GameMenu extends Actor {
             performSaveAndExit();
         }
     }
+
     public void resize(int width, int height) {
         // Update the stage's viewport.
         stage.getViewport().update(width, height, true);
@@ -83,6 +84,7 @@ public class GameMenu extends Actor {
             );
         }
     }
+
     private TextButton controllerBindsButton;
 
 
@@ -169,6 +171,7 @@ public class GameMenu extends Actor {
                 GameLogger.info("GameMenu keyDown: keycode=" + keycode);
                 return false; // Allow event propagation
             }
+
             @Override
             public boolean keyUp(InputEvent event, int keycode) {
                 GameLogger.info("GameMenu keyUp: keycode=" + keycode);
@@ -211,7 +214,12 @@ public class GameMenu extends Actor {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 // MODIFIED: Call the clean exit-to-menu method
-                game.exitToMenu();
+                GameClient client = GameContext.get().getGameClient();
+                if (client != null && GameContext.get().isMultiplayer()) {
+                    performMultiplayerExit();
+                } else {
+                    game.exitToMenu();
+                }
             }
         });
         optionsButton.addListener(new ClickListener() {
@@ -247,7 +255,7 @@ public class GameMenu extends Actor {
         if (GameContext.get().getGameScreen().getBattleSkin() != null) {
             // Create party screen
             PokemonPartyWindow partyScreen = new PokemonPartyWindow(
-                GameContext.get().getGameScreen().getBattleSkin() ,
+                GameContext.get().getGameScreen().getBattleSkin(),
                 GameContext.get().getPlayer().getPokemonParty(),
                 battleMode,
                 (selectedPokemon) -> {

@@ -167,7 +167,17 @@ public class ServerWorldManager {
                     (((long)chunkX << 32) | ((long)chunkY & 0xFFFFFFFFL));
 
                 loaded = generateNewChunk(chunkX, chunkY, determinSeed);
-
+                List<WorldObject> generatedObjects = loaded.getWorldObjects();
+                if (generatedObjects != null && !generatedObjects.isEmpty()) {
+                    ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(worldName, pos, generatedObjects);
+                    GameLogger.info("Populated WorldObjectManager with " + generatedObjects.size() + " new objects for chunk " + pos);
+                }
+                if (loaded.getBlocks() != null && !loaded.getBlocks().isEmpty()){
+                    for(PlaceableBlock block : loaded.getBlocks().values()){
+                        ServerGameContext.get().getServerBlockManager().getPlacedBlocks().put(block.getPosition(), block);
+                    }
+                    GameLogger.info("Populated ServerBlockManager with " + loaded.getBlocks().size() + " new blocks for chunk " + pos);
+                }
                 // Save immediately to ensure persistence
                 saveChunk(worldName, loaded);
             }
@@ -359,9 +369,7 @@ public class ServerWorldManager {
             cd.tileData = chunk.getTileData().clone();
             cd.blockData = new ArrayList<>(chunk.getBlockDataForSave());
 
-            // Get the current world objects from the object manager.
-            List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
-                .getObjectsForChunk(worldName, new Vector2(chunk.getChunkX(), chunk.getChunkY()));
+            List<WorldObject> objects = chunk.getWorldObjects();
             if (objects != null) {
                 cd.worldObjects = new ArrayList<>();
                 for (WorldObject obj : objects) {

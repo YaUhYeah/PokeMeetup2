@@ -394,116 +394,80 @@ public class World {
         // If not found in stored transitions, use BiomeManager to calculate
         return GameContext.get().getBiomeManager().getBiomeAt(worldX, worldY);
     }
+// In World.java (client-side)
 
-    // Fix in World.java - processChunkData method
     public void processChunkData(NetworkProtocol.ChunkData chunkData) {
+        if (chunkData == null) {
+            GameLogger.error("Received null chunk data from server.");
+            return;
+        }
+
         Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
         try {
-            // Step 1: Get or create biome based on data from server
-            Biome primaryBiome = GameContext.get().getBiomeManager().getBiome(chunkData.primaryBiomeType);
+            // Step 1: Get or create biome based on authoritative server data.
+            Biome primaryBiome = getBiomeManager().getBiome(chunkData.primaryBiomeType);
             if (primaryBiome == null) {
-                primaryBiome = GameContext.get().getBiomeManager().getBiome(BiomeType.PLAINS);
-                GameLogger.error("Using fallback PLAINS biome for null type: " + chunkData.primaryBiomeType);
+                GameLogger.error("Client using fallback PLAINS biome for null type: " + chunkData.primaryBiomeType);
+                primaryBiome = getBiomeManager().getBiome(BiomeType.PLAINS);
             }
 
-            // Step 2: Create the chunk with proper biome and server seed
-            Chunk chunk = new Chunk(chunkData.chunkX, chunkData.chunkY, primaryBiome, chunkData.generationSeed);
+            // Step 2: Get or create the chunk instance.
+            Biome finalPrimaryBiome = primaryBiome;
+            Chunk chunk = chunks.computeIfAbsent(chunkPos, k -> new Chunk(chunkData.chunkX, chunkData.chunkY, finalPrimaryBiome, chunkData.generationSeed));
+            chunk.setBiome(primaryBiome); // Always trust the server's primary biome
 
-            // Step 3: Set the provided tile data with validation
-            if (chunkData.tileData != null && chunkData.tileData.length == Chunk.CHUNK_SIZE) {
-                // Validate and clone the tile data
-                int[][] validatedTiles = new int[Chunk.CHUNK_SIZE][Chunk.CHUNK_SIZE];
-                for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
-                    if (chunkData.tileData[x] != null && chunkData.tileData[x].length == Chunk.CHUNK_SIZE) {
-                        System.arraycopy(chunkData.tileData[x], 0, validatedTiles[x], 0, Chunk.CHUNK_SIZE);
-                    } else {
-                        // Fill invalid rows with default tiles based on biome
-                        Arrays.fill(validatedTiles[x], getDefaultTileForBiome(primaryBiome));
-                        GameLogger.error("Invalid tile data row at " + x + " for chunk " + chunkPos);
-                    }
-                }
-                chunk.setTileData(validatedTiles);
-            } else {
-                GameLogger.error("Invalid tile data for chunk " + chunkPos + ", generating fallback tiles");
-                // Generate fallback tile data
-                generateFallbackTileData(chunk, primaryBiome);
-            }
+            // Step 3: Set tile data from server.
+            chunk.setTileData(chunkData.tileData);
 
-            // Step 4: Process blocks with error handling
+            // --- WORLD OBJECTS & BLOCKS AUTHORITATIVE FIX ---
+            // Clear all local blocks and objects for this chunk before applying server state.
+            chunk.getBlocks().clear();
+            chunk.getWorldObjects().clear();
+            getObjectManager().getObjectsForChunk(chunkPos).clear();
+
+            // Repopulate blocks from server data.
             if (chunkData.blockData != null) {
                 for (BlockSaveData.BlockData bd : chunkData.blockData) {
-                    try {
-                        processBlockData(chunk, bd);
-                    } catch (Exception e) {
-                        GameLogger.error("Failed to process block data in chunk " + chunkPos + ": " + e.getMessage());
-                    }
+                    processBlockData(chunk, bd); // Use your existing helper for this.
                 }
             }
 
-            // Step 5: Process and place world objects with validation
-            List<WorldObject> objects = new ArrayList<>();
+            // Repopulate world objects from server data.
+            List<WorldObject> newObjects = new ArrayList<>();
             if (chunkData.worldObjects != null) {
                 for (Map<String, Object> objData : chunkData.worldObjects) {
-                    try {
-                        if (objData != null) {
-                            WorldObject obj = new WorldObject();
-                            obj.updateFromData(objData);
-                            obj.ensureTexture();
-                            objects.add(obj);
-                        }
-                    } catch (Exception e) {
-                        GameLogger.error("Failed to process world object in chunk " + chunkPos + ": " + e.getMessage());
+                    if (objData != null) {
+                        WorldObject obj = new WorldObject();
+                        obj.updateFromData(objData);
+                        obj.ensureTexture();
+                        newObjects.add(obj);
                     }
                 }
             }
+            chunk.setWorldObjects(newObjects);
+            getObjectManager().setObjectsForChunk(chunkPos, newObjects);
+            // --- END AUTHORITATIVE FIX ---
 
-            // Step 6: Register objects with world object manager
-            getObjectManager().setObjectsForChunk(chunkPos, objects);
-
-            // Step 7: Handle existing chunk if present
-            Chunk existingChunk = chunks.get(chunkPos);
-            if (existingChunk != null && existingChunk.isDirty()) {
-                mergeChunkData(existingChunk, chunk);
-            }
-
-            // Store the new/merged chunk
-            chunks.put(chunkPos, chunk);
-
-            // Step 8: CRITICAL FIX - Create and store biome transition for consistent rendering
+            // Step 4: Store biome transition info for smooth rendering.
             BiomeTransitionResult transition = new BiomeTransitionResult(
                 primaryBiome,
-                chunkData.secondaryBiomeType != null ?
-                    GameContext.get().getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null,
-                chunkData.secondaryBiomeType != null ?
-                    MathUtils.clamp(chunkData.biomeTransitionFactor, 0f, 1f) : 1f
+                chunkData.secondaryBiomeType != null ? getBiomeManager().getBiome(chunkData.secondaryBiomeType) : null,
+                chunkData.biomeTransitionFactor
             );
-
-            // Store biome transition in global map for consistent rendering
             storeBiomeTransition(chunkPos, transition);
 
-            // Step 9: Apply auto-tiling for visual consistency
-            try {
-                new AutoTileSystem().applyShorelineAutotiling(chunk, 0, this);
-            } catch (Exception e) {
-                GameLogger.error("Failed to apply auto-tiling for chunk " + chunkPos + ": " + e.getMessage());
-            }
+            // Step 5: Apply auto-tiling for visual consistency.
+            new AutoTileSystem().applyShorelineAutotiling(chunk, 0, this);
 
-            // Step 10: Mark chunk as clean
-            chunk.setDirty(false);
+            chunk.setDirty(true); // Mark for re-rendering.
 
-            GameLogger.info("Successfully processed chunk " + chunkPos +
-                " with biome " + primaryBiome.getType() +
-                (transition.getSecondaryBiome() != null ?
-                    " blended with " + transition.getSecondaryBiome().getType() +
-                        " at " + transition.getTransitionFactor() : ""));
+            GameLogger.info("Client processed chunk " + chunkPos + " with " + newObjects.size() + " objects.");
 
         } catch (Exception e) {
-            GameLogger.error("Error processing chunk data for " + chunkPos + ": " + e.getMessage());
+            GameLogger.error("Client error processing chunk " + chunkPos + ": " + e.getMessage());
             e.printStackTrace();
         }
     }
-
-    // Improve storeBiomeTransition method
     public void storeBiomeTransition(Vector2 chunkPos, BiomeTransitionResult transition) {
         if (chunkPos != null && transition != null && transition.getPrimaryBiome() != null) {
             biomeTransitions.put(chunkPos, transition);

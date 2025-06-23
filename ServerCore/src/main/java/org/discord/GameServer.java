@@ -34,6 +34,7 @@ import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PasswordUtils;
+import io.github.pokemeetup.utils.storage.GameFileSystem;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4Factory;
@@ -149,6 +150,56 @@ public class GameServer {
         return occupied;
     }
 
+    /**
+     * Handles a request for server information from a client.
+     * It reads the server icon, encodes it, and sends it back along with other server details.
+     *
+     * @param connection The client connection that sent the request.
+     */
+    private void handleServerInfoRequest(Connection connection) {
+        GameLogger.info("Received ServerInfoRequest from: " + connection.getRemoteAddressTCP());
+
+        // 1. Get the server configuration
+        ServerConnectionConfig serverConfig = this.config;
+
+        // 2. Read the server icon file into a byte array
+        byte[] iconBytes = null;
+        String iconPath = serverConfig.getIconPath(); // e.g., "server-icon.png"
+
+        if (iconPath != null && !iconPath.isEmpty()) {
+            try {
+                // Use the file system delegate to read the file from the server's root directory
+                iconBytes = GameFileSystem.getInstance().getDelegate().openInputStream(iconPath).readAllBytes();
+            } catch (IOException e) {
+                GameLogger.error("Could not read server icon file at '" + iconPath + "': " + e.getMessage());
+            }
+        } else {
+            GameLogger.info("No server icon path specified in config.");
+        }
+
+        // 3. Encode the byte array to a Base64 string
+        String iconBase64 = null;
+        if (iconBytes != null) {
+            iconBase64 = Base64.getEncoder().encodeToString(iconBytes);
+        }
+
+        // 4. Create the ServerInfo object to be sent
+        NetworkProtocol.ServerInfo info = new NetworkProtocol.ServerInfo();
+        info.name = serverConfig.getServerName();
+        info.motd = serverConfig.getMotd();
+        info.playerCount = connectedPlayers.size();
+        info.maxPlayers = serverConfig.getMaxPlayers();
+        info.version = serverConfig.getVersion();
+        info.iconBase64 = iconBase64; // Set the encoded string
+
+        // 5. Create and send the final response
+        NetworkProtocol.ServerInfoResponse response = new NetworkProtocol.ServerInfoResponse();
+        response.serverInfo = info;
+        response.timestamp = System.currentTimeMillis();
+
+        connection.sendTCP(response);
+        GameLogger.info("Sent ServerInfoResponse to " + connection.getRemoteAddressTCP());
+    }
     private WorldData initializeMultiplayerWorld() {
         try {
             WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
@@ -345,23 +396,31 @@ public class GameServer {
             networkServer.sendToAllTCP(dropMsg);
         }
     }
+// In GameServer.java
 
     private WorldObject findServerChoppableObject(int tileX, int tileY) {
-        Vector2 chunkPos = new Vector2(
-            (int) Math.floor(tileX / (float)CHUNK_SIZE),
-            (int) Math.floor(tileY / (float)CHUNK_SIZE)
-        );
+        // Search a 3x3 area around the target tile to be more lenient.
+        for (int x = tileX - 1; x <= tileX + 1; x++) {
+            for (int y = tileY - 1; y <= tileY + 1; y++) {
+                Vector2 chunkPos = new Vector2(
+                    (int) Math.floor(x / (float)CHUNK_SIZE),
+                    (int) Math.floor(y / (float)CHUNK_SIZE)
+                );
 
-        List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
-        if (objects == null) return null;
+                List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+                if (objects == null || objects.isEmpty()) continue;
 
-        for (WorldObject obj : objects) {
-            // A simple check to see if the target tile is part of the object's base
-            if (isChoppable(obj.getType()) && obj.getBoundingBox().contains(tileX * TILE_SIZE, tileY * TILE_SIZE)) {
-                return obj;
+                for (WorldObject obj : objects) {
+                    // Check if the object is choppable AND if its bounding box contains the check tile's center.
+                    if (isChoppable(obj.getType()) && obj.getBoundingBox().contains(x * TILE_SIZE + TILE_SIZE/2f, y * TILE_SIZE + TILE_SIZE/2f)) {
+                        GameLogger.info("Found choppable object " + obj.getId() + " at tile (" + obj.getTileX() + "," + obj.getTileY() + ") while checking ("+x+","+y+")");
+                        return obj;
+                    }
+                }
             }
         }
-        return null;
+        GameLogger.info("No choppable object found near tile ("+tileX+","+tileY+")");
+        return null; // No object found in the 3x3 area
     }
 
     private void cleanupPlayerSession(int connectionId, String username) {
@@ -1038,6 +1097,9 @@ public class GameServer {
                     }
                     if (object instanceof NetworkProtocol.BuildingPlacement) {
                         handleBuildingPlacement(connection, (NetworkProtocol.BuildingPlacement) object);
+                    } if (object instanceof NetworkProtocol.ServerInfoRequest) {
+                        handleServerInfoRequest(connection);
+                        return; // Message handled
                     }
                     if (object instanceof NetworkProtocol.ChestUpdate) {
                         handleChestUpdate(connection, (NetworkProtocol.ChestUpdate) object);

@@ -24,6 +24,19 @@ import java.util.*;
 public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the same package)
 
     public static void registerClasses(Kryo kryo) {
+        kryo.register(UUID.class, new com.esotericsoftware.kryo.Serializer<UUID>() {
+
+            @Override
+            public void write(Kryo kryo, Output output, UUID uuid) {
+                output.writeLong(uuid.getMostSignificantBits());
+                output.writeLong(uuid.getLeastSignificantBits());
+            }
+
+            @Override
+            public UUID read(Kryo kryo, Input input, Class<UUID> type) {
+                return new UUID(input.readLong(), input.readLong());
+            }
+        });
         // Basic and commonly used classes
         kryo.register(Vector2.class);
         kryo.register(PlayerInfo.class);
@@ -138,19 +151,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(ServerResponse.class);
         kryo.register(ItemDrop.class);
         kryo.register(ConnectionValidation.class);
-        kryo.register(UUID.class, new com.esotericsoftware.kryo.Serializer<UUID>() {
 
-            @Override
-            public void write(Kryo kryo, Output output, UUID uuid) {
-                output.writeLong(uuid.getMostSignificantBits());
-                output.writeLong(uuid.getLeastSignificantBits());
-            }
-
-            @Override
-            public UUID read(Kryo kryo, Input input, Class<UUID> type) {
-                return new UUID(input.readLong(), input.readLong());
-            }
-        });
         kryo.setReferences(false);  // Disable object references
         kryo.setRegistrationRequired(false);  // Require class registration
     }
@@ -474,7 +475,8 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     public static class PlayerUpdate {
         public String username;
         public float x;
-        public float y;public String characterType; // "boy", "girl", etc.
+        public float y;
+        public String characterType; // "boy", "girl", etc.
 
         public String direction;
         public List<PokemonData> partyPokemon;
@@ -679,6 +681,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         // A list of update objects, each containing the state for one wild Pokémon.
         public List<PokemonUpdate> updates;
     }
+
     // World State Classes
     public static class WorldState {
         public long timestamp;

@@ -7,6 +7,7 @@
     import com.badlogic.gdx.graphics.Pixmap;
     import com.badlogic.gdx.graphics.Texture;
     import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+    import com.badlogic.gdx.graphics.g2d.TextureRegion;
     import com.badlogic.gdx.scenes.scene2d.*;
     import com.badlogic.gdx.scenes.scene2d.actions.Actions;
     import com.badlogic.gdx.scenes.scene2d.ui.*;
@@ -16,6 +17,8 @@
     import com.badlogic.gdx.utils.Array;
     import com.badlogic.gdx.utils.Json;
     import com.badlogic.gdx.utils.viewport.FitViewport;
+    import com.esotericsoftware.kryonet.Connection;
+    import com.esotericsoftware.kryonet.Listener;
     import io.github.pokemeetup.CreatureCaptureGame;
     import io.github.pokemeetup.context.GameContext;
     import io.github.pokemeetup.multiplayer.client.GameClient;
@@ -24,6 +27,11 @@
     import io.github.pokemeetup.screens.otherui.ServerManagementDialog;
     import io.github.pokemeetup.utils.GameLogger;
     import io.github.pokemeetup.utils.textures.TextureManager;
+
+    import java.io.IOException;
+    import java.util.Base64;
+    import java.util.Map;
+    import java.util.concurrent.ConcurrentHashMap;
 
 
     public class LoginScreen implements Screen {
@@ -99,6 +107,20 @@
             initializeUI();
             setupInputHandling();
             loadSavedCredentials();
+            stage.addListener(new InputListener() {
+                @Override
+                public boolean scrolled(InputEvent event, float x, float y, float amountX, float amountY) {
+                    // Check if the mouse cursor is currently over the server list scroll pane
+                        // amountY is typically -1 for scroll down and 1 for scroll up.
+                        // We'll multiply by a sensitivity factor to control scroll speed.
+                        float scrollAmount = amountY * 30f; // Adjust 30f to make it faster or slower
+
+                        // Add the scroll amount to the current scroll position
+                        serverListScrollPane.setScrollY(serverListScrollPane.getScrollY() + scrollAmount);
+
+                        return true; // Event handled
+                }
+            });
 
             Gdx.input.setInputProcessor(stage);
         }
@@ -357,6 +379,95 @@
             dialog.show(stage);
         }
 
+        /**
+         * Processes the received server info, decodes the icon, and triggers a UI update.
+         * This method is called from the network thread, so it uses Gdx.app.postRunnable
+         * to safely perform graphics operations on the main rendering thread.
+         *
+         * @param info      The ServerInfo object received from the server.
+         * @param forServer The server configuration this info belongs to.
+         */
+        private void handleServerInfoResponse(NetworkProtocol.ServerInfo info, ServerConnectionConfig forServer) {
+            if (info == null) return;
+
+            String serverKey = forServer.getServerIP() + ":" + forServer.getTcpPort();
+
+            if (info.iconBase64 != null && !info.iconBase64.isEmpty()) {
+                // Decode the string into bytes on the current (network) thread. This is safe.
+                final byte[] iconBytes;
+                try {
+                    iconBytes = Base64.getDecoder().decode(info.iconBase64);
+                } catch (IllegalArgumentException e) {
+                    GameLogger.error("Invalid Base64 string for server icon: " + e.getMessage());
+                    return;
+                }
+
+                // *** THE FIX IS HERE ***
+                // Schedule the graphics-related work to run on the main rendering thread.
+                Gdx.app.postRunnable(() -> {
+                    try {
+                        // 1. Create a Pixmap from the byte array
+                        Pixmap pixmap = new Pixmap(iconBytes, 0, iconBytes.length);
+
+                        // 2. Create a Texture from the Pixmap (this is the OpenGL call)
+                        Texture iconTexture = new Texture(pixmap);
+                        pixmap.dispose(); // Dispose the pixmap after the texture is created
+
+                        // 3. Store the new texture in our cache, disposing the old one if it exists
+                        if (serverIcons.containsKey(serverKey)) {
+                            serverIcons.get(serverKey).dispose();
+                        }
+                        serverIcons.put(serverKey, iconTexture);
+
+                        GameLogger.info("Successfully created texture for server: " + forServer.getServerName());
+
+                        // 4. After creating the texture, refresh the UI list
+                        updateServerList();
+
+                    } catch (Exception e) {
+                        GameLogger.error("Failed to create texture from server icon: " + e.getMessage());
+                    }
+                });
+            } else {
+                // If there's no icon, just refresh the UI with other info (like player count)
+                Gdx.app.postRunnable(this::updateServerList);
+            }
+        }
+
+        private final Map<String, Texture> serverIcons = new ConcurrentHashMap<>();
+        private void refreshSelectedServerInfo() {
+            if (selectedServer == null) {
+                return;
+            }
+
+            // Get the client (it might need to be created if not already connected)
+            GameClient client = new GameClient(selectedServer);
+
+            // Set up a temporary listener to handle just this response
+            client.getClient().addListener(new Listener() {
+                @Override
+                public void received(Connection connection, Object object) {
+                    if (object instanceof NetworkProtocol.ServerInfoResponse) {
+                        // Once we get the response, process it and then remove this listener
+                        handleServerInfoResponse(((NetworkProtocol.ServerInfoResponse) object).serverInfo, selectedServer);
+                        client.getClient().removeListener(this);
+                        client.dispose(); // Clean up the temporary client
+                    }
+                }
+            });
+
+            // Connect and send the request
+            try {
+                client.getClient().start();
+                client.getClient().connect(5000, selectedServer.getServerIP(), selectedServer.getTcpPort(), selectedServer.getUdpPort());
+
+                NetworkProtocol.ServerInfoRequest request = new NetworkProtocol.ServerInfoRequest();
+                client.getClient().sendTCP(request);
+            } catch (IOException e) {
+                showError("Could not connect to server: " + e.getMessage());
+                client.dispose();
+            }
+        }
         void deleteServer(ServerConnectionConfig server) {
             if (server.isDefault()) {
                 showError("Cannot delete default server");
@@ -382,7 +493,7 @@
             serverListTable.clear();
             serverListTable.top();
 
-            Label headerLabel = new Label("Available Servers", skin, "title-small");
+            Label headerLabel = new Label("Available Servers", skin);
             serverListTable.add(headerLabel).pad(10).row();
 
             boolean hasServers = false;
@@ -419,24 +530,25 @@
             entry.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("textfield")));
             entry.pad(10);
 
+
             Table iconContainer = new Table();
-            try {
-                if (server.getIconPath() != null) {
-                    FileHandle iconFile = Gdx.files.internal(server.getIconPath());
-                    if (iconFile.exists()) {
-                        Image icon = new Image(new Texture(iconFile));
-                        icon.setSize(32, 32);
-                        iconContainer.add(icon).size(32);
-                    } else {
-                        addDefaultIcon(iconContainer);
-                    }
-                } else {
-                    addDefaultIcon(iconContainer);
-                }
-            } catch (Exception e) {
-                GameLogger.error("Failed to load server icon: " + e.getMessage());
-                addDefaultIcon(iconContainer);
+            Image iconImage = new Image(); // Create the Image widget
+            iconImage.setSize(32, 32);
+
+            // Get the unique key for this server
+            String serverKey = server.getServerIP() + ":" + server.getTcpPort();
+
+            // Check if we have a cached icon texture for this server
+            if (serverIcons.containsKey(serverKey)) {
+                iconImage.setDrawable(new TextureRegionDrawable(new TextureRegion(serverIcons.get(serverKey))));
+            } else {
+                // If not, use a default placeholder and request the info
+                addDefaultIcon(iconContainer); // Your existing method to show a placeholder
+                // Note: You would trigger the request here if you want it to happen automatically.
+                // For now, let's assume it's triggered by a manual refresh or selection.
             }
+
+            iconContainer.add(iconImage).size(32);
 
             Table infoPanel = new Table();
             infoPanel.defaults().expandX().fillX().space(5);
@@ -464,6 +576,7 @@
                 public void clicked(InputEvent event, float x, float y) {
                     selectedServer = server;
                     updateServerSelection(entry);
+                    selectAndRefreshServer(server, entry);
                 }
 
                 @Override
@@ -484,7 +597,21 @@
             return entry;
         }
 
+        /**
+         * Handles selecting a server, updating the UI, and triggering a refresh of its data.
+         * @param server The server that was selected.
+         * @param selectedEntry The UI table for the selected server.
+         */
+        private void selectAndRefreshServer(ServerConnectionConfig server, Table selectedEntry) {
+            if (server == null) return;
 
+            // Set the selected server and update the visual highlight
+            selectedServer = server;
+            updateServerSelection(selectedEntry);
+
+            // Trigger the network request to get the latest info (icon, player count, etc.)
+            refreshSelectedServerInfo();
+        }
         private void addDefaultIcon(Table container) {
             if (TextureManager.ui.findRegion("default-server-icon") != null) {
                 Image defaultIcon = new Image(TextureManager.ui.findRegion("default-server-icon"));
