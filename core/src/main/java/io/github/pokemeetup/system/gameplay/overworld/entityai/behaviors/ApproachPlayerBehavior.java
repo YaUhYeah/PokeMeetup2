@@ -42,18 +42,18 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
                 // NEW: Check for forceful battle initiation
                 if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= ATTACK_RANGE) {
                     // Check if GameScreen is available and not already in battle
-                    if (GameContext.get().getGameScreen() != null && !GameContext.get().getBattleSystem().isInBattle()) {
+                        if (GameContext.get().getGameScreen() != null) {
 
-                        GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
-                        // Post the action to the main game thread to avoid concurrency issues with UI
-                        Gdx.app.postRunnable(() -> {
-                            ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
-                        });
-                        ai.setCooldown(getName(), 15f); // Cooldown after attempting to battle
-                    }
-                    return;
+                            GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
+                            // Post the action to the main game thread to avoid concurrency issues with UI
+                            Gdx.app.postRunnable(() -> {
+                                ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
+                            });
+                            ai.setCooldown(getName(), 15f); // Cooldown after attempting to battle
+                        }
+                        return;
+
                 }
-
                 moveTowardsPlayer(player);
             }
         }

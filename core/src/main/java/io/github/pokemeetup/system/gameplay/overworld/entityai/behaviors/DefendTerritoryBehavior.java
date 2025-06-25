@@ -64,10 +64,10 @@ public class DefendTerritoryBehavior implements PokemonBehavior {
             moveTowardsPlayer(player);
             float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
             if (distance <= 1.5f * World.TILE_SIZE) {
-                if (GameContext.get().getGameScreen() != null && !GameContext.get().getBattleSystem().isInBattle()) {
+                if (GameContext.get().getGameScreen()!=null) {
                     GameLogger.info(pokemon.getName() + " is initiating battle while defending territory!");
                     Gdx.app.postRunnable(() -> {
-                        ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
+                        GameContext.get().getGameScreen().forceBattleInitiation(pokemon);
                     });
                     ai.setCooldown(getName(), 15f);
                     endChase(); // End the chase behavior

@@ -4,12 +4,16 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.MathUtils;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class PlayerAnimations {
-    // Base movement time (used for movement calculations)
+    public static final float PUNCH_ANIMATION_DURATION = 1.1f;
+    public static final float PUNCH_FRAME_DURATION = PUNCH_ANIMATION_DURATION / 4f;
+
+    // MODIFIED: Increased duration from 0.6f to 1.2f to give the axe swing more weight.
+    public static final float CHOP_ANIMATION_DURATION = 1.2f;
+    public static final float CHOP_FRAME_DURATION = CHOP_ANIMATION_DURATION / 4f;
     public static final float BASE_MOVE_TIME = 0.25f;
     public static final float RUN_SPEED_MULTIPLIER = 2.5f;
     // Define slow durations for movement animations
@@ -20,12 +24,6 @@ public class PlayerAnimations {
     public static final float RUN_FRAME_DURATION  = 0.08f;
 
 
-    // Action animation durations (punch/chop)
-    public static final float PUNCH_ANIMATION_DURATION = 0.8f;
-    public static final float PUNCH_FRAME_DURATION = PUNCH_ANIMATION_DURATION / 4f;
-    public static final float CHOP_ANIMATION_DURATION = 0.6f;
-    public static final float CHOP_FRAME_DURATION = CHOP_ANIMATION_DURATION / 4f;
-    // The character type ("boy" or "girl")
     private final String characterType;
     private volatile boolean isInitialized = false;
     private volatile boolean isDisposed = false;
@@ -58,49 +56,7 @@ public class PlayerAnimations {
         this("boy");
     }
 
-    /**
-     * Returns the appropriate movement frame given the progress (0.0 to 1.0) of a tile move.
-     * When progress is 0 or 1, the standing frame is returned.
-     * For intermediate progress, one of the stepping frames is chosen.
-     */
-    public TextureRegion getMovementFrameForProgress(String direction, boolean isRunning, float progress) {
-        // clamp in [0,1]
-        progress = MathUtils.clamp(progress, 0f, 1f);
 
-        // If the move is fully complete, show the standing frame.
-        if (progress >= 1f) {
-            return getStandingFrame(direction);
-        }
-
-        // The 4-step cycle is [ frames[0], frames[1], frames[2], frames[3] ] = [1,2,3,2].
-        // We'll map these to intervals of size 0.25 each:
-        //   0.00–0.25 → frames[0]  (the first foot-lift)
-        //   0.25–0.50 → frames[1]
-        //   0.50–0.75 → frames[2]
-        //   0.75–1.00 → frames[3]
-        float segment = 1f / 4f; // = 0.25
-        int frameIdx;
-        if (progress < segment) {
-            frameIdx = 0;
-        } else if (progress < 2f * segment) {
-            frameIdx = 1;
-        } else if (progress < 3f * segment) {
-            frameIdx = 2;
-        } else {
-            frameIdx = 3;
-        }
-
-        // Each frame is spaced out by either RUN_FRAME_DURATION or WALK_FRAME_DURATION.
-        float frameDuration = isRunning ? RUN_FRAME_DURATION : WALK_FRAME_DURATION;
-        float timeForFrame = frameIdx * frameDuration;
-        Animation<TextureRegion> anim = getAnimation(direction, isRunning);
-        return anim.getKeyFrame(timeForFrame, false);
-    }
-
-
-    public Animation<TextureRegion> getMovementAnimation(String direction, boolean isRunning) {
-        return getAnimation(direction, isRunning);  // getAnimation() is already defined privately.
-    }
 
     public void startPunching() {
         isPunching = true;
