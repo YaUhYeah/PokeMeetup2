@@ -103,8 +103,6 @@ public class JsonConfig {
                     config = new WorldData.WorldConfig(System.currentTimeMillis());
                 }
                 world.setConfig(config);
-
-                // Players
                 JsonValue playersObject = jsonData.get("players");
                 if (playersObject != null && playersObject.isObject()) {
                     HashMap<String, PlayerData> players = new HashMap<>();
@@ -123,8 +121,6 @@ public class JsonConfig {
                     pokemonData = new PokemonData();
                 }
                 world.setPokemonData(pokemonData);
-
-                // Commands Allowed
                 world.setCommandsAllowed(jsonData.getBoolean("commands_allowed", false));
 
                 return world;
@@ -167,9 +163,6 @@ public class JsonConfig {
                 json.writeValue("isMoving", playerData.isMoving());
                 json.writeValue("wantsToRun", playerData.isWantsToRun());
                 json.writeValue("characterType", playerData.getCharacterType());
-
-
-                // Inventory Items
                 json.writeArrayStart("inventoryItems");
                 if (playerData.getInventoryItems() != null) {
                     for (ItemData item : playerData.getInventoryItems()) {
@@ -177,8 +170,6 @@ public class JsonConfig {
                     }
                 }
                 json.writeArrayEnd();
-
-                // Party Pokemon
                 json.writeArrayStart("partyPokemon");
                 if (playerData.getPartyPokemon() != null) {
                     for (PokemonData pokemon : playerData.getPartyPokemon()) {
@@ -200,8 +191,6 @@ public class JsonConfig {
                 playerData.setMoving(jsonData.getBoolean("isMoving", false));
                 playerData.setWantsToRun(jsonData.getBoolean("wantsToRun", false));
                 playerData.setCharacterType(jsonData.getString("characterType", "boy"));
-
-                // Inventory Items
                 JsonValue inventoryArray = jsonData.get("inventoryItems");
                 List<ItemData> inventory = new ArrayList<>(Inventory.INVENTORY_SIZE);
                 for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
@@ -215,8 +204,6 @@ public class JsonConfig {
                     }
                 }
                 playerData.setInventoryItems(inventory);
-
-                // Party Pokemon
                 JsonValue partyArray = jsonData.get("partyPokemon");
                 List<PokemonData> party = new ArrayList<>(6);
                 for (int i = 0; i < 6; i++) {
@@ -277,8 +264,6 @@ public class JsonConfig {
 
                 itemData.setDurability(jsonData.getInt("durability", -1));
                 itemData.setMaxDurability(jsonData.getInt("maxDurability", -1));
-
-                // Set itemId after other fields
                 itemData.setItemId(itemId);
 
                 return itemData;
@@ -294,46 +279,30 @@ public class JsonConfig {
                 }
 
                 json.writeObjectStart();
-
-                // Basic Info
                 json.writeValue("name", pokemonData.getName());
                 json.writeValue("uuid", pokemonData.getUuid() != null ? pokemonData.getUuid().toString() : UUID.randomUUID().toString());
                 json.writeValue("level", pokemonData.getLevel());
                 json.writeValue("nature", pokemonData.getNature());
-
-                // Primary Type
                 if (pokemonData.getPrimaryType() != null) {
                     json.writeValue("primaryType", pokemonData.getPrimaryType().name());
                 } else {
                     json.writeValue("primaryType", "NORMAL"); // Default to NORMAL if null
                 }
-
-                // Secondary Type
                 if (pokemonData.getSecondaryType() != null) {
                     json.writeValue("secondaryType", pokemonData.getSecondaryType().name());
                 }
-
-                // Stats
                 if (pokemonData.getStats() != null) {
                     json.writeValue("stats", pokemonData.getStats());
                 }
-
-                // Base Stats
                 json.writeValue("baseHp", pokemonData.getBaseHp());
                 json.writeValue("baseAttack", pokemonData.getBaseAttack());
                 json.writeValue("baseDefense", pokemonData.getBaseDefense());
                 json.writeValue("baseSpAtk", pokemonData.getBaseSpAtk());
                 json.writeValue("baseSpDef", pokemonData.getBaseSpDef());
                 json.writeValue("baseSpeed", pokemonData.getBaseSpeed());
-
-                // Experience
                 json.writeValue("currentExperience", pokemonData.getCurrentExperience());
                 json.writeValue("experienceToNextLevel", pokemonData.getExperienceToNextLevel());
-
-                // Current HP
                 json.writeValue("currentHp", pokemonData.getCurrentHp());
-
-                // Moves
                 json.writeArrayStart("moves");
                 if (pokemonData.getMoves() != null) {
                     for (PokemonData.MoveData move : pokemonData.getMoves()) {
@@ -358,8 +327,6 @@ public class JsonConfig {
                 pokemonData.setUuid(uuidStr != null ? UUID.fromString(uuidStr) : UUID.randomUUID());
                 pokemonData.setLevel(jsonData.getInt("level", 1));
                 pokemonData.setNature(jsonData.getString("nature", "Unknown"));
-
-                // Primary Type
                 String primaryTypeStr = jsonData.getString("primaryType", "NORMAL");
                 try {
                     pokemonData.setPrimaryType(Pokemon.PokemonType.valueOf(primaryTypeStr));
@@ -367,8 +334,6 @@ public class JsonConfig {
                     GameLogger.error("Invalid primary type '" + primaryTypeStr + "'. Defaulting to NORMAL.");
                     pokemonData.setPrimaryType(Pokemon.PokemonType.NORMAL);
                 }
-
-                // Secondary Type
                 if (jsonData.has("secondaryType")) {
                     String secondaryTypeStr = jsonData.getString("secondaryType");
                     try {
@@ -378,30 +343,20 @@ public class JsonConfig {
                         pokemonData.setSecondaryType(null);
                     }
                 }
-
-                // Stats
                 JsonValue statsValue = jsonData.get("stats");
                 if (statsValue != null) {
                     PokemonData.Stats stats = json.readValue(PokemonData.Stats.class, statsValue);
                     pokemonData.setStats(stats);
                 }
-
-                // Base Stats
                 pokemonData.setBaseHp(jsonData.getInt("baseHp", 1));
                 pokemonData.setBaseAttack(jsonData.getInt("baseAttack", 1));
                 pokemonData.setBaseDefense(jsonData.getInt("baseDefense", 1));
                 pokemonData.setBaseSpAtk(jsonData.getInt("baseSpAtk", 1));
                 pokemonData.setBaseSpDef(jsonData.getInt("baseSpDef", 1));
                 pokemonData.setBaseSpeed(jsonData.getInt("baseSpeed", 1));
-
-                // Experience
                 pokemonData.setCurrentExperience(jsonData.getInt("currentExperience", 0));
                 pokemonData.setExperienceToNextLevel(jsonData.getInt("experienceToNextLevel", 100));
-
-                // Current HP
                 pokemonData.setCurrentHp(jsonData.getInt("currentHp", pokemonData.getBaseHp()));
-
-                // Moves
                 JsonValue movesArray = jsonData.get("moves");
                 if (movesArray != null && movesArray.isArray()) {
                     List<PokemonData.MoveData> moves = new ArrayList<>();
@@ -430,15 +385,11 @@ public class JsonConfig {
                 json.writeValue("specialAttack", stats.getSpecialAttack());
                 json.writeValue("specialDefense", stats.getSpecialDefense());
                 json.writeValue("speed", stats.getSpeed());
-
-                // IVs
                 json.writeArrayStart("ivs");
                 for (int iv : stats.ivs) {
                     json.writeValue(iv);
                 }
                 json.writeArrayEnd();
-
-                // EVs
                 json.writeArrayStart("evs");
                 for (int ev : stats.evs) {
                     json.writeValue(ev);
@@ -461,8 +412,6 @@ public class JsonConfig {
                 stats.setSpecialAttack(jsonData.getInt("specialAttack", 1));
                 stats.setSpecialDefense(jsonData.getInt("specialDefense", 1));
                 stats.setSpeed(jsonData.getInt("speed", 1));
-
-                // IVs
                 JsonValue ivsArray = jsonData.get("ivs");
                 if (ivsArray != null && ivsArray.isArray()) {
                     int[] ivs = new int[6];
@@ -472,8 +421,6 @@ public class JsonConfig {
                     }
                     stats.ivs = ivs;
                 }
-
-                // EVs
                 JsonValue evsArray = jsonData.get("evs");
                 if (evsArray != null && evsArray.isArray()) {
                     int[] evs = new int[6];
@@ -533,8 +480,6 @@ public class JsonConfig {
                 moveData.setSpecial(jsonData.getBoolean("isSpecial", false));
                 moveData.setDescription(jsonData.getString("description", ""));
                 moveData.setCanFlinch(jsonData.getBoolean("canFlinch", false));
-
-                // Effect
                 JsonValue effectValue = jsonData.get("effect");
                 if (effectValue != null && effectValue.isObject()) {
                     moveData.effect = json.readValue(PokemonData.MoveData.MoveEffectData.class, effectValue);
@@ -621,27 +566,19 @@ public class JsonConfig {
                 json.writeValue("direction", wildPokemonData.getDirection());
                 json.writeValue("isMoving", wildPokemonData.isMoving());
                 json.writeValue("spawnTime", wildPokemonData.getSpawnTime());
-
-                // Primary Type
                 if (wildPokemonData.getPrimaryType() != null) {
                     json.writeValue("primaryType", wildPokemonData.getPrimaryType().name());
                 } else {
                     json.writeValue("primaryType", "NORMAL");
                 }
-
-                // Secondary Type
                 if (wildPokemonData.getSecondaryType() != null) {
                     json.writeValue("secondaryType", wildPokemonData.getSecondaryType().name());
                 }
 
                 json.writeValue("currentHp", wildPokemonData.getCurrentHp());
-
-                // Stats
                 if (wildPokemonData.getStats() != null) {
                     json.writeValue("stats", wildPokemonData.getStats());
                 }
-
-                // Moves
                 json.writeArrayStart("moves");
                 if (wildPokemonData.getMoves() != null) {
                     for (PokemonData.MoveData move : wildPokemonData.getMoves()) {
@@ -664,8 +601,6 @@ public class JsonConfig {
                 PokemonData.WildPokemonData wildPokemonData = new PokemonData.WildPokemonData();
                 wildPokemonData.setName(jsonData.getString("name", "Unknown"));
                 wildPokemonData.setLevel(jsonData.getInt("level", 1));
-
-                // Position
                 JsonValue positionValue = jsonData.get("position");
                 if (positionValue != null && positionValue.isObject()) {
                     float x = positionValue.getFloat("x", 0f);
@@ -678,8 +613,6 @@ public class JsonConfig {
                 wildPokemonData.setDirection(jsonData.getString("direction", "down"));
                 wildPokemonData.setMoving(jsonData.getBoolean("isMoving", false));
                 wildPokemonData.setSpawnTime(jsonData.getLong("spawnTime", System.currentTimeMillis()));
-
-                // Primary Type
                 String primaryTypeStr = jsonData.getString("primaryType", "NORMAL");
                 try {
                     wildPokemonData.setPrimaryType(Pokemon.PokemonType.valueOf(primaryTypeStr));
@@ -687,8 +620,6 @@ public class JsonConfig {
                     GameLogger.error("Invalid primary type '" + primaryTypeStr + "' in WildPokemonData. Defaulting to NORMAL.");
                     wildPokemonData.setPrimaryType(Pokemon.PokemonType.NORMAL);
                 }
-
-                // Secondary Type
                 if (jsonData.has("secondaryType")) {
                     String secondaryTypeStr = jsonData.getString("secondaryType");
                     try {
@@ -700,15 +631,11 @@ public class JsonConfig {
                 }
 
                 wildPokemonData.setCurrentHp(jsonData.getFloat("currentHp", 1f));
-
-                // Stats
                 JsonValue statsValue = jsonData.get("stats");
                 if (statsValue != null) {
                     PokemonData.Stats stats = json.readValue(PokemonData.Stats.class, statsValue);
                     wildPokemonData.setStats(stats);
                 }
-
-                // Moves
                 JsonValue movesValue = jsonData.get("moves");
                 if (movesValue != null && movesValue.isArray()) {
                     List<PokemonData.MoveData> moves = new ArrayList<>();

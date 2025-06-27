@@ -43,14 +43,8 @@ public class DisconnectionManager {
         disconnectReason = reason;
         reconnectAttempts.set(0);
         previousScreen = game.getScreen();
-
-        // Save player state if possible
         savePlayerState();
-
-        // Schedule periodic saves while disconnected
         scheduleAutoSave();
-
-        // Show disconnect screen on main thread
         Gdx.app.postRunnable(() -> {
             if (!showingDisconnectScreen) {
                 showDisconnectScreen();
@@ -96,10 +90,8 @@ public class DisconnectionManager {
             try {
                 Thread.sleep(RECONNECT_DELAY);
                 client.connectIfNeeded(() -> {
-                    // Successfully connected
                     GameLogger.info("Successfully reconnected to server");
                 }, (errorMsg) -> {
-                    // Failed to connect
                     GameLogger.error("Failed to reconnect to server: " + errorMsg);
                 },REGISTRATION_CONNECT_TIMEOUT_MS);
             } catch (Exception e) {
@@ -114,7 +106,6 @@ public class DisconnectionManager {
 
     private void handleReconnectFailure() {
         if (reconnectAttempts.get() < MAX_RECONNECT_ATTEMPTS) {
-            // Schedule another attempt
             Gdx.app.postRunnable(this::attemptReconnect);
         } else {
             exitToLogin("Unable to reconnect to server");

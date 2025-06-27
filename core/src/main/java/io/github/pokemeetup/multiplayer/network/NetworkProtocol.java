@@ -37,7 +37,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
                 return new UUID(input.readLong(), input.readLong());
             }
         });
-        // Basic and commonly used classes
         kryo.register(Vector2.class);
         kryo.register(PlayerInfo.class);
         kryo.register(PingRequest.class);
@@ -60,13 +59,9 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(io.github.pokemeetup.system.data.WorldData.class);
         kryo.register(io.github.pokemeetup.system.data.WorldData.WorldObjectData.class);
         kryo.register(io.github.pokemeetup.system.data.WorldData.WorldConfig.class);
-
-        // Enums
         kryo.register(NetworkObjectUpdateType.class);
         kryo.register(ChatType.class);
         kryo.register(ForceDisconnect.class);
-
-        // Request and response classes
         kryo.register(LoginRequest.class);
         kryo.register(LoginResponse.class);
         kryo.register(RegisterRequest.class);
@@ -78,7 +73,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(ChunkData.class);
         kryo.register(BiomeType.class);
         kryo.register(PlayerInfoUpdate.class);
-        // Game state and network classes
         kryo.register(PlayerPosition.class);
         kryo.register(PlayerUpdate.class);
         kryo.register(InventoryUpdate.class);
@@ -86,17 +80,14 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(PlayerLeft.class);
         kryo.register(WorldObjectUpdate.class);
         kryo.register(BlockSaveData.BlockData.class);
-        // Register PlaceableBlock.BlockType
         kryo.register(PlaceableBlock.BlockType.class);
         kryo.register(Keepalive.class);
-        // Complex data models and entities
         kryo.register(WorldState.class);
         kryo.register(PlayerState.class);
         kryo.register(ChunkUpdate.class);
         kryo.register(ChunkRequest.class);
         kryo.register(EntityUpdate.class);
         registerPokemonClasses(kryo);
-        // Networked entities
         kryo.register(WorldStateUpdate.class);
         kryo.register(ConnectionResponse.class);
         kryo.register(ConnectionRequest.class);
@@ -110,7 +101,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
             .register(io.github.pokemeetup.system.data.WorldData.class);
         kryo.register(PlayerData.class);
         kryo.register(PlayerData[].class);
-        // Miscellaneous
         kryo.register(io.github.pokemeetup.system.data.WorldData.WorldConfig.class);
 
         kryo.register(TeamCreate.class);
@@ -262,8 +252,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public float y;
         public WorldObject.ObjectType type;
     }
-
-    // In NetworkProtocol.java, add:
     public static class WorldInitData {
         public long seed;
         public double worldTimeInMinutes;
@@ -420,11 +408,9 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     }
 
     public static class WorldData implements Serializable {
-        // Add fields that need to be synced to clients
         public long seed;
         public String name;
         public Map<String, Object> worldProperties;
-        // Add other necessary world data
     }
 
     public static class UsernameCheckRequest {
@@ -485,8 +471,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public ItemData[] hotbarItems;
         public long timestamp = System.currentTimeMillis();
     }
-
-    // Add validation methods to request classes
     public static class LoginRequest {
         public String username;
         public String password;
@@ -551,7 +535,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public String message;
         public long timestamp;
     }
-    // Update the PlayerUpdate class in NetworkProtocol.java
 
     public static class GetPlayerDataRequest {
         public UUID uuid;
@@ -578,8 +561,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public long seed;                    // world generation seed
         public double worldTimeInMinutes;    // current world time in minutes
         public float dayLength;              // length of a day in minutes (or seconds, as you require)
-
-        // Optionally include weather parameters:
         public WeatherSystem.WeatherType currentWeather;
         public float intensity;
         public float accumulation;
@@ -628,8 +609,6 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public List<PokemonData> party;
         public long timestamp;
     }
-
-    // Add to NetworkProtocol.java
     public static class TeleportRequest {
         public TeleportType type;
         public String player;
@@ -674,11 +653,8 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     }
 
     public static class PokemonBatchUpdate {
-        // A list of update objects, each containing the state for one wild Pokémon.
         public List<PokemonUpdate> updates;
     }
-
-    // World State Classes
     public static class WorldState {
         public long timestamp;
         public List<EntityUpdate> entities;
@@ -734,20 +710,14 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     public static class PingResponse {
         public long timestamp;  // echoed timestamp
     }
-
-    // A simple container for one player’s info:
     public static class PlayerInfo {
         public String username;
         public int ping; // in milliseconds
     }
-
-    // When a client wants to update its own info…
     public static class PlayerInfoUpdate {
         public String username;
         public int ping;
     }
-
-    // When the server broadcasts the full list…
     public static class PlayerList {
         public List<PlayerInfo> players;
     }

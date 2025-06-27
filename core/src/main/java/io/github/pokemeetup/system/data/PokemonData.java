@@ -18,9 +18,7 @@ public class PokemonData {
     public String nature;
     public Pokemon.PokemonType primaryType;
     public Pokemon.PokemonType secondaryType;
-    // Stats
     public Stats stats;
-    // Moves
     public List<MoveData> moves;
     private int baseHp;
     private int currentExperience = 0;
@@ -71,7 +69,6 @@ public class PokemonData {
         if (pokemon == null) {
             throw new IllegalArgumentException("Cannot create PokemonData from null Pokemon.");
         }
-        // (Optionally force a recalculation here:)
         pokemon.calculateStats();
         PokemonData data = new PokemonData();
         data.setName(pokemon.getName());
@@ -81,8 +78,6 @@ public class PokemonData {
         data.setPrimaryType(pokemon.getPrimaryType());
         data.setSecondaryType(pokemon.getSecondaryType());
         data.setCurrentHp(pokemon.getCurrentHp());
-
-        // Save species base stats
         data.setBaseHp(pokemon.getSpeciesBaseHp());
         data.setBaseAttack(pokemon.getSpeciesBaseAttack());
         data.setBaseDefense(pokemon.getSpeciesBaseDefense());
@@ -99,7 +94,6 @@ public class PokemonData {
                 .collect(Collectors.toList());
             data.setMoves(moveDataList);
         }
-        // IMPORTANT: Create a new PokemonData.Stats from the Pokemon's stats
         data.setStats(new PokemonData.Stats(pokemon.getStats()));
         return data;
     }
@@ -185,7 +179,6 @@ public class PokemonData {
     }
 
     public Stats getStats() {
-        // Ensure stats are never null
         if (this.stats == null) {
             this.stats = new Stats();
         }
@@ -290,7 +283,6 @@ public class PokemonData {
         copy.uuid = this.uuid;
         copy.primaryType = this.primaryType;
         copy.secondaryType = this.secondaryType;
-        // Ensure stats are never null in copies
         copy.stats = this.stats != null ? this.stats.copy() : new Stats();
 
 
@@ -319,16 +311,13 @@ public class PokemonData {
         if (name == null || name.isEmpty()) {
             throw new IllegalStateException("Pokemon name is missing.");
         }
-        // Create the Pokemon using the full constructor that takes species base stats:
         Pokemon pokemon = new Pokemon(name, level, baseHp, baseAttack, baseDefense, baseSpAtk, baseSpDef, baseSpeed);
         pokemon.setUuid(uuid);
         pokemon.setNature(nature);
         pokemon.setPrimaryType(primaryType);
         pokemon.setSecondaryType(secondaryType);
-        // Recalculate stats in case they need to be recomputed:
         pokemon.calculateStats();
         pokemon.setCurrentHp(pokemon.getStats().getHp());
-        // Convert moves and add them
         for (MoveData moveData : moves) {
             Move move = moveData.toMove();
             if (move != null) {
@@ -351,14 +340,12 @@ public class PokemonData {
         public int[] evs = new int[6];
 
         public Stats() {
-            // Initialize with default values
             this.hp = 1;
             this.attack = 1;
             this.defense = 1;
             this.specialAttack = 1;
             this.specialDefense = 1;
             this.speed = 1;
-            // Initialize IVs and EVs with zeros
             this.ivs = new int[6];
             this.evs = new int[6];
         }
@@ -438,8 +425,6 @@ public class PokemonData {
             return copy;
         }
     }
-
-    // Nested MoveData class
     public static class MoveData {
         public String name;
         public Pokemon.PokemonType type;
@@ -527,8 +512,6 @@ public class PokemonData {
 
         private int currentExperience = 0;
         private int experienceToNextLevel = 0;
-
-        // Add getters and setters
         public int getCurrentExperience() {
             return currentExperience;
         }
@@ -603,25 +586,16 @@ public class PokemonData {
                 .special(isSpecial)
                 .description(description)
                 .canFlinch(canFlinch);
-
-            // This part is missing in your original code but is a latent bug where effects aren't loaded.
             if (this.effect != null) {
                 builder.effect(this.effect.toMoveEffect());
             }
 
             Move move = builder.build();
-
-            // FIX: The Builder's pp() method incorrectly sets maxPp. We override it here
-            // with the correct maxPp value that was saved.
             if (this.maxPp > 0) {
                 move.setMaxPp(this.maxPp);
             } else {
-                // Fallback for older save files that might not have maxPp.
-                // In this case, the max PP will be the last-saved current PP.
                 move.setMaxPp(this.pp);
             }
-
-            // As a safety check, ensure the current PP does not exceed the (now correct) max PP.
             if (move.getPp() > move.getMaxPp()) {
                 move.setPp(move.getMaxPp());
             }

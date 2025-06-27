@@ -10,15 +10,11 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 public class PlayerAnimations {
     public static final float PUNCH_ANIMATION_DURATION = 1.1f;
     public static final float PUNCH_FRAME_DURATION = PUNCH_ANIMATION_DURATION / 4f;
-
-    // MODIFIED: Increased duration from 0.6f to 1.2f to give the axe swing more weight.
     public static final float CHOP_ANIMATION_DURATION = 1.2f;
     public static final float CHOP_FRAME_DURATION = CHOP_ANIMATION_DURATION / 4f;
     public static final float BASE_MOVE_TIME = 0.25f;
     public static final float RUN_SPEED_MULTIPLIER = 2.5f;
-    // Define slow durations for movement animations
     public static final float SLOW_WALK_ANIMATION_DURATION = BASE_MOVE_TIME * 1.4f;
-    // Per–frame durations (4 frames per animation)
     public static final float SLOW_RUN_ANIMATION_DURATION = (BASE_MOVE_TIME / RUN_SPEED_MULTIPLIER) * 2f;
     public static final float WALK_FRAME_DURATION = 0.12f;
     public static final float RUN_FRAME_DURATION  = 0.08f;
@@ -27,9 +23,7 @@ public class PlayerAnimations {
     private final String characterType;
     private volatile boolean isInitialized = false;
     private volatile boolean isDisposed = false;
-    // Standing frames for each direction (up, down, left, right)
     private TextureRegion[] standingFrames;
-    // Movement animations (non-looping so that exactly 4 frames play per step)
     private Animation<TextureRegion> walkUpAnimation;
     private Animation<TextureRegion> walkDownAnimation;
     private Animation<TextureRegion> walkLeftAnimation;
@@ -38,15 +32,12 @@ public class PlayerAnimations {
     private Animation<TextureRegion> runDownAnimation;
     private Animation<TextureRegion> runLeftAnimation;
     private Animation<TextureRegion> runRightAnimation;
-    // Action animations for punch/chop (non-looping)
     private Animation<TextureRegion>[] punchAnimations;
     private Animation<TextureRegion>[] chopAnimations;
-    // Flags and timers for actions
     private boolean isPunching = false;
     private boolean isChopping = false;
     private float punchAnimationTime = 0f;
     private float chopAnimationTime = 0f;
-    // –– Constructors ––
     public PlayerAnimations(String characterType) {
         this.characterType = characterType != null ? characterType.toLowerCase() : "boy";
         loadAnimations(this.characterType);
@@ -105,13 +96,10 @@ public class PlayerAnimations {
         if (!isInitialized || isDisposed) {
             loadAnimations(characterType);
         }
-
-        // 1) Action animations (chopping/punching) have the highest priority.
         if (isChopping) {
             int dirIndex = getDirectionIndex(direction);
             if (chopAnimations != null && dirIndex >= 0 && dirIndex < chopAnimations.length) {
                 chopAnimationTime += Gdx.graphics.getDeltaTime();
-                // Loop the chopping animation for a continuous effect
                 return chopAnimations[dirIndex].getKeyFrame(chopAnimationTime, true);
             }
         }
@@ -119,23 +107,15 @@ public class PlayerAnimations {
             int dirIndex = getDirectionIndex(direction);
             if (punchAnimations != null && dirIndex >= 0 && dirIndex < punchAnimations.length) {
                 punchAnimationTime += Gdx.graphics.getDeltaTime();
-                // Loop the punching animation
                 return punchAnimations[dirIndex].getKeyFrame(punchAnimationTime, true);
             }
         }
-
-        // 2) If not moving, always return the standing frame for the current direction.
         if (!isMoving) {
             return getStandingFrame(direction);
         }
-
-        // 3) If moving, use the provided time to get the correct frame from the walk/run animation.
         Animation<TextureRegion> currentAnimation = getAnimation(direction, isRunning);
-        // The key change: set looping to 'true' to ensure the animation cycles correctly.
         return currentAnimation.getKeyFrame(time, true);
     }
-
-    // --- New getters to expose action state ---
     public boolean isChopping() {
         return isChopping;
     }
@@ -156,13 +136,10 @@ public class PlayerAnimations {
             if (atlas == null) {
                 throw new RuntimeException("TextureAtlas is null for character type: " + characterType);
             }
-            // Prepare arrays
             chopAnimations = new Animation[4];
             punchAnimations = new Animation[4];
             standingFrames = new TextureRegion[4];
             String[] directions = {"up", "down", "left", "right"};
-
-            // Load Chop animations (4 frames each)
             int[][] chopIndices = {
                 {1, 3, 0, 2},
                 {2, 0, 1, 3},
@@ -181,8 +158,6 @@ public class PlayerAnimations {
                 chopAnimations[i] = new Animation<>(CHOP_FRAME_DURATION, frames);
                 chopAnimations[i].setPlayMode(Animation.PlayMode.NORMAL);
             }
-
-            // Load Punch animations (4 frames each)
             int[][] punchIndices = {
                 {1, 3, 2, 0},
                 {1, 3, 0, 2},

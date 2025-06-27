@@ -46,14 +46,10 @@ import java.util.concurrent.*;
 
     public void shutdown() {
         isShuttingDown = true;
-
-        // Stop accepting new events
         eventExecutor.shutdown();
 
         try {
-            // Wait for existing events to complete
             if (!eventExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                // Force shutdown if events don't complete in time
                 List<Runnable> pendingEvents = eventExecutor.shutdownNow();
                 GameLogger.info("Force-terminated " + pendingEvents.size() + " pending events");
             }
@@ -61,7 +57,6 @@ import java.util.concurrent.*;
             eventExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         } finally {
-            // Clear all listeners
             listeners.clear();
         }
     }

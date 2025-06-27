@@ -26,26 +26,19 @@ public class PokemonSpawnManager {
     private static final float BASE_SPAWN_RATE = 0.275f;
     private static final float SPAWN_CHECK_INTERVAL = 2.5f;
     private static final Map<BiomeType, Map<TimeOfDay, String[]>> POKEMON_SPAWNS = new HashMap<>();
-
-    // Enhanced spawn configuration
     private static final float MIN_SPAWN_DISTANCE_PIXELS = 10 * TILE_SIZE;
     private static final float MAX_SPAWN_DISTANCE_PIXELS = 20 * TILE_SIZE;
     private static final int MAX_POKEMON_PER_CHUNK = 6;
     private static final float MIN_POKEMON_SPACING = TILE_SIZE * 1.5f;
-
-    // Pack spawning configuration
     private static final float PACK_SPAWN_CHANCE = 0.3f;
     private static final int MIN_PACK_SIZE = 2;
     private static final int MAX_PACK_SIZE = 5;
     private static final float PACK_BASE_RADIUS = TILE_SIZE * 2;
     private static final float PACK_MAX_RADIUS = TILE_SIZE * 4;
     private static final int MAX_PACK_SPAWN_ATTEMPTS = 15;
-
-    // Species-specific pack behavior
     private static final Map<String, PackBehaviorInfo> PACK_SPECIES = new HashMap<>();
 
     static {
-        // Initialize pack species with their behavior patterns
         PACK_SPECIES.put("rattata", new PackBehaviorInfo(0.4f, 2, 4, true));
         PACK_SPECIES.put("pidgey", new PackBehaviorInfo(0.3f, 3, 6, false));
         PACK_SPECIES.put("zubat", new PackBehaviorInfo(0.5f, 4, 8, true));
@@ -99,8 +92,6 @@ public class PokemonSpawnManager {
 
             String selectedSpecies = selectPokemonForBiome(spawnPos.biome);
             if (selectedSpecies == null) continue;
-
-            // Determine if this should be a pack spawn
             boolean shouldSpawnPack = shouldSpawnAsPack(selectedSpecies);
 
             if (shouldSpawnPack) {
@@ -133,22 +124,16 @@ public class PokemonSpawnManager {
         if (!loadedChunks.contains(chunkPos)) {
             return null;
         }
-
-        // Check chunk capacity
         List<WildPokemon> chunkPokemon = pokemonByChunk.getOrDefault(chunkPos, new ArrayList<>());
         if (chunkPokemon.size() >= MAX_POKEMON_PER_CHUNK) {
             return null;
         }
-
-        // Snap to grid for consistency
         float snappedX = Math.round(spawnPixelX / TILE_SIZE) * TILE_SIZE;
         float snappedY = Math.round(spawnPixelY / TILE_SIZE) * TILE_SIZE;
 
         if (!isValidSpawnPosition(snappedX, snappedY)) {
             return null;
         }
-
-        // Get biome for this position
         int tileX = (int)(snappedX / TILE_SIZE);
         int tileY = (int)(snappedY / TILE_SIZE);
         Biome biome = GameContext.get().getWorld().getBiomeAt(tileX, tileY);
@@ -175,21 +160,15 @@ public class PokemonSpawnManager {
 
         GameLogger.info("Attempting to spawn pack of " + packSize + " " + species +
             " at (" + centerX + ", " + centerY + ")");
-
-        // Spawn the pack leader first
         WildPokemon leader = createPokemon(species, centerX, centerY, chunkPos);
         if (leader != null) {
-            // Set leader personality
             PokemonAI leaderAI = (PokemonAI) leader.getAi();
             if (leaderAI != null) {
-                // Leaders are typically more territorial/aggressive
                 leaderAI.addPackMember(leader.getUuid());
             }
 
             packMembers.add(leader);
             packMemberIds.add(leader.getUuid());
-
-            // Spawn pack members around the leader
             List<Vector2> spawnPositions = generatePackPositions(centerX, centerY, packSize - 1);
 
             for (Vector2 pos : spawnPositions) {
@@ -197,8 +176,6 @@ public class PokemonSpawnManager {
                 if (member != null) {
                     packMembers.add(member);
                     packMemberIds.add(member.getUuid());
-
-                    // Set up pack relationships
                     PokemonAI memberAI = (PokemonAI) member.getAi();
                     if (memberAI != null && leaderAI != null) {
                         memberAI.setPackLeader(leader.getUuid());
@@ -206,8 +183,6 @@ public class PokemonSpawnManager {
                     }
                 }
             }
-
-            // Register the pack
             if (packMembers.size() > 1) {
                 UUID packId = UUID.randomUUID();
                 pokemonPacks.put(packId, packMemberIds);
@@ -223,8 +198,6 @@ public class PokemonSpawnManager {
     private List<Vector2> generatePackPositions(float centerX, float centerY, int memberCount) {
         List<Vector2> positions = new ArrayList<>();
         Set<Vector2> occupiedTiles = new HashSet<>();
-
-        // Add center position as occupied
         occupiedTiles.add(new Vector2(
             Math.round(centerX / TILE_SIZE) * TILE_SIZE,
             Math.round(centerY / TILE_SIZE) * TILE_SIZE
@@ -244,19 +217,12 @@ public class PokemonSpawnManager {
     }
 
     private Vector2 findValidPackMemberPosition(float centerX, float centerY, Set<Vector2> occupiedTiles) {
-        // Try multiple strategies for positioning pack members
-
-        // Strategy 1: Try concentric circles around center
         for (float radius = PACK_BASE_RADIUS; radius <= PACK_MAX_RADIUS; radius += TILE_SIZE) {
             Vector2 position = tryCircularPattern(centerX, centerY, radius, occupiedTiles);
             if (position != null) return position;
         }
-
-        // Strategy 2: Try grid pattern around center
         Vector2 position = tryGridPattern(centerX, centerY, occupiedTiles);
         if (position != null) return position;
-
-        // Strategy 3: Try random positions within pack area
         return tryRandomPattern(centerX, centerY, occupiedTiles);
     }
 
@@ -267,8 +233,6 @@ public class PokemonSpawnManager {
             float angle = (i * MathUtils.PI2) / numPoints;
             float x = centerX + MathUtils.cos(angle) * radius;
             float y = centerY + MathUtils.sin(angle) * radius;
-
-            // Snap to grid
             float snappedX = Math.round(x / TILE_SIZE) * TILE_SIZE;
             float snappedY = Math.round(y / TILE_SIZE) * TILE_SIZE;
             Vector2 testPos = new Vector2(snappedX, snappedY);
@@ -283,8 +247,6 @@ public class PokemonSpawnManager {
 
     private Vector2 tryGridPattern(float centerX, float centerY, Set<Vector2> occupied) {
         int maxOffset = (int)(PACK_MAX_RADIUS / TILE_SIZE);
-
-        // Try in spiral order for better distribution
         for (int offset = 1; offset <= maxOffset; offset++) {
             for (int dx = -offset; dx <= offset; dx++) {
                 for (int dy = -offset; dy <= offset; dy++) {
@@ -310,8 +272,6 @@ public class PokemonSpawnManager {
             float distance = MathUtils.random(TILE_SIZE, PACK_MAX_RADIUS);
             float x = centerX + MathUtils.cos(angle) * distance;
             float y = centerY + MathUtils.sin(angle) * distance;
-
-            // Snap to grid
             float snappedX = Math.round(x / TILE_SIZE) * TILE_SIZE;
             float snappedY = Math.round(y / TILE_SIZE) * TILE_SIZE;
             Vector2 testPos = new Vector2(snappedX, snappedY);
@@ -341,14 +301,10 @@ public class PokemonSpawnManager {
             );
 
             pokemon.setWorld(GameContext.get().getWorld());
-
-            // Replace old AI with enhanced AI
             PokemonAI enhancedAI = new PokemonAI(pokemon);
             pokemon.setAi(enhancedAI);
 
             enhancedAI.enterIdleState();
-
-            // Add to collections
             pokemonById.put(pokemon.getUuid(), pokemon);
             pokemonByChunk.computeIfAbsent(chunkPos, k -> new ArrayList<>()).add(pokemon);
             pokemon.updateBoundingBox();
@@ -365,7 +321,6 @@ public class PokemonSpawnManager {
     }
 
     private boolean isValidSpawnPosition(float pixelX, float pixelY) {
-        // Convert to tile coordinates for passability check
         int tileX = (int)(pixelX / TILE_SIZE);
         int tileY = (int)(pixelY / TILE_SIZE);
 
@@ -373,19 +328,13 @@ public class PokemonSpawnManager {
             GameLogger.error("World reference is null in spawn validation");
             return false;
         }
-
-        // Check if tile is passable
         if (!GameContext.get().getWorld().isPassable(tileX, tileY)) {
             return false;
         }
-
-        // Check distance from other Pokemon with improved spacing
         Collection<WildPokemon> nearby = getPokemonInRange(pixelX, pixelY, MIN_POKEMON_SPACING);
         if (!nearby.isEmpty()) {
             return false;
         }
-
-        // Check chunk loaded
         Vector2 chunkPos = getChunkPosition(pixelX, pixelY);
         return GameContext.get().getWorld().getChunks().containsKey(chunkPos);
     }
@@ -399,8 +348,6 @@ public class PokemonSpawnManager {
                 removeExpiredPokemon();
             }
         }
-
-        // Update all Pokemon with enhanced AI
         for (WildPokemon pokemon : pokemonById.values()) {
             try {
                 pokemon.update(delta, GameContext.get().getWorld());
@@ -410,8 +357,6 @@ public class PokemonSpawnManager {
             }
         }
     }
-
-    // [Rest of the methods remain the same but use enhanced AI]
     private int calculatePokemonLevel(float pixelX, float pixelY) {
         return PokemonLevelCalculator.calculateLevel(pixelX, pixelY, TILE_SIZE);
     }
@@ -474,8 +419,6 @@ public class PokemonSpawnManager {
                 }
             }
             syncedPokemon.remove(pokemonId);
-
-            // Remove from packs
             removeFromPacks(pokemonId);
 
             if (!GameContext.get().getGameClient().isSinglePlayer()) {
@@ -509,10 +452,7 @@ public class PokemonSpawnManager {
         }
     }
 
-    // Initialize Pokemon spawns (same as before)
-
     private void initializePokemonSpawns() {
-        // PLAINS biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> plainsSpawns = new HashMap<>();
         plainsSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Rattata", "Pidgey", "Sentret", "Hoppip", "Sunkern",
@@ -523,8 +463,6 @@ public class PokemonSpawnManager {
             "Hoppip", "Sunkern", "Spinarak", "Skitty"
         });
         POKEMON_SPAWNS.put(BiomeType.PLAINS, plainsSpawns);
-
-        // FOREST biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> forestSpawns = new HashMap<>();
         forestSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Caterpie", "Weedle", "Oddish", "Bellsprout", "Treecko",
@@ -537,8 +475,6 @@ public class PokemonSpawnManager {
             "Hoppip", "Nincada"
         });
         POKEMON_SPAWNS.put(BiomeType.FOREST, forestSpawns);
-
-        // SNOW biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> snowSpawns = new HashMap<>();
         snowSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Swinub", "Snorunt", "Snover", "Spheal", "Cubchoo",
@@ -549,8 +485,6 @@ public class PokemonSpawnManager {
             "Sneasel", "Vanillite", "Snom"
         });
         POKEMON_SPAWNS.put(BiomeType.SNOW, snowSpawns);
-
-        // DESERT biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> desertSpawns = new HashMap<>();
         desertSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Sandshrew", "Trapinch", "Cacnea", "Sandile", "Diglett",
@@ -561,8 +495,6 @@ public class PokemonSpawnManager {
             "Vulpix", "Ekans", "Zubat", "Spinarak"
         });
         POKEMON_SPAWNS.put(BiomeType.DESERT, desertSpawns);
-
-        // HAUNTED biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> hauntedSpawns = new HashMap<>();
         hauntedSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Gastly", "Misdreavus", "Shuppet", "Duskull", "Sableye",
@@ -573,8 +505,6 @@ public class PokemonSpawnManager {
             "Litwick", "Murkrow", "Yamask"
         });
         POKEMON_SPAWNS.put(BiomeType.HAUNTED, hauntedSpawns);
-
-        // RAIN FOREST biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> rainforestSpawns = new HashMap<>();
         rainforestSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Treecko", "Mudkip", "Torchic", "Lotad", "Seedot",
@@ -587,8 +517,6 @@ public class PokemonSpawnManager {
             "Nincada", "Poochyena"
         });
         POKEMON_SPAWNS.put(BiomeType.RAIN_FOREST, rainforestSpawns);
-
-        // BIG MOUNTAINS biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> mountainSpawns = new HashMap<>();
         mountainSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Geodude", "Machop", "Onix", "Rhyhorn", "Nosepass",
@@ -599,8 +527,6 @@ public class PokemonSpawnManager {
             "Larvitar", "Meditite", "Riolu", "Rockruff", "Swinub"
         });
         POKEMON_SPAWNS.put(BiomeType.BIG_MOUNTAINS, mountainSpawns);
-
-        // RUINS biome
         Map<PokemonSpawnManager.TimeOfDay, String[]> ruinsSpawns = new HashMap<>();
         ruinsSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Zubat", "Geodude", "Kabuto", "Omanyte", "Aerodactyl",
@@ -611,8 +537,6 @@ public class PokemonSpawnManager {
             "Rattata", "Gastly", "Onix", "Abra", "Cubone"
         });
         POKEMON_SPAWNS.put(BiomeType.RUINS, ruinsSpawns);
-
-        // CHERRY_GROVE biome (Cherry blossom–themed; Pokémon up to Gen 6)
         Map<PokemonSpawnManager.TimeOfDay, String[]> cherryGroveSpawns = new HashMap<>();
         cherryGroveSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Cherrim",  // A flower–themed Pokémon with different forms
@@ -636,8 +560,6 @@ public class PokemonSpawnManager {
             "Clefairy"
         });
         POKEMON_SPAWNS.put(BiomeType.CHERRY_GROVE, cherryGroveSpawns);
-
-        // BEACH biome (Coastal areas with shallow water)
         Map<PokemonSpawnManager.TimeOfDay, String[]> beachSpawns = new HashMap<>();
         beachSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Krabby", "Corphish", "Wingull", "Staryu", "Corsola",
@@ -648,8 +570,6 @@ public class PokemonSpawnManager {
             "Corsola", "Shellder", "Goldeen"
         });
         POKEMON_SPAWNS.put(BiomeType.BEACH, beachSpawns);
-
-        // OCEAN biome (Deep water environments)
         Map<PokemonSpawnManager.TimeOfDay, String[]> oceanSpawns = new HashMap<>();
         oceanSpawns.put(PokemonSpawnManager.TimeOfDay.DAY, new String[]{
             "Magikarp", "Tentacruel", "Horsea", "Seadra", "Staryu",
@@ -708,8 +628,6 @@ public class PokemonSpawnManager {
     public GameClient getGameClient() {
         return GameContext.get().getGameClient();
     }
-
-    // Helper classes
     private static class PackBehaviorInfo {
         final float packChance;
         final int minPackSize;

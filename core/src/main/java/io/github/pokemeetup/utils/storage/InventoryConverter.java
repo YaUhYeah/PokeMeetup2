@@ -33,13 +33,8 @@ public class InventoryConverter {
         if (itemData == null) {
             return null;
         }
-
-        // Create a new instance and DEEP copy all properties
         Item item = new Item(itemData.getItemId());
-
-        // IMPORTANT: Deep copy all properties
         item.setCount(itemData.getCount());
-        // Use original UUID to maintain item identity across operations
         item.setUuid(itemData.getUuid() != null ? itemData.getUuid() : UUID.randomUUID());
         item.setDurability(itemData.getDurability());
         item.setMaxDurability(itemData.getMaxDurability());

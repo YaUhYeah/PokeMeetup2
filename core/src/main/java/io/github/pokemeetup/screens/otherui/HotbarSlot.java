@@ -16,7 +16,6 @@ public class HotbarSlot extends Stack {
 
     public HotbarSlot(boolean selected, Skin skin) {
         this.skin = skin;
-        // Get the background region based on selection.
         TextureRegion bgRegion = TextureManager.ui.findRegion(
             selected ? "slot_selected" : "slot_normal"
         );
@@ -39,8 +38,6 @@ public class HotbarSlot extends Stack {
     public void setItem(ItemData item) {
         content.clear();
         if (item == null) return;
-
-        // Try to obtain the texture for the item.
         TextureRegion texture = TextureManager.items.findRegion(item.getItemId().toLowerCase() + "_item");
         if (texture == null) {
             texture = TextureManager.items.findRegion(item.getItemId().toLowerCase());

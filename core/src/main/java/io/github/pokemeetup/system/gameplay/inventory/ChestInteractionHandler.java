@@ -18,8 +18,6 @@ public class ChestInteractionHandler {
 
         int targetX = GameContext.get().getPlayer().getTileX();
         int targetY = GameContext.get().getPlayer().getTileY();
-
-        // Get tile in front of player based on direction
         switch (GameContext.get().getPlayer().getDirection()) {
             case "up":
                 targetY++;

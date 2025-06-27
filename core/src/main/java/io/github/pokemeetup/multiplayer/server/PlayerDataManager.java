@@ -55,7 +55,6 @@ public class PlayerDataManager {
             PlayerData playerData = json.fromJson(PlayerData.class, jsonData);
 
             if (playerData != null) {
-                // Validate and repair if needed
                 if (playerData.validateAndRepairState()) {
                     GameLogger.info("Repaired loaded player data for UUID: " + uuid);
                     savePlayerData(uuid, playerData); // Save repaired data
@@ -77,7 +76,6 @@ public class PlayerDataManager {
         }
 
         try {
-            // Validate data before saving
             if (!playerData.validateAndRepairState()) {
                 GameLogger.error("Player data validation failed for UUID: " + uuid);
                 return;
@@ -86,16 +84,10 @@ public class PlayerDataManager {
             String tempPath = getPlayerDataPath(uuid) + ".temp";
             String finalPath = getPlayerDataPath(uuid);
             fs.writeString(tempPath, json.toJson(playerData));
-
-            // Verify temp file exists and is valid
             if (!fs.exists(tempPath)) {
                 throw new RuntimeException("Failed to write temporary player data file");
             }
-
-            // Atomic move to final location
             fs.moveFile(tempPath, finalPath);
-
-            // Update cache with a deep copy
             playerCache.put(uuid, playerData.copy());
 
         } catch (Exception e) {

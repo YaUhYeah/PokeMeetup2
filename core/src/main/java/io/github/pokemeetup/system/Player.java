@@ -36,7 +36,6 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.INTERACTION_R
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class Player implements Positionable {
-    // Constants
     public static final int FRAME_WIDTH = 32;    @Override
     public boolean wasOnWater() {
         return wasOnWater;
@@ -74,13 +73,11 @@ public class Player implements Positionable {
     private static final long VALIDATION_INTERVAL = 1000;
     private static final float PICKUP_RANGE = 48f;
     private static final float BUFFER_WINDOW = 0.15f;
-    // Synchronization locks and layout
     private final Object movementLock = new Object();
     private final Object resourceLock = new Object();
     private final Object fontLock = new Object();
     private final Object inventoryLock = new Object();
     private final GlyphLayout layout = new GlyphLayout();
-    // Player state variables
     public volatile boolean initialized = false;
     private float walkStepDuration = PlayerAnimations.SLOW_WALK_ANIMATION_DURATION;
     private float runStepDuration = PlayerAnimations.SLOW_RUN_ANIMATION_DURATION;
@@ -119,8 +116,6 @@ public class Player implements Positionable {
     private Stage stage;
     private float bufferedTime = 0f;
     private float animationTime = 0f;
-
-    // Constructors
     public Player(int startTileX, int startTileY, World world) {
         this(startTileX, startTileY, world, "Player");
         this.playerData = new PlayerData("Player");
@@ -177,8 +172,6 @@ public class Player implements Positionable {
         this.lastPosition = new Vector2(x, y);
         Gdx.app.postRunnable(this::initializeGLResources);
     }
-
-    // Utility methods
     public String getCharacterType() {
         return (playerData != null && playerData.getCharacterType() != null) ? playerData.getCharacterType() : "boy";
     }
@@ -200,7 +193,6 @@ public class Player implements Positionable {
                 GameLogger.error("UI Stage is null in getHotbarSystem()!");
                 return null;
             }
-            // Use the skin stored in GameContext if available.
             Skin hotbarSkin = GameContext.get().getSkin() != null ? GameContext.get().getSkin() : skin;
             GameContext.get().setHotbarSystem(new HotbarSystem(stage, hotbarSkin));
             GameLogger.info("HotbarSystem successfully initialized synchronously.");
@@ -458,14 +450,11 @@ public class Player implements Positionable {
     public void setSkin(Skin skin) {
         this.skin = skin;
     }
-
-    // The update method—modified for maximum responsiveness.
     public void update(float deltaTime) {
         if (!resourcesInitialized || disposed || animations == null || animations.isDisposed()) {
             initializeResources();
         }
         synchronized (movementLock) {
-            // Update buffered input timer if any buffered direction exists.
             if (bufferedDirection != null) {
                 bufferedTime += deltaTime;
                 if (bufferedTime > BUFFER_WINDOW) {
@@ -473,26 +462,19 @@ public class Player implements Positionable {
                     bufferedTime = 0f;
                 }
             }
-
-            // Highest priority: action animations (chop/punch)
             if (animations.isChopping() || animations.isPunching()) {
                 stateTime += deltaTime;
                 currentFrame = animations.getCurrentFrame(direction, true, isRunning, stateTime);
             }
-            // When moving:
             else if (isMoving) {
-                // This is the core movement logic
                 float currentDuration = isRunning ? runStepDuration : walkStepDuration;
                 movementProgress = Math.min(1.0f, movementProgress + (deltaTime / currentDuration));
 
                 updatePosition(movementProgress); // This uses lerp to smooth movement
-
-                // [MODIFIED] Use a continuous animation timer for smooth animation cycles
                 animationTime += deltaTime * animationSpeedMultiplier;
 
                 if (movementProgress >= 1.0f) {
                     completeMovement(); // Finalize position
-                    // Check for buffered input or held keys to start the next move immediately
                     if (bufferedDirection != null) {
                         move(bufferedDirection);
                         bufferedDirection = null;
@@ -501,16 +483,12 @@ public class Player implements Positionable {
                     }
                 }
             }
-            // Not moving – show standing frame.
             else {
                 stateTime = 0f;
                 animationTime = 0f;
                 currentFrame = animations.getStandingFrame(direction);
             }
             currentFrame = animations.getCurrentFrame(direction, isMoving, isRunning, animationTime);
-
-
-            // Existing item pickup logic.
             ItemEntity nearbyItem = world.getItemEntityManager().getClosestPickableItem(x, y, PICKUP_RANGE);
             if (nearbyItem != null) {
                 if (inventory.addItem(nearbyItem.getItemData())) {
@@ -571,7 +549,6 @@ public class Player implements Positionable {
     public void move(String newDirection) {
         synchronized (movementLock) {
             if (isMoving) {
-                // If already moving, just buffer the new direction.
                 bufferedDirection = newDirection;
                 bufferedTime = 0f;
                 return;
@@ -599,15 +576,10 @@ public class Player implements Positionable {
                 default:
                     return;
             }
-
-            // *** Check world bounds ***
             if (!world.isWithinWorldBounds(newTileX, newTileY)) {
-                // Optionally: play a “bump” sound or simply ignore the move.
                 GameLogger.info("Player cannot move outside the world border: (" + newTileX + "," + newTileY + ")");
                 return;
             }
-
-            // Now check that the destination tile is passable.
             if (world.isPassable(newTileX, newTileY)) {
                 targetTileX = newTileX;
                 targetTileY = newTileY;
@@ -649,15 +621,11 @@ public class Player implements Positionable {
             float scale = getCharacterType().equalsIgnoreCase("girl") ? 2f : 1f;
             float regionW = currentFrame.getRegionWidth() * scale;
             float regionH = currentFrame.getRegionHeight() * scale;
-
-            // [MODIFIED] Use renderPosition for drawing to get smooth interpolation.
             float drawX = renderPosition.x - (regionW / 2f);
             float drawY = renderPosition.y;
 
             batch.draw(currentFrame, drawX, drawY, regionW, regionH);
             batch.setColor(originalColor);
-
-            // Render username (unchanged)
             if (username != null && !username.isEmpty() && !username.equals("Player") && font != null) {
                 layout.setText(font, username);
                 float textWidth = layout.width;

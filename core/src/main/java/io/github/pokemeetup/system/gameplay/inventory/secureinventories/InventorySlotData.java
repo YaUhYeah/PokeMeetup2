@@ -110,13 +110,11 @@ public class InventorySlotData implements ItemDataObserver {
     }
 
     public ItemData getItemData() {
-        // Removed the logging inside this getter to avoid confusion
         return itemContainer.getItemAt(slotIndex);
     }
 
     public void setItemData(ItemData itemData) {
         try {
-            // Only log important changes, not every trivial action
             if (itemData != null) {
                 ItemData copyData = itemData.copy();
                 copyData.addObserver(this);

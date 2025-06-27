@@ -52,38 +52,25 @@ public class PluginManager {
 
     private void loadPlugin(Path jarPath) {
         try (JarFile jarFile = new JarFile(jarPath.toFile())) {
-            // Load plugin.yml
             JarEntry configEntry = jarFile.getJarEntry("plugin.yml");
             if (configEntry == null) {
                 throw new IllegalStateException("Missing plugin.yml in " + jarPath.getFileName());
             }
-
-            // Load and parse config
             PluginConfig config = loadPluginConfig(jarFile.getInputStream(configEntry));
-
-            // Validate dependencies
             validateDependencies(config);
-
-            // Create isolated classloader for plugin
             URLClassLoader classLoader = new URLClassLoader(
                 new URL[]{jarPath.toUri().toURL()},
                 getClass().getClassLoader()
             );
-
-            // Load main plugin class
             Class<?> mainClass = Class.forName(config.getMainClass(), true, classLoader);
             if (!ServerPlugin.class.isAssignableFrom(mainClass)) {
                 throw new IllegalStateException("Plugin main class must implement ServerPlugin interface");
             }
 
             ServerPlugin plugin = (ServerPlugin) mainClass.getDeclaredConstructor().newInstance();
-
-            // Create plugin context and initialize
             Map<String, Object> pluginConfig = loadPluginConfig(plugin.getId());
             PluginContext context = new PluginContext(gameWorld, pluginConfig);
             plugin.onLoad(context);
-
-            // Store loaded plugin
             loadedPlugins.put(plugin.getId(), plugin);
             pluginConfigs.put(plugin.getId(), config);
 
@@ -129,7 +116,6 @@ public class PluginManager {
     }
 
     private List<String> calculateEnableOrder() {
-        // Simple topological sort for dependencies
         Map<String, Set<String>> graph = new HashMap<>();
         for (Map.Entry<String, PluginConfig> entry : pluginConfigs.entrySet()) {
             graph.put(entry.getKey(), new HashSet<>(entry.getValue().getDependencies()));
@@ -182,8 +168,6 @@ public class PluginManager {
         loadedPlugins.clear();
         pluginConfigs.clear();
     }
-
-    // Public API
     public ServerPlugin getPlugin(String id) {
         return loadedPlugins.get(id);
     }

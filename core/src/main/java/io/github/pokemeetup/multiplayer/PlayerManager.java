@@ -34,14 +34,9 @@ public class PlayerManager {
         if (player != null) {
             try {
                 UUID playerUUID = player.getUUID();
-                // Get fresh copy of data
                 PlayerData finalState = player.getData();
-
-                // Save player data before removing
                 storage.getPlayerDataManager().savePlayerData(playerUUID, finalState);
                 storage.getPlayerDataManager().flush(); // Force immediate save
-
-                // Remove after successful save
                 onlinePlayers.remove(username);
                 uuidToUsername.remove(playerUUID);
 
@@ -56,18 +51,12 @@ public class PlayerManager {
 
     public void dispose() {
         GameLogger.info("Starting PlayerManager disposal...");
-
-        // Save each player's data
         for (Map.Entry<String, ServerPlayer> entry : onlinePlayers.entrySet()) {
             try {
                 String username = entry.getKey();
                 ServerPlayer player = entry.getValue();
                 UUID playerUUID = player.getUUID();
-
-                // Get fresh copy of data
                 PlayerData finalState = player.getData();
-
-                // Save with immediate flush
                 storage.getPlayerDataManager().savePlayerData(playerUUID, finalState);
                 storage.getPlayerDataManager().flush();
 
@@ -76,11 +65,7 @@ public class PlayerManager {
                 GameLogger.error("Error saving player during dispose: " + e.getMessage());
             }
         }
-
-        // Force final storage flush
         storage.flushPlayerData();
-
-        // Clear collections
         onlinePlayers.clear();
         uuidToUsername.clear();
 

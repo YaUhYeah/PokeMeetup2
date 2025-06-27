@@ -138,29 +138,22 @@ public class GameClient {
     }
 
     public void connectIfNeeded(Runnable onSuccess, Consumer<String> onError, long timeoutMs) {
-        // 1) If client is already connected, just callback success
         if (client != null && client.isConnected()) {
             Gdx.app.postRunnable(onSuccess);
             return;
         }
-        // 2) If we are in the middle of connecting, do not connect again.
         if (!isConnecting.compareAndSet(false, true)) {
-            // means isConnecting was already true
             Gdx.app.postRunnable(() -> onError.accept("Already connecting..."));
             return;
         }
-
-        // 3) Not connected, not connecting => proceed with new connection
         client = new Client(65536, 65536);
         NetworkProtocol.registerClasses(client.getKryo());
 
         client.addListener(new Listener() {
             @Override
             public void connected(Connection connection) {
-                // Mark as connected on the main thread:
                 Gdx.app.postRunnable(() -> {
                     isConnecting.set(false);
-                    // Mark the connection state as CONNECTED and set the isConnected flag.
                     connectionState = ConnectionState.CONNECTED;
                     isConnected.set(true);
                     isAuthenticated.set(false);
@@ -174,7 +167,6 @@ public class GameClient {
                     if (!suppressDisconnectHandling) {
                         handleDisconnect("Disconnected from server");
                     } else {
-                        // Optionally log that disconnect handling is suppressed.
                         GameLogger.info("Disconnect occurred while in registration mode – not triggering disconnect screen.");
                     }
                 }
@@ -262,8 +254,6 @@ public class GameClient {
     private void handlePingResponse(NetworkProtocol.PingResponse response) {
         long now = System.currentTimeMillis();
         localPing = (int) (now - response.timestamp);
-
-        // Now send our updated info to the server:
         NetworkProtocol.PlayerInfoUpdate update = new NetworkProtocol.PlayerInfoUpdate();
         update.username = localUsername;
         update.ping = localPing;
@@ -276,7 +266,6 @@ public class GameClient {
         }
 
         try {
-            // Validate spawn data
             if (spawnData.data == null || spawnData.uuid == null) {
                 GameLogger.error("Invalid Pokemon spawn data");
                 return;
@@ -285,11 +274,7 @@ public class GameClient {
             if (spawnData.timestamp == 0) {
                 spawnData.timestamp = System.currentTimeMillis();
             }
-
-            // Send spawn data to server
             client.sendTCP(spawnData);
-
-            // Track locally
             if (!trackedWildPokemon.containsKey(spawnData.uuid)) {
                 TextureRegion overworldSprite = TextureManager.getOverworldSprite(spawnData.data.getName());
 
@@ -341,10 +326,8 @@ public class GameClient {
         if (GameContext.get().isMultiplayer()) {
             try {
                 NetworkProtocol.ChestUpdate update = new NetworkProtocol.ChestUpdate();
-                // Use the public field chestId (a UUID) from ChestData
                 update.chestId = chestData.chestId;
                 update.username = GameContext.get().getPlayer().getUsername();
-                // Use the items list from chestData (assumed non-null)
                 update.items = chestData.getItems();
                 update.timestamp = System.currentTimeMillis();
                 client.sendTCP(update);
@@ -466,13 +449,9 @@ public class GameClient {
     }
 
     private void handleItemPickup(NetworkProtocol.ItemPickup pickup) {
-        // This message is broadcast by the server to all clients *except* the one who picked it up.
-        // Therefore, we just need to remove the entity from our local world.
         if (pickup == null || pickup.entityId == null) {
             return;
         }
-
-        // Use Gdx.app.postRunnable to ensure this runs on the main render thread.
         Gdx.app.postRunnable(() -> {
             if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getItemEntityManager() != null) {
                 GameContext.get().getWorld().getItemEntityManager().removeItemEntity(pickup.entityId);
@@ -514,12 +493,9 @@ public class GameClient {
 
         if (isAuthenticated.get()) {
             try {
-                // Create save request
                 NetworkProtocol.SavePlayerDataRequest request = new NetworkProtocol.SavePlayerDataRequest();
                 request.playerData = playerData;
                 request.timestamp = System.currentTimeMillis();
-
-                // Send to server
                 client.sendTCP(request);
                 GameLogger.info("Sent player state update to server for: " + playerData.getUsername());
 
@@ -563,20 +539,13 @@ public class GameClient {
 
     private void handleWorldStateUpdate(NetworkProtocol.WorldStateUpdate update) {
         if (update == null) return;
-        // Ensure that updates happen on the rendering thread
         Gdx.app.postRunnable(() -> {
             World world = GameContext.get().getWorld();
             if (world == null) return;
-            // Update the local world data with the synchronized time and day length.
             world.getWorldData().setWorldTimeInMinutes(update.worldTimeInMinutes);
             world.getWorldData().setDayLength(update.dayLength);
-            // Optionally, update the seed if needed:
-            // world.getWorldData().getConfig().setSeed(update.seed);
-
-            // Now update the weather system.
             WeatherSystem weatherSystem = world.getWeatherSystem();
             if (weatherSystem != null) {
-                // You can simply “force” the weather parameters that the server sent:
                 weatherSystem.setWeather(update.currentWeather, update.intensity);
                 weatherSystem.setAccumulation(update.accumulation);
             }
@@ -729,11 +698,9 @@ public class GameClient {
 
             reconnectAttempts++;
             connectIfNeeded(() -> {
-                // Successfully connected
                 reconnectAttempts = 0;
                 GameLogger.info("Successfully reconnected to server");
             }, (errorMsg) -> {
-                // Failed to connect
                 reconnectAttempts++;
                 GameLogger.error("Failed to reconnect to server: " + errorMsg);
             }, REGISTRATION_CONNECT_TIMEOUT_MS);
@@ -779,8 +746,6 @@ public class GameClient {
                     pendingChunks.remove(chunkPos);
                     return;
                 }
-
-                // Process the authoritative chunk data from the server
                 world.processChunkData(chunkData);
                 pendingChunks.remove(chunkPos);
             });
@@ -797,7 +762,6 @@ public class GameClient {
      * Request adjacent chunks if needed to ensure smooth transitions
      */
     private void requestAdjacentChunksIfNeeded(Vector2 processedChunkPos) {
-        // Check all 8 surrounding chunks (including diagonals) for better transitions
         int[][] adjacentOffsets = {
             {0, 1}, {1, 1}, {1, 0}, {1, -1},
             {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}
@@ -805,15 +769,11 @@ public class GameClient {
 
         World world = GameContext.get().getWorld();
         if (world == null) return;
-
-        // Sort offsets by distance to player for more efficient loading
         Player player = GameContext.get().getPlayer();
         if (player != null) {
             int playerChunkX = Math.floorDiv(player.getTileX(), Chunk.CHUNK_SIZE);
             int playerChunkY = Math.floorDiv(player.getTileY(), Chunk.CHUNK_SIZE);
             final Vector2 playerChunkPos = new Vector2(playerChunkX, playerChunkY);
-
-            // Sort by Manhattan distance to player's chunk
             Arrays.sort(adjacentOffsets, (a, b) -> {
                 Vector2 posA = new Vector2(processedChunkPos.x + a[0], processedChunkPos.y + a[1]);
                 Vector2 posB = new Vector2(processedChunkPos.x + b[0], processedChunkPos.y + b[1]);
@@ -822,20 +782,14 @@ public class GameClient {
                 return Float.compare(distA, distB);
             });
         }
-
-        // Request adjacent chunks with priority to those closer to player
         for (int[] offset : adjacentOffsets) {
             Vector2 adjPos = new Vector2(
                 processedChunkPos.x + offset[0],
                 processedChunkPos.y + offset[1]
             );
-
-            // Only request if not already loaded or pending
             if (!world.getChunks().containsKey(adjPos) && !pendingChunks.contains(adjPos)) {
-                // Check if chunk is within the loading radius
                 if (isChunkNearPlayer(adjPos, 4)) { // Within 4 chunks of player
                     requestChunk(adjPos);
-                    // Small delay between requests to prevent network flooding
                     try {
                         Thread.sleep(20);
                     } catch (InterruptedException e) {
@@ -856,8 +810,6 @@ public class GameClient {
         int playerChunkX = Math.floorDiv(player.getTileX(), Chunk.CHUNK_SIZE);
         int playerChunkY = Math.floorDiv(player.getTileY(), Chunk.CHUNK_SIZE);
         Vector2 playerChunkPos = new Vector2(playerChunkX, playerChunkY);
-
-        // Use Manhattan distance for better performance
         float distance = Math.abs(chunkPos.x - playerChunkPos.x) +
             Math.abs(chunkPos.y - playerChunkPos.y);
 
@@ -881,8 +833,6 @@ public class GameClient {
         int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
         int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
         Vector2 playerChunkPos = new Vector2(playerChunkX, playerChunkY);
-
-        // For each chunk within CHUNK_LOAD_RADIUS around the player, if it’s missing and not already pending, request it.
         for (int dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
             for (int dy = -CHUNK_LOAD_RADIUS; dy <= CHUNK_LOAD_RADIUS; dy++) {
                 Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
@@ -891,8 +841,6 @@ public class GameClient {
                 }
             }
         }
-
-        // Optionally, unload chunks that are far away (outside the load radius)
         unloadFarChunks(playerChunkPos);
     }
 
@@ -916,10 +864,7 @@ public class GameClient {
     }
 
     private void handleBuildingPlacement(NetworkProtocol.BuildingPlacement bp) {
-        // Do not process your own placement if already applied.
         if (bp.username.equals(getLocalUsername())) return;
-
-        // Place the building in the local world.
         for (int x = 0; x < bp.width; x++) {
             for (int y = 0; y < bp.height; y++) {
                 String typeId = bp.blockTypeIds[x][y];
@@ -982,14 +927,9 @@ public class GameClient {
                 handleChatMessage((NetworkProtocol.ChatMessage) object);
             } else if (object instanceof NetworkProtocol.ChestUpdate) {
                 NetworkProtocol.ChestUpdate update = (NetworkProtocol.ChestUpdate) object;
-                // Assume you store a reference to the open chest screen (if any) in GameContext:
                 ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
                 if (chestScreen != null && chestScreen.getChestData().chestId.equals(update.chestId)) {
-                    // Update the chestData with the items from the update
                     chestScreen.getChestData().setItems(update.items);
-                    // Optionally, you can call your helper method:
-                    // chestScreen.updateChestData(updatedChestData);
-                    // (if you choose to construct an updated ChestData from update)
                     chestScreen.updateUI();
                     GameContext.get().getGameScreen().setChestScreen(chestScreen);
                 }
@@ -1044,7 +984,6 @@ public class GameClient {
     private void handlePlayerList(NetworkProtocol.PlayerList list) {
         for (NetworkProtocol.PlayerInfo info : list.players) {
             playerPingMap.put(info.username, info.ping);
-            // Optionally, if you maintain OtherPlayer objects:
             OtherPlayer op = otherPlayers.get(info.username);
             if (op != null) {
                 op.setPing(info.ping);
@@ -1067,14 +1006,8 @@ public class GameClient {
     }
 
     private void handleItemDrop(NetworkProtocol.ItemDrop drop) {
-        // FIX: Removed the check that ignored drops from the local player.
-        // The server is now the source of truth, so all clients must listen.
-
-        // Spawn the dropped item using the new network-safe method.
         GameContext.get().getWorld().getItemEntityManager()
             .spawnItemEntityFromNetwork(drop.itemData, drop.x, drop.y);
-
-        // Play drop sound for nearby drops
         float distance = Vector2.dst(
             GameContext.get().getPlayer().getX(),
             GameContext.get().getPlayer().getY(),
@@ -1149,16 +1082,10 @@ public class GameClient {
             connectionState = ConnectionState.DISCONNECTED;
             isConnected.set(false);
             isAuthenticated.set(false);
-
-            // Save any last known state, if needed:
             if (GameContext.get().getPlayer() != null) {
                 lastKnownState = GameContext.get().getPlayer().getPlayerData();
             }
-
-            // Actual cleanup of the network client:
             cleanupConnection();
-
-            // Show the DisconnectionScreen (via DisconnectionManager) UNLESS we are already disposing:
             if (!isDisposing.get() && disconnectHandler != null) {
                 disconnectHandler.handleDisconnect(reason);
             }
@@ -1275,30 +1202,21 @@ public class GameClient {
         }
 
         try {
-            // Check if chunk is already requested
             if (pendingChunks.contains(chunkPos)) {
                 GameLogger.error("Chunk already requested: " + chunkPos);
                 return;
             }
-
-            // Add to pending chunks first to prevent duplicate requests
             pendingChunks.add(chunkPos);
-
-            // Create the request with the exact coordinates
             NetworkProtocol.ChunkRequest request = new NetworkProtocol.ChunkRequest();
             request.chunkX = (int) chunkPos.x;
             request.chunkY = (int) chunkPos.y;
             request.timestamp = System.currentTimeMillis();
-
-            // Check if this is the player's current chunk for prioritization
             boolean isPlayerCurrentChunk = false;
             if (GameContext.get().getPlayer() != null) {
                 int playerChunkX = Math.floorDiv(GameContext.get().getPlayer().getTileX(), Chunk.CHUNK_SIZE);
                 int playerChunkY = Math.floorDiv(GameContext.get().getPlayer().getTileY(), Chunk.CHUNK_SIZE);
                 isPlayerCurrentChunk = (chunkPos.x == playerChunkX && chunkPos.y == playerChunkY);
             }
-
-            // Send the request with appropriate logging
             client.sendTCP(request);
 
             if (isPlayerCurrentChunk) {
@@ -1306,8 +1224,6 @@ public class GameClient {
             } else {
                 GameLogger.info("Requested chunk at " + chunkPos);
             }
-
-            // Add timeout handling with progressive backoff retry system
             setupChunkRequestTimeout(chunkPos, 1);
 
         } catch (Exception e) {
@@ -1317,11 +1233,9 @@ public class GameClient {
     }
 
     private void setupChunkRequestTimeout(Vector2 chunkPos, int attempt) {
-        // Calculate timeout with progressive backoff
         long timeoutMs = Math.min(2000 + (attempt * 1000), 8000); // 2s first try, +1s per attempt, max 8s
 
         scheduler.schedule(() -> {
-            // Check if chunk is still pending and not received
             if (pendingChunks.contains(chunkPos) &&
                 GameContext.get().getWorld() != null &&
                 !GameContext.get().getWorld().getChunks().containsKey(chunkPos)) {
@@ -1329,43 +1243,27 @@ public class GameClient {
                 if (attempt <= 5) { // Max 5 retry attempts
                     GameLogger.error("Chunk request timeout for " + chunkPos +
                         " - retry attempt " + attempt + "/5");
-
-                    // Check if we're still connected before retrying
                     if (isConnected() && isAuthenticated()) {
-                        // First remove from pending chunks
                         pendingChunks.remove(chunkPos);
-
-                        // Then request again with a small delay
                         try {
                             Thread.sleep(50);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
-
-                        // Create a new request
                         NetworkProtocol.ChunkRequest request = new NetworkProtocol.ChunkRequest();
                         request.chunkX = (int) chunkPos.x;
                         request.chunkY = (int) chunkPos.y;
                         request.timestamp = System.currentTimeMillis();
-
-                        // Mark as pending again
                         pendingChunks.add(chunkPos);
-
-                        // Send retry request
                         client.sendTCP(request);
-
-                        // Setup next timeout with increased attempt counter
                         setupChunkRequestTimeout(chunkPos, attempt + 1);
                     } else {
                         GameLogger.error("Cannot retry chunk request - not connected");
                         pendingChunks.remove(chunkPos);
                     }
                 } else {
-                    // Give up after max attempts
                     GameLogger.error("Max retry attempts reached for chunk " + chunkPos + " - giving up");
                     pendingChunks.remove(chunkPos);
-
-                    // Potentially generate a fallback chunk if absolutely needed
                     if (isPlayerCurrentChunk(chunkPos)) {
                         GameLogger.error("Generating emergency fallback chunk for player position");
                         generateFallbackChunk(chunkPos);
@@ -1379,26 +1277,15 @@ public class GameClient {
         if (!GameContext.get().isMultiplayer() || GameContext.get().getWorld() == null) return;
 
         try {
-            // Generate an emergency fallback chunk
             GameLogger.error("Generating emergency fallback chunk at " + chunkPos);
-
-            // Use client-side generation as a last resort
             long seed = worldSeed;
             BiomeManager biomeManager = GameContext.get().getBiomeManager();
-
-            // Generate a basic chunk
             Chunk fallbackChunk = UnifiedWorldGenerator.generateChunk(
                 (int)chunkPos.x, (int)chunkPos.y, seed, biomeManager);
-
-            // Use plains biome as fallback
             if (fallbackChunk.getBiome() == null) {
                 fallbackChunk.setBiome(biomeManager.getBiome(BiomeType.PLAINS));
             }
-
-            // Store in world's chunk map
             GameContext.get().getWorld().getChunks().put(chunkPos, fallbackChunk);
-
-            // Add a visual indicator that this is a fallback chunk (e.g. special color)
             GameLogger.error("Added emergency fallback chunk at " + chunkPos);
 
         } catch (Exception e) {
@@ -1425,40 +1312,27 @@ public class GameClient {
                 WorldObject.WorldObjectManager objectManager = GameContext.get().getWorld().getObjectManager();
                 switch (update.type) {
                     case ADD:
-                        // Create and add new object from update data.
                         WorldObject newObj = new WorldObject();
                         newObj.updateFromData(update.data);
                         objectManager.addObjectToChunk(newObj);
                         break;
 
                     case REMOVE:
-                        // Ensure tile coordinates are present in the update.
                         if (update.data == null || !update.data.containsKey("tileX") || !update.data.containsKey("tileY")) {
                             GameLogger.error("Client: WorldObjectUpdate REMOVE missing tile position data.");
                             return;
                         }
-                        // Parse the canonical tile coordinates.
                         int baseTileX = Integer.parseInt(update.data.get("tileX").toString());
                         int baseTileY = Integer.parseInt(update.data.get("tileY").toString());
-                        // Use Math.floorDiv to compute the chunk coordinates reliably.
                         int chunkX = Math.floorDiv(baseTileX, Chunk.CHUNK_SIZE);
                         int chunkY = Math.floorDiv(baseTileY, Chunk.CHUNK_SIZE);
                         Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-                        // Remove the object from the WorldObjectManager.
                         objectManager.removeObjectFromChunk(chunkPos, update.objectId, baseTileX, baseTileY);
-
-                        // **New Code:** Also update the local world's chunk.
                         World world = GameContext.get().getWorld();
                         if (world != null) {
-                            // Here we assume that the world's chunk retrieval uses the same coordinate system.
-                            // (If your chunk lookup method expects pixel coordinates, adjust accordingly.)
                             Chunk chunk = world.getChunkAtPosition(baseTileX * World.TILE_SIZE, baseTileY * World.TILE_SIZE);
                             if (chunk != null) {
-                                // Remove the world object from the chunk's internal list.
-                                // (If you don’t already have a helper method, you can iterate through the chunk’s object list.)
                                 chunk.getWorldObjects().removeIf(obj -> obj.getId().equals(update.objectId));
-                                // Mark the chunk as dirty so that it will be re–rendered.
                                 chunk.setDirty(true);
                             }
                         }
@@ -1510,18 +1384,12 @@ public class GameClient {
         }
 
         long now = System.currentTimeMillis();
-
-        // Check if we've exceeded our chunk request rate limit
         if (now - lastRequestTime < CHUNK_REQUEST_INTERVAL) {
             return;
         }
-
-        // Check if we're already at the maximum number of pending chunks
         if (pendingChunks.size() >= MAX_CONCURRENT_CHUNK_REQUESTS) {
             return;
         }
-
-        // Get player's current position for prioritization
         Vector2 playerChunkPos;
         if (GameContext.get().getPlayer() != null) {
             int playerChunkX = Math.floorDiv(GameContext.get().getPlayer().getTileX(), Chunk.CHUNK_SIZE);
@@ -1530,8 +1398,6 @@ public class GameClient {
         } else {
             playerChunkPos = null;
         }
-
-        // Sort the queue by distance to player for priority loading
         if (playerChunkPos != null && chunkRequestQueue.size() > 1) {
             List<Vector2> sortedQueue = new ArrayList<>(chunkRequestQueue);
             sortedQueue.sort((a, b) -> {
@@ -1539,30 +1405,21 @@ public class GameClient {
                 float distB = Vector2.dst(b.x, b.y, playerChunkPos.x, playerChunkPos.y);
                 return Float.compare(distA, distB);
             });
-
-            // Clear the queue and add back in sorted order
             chunkRequestQueue.clear();
             chunkRequestQueue.addAll(sortedQueue);
         }
-
-        // Process the next chunk in the queue
         Vector2 nextChunk = chunkRequestQueue.poll();
-
-        // Double-check that this chunk is still needed
         if (nextChunk != null &&
             GameContext.get().getWorld() != null &&
             !GameContext.get().getWorld().getChunks().containsKey(nextChunk) &&
             !pendingChunks.contains(nextChunk) &&
             !loadingChunks.containsKey(nextChunk)) {
-
-            // Request the chunk
             requestChunk(nextChunk);
             lastRequestTime = now;
         }
     }
 
     private void handlePlayerUpdate(NetworkProtocol.PlayerUpdate update) {
-        // Ignore our own update.
         if (update == null || update.username == null || update.username.equals(localUsername)) {
             return;
         }
@@ -1571,14 +1428,11 @@ public class GameClient {
             synchronized (otherPlayers) {
                 OtherPlayer otherPlayer = otherPlayers.get(update.username);
                 if (otherPlayer == null) {
-                    // Create a new OtherPlayer if one does not exist yet.
                     otherPlayer = new OtherPlayer(update.username, update.x, update.y);
-                    // Set the run flag for the new player:
                     otherPlayer.setWantsToRun(update.wantsToRun);
                     otherPlayers.put(update.username, otherPlayer);
                     GameLogger.info("Created new OtherPlayer: " + update.username);
                 }
-                // Always update the remote player’s data:
                 otherPlayer.setWantsToRun(update.wantsToRun);
                 otherPlayer.updateFromNetwork(update);
                 playerUpdates.put(update.username, update);
@@ -1590,17 +1444,12 @@ public class GameClient {
     private void handlePlayerJoined(NetworkProtocol.PlayerJoined joinMsg) {
         final String joinKey = joinMsg.username + "_" + joinMsg.timestamp;
         Gdx.app.postRunnable(() -> {
-            // =========== IMPORTANT FIX ===========
             if (joinMsg.username.equals(localUsername)) {
-                // This "join" event is actually our own player.
-                // Do NOT create an OtherPlayer. Just return.
                 return;
             }
-            // ======================================
 
             synchronized (otherPlayers) {
                 if (recentJoinEvents.contains(joinKey)) {
-                    // We’ve already processed this join event
                     return;
                 }
 
@@ -1611,8 +1460,6 @@ public class GameClient {
                     existingPlayer.setPosition(new Vector2(joinMsg.x, joinMsg.y));
                     return;
                 }
-
-                // Create a new OtherPlayer only for different usernames
                 OtherPlayer newPlayer = new OtherPlayer(joinMsg.username,
                     joinMsg.x, joinMsg.y);
                 otherPlayers.put(joinMsg.username, newPlayer);
@@ -1651,19 +1498,12 @@ public class GameClient {
 
     private void handlePlayerLeft(NetworkProtocol.PlayerLeft leftMsg) {
         Gdx.app.postRunnable(() -> {
-            // Remove the OtherPlayer instance
             OtherPlayer leftPlayer = otherPlayers.remove(leftMsg.username);
             if (leftPlayer != null) {
                 leftPlayer.dispose();
             }
-
-            // Remove any pending player updates for this username
             playerUpdates.remove(leftMsg.username);
-
-            // **** Remove the player's ping data ****
             playerPingMap.remove(leftMsg.username);
-
-            // Optionally, notify via chat that the player has left:
             if (chatMessageHandler != null) {
                 NetworkProtocol.ChatMessage leaveNotification = new NetworkProtocol.ChatMessage();
                 leaveNotification.sender = "System";
@@ -1684,7 +1524,6 @@ public class GameClient {
 
         Gdx.app.postRunnable(() -> {
             try {
-                // Check if we already have this Pokemon
                 if (trackedWildPokemon.containsKey(spawnData.uuid)) {
                     return;
                 }
@@ -1694,8 +1533,6 @@ public class GameClient {
                     GameLogger.error("Could not load sprite for Pokemon: " + spawnData.data.getName());
                     return;
                 }
-
-                // Create the Pokemon instance
                 WildPokemon pokemon = new WildPokemon(
                     spawnData.data.getName(),
                     spawnData.data.getLevel(),
@@ -1703,20 +1540,12 @@ public class GameClient {
                     (int) spawnData.y,
                     overworldSprite
                 );
-
-                // Set additional data
                 pokemon.setUuid(spawnData.uuid);
                 pokemon.setWorld(GameContext.get().getWorld());
                 pokemon.setDirection("down");
                 pokemon.setSpawnTime(spawnData.timestamp / 1000L);
-
-                // Mark as network controlled
                 pokemon.setNetworkControlled(true);
-
-                // Register in tracking collections
                 trackedWildPokemon.put(spawnData.uuid, pokemon);
-
-                // Add to the world
                 if (GameContext.get().getWorld() != null &&
                     GameContext.get().getWorld().getPokemonSpawnManager() != null) {
                     GameContext.get().getWorld().getPokemonSpawnManager().addPokemonToChunk(
@@ -1780,18 +1609,11 @@ public class GameClient {
             WildPokemon pokemon = trackedWildPokemon.get(update.uuid);
 
             if (pokemon == null) {
-                // If this is a Pokemon we don't know about, request spawn data
                 requestPokemonSpawnData(update.uuid);
                 return;
             }
-
-            // Mark as network controlled
             pokemon.setNetworkControlled(true);
-
-            // Apply the network update
             pokemon.applyNetworkUpdate(update.x, update.y, update.direction, update.isMoving, update.timestamp);
-
-            // Update other properties if provided
             if (update.level > 0) pokemon.setLevel(update.level);
             if (update.currentHp > 0) pokemon.setCurrentHp(update.currentHp);
             pokemon.setSpawnTime(update.timestamp / 1000L);
@@ -1857,7 +1679,6 @@ public class GameClient {
         }
 
         try {
-            // Add position data if missing
             if (action.tileX == 0 && action.tileY == 0 && GameContext.get().getPlayer() != null) {
                 action.tileX = (int) (GameContext.get().getPlayer().getX() / World.TILE_SIZE);
                 action.tileY = (int) (GameContext.get().getPlayer().getY() / World.TILE_SIZE);
@@ -1915,19 +1736,13 @@ public class GameClient {
         this.suppressDisconnectHandling = suppress;
     }
 
-    // In GameClient.java, update handleLoginResponse:
-
     private void handleLoginResponse(NetworkProtocol.LoginResponse response) {
         if (response.success) {
             isAuthenticated.set(true);
             localUsername = response.username;
 
             try {
-                // Initialize basic world settings from the server response.
                 initializeWorldBasic(response.seed, response.worldTimeInMinutes, response.dayLength);
-
-                // **FIX:** If the world is null (for example, because the previous world was disposed),
-                // force a reinitialization of the world.
                 if (GameContext.get().getWorld() == null) {
                     GameContext.get().setWorld(new World(worldData));
                     GameLogger.info("Reinitialized world for multiplayer session.");
@@ -1972,7 +1787,6 @@ public class GameClient {
             worldData.setDayLength(dayLength);
 
             this.worldSeed = seed;
-            // CRITICAL: Initialize BiomeManager with the correct seed
             BiomeManager biomeManager = new BiomeManager(seed);
             GameContext.get().setBiomeManager(biomeManager);
 

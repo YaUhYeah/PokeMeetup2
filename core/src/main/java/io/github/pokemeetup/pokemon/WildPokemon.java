@@ -24,24 +24,17 @@ public class WildPokemon extends Pokemon implements Positionable {
     private static final float SCALE = 2.0f;
     private static final float TILE_SIZE = 32f;
     private static final float MOVEMENT_DURATION = 0.75f;
-    // FIX: Adjusted collision scale to be more accurate, similar to the player's.
     private static final float COLLISION_SCALE = 0.6f;
     private static final float COLLISION_HEIGHT_SCALE = 0.4f;
     private static final float FRAME_WIDTH = World.TILE_SIZE;
     private static final float FRAME_HEIGHT = World.TILE_SIZE;
     private static final float IDLE_BOUNCE_HEIGHT = 2f;
-
-    // Enhanced AI and behavior
     private PokemonAI enhancedAI;
     private Object legacyAI; // Keep for backward compatibility
-
-    // Core properties
     private final PokemonAnimations animations;
     private Rectangle boundingBox;
     private PokemonNetworkSyncComponent networkSync;
     private boolean isNetworkControlled = false;
-
-    // Position and movement
     private float width;
     private float height;
     private float pixelX;
@@ -56,8 +49,6 @@ public class WildPokemon extends Pokemon implements Positionable {
     private boolean isInterpolating = false;
     private float lastUpdateX;
     private float lastUpdateY;
-
-    // Game state
     private World world;
     private long spawnTime;
     private String direction;
@@ -67,8 +58,6 @@ public class WildPokemon extends Pokemon implements Positionable {
     private PokemonDespawnAnimation despawnAnimation;
     private float idleAnimationTime = 0;
     private boolean isIdling = false;
-
-    // Constructors
     public WildPokemon(String name, int level) {
         super(name, level);
         this.pixelX = 0;
@@ -91,11 +80,8 @@ public class WildPokemon extends Pokemon implements Positionable {
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, boolean noTexture) {
         super(noTexture);
-
-        // Snap position to tile grid
         int tileX = MathUtils.floor((float) pixelX / World.TILE_SIZE);
         int tileY = MathUtils.floor((float) pixelY / World.TILE_SIZE);
-        // FIX: Align position to the bottom-center of the tile, just like the player.
         this.pixelX = tileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
         this.pixelY = tileY * World.TILE_SIZE;
         this.x = this.pixelX;
@@ -116,7 +102,6 @@ public class WildPokemon extends Pokemon implements Positionable {
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, TextureRegion overworldSprite) {
         super(name, level);
-        // FIX: Align position to the bottom-center of the tile.
         this.pixelX = pixelX + (World.TILE_SIZE / 2f);
         this.pixelY = pixelY;
         this.x = this.pixelX;
@@ -132,8 +117,6 @@ public class WildPokemon extends Pokemon implements Positionable {
 
         setSpawnTime((long) (System.currentTimeMillis() / 1000f));
         initializePokemonData(name, level);
-
-        // Enhanced AI will be set by the spawn manager
     }
 
     private void initializePokemonData(String name, int level) {
@@ -146,8 +129,6 @@ public class WildPokemon extends Pokemon implements Positionable {
                 this.width *= template.width;
                 this.height *= template.height;
             }
-
-            // Calculate stats
             int baseHp = template.baseStats.baseHp;
             int baseAtk = template.baseStats.baseAttack;
             int baseDef = template.baseStats.baseDefense;
@@ -174,7 +155,6 @@ public class WildPokemon extends Pokemon implements Positionable {
     }
 
     private void initializeBoundingBox() {
-        // FIX: Collision box is now sized relative to a tile and centered on the Pokemon's position.
         float collisionWidth = World.TILE_SIZE * COLLISION_SCALE;
         float collisionHeight = World.TILE_SIZE * COLLISION_HEIGHT_SCALE;
         float bboxX = this.x - collisionWidth / 2f;
@@ -189,8 +169,6 @@ public class WildPokemon extends Pokemon implements Positionable {
             return ((2 * base + iv + ev / 4) * level / 100) + 5;
         }
     }
-
-    // AI Management
     public void setAi(Object ai) {
         if (ai instanceof PokemonAI) {
             this.enhancedAI = (PokemonAI) ai;
@@ -216,8 +194,6 @@ public class WildPokemon extends Pokemon implements Positionable {
     public PokemonAI getEnhancedAI() {
         return enhancedAI;
     }
-
-    // Network and synchronization
     public void setNetworkControlled(boolean networkControlled) {
         this.isNetworkControlled = networkControlled;
     }
@@ -231,8 +207,6 @@ public class WildPokemon extends Pokemon implements Positionable {
     public PokemonNetworkSyncComponent getNetworkSync() {
         return networkSync;
     }
-
-    // Update method with enhanced AI support
     public void update(float delta, World world) {
         if (world == null) return;
 
@@ -242,8 +216,6 @@ public class WildPokemon extends Pokemon implements Positionable {
             }
             return;
         }
-
-        // Handle network synchronization first
         if (isNetworkControlled && networkSync != null) {
             networkSync.update(delta);
 
@@ -254,18 +226,12 @@ public class WildPokemon extends Pokemon implements Positionable {
                 return;
             }
         }
-
-        // Use enhanced AI if available, otherwise fall back to legacy
         if (!isNetworkControlled) {
             if (enhancedAI != null) {
                 enhancedAI.update(delta, world);
             } else if (legacyAI != null) {
-                // Legacy AI update would go here
-                // For now, we'll use enhanced AI as the default
             }
         }
-
-        // Update movement and animations
         if (isMoving) {
             updateMovement(delta);
             idleAnimationTime = 0;
@@ -297,8 +263,6 @@ public class WildPokemon extends Pokemon implements Positionable {
 
         currentMoveTime += delta;
         movementProgress = Math.min(currentMoveTime / MOVEMENT_DURATION, 1.0f);
-
-        // Smooth interpolation
         float smoothProgress = calculateSmoothProgress(movementProgress);
 
         float newX = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);
@@ -341,8 +305,6 @@ public class WildPokemon extends Pokemon implements Positionable {
             startPosition.set(x, y);
             lastUpdateX = x;
             lastUpdateY = y;
-
-            // FIX: Calculate target pixel coordinates to be bottom-center of the tile.
             float targetPixelX = targetTileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
             float targetPixelY = targetTileY * World.TILE_SIZE;
             targetPosition.set(targetPixelX, targetPixelY);
@@ -362,7 +324,6 @@ public class WildPokemon extends Pokemon implements Positionable {
 
     public void updateBoundingBox() {
         if (boundingBox != null) {
-            // FIX: Update bounding box to be centered horizontally on the Pokemon's position.
             float collisionWidth = World.TILE_SIZE * COLLISION_SCALE;
             float collisionHeight = World.TILE_SIZE * COLLISION_HEIGHT_SCALE;
             float newX = x - collisionWidth / 2f;
@@ -421,18 +382,13 @@ public class WildPokemon extends Pokemon implements Positionable {
         if (frame != null) {
             float renderWidth = this.width;
             float renderHeight = this.height;
-            // FIX: The render logic now correctly centers the sprite based on the new position anchor.
             float offsetX = renderWidth / 2f;
             float renderY = y;
-
-            // Apply idle bounce animation
             if (!isMoving) {
                 float bounceOffset = IDLE_BOUNCE_HEIGHT *
                     MathUtils.sin(idleAnimationTime * MathUtils.PI2 / IDLE_BOUNCE_DURATION);
                 renderY += bounceOffset;
             }
-
-            // Apply world lighting
             Color originalColor = batch.getColor().cpy();
             if (world != null) {
                 Color baseColor = world.getCurrentWorldColor();
@@ -457,8 +413,6 @@ public class WildPokemon extends Pokemon implements Positionable {
         }
         return null;
     }
-
-    // Expiration and despawning
     public boolean isExpired() {
         if (isExpired) return true;
         float currentTime = System.currentTimeMillis() / 1000f;
@@ -475,8 +429,6 @@ public class WildPokemon extends Pokemon implements Positionable {
             despawnAnimation = new PokemonDespawnAnimation(getX(), getY(), FRAME_WIDTH, FRAME_HEIGHT);
         }
     }
-
-    // Getters and setters
     public World getWorld() { return world; }
     public void setWorld(World world) { this.world = world; }
 

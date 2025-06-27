@@ -38,8 +38,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
         }
         return instance;
     }
-
-    // When disposing, shut it down:
     public void disposeStorage() {
         storageExecutor.shutdown();
         try {
@@ -128,22 +126,15 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
         GameLogger.info("Saving world: " + worldData.getName());
         synchronized (saveLock) {
             try {
-                // Log pre-save state
                 GameLogger.info("Saving world: " + worldData.getName() +
                     " with commands: " + worldData.commandsAllowed());
-
-                // Create deep copy for saving
                 WorldData saveData = worldData.copy();
-
-                // Verify copy worked
                 if (saveData.commandsAllowed() != worldData.commandsAllowed()) {
                     GameLogger.error("Command state mismatch in copy! Fixing...");
                     saveData.setCommandsAllowed(worldData.commandsAllowed());
                 }
                 Json json = JsonConfig.getInstance();
                 String jsonStr = json.toJson(saveData);
-
-                // Singleplayer mode - save to local file system
                 String worldDirPath = baseDirectory + worldData.getName();
                 if (!fs.exists(worldDirPath)) {
                     fs.createDirectory(worldDirPath);
@@ -151,20 +142,15 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
 
                 String tempFilePath = worldDirPath + "/world.json.temp";
                 fs.writeString(tempFilePath, jsonStr);
-
-                // Verify saved data
                 WorldData verification = json.fromJson(WorldData.class, fs.readString(tempFilePath));
                 if (verification != null) {
                     if (verification.commandsAllowed() != worldData.commandsAllowed()) {
                         GameLogger.error("Command state lost in save! Original: " +
                             worldData.commandsAllowed() + ", Saved: " + verification.commandsAllowed());
-                        // Try to fix
                         verification.setCommandsAllowed(worldData.commandsAllowed());
                         fs.writeString(tempFilePath, json.toJson(verification));
                     }
                 }
-
-                // Move temp file to final location
                 String worldFilePath = worldDirPath + "/world.json";
                 if (fs.exists(worldFilePath)) {
                     fs.deleteFile(worldFilePath);
@@ -173,8 +159,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
 
                 GameLogger.info("Successfully saved world with commands state: " +
                     worldData.commandsAllowed());
-
-                // **NEW:** Invalidate the cache so future loads will get the updated file.
                 worldCache.remove(worldData.getName());
 
             } catch (Exception e) {
@@ -294,7 +278,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
 
             for (String dirName : worldFolders) {
                 String dirPath = "worlds/singleplayer/" + dirName;
-                // Process only directories; skip if it's not a directory.
                 if (!fs.isDirectory(dirPath)) continue;
 
                 String worldFilePath = dirPath + "/world.json";
@@ -304,10 +287,8 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
                 }
 
                 try {
-                    // Load and validate the world
                     WorldData world = loadAndValidateWorld(dirName);
                     if (world != null) {
-                        // Important: Add valid worlds to the worlds map
                         worlds.put(dirName, world);
                         GameLogger.info("Successfully loaded world: " + dirName);
                     }
@@ -326,7 +307,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
     public WorldData loadAndValidateWorld(String worldName) {
         synchronized (saveLock) {
             try {
-                // Check for cached world first
                 WorldData cached = worldCache.get(worldName);
                 if (cached != null) {
                     GameLogger.info("Found cached world: " + worldName);
@@ -350,8 +330,6 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
                     GameLogger.error("Failed to parse world data from JSON");
                     return null;
                 }
-
-                // Log the loaded data state
                 GameLogger.info("Loaded world data - Players: " +
                     (worldData.getPlayers() != null ? worldData.getPlayers().size() : 0));
 

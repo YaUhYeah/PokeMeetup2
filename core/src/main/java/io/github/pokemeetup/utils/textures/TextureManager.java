@@ -25,21 +25,13 @@ public class TextureManager {
     private static final Map<Pokemon.Status, TextureRegion> statusIcons = new HashMap<>();
     private static final Map<Pokemon.Status, Color> STATUS_COLORS = new HashMap<>();
     private static final int[][] RMXP_SUBTILE_MAP = {
-        //  0..5
         {0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0},
-        //  6..11
         {0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {5, 1},
-        // 12..17
         {0, 2}, {1, 2}, {2, 2}, {3, 2}, {4, 2}, {5, 2},
-        // 18..23
         {0, 3}, {1, 3}, {2, 3}, {3, 3}, {4, 3}, {5, 3},
-        // 24..29
         {0, 4}, {1, 4}, {2, 4}, {3, 4}, {4, 4}, {5, 4},
-        // 30..35
         {0, 5}, {1, 5}, {2, 5}, {3, 5}, {4, 5}, {5, 5},
-        // 36..41
         {0, 6}, {1, 6}, {2, 6}, {3, 6}, {4, 6}, {5, 6},
-        // 42..47
         {0, 7}, {1, 7}, {2, 7}, {3, 7}, {4, 7}, {5, 7}
     };
     private static final Map<BiomeType, Map<Integer, TextureRegion>> biomeTileTextures = new HashMap<>();
@@ -51,10 +43,7 @@ public class TextureManager {
     private static final int MAX_SUBTILES = SUBTILE_COLS * SUBTILE_ROWS;  // 48
     private static final Map<String, TextureRegion[]> autotileFrames = new HashMap<>();
     private static final Map<String, TextureRegion[][]> autotileSubTiles = new HashMap<>();
-    // Example table:
     private static final int[] XP_AUTOTILE_TABLE = {
-        // mask=0..15 => subTile in [0..47]
-        // (some will be duplicates if you do the full 47 approach)
         0, 2, 8, 10,
         1, 3, 9, 11,
         24, 26, 16, 18,
@@ -63,7 +52,6 @@ public class TextureManager {
     /**
      * Further splits a single 96×128 frame into 6 columns × 8 rows of 16×16 = 48.
      */
-// In TextureManager.java
 
     public static TextureAtlas ui;
     public static TextureAtlas pokemonback;
@@ -83,8 +71,6 @@ public class TextureManager {
     public static TextureAtlas effects;
     public static TextureAtlas blocks;
     public static TextureAtlas characters;
-    // We know each frame is 96×128, which we can further break into
-    // 16×16 sub-tiles in a 6 col × 8 row layout => 48 possible cells
     public static TextureAtlas clothing;
     public static TextureAtlas autotiles;
     public static TextureAtlas capsuleThrow;
@@ -92,7 +78,6 @@ public class TextureManager {
     private static Texture whitePixel;
 
     static {
-        // Initialize status colors using the Pokémon status type.
         STATUS_COLORS.put(Pokemon.Status.NONE, Color.WHITE);
         STATUS_COLORS.put(Pokemon.Status.ASLEEP, Color.GRAY);
         STATUS_COLORS.put(Pokemon.Status.POISONED, new Color(0.627f, 0.439f, 0.627f, 1));
@@ -104,8 +89,6 @@ public class TextureManager {
     }
 
     static {
-        // Update type color mappings
-        // Initialize type colors
         TYPE_COLORS.put(Pokemon.PokemonType.NORMAL, new Color(0.658f, 0.658f, 0.658f, 1));    // A8A878
         TYPE_COLORS.put(Pokemon.PokemonType.FIGHTING, new Color(0.752f, 0.470f, 0.470f, 1));  // C03028
         TYPE_COLORS.put(Pokemon.PokemonType.FLYING, new Color(0.658f, 0.564f, 0.940f, 1));    // A890F0
@@ -138,8 +121,6 @@ public class TextureManager {
             GameLogger.error("autotiles atlas not loaded!");
             return;
         }
-
-        // Sea autotile remains split as usual into 48 sub–tiles.
         TextureRegion seaReg = autotiles.findRegion("Sea");
         if (seaReg != null) {
             TextureRegion[] seaFrames = splitIntoFrames(seaReg, 96, 128);
@@ -149,15 +130,11 @@ public class TextureManager {
             }
             autotileSubTiles.put("sea", seaAllSubs);
         }
-
-        // For "SandShore", we now use a custom splitting:
-        // We split each 96×128 frame into 3 columns × 4 rows of 32×32 blocks.
         TextureRegion sandReg = autotiles.findRegion("SandShore");
         if (sandReg != null) {
             TextureRegion[] frames = splitIntoFrames(sandReg, 96, 128);
             TextureRegion[][] allSubs = new TextureRegion[frames.length][];
             for (int f = 0; f < frames.length; f++) {
-                // Use our custom method to split into 3x4 32×32 cells.
                 allSubs[f] = splitSubtilesCustom(frames[f], 32, 3, 4);
             }
             autotileSubTiles.put("sand_shore", allSubs);
@@ -170,7 +147,6 @@ public class TextureManager {
      * However, for "sand_shore" we use a custom mapping (see below) and do not scale (since our cells are already 32×32).
      */
     public static TextureRegion getAutoTileRegion(String key, int cornerMask, int animFrame) {
-        // Clamp to 4 bits.
         cornerMask &= 0xF;
         TextureRegion[][] frames = autotileSubTiles.get(key);
         if (frames == null || frames.length == 0) return null;
@@ -178,23 +154,16 @@ public class TextureManager {
         TextureRegion[] subtiles = frames[animFrame];
 
         if (key.equals("sand_shore")) {
-            // Original mapping table for a 3×3 grid (indices 0..8)
             int[] sandMapping = { 4, 1, 5, 2, 7, 4, 8, 5, 3, 0, 4, 1, 6, 3, 7, 4 };
             int baseIndex = sandMapping[cornerMask];
-            // Convert the 0–8 base index (a 3×3 grid) to the proper index into our 3×4 array.
-            // The base tiles live in rows 1–3 (indices 3..11). We do:
-            //   fullIndex = ((baseIndex / 3) + 1) * 3 + (baseIndex % 3)
             int fullIndex = ((baseIndex / 3) + 1) * 3 + (baseIndex % 3);
             if (fullIndex < 0 || fullIndex >= subtiles.length) return null;
-            // No scaling needed because these cells are already 32×32.
             return subtiles[fullIndex];
         } else {
-            // For other autotiles (like "sea"), use the XP_AUTOTILE_TABLE mapping.
             int subTileIndex = XP_AUTOTILE_TABLE[cornerMask];
             if (subTileIndex < 0 || subTileIndex >= subtiles.length) return null;
             TextureRegion mini16 = subtiles[subTileIndex];
             if (mini16 == null) return null;
-            // Scale from 16×16 to 32×32.
             TextureRegion scaled = new TextureRegion(
                 mini16.getTexture(),
                 mini16.getRegionX(),
@@ -261,7 +230,6 @@ public class TextureManager {
         if (index < 0 || index >= subtiles.length) {
             return null;
         }
-        // For sand_shore the sub-tiles are already 32×32 so no scaling is required.
         return subtiles[index];
     }
 
@@ -283,8 +251,6 @@ public class TextureManager {
         return result;
     }
 
-    // NEW constants for sand_shore splitting:
-
 
     /**
      * Splits an entire 768×128 region into an array of 8 frames (each 96×128).
@@ -301,17 +267,11 @@ public class TextureManager {
         TextureRegion[][] frames = autotileSubTiles.get(key);
         if (frames == null || frameIndex < 0 || frameIndex >= frames.length) return null;
         TextureRegion[] subtiles = frames[frameIndex];
-
-        // sub‐tile index in [0..47]
         int idx = row * SUBTILE_COLS + col;
         if (idx < 0 || idx >= subtiles.length) return null;
 
         TextureRegion base16 = subtiles[idx];
         if (base16 == null) return null;
-
-        // Create a "scaled" region by adjusting regionWidth/Height
-        // This doesn’t actually scale the texture data, but the drawing code
-        // in your sprite batch can interpret region width=32, height=32.
         TextureRegion scaled = new TextureRegion(
             base16.getTexture(),
             base16.getRegionX(),
@@ -354,33 +314,20 @@ public class TextureManager {
      * @return a TextureRegion of size 32×32 for the ocean center, or null if unavailable.
      */
     public static TextureRegion getOceanCenterFrame(int animFrame) {
-        // Retrieve the "Sea" region from the autotiles atlas.
         TextureRegion seaRegion = autotiles.findRegion("Sea");
         if (seaRegion == null) {
             GameLogger.error("Cannot find 'Sea' region in the autotiles atlas!");
             return null;
         }
-
-        // Split the Sea region into its eight 96×128 frames.
         TextureRegion[] seaFrames = splitIntoFrames(seaRegion, 96, 128);
         if (seaFrames == null || seaFrames.length == 0) {
             GameLogger.error("No sea frames available!");
             return null;
         }
-
-        // Wrap the animation frame index to the available frames.
         int safeFrame = animFrame % seaFrames.length;
         TextureRegion seaFrame = seaFrames[safeFrame];
-
-        // For a 96×128 frame divided into 32×32 blocks:
-        //   - Horizontally: blocks at x=0, 32, and 64.
-        //   - Vertically: blocks at y=0, 32, 64, and 96.
-        // Previously, the center was taken at block (1,1) (i.e. starting at (32,32)).
-        // Now, to shift one tile down we take block (1,2), which starts at (32,48).
         int centerX = seaFrame.getRegionX() + 32;
         int centerY = seaFrame.getRegionY() + 48;
-
-        // Create and return a new TextureRegion for the 32×32 ocean center.
         TextureRegion oceanCenter = new TextureRegion(seaFrame.getTexture(), centerX, centerY, 32, 32);
         return oceanCenter;
     }
@@ -421,13 +368,11 @@ public class TextureManager {
     }
 
     private static void createFallbackIcons() {
-        // For types, nothing changes.
         for (Pokemon.PokemonType type : Pokemon.PokemonType.values()) {
             Color color = TYPE_COLORS.get(type);
             TextureRegion icon = createColoredIcon(color, TYPE_ICON_WIDTH, TYPE_ICON_HEIGHT);
             typeIcons.put(type, icon);
         }
-        // For status icons, use the Pokemon.Status values.
         for (Pokemon.Status status : Pokemon.Status.values()) {
             if (status != Pokemon.Status.NONE) {
                 Color color = STATUS_COLORS.get(status);
@@ -445,8 +390,6 @@ public class TextureManager {
         Pixmap pixmap = new Pixmap(width, height, Pixmap.Format.RGBA8888);
         pixmap.setColor(color);
         pixmap.fillRectangle(0, 0, width, height);
-
-        // Add a border in white.
         pixmap.setColor(Color.WHITE);
         pixmap.drawRectangle(0, 0, width, height);
 
@@ -455,10 +398,6 @@ public class TextureManager {
 
         return new TextureRegion(texture);
     }
-
-
-
-    // FIX: This method has been rewritten to correctly load status icons from a horizontal sprite sheet.
     private static void loadTypeAndStatusIcons() {
         TextureRegion typesSheet = ui.findRegion("pokemon-type-icons");
         TextureRegion statusSheet = ui.findRegion("status-icons");
@@ -469,16 +408,11 @@ public class TextureManager {
             createFallbackIcons();
             return;
         }
-
-        // Correctly load status icons from a horizontal sprite sheet.
         TextureRegion[][] statusFrames = statusSheet.split(STATUS_ICON_WIDTH, STATUS_ICON_HEIGHT);
         if (statusFrames.length > 0) {
             TextureRegion[] framesInFirstRow = statusFrames[0];
             for (Pokemon.Status status : Pokemon.Status.values()) {
                 if (status == Pokemon.Status.NONE) continue;
-
-                // Enum ordinals start from 0. NONE is 0, PARALYZED is 1, etc.
-                // Spritesheet indices typically start from 0 for the first status icon.
                 int index = status.ordinal() - 1;
 
                 if (index >= 0 && index < framesInFirstRow.length) {
@@ -488,8 +422,6 @@ public class TextureManager {
                 }
             }
         }
-
-        // Optionally check that all icons exist; if not, use fallback.
         boolean hasAllIcons = true;
         for (Pokemon.PokemonType type : Pokemon.PokemonType.values()) {
             if (!typeIcons.containsKey(type)) {
@@ -512,8 +444,6 @@ public class TextureManager {
     public static TextureRegion getStatusIcon(Pokemon.Status status) {
         return statusIcons.get(status);
     }
-
-    // Helper method to get type color
     public static Color getTypeColor(Pokemon.PokemonType type) {
         return TYPE_COLORS.getOrDefault(type, Color.WHITE);
     }
@@ -523,8 +453,6 @@ public class TextureManager {
             GameLogger.error("Attempted to get overworld sprite with null name.");
             return null;
         }
-
-        // Normalize the name to lowercase to ensure consistency
         String normalizedName = name.toUpperCase();
 
         TextureRegion sprite = pokemonoverworld.findRegion(normalizedName + "_overworld");
@@ -566,16 +494,12 @@ public class TextureManager {
                 GameLogger.error("Boy atlas is null");
                 return null;
             }
-
-            // Verify atlas textures
             for (Texture texture : boy.getTextures()) {
                 if (texture == null) {
                     GameLogger.error("Boy atlas texture is null or disposed");
                     return null;
                 }
             }
-
-            // Verify some key regions
             String[] testRegions = {
                 "boy_walk_down",
                 "boy_walk_up",
@@ -609,7 +533,6 @@ public class TextureManager {
 
     public static Texture getWhitePixel() {
         if (whitePixel == null) {
-            // Create on demand if not initialized
             Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
             pixmap.setColor(Color.WHITE);
             pixmap.fill();
@@ -645,7 +568,6 @@ public class TextureManager {
         TextureManager.autotiles = autotiles;
         TextureManager.girl = girl;
         TextureManager.owFx = owFx;
-        // Create white pixel texture
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(Color.WHITE);
         pixmap.fill();
@@ -661,15 +583,11 @@ public class TextureManager {
     }
 
     private static void loadCentralTileTextures() {
-        // Ensure tiles atlas is loaded
         if (tiles == null) {
             GameLogger.error("Tiles atlas is not initialized!");
             return;
         }
-        //            loadAllBiomeTextures();
         GameLogger.info("=== Starting Texture Loading ===");
-
-        // First log all available regions
         GameLogger.info("Available regions in atlas:");
         if (tiles != null) {
             for (TextureAtlas.AtlasRegion region : tiles.getRegions()) {
@@ -763,7 +681,6 @@ public class TextureManager {
         tileTextures.put(FOREST_TALL_GRASS_OVERLAY, tiles.findRegion("forest_tall_grass_overlay"));
         tileTextures.put(DESERT_TALL_GRASS_OVERLAY, tiles.findRegion("desert_grass_overlay"));
         tileTextures.put(BEACH_TALL_GRASS_OVERLAY, tiles.findRegion("beach_tall_grass_overlay"));
-        // Add other tile types as needed
         for (TextureRegion texture : tileTextures.values()) {
             if (texture != null && texture.getTexture() != null) {
                 texture.getTexture().setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
@@ -773,8 +690,6 @@ public class TextureManager {
         for (Map.Entry<Integer, String> entry : TileType.getTileTypeNames().entrySet()) {
             GameLogger.info(String.format("Tile ID %d -> Name '%s'", entry.getKey(), entry.getValue()));
         }
-
-        // Log each texture loading attempt
         for (Map.Entry<Integer, String> entry : TileType.getTileTypeNames().entrySet()) {
             int tileId = entry.getKey();
             String tileName = entry.getValue();

@@ -62,7 +62,6 @@ public class Inventory implements ItemContainer {
             }
 
             int remainingToRemove = count;
-            // Iterate backwards to safely remove items or reduce counts
             for (int i = slots.size() - 1; i >= 0; i--) {
                 if (remainingToRemove <= 0) break;
 
@@ -72,14 +71,11 @@ public class Inventory implements ItemContainer {
                 if (item != null && item.getItemId().equals(itemId)) {
                     int countInSlot = item.getCount();
                     if (countInSlot <= remainingToRemove) {
-                        // Remove the whole stack
                         remainingToRemove -= countInSlot;
                         setItemAt(i, null);
                     } else {
-                        // Reduce the stack count
                         item.setCount(countInSlot - remainingToRemove);
                         remainingToRemove = 0;
-                        // Notify observers since we modified the item directly
                         notifyObservers();
                     }
                 }
@@ -101,8 +97,6 @@ public class Inventory implements ItemContainer {
             int remaining = itemToAdd.getCount();
             Item itemTemplate = ItemManager.getItemTemplate(itemToAdd.getItemId());
             boolean isStackable = (itemTemplate != null && itemTemplate.isStackable());
-
-            // Pass 1: try to stack with existing items
             if (isStackable) {
                 for (Slot slot : slots) {
                     ItemData existing = slot.getItemData();
@@ -114,8 +108,6 @@ public class Inventory implements ItemContainer {
                     }
                 }
             }
-
-            // Pass 2: find empty slots
             for (Slot slot : slots) {
                 if (slot.isEmpty()) {
                     remaining -= isStackable ? Item.MAX_STACK_SIZE : 1;
@@ -169,7 +161,6 @@ public class Inventory implements ItemContainer {
 
     public void update() {
         synchronized (inventoryLock) {
-            // Remove items with invalid counts or UUIDs
             for (Slot slot : slots) {
                 ItemData item = slot.getItemData();
                 if (item != null && (item.getCount() <= 0 || item.getUuid() == null)) {
@@ -177,8 +168,6 @@ public class Inventory implements ItemContainer {
                     slot.setItemData(null);
                 }
             }
-
-            // Rebuild itemTracker
             itemTracker.clear();
             for (Slot slot : slots) {
                 ItemData item = slot.getItemData();
@@ -186,8 +175,6 @@ public class Inventory implements ItemContainer {
                     itemTracker.put(item.getUuid(), item);
                 }
             }
-
-            // Handle items with zero durability
             for (Slot slot : slots) {
                 ItemData item = slot.getItemData();
                 if (item != null && item.getDurability() == 0) {
@@ -222,8 +209,6 @@ public class Inventory implements ItemContainer {
                 if (itemData.getUuid() == null) {
                     itemData.setUuid(UUID.randomUUID());
                 }
-
-                // Ensure unstackable items have count of 1
                 Item itemTemplate = ItemManager.getItemTemplate(itemData.getItemId());
                 if (itemTemplate != null && !itemTemplate.isStackable()) {
                     if (itemData.getCount() > 1) {
@@ -254,7 +239,6 @@ public class Inventory implements ItemContainer {
                     items.add(null);
                     continue;
                 }
-                // Return the actual item, not a defensive copy.
                 items.add(slot.getItemData());
             }
             return items;
@@ -296,8 +280,6 @@ public class Inventory implements ItemContainer {
                 if (itemTemplate.isStackable()) {
                     int remainingCount = itemData.getCount();
                     GameLogger.info("Processing stackable item, count=" + remainingCount);
-
-                    // First pass: Stack with existing items
                     for (int i = 0; i < slots.size() && remainingCount > 0; i++) {
                         Slot slot = slots.get(i);
                         if (slot == null) {
@@ -312,8 +294,6 @@ public class Inventory implements ItemContainer {
 
                             int spaceInStack = Item.MAX_STACK_SIZE - existingItem.getCount();
                             int amountToAdd = Math.min(spaceInStack, remainingCount);
-
-                            // Create new item data with updated count
                             ItemData updatedItem = existingItem.copy();
                             updatedItem.setCount(existingItem.getCount() + amountToAdd);
                             slot.setItemData(updatedItem);
@@ -323,8 +303,6 @@ public class Inventory implements ItemContainer {
                                 ", remaining: " + remainingCount);
                         }
                     }
-
-                    // If we still have items, find empty slots
                     while (remainingCount > 0) {
                         Slot emptySlot = findEmptySlot();
                         if (emptySlot == null) {
@@ -344,7 +322,6 @@ public class Inventory implements ItemContainer {
                     notifyObservers();
                     return true;
                 } else {
-                    // Non-stackable items
                     for (int i = 0; i < itemData.getCount(); i++) {
                         Slot emptySlot = findEmptySlot();
                         if (emptySlot == null) {
@@ -399,16 +376,12 @@ public class Inventory implements ItemContainer {
     public void validateAndRepair() {
         synchronized (inventoryLock) {
             try {
-
-                // Validate slots array
                 if (slots.size() != INVENTORY_SIZE) {
                     GameLogger.error("Invalid slots size: " + slots.size());
                     while (slots.size() < INVENTORY_SIZE) {
                         slots.add(new Slot());
                     }
                 }
-
-                // Rebuild item tracker
                 itemTracker.clear();
                 int itemCount = 0;
 
@@ -422,13 +395,10 @@ public class Inventory implements ItemContainer {
                     ItemData item = slot.getItemData();
                     if (item != null) {
                         itemCount++;
-                        // Ensure valid UUID
                         if (item.getUuid() == null) {
                             item.setUuid(UUID.randomUUID());
                         }
                         itemTracker.put(item.getUuid(), item);
-
-                        // Validate stack size and unstackable items
                         Item itemTemplate = ItemManager.getItemTemplate(item.getItemId());
                         if (itemTemplate != null) {
                             if (!itemTemplate.isStackable() && item.getCount() > 1) {

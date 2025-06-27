@@ -36,28 +36,19 @@ public class BuildingHotbar extends Table {
     private int selectedIndex = 0;
 
     public BuildingHotbar(Skin skin) {
-        // Set background similar to the regular hotbar
         this.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("hotbar_bg")));
         this.pad(PADDING);
-
-        // Create the slots table (horizontal layout)
         slotsTable = new Table();
-
-        // Scroll pane for horizontal scrolling if needed
         ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle(
             skin.get(ScrollPane.ScrollPaneStyle.class));
         scrollStyle.hScrollKnob = new TextureRegionDrawable(TextureManager.ui.findRegion("scrollbar_knob"));
         scrollPane = new ScrollPane(slotsTable, scrollStyle);
         scrollPane.setScrollingDisabled(false, true);
         scrollPane.setFadeScrollBars(false);
-
-        // Fit the hotbar width to screen width
         float totalWidth = Gdx.graphics.getWidth() - 20f;  // a margin from screen edges
         float totalHeight = SLOT_SIZE + PADDING * 2;
 
         this.add(scrollPane).width(totalWidth).height(totalHeight);
-
-        // Initialize with a default building
         initializeBuildings();
         refreshSlots();
 
@@ -65,7 +56,6 @@ public class BuildingHotbar extends Table {
     }
 
     private void initializeBuildings() {
-        // Example: Wooden House
         BuildingData woodenHouse = new BuildingData(
             "wooden_house",
             "Wooden House",
@@ -83,17 +73,11 @@ public class BuildingHotbar extends Table {
         for (int i = 0; i < buildingSlots.size(); i++) {
             final int index = i;
             BuildingData building = buildingSlots.get(i);
-
-            // Create slot table
             Table slot = new Table();
             slot.setBackground(new TextureRegionDrawable(
                 TextureManager.ui.findRegion(index == selectedIndex ? "slot_selected" : "slot_normal")));
-
-            // Create preview image
             Table previewContainer = createBuildingPreview(building);
             slot.add(previewContainer).size(SLOT_SIZE).pad(PADDING);
-
-            // Add click listener
             slot.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
@@ -108,16 +92,12 @@ public class BuildingHotbar extends Table {
     private Table createBuildingPreview(BuildingData building) {
         Table container = new Table();
         if (building != null) {
-            // Use a predefined preview image from the buildings atlas
-            // Adjust the region name if needed to match your actual texture name
             TextureRegion finalHouseTexture = TextureManager.buildings.findRegion(building.getId());
             if (finalHouseTexture != null) {
                 Image previewImage = new Image(finalHouseTexture);
                 previewImage.setScaling(Scaling.fit);
                 container.add(previewImage).size(SLOT_SIZE, SLOT_SIZE).center();
             } else {
-                // If no preview image is found, show a placeholder
-                // Make sure to have a fallback in case the preview image doesn't exist
                 Label label = new Label("No Preview", getSkin());
                 container.add(label).center();
             }
@@ -130,7 +110,6 @@ public class BuildingHotbar extends Table {
     @Override
     public void act(float delta) {
         super.act(delta);
-        // If you want to handle keyboard scrolling:
         if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
             scroll(-5);
         } else if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {

@@ -20,7 +20,6 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
 
     @Override
     public void moveFile(String sourcePath, String destinationPath) throws IOException {
-        // Use getFile to get the proper internal storage location.
         File sourceFile = getFile(sourcePath);
         File destFile = getFile(destinationPath);
 
@@ -129,11 +128,9 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
 
     @Override
     public String readString(String path) throws IOException {
-        // First try reading from assets
         try {
             return readFromAssets(path);
         } catch (IOException e) {
-            // If not in assets, try internal storage
             return readFromInternal(path);
         }
     }
@@ -199,11 +196,8 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
     }
 
     private String normalizePath(String path) {
-        // Remove any leading slashes or "assets/" prefix
         path = path.replaceFirst("^/+", "")
             .replaceFirst("^assets/", "");
-
-        // Handle special directories like "Data"
         if (path.startsWith("Data/")) {
             path = "Data/" + path.substring(5);
         }
@@ -251,7 +245,6 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
             File[] files = dir.listFiles();
             if (files != null) {
                 for (File file : files) {
-                    // Construct the relative path for the sub-file or subdirectory.
                     String relativePath = path + "/" + file.getName();
                     if (file.isDirectory()) {
                         deleteDirectory(relativePath);
@@ -290,7 +283,6 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
                 GameLogger.info("Successfully found asset at: " + tryPath);
                 return readStreamToString(is);
             } catch (IOException ignored) {
-                // Try next path
             }
         }
 
@@ -299,12 +291,9 @@ public class AndroidFileSystemDelegate implements FileSystemDelegate {
 
     @Override
     public boolean exists(String path) {
-        // Check internal storage first
         if (getFile(path).exists()) {
             return true;
         }
-
-        // Then check assets
         try {
             String normalizedPath = normalizePath(path);
             context.getAssets().open(normalizedPath).close();

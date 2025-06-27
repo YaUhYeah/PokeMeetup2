@@ -78,11 +78,7 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
 
         initializeInventoryData();
         setupHeldItemDisplay();
-
-        // First initialize the crafting grid
         initializeCraftingGrid();
-
-        // Then setup the UI which uses the initialized slots
         setupUI(skin);
 
         inventory.addObserver(this);
@@ -135,8 +131,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
             InventorySlotData slotData = new InventorySlotData(i, InventorySlotData.SlotType.EXPANDED_CRAFTING, craftingGrid);
             InventorySlotUI slot = new InventorySlotUI(slotData, skin, this, SLOT_SIZE);
             craftingSlots.add(slot);
-
-            // Register slot observer with crafting system
             craftingSystem.addSlotObserver(i, slot);
         }
     }
@@ -157,9 +151,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     public Skin getSkin() {
         return skin;
     }
-
-
-    // Add validation method
     private void validateInitialization() {
         if (craftingSlots == null || craftingSlots.isEmpty()) {
             GameLogger.error("Crafting slots not properly initialized!");
@@ -175,8 +166,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
 
         Table craftingGridTable = new Table();
         craftingGridTable.defaults().size(SLOT_SIZE).pad(2);
-
-        // Create crafting slots and add them to the grid
         for (int row = 0; row < GRID_SIZE; row++) {
             for (int col = 0; col < GRID_SIZE; col++) {
                 int index = row * GRID_SIZE + col;
@@ -185,13 +174,9 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
             }
             craftingGridTable.row();
         }
-
-        // Create result slot
         InventorySlotData resultSlotData = new InventorySlotData(-1, InventorySlotData.SlotType.CRAFTING_RESULT, craftingGrid);
         resultSlotData.setSlotType(InventorySlotData.SlotType.CRAFTING_RESULT);
         resultSlot = new InventorySlotUI(resultSlotData, skin, this, SLOT_SIZE);
-
-        // Create the crafting table layout
         Table craftingTable = new Table();
         craftingTable.add(craftingGridTable);
         craftingTable.add(new Image(TextureManager.ui.findRegion("arrow"))).padLeft(10).padRight(10);
@@ -203,8 +188,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     private void setupUI(Skin skin) {
         float screenWidth = Gdx.graphics.getWidth();
         float screenHeight = Gdx.graphics.getHeight();
-
-        // Calculate relative sizes
         float baseSize = Math.min(screenWidth * 0.04f, screenHeight * 0.07f);
         float SLOT_SIZE = Math.max(baseSize, 40); // Minimum size of 40
         float containerPadding = SLOT_SIZE * 0.25f;
@@ -212,29 +195,17 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         Table mainTable = new Table();
         mainTable.setFillParent(true);
         mainTable.center();
-
-        // Semi-transparent background
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         bgPixmap.setColor(0, 0, 0, 0.2f);
         bgPixmap.fill();
         mainTable.setBackground(new TextureRegionDrawable(new TextureRegion(new Texture(bgPixmap))));
         bgPixmap.dispose();
-
-        // Content container for better centering
         Table contentContainer = new Table();
-
-        // Split container for crafting and recipes side by side
         Table splitContainer = new Table();
-
-        // Crafting section (left side)
         Table craftingContainer = createCraftingSection();
         craftingContainer.pad(containerPadding);
-
-        // Recipe section (right side)
         RecipeGlossaryUI recipeGlossary = new RecipeGlossaryUI(stage, skin, this, craftingSystem);
         ScrollPane recipeScroll = recipeGlossary.getRecipeScroll();
-
-        // Recipe container with proper sizing
         Table recipeContainer = new Table();
         recipeContainer.add(new Label("Available Recipes", skin)).pad(containerPadding).row();
         recipeContainer.add(recipeScroll)
@@ -242,18 +213,12 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
             .minWidth(SLOT_SIZE * 6)     // Minimum width to show recipes properly
             .height(screenHeight * 0.4f)  // 40% of screen height
             .pad(containerPadding);
-
-        // Add both to split container
         splitContainer.add(craftingContainer).padRight(SLOT_SIZE * 0.5f);
         splitContainer.add(recipeContainer);
 
         contentContainer.add(splitContainer).pad(containerPadding).row();
-
-        // Inventory section
         Table inventoryContainer = createInventorySection();
         contentContainer.add(inventoryContainer).padTop(SLOT_SIZE * 0.5f).row();
-
-        // Close button
         TextButton closeButton = new TextButton("Close", skin);
         closeButton.addListener(new ClickListener() {
             @Override
@@ -275,8 +240,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     public void resize(int width, int height) {
         if (stage != null) {
             stage.getViewport().update(width, height, true);
-
-            // Completely rebuild UI on significant size changes
             stage.clear();
             setupUI(skin);
         }
@@ -287,8 +250,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
             inventorySlotData[i] = new InventorySlotData(i, InventorySlotData.SlotType.INVENTORY, inventory);
             inventorySlotData[i].setSlotType(InventorySlotData.SlotType.INVENTORY);
         }
-
-        // Load current inventory state
         List<ItemData> items = inventory.getAllItems();
         for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
             if (i < items.size() && items.get(i) != null) {
@@ -299,7 +260,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     }
 
     private void returnItemsToInventory() {
-        // Only return items when closing the crafting table
         if (!isVisible) {
             if (heldItem != null) {
                 inventory.addItem(new ItemData(heldItem.getName(), heldItem.getCount(), heldItem.getUuid()));
@@ -349,8 +309,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
     @Override
     public void render(float delta) {
         if (!isVisible) return;
-
-        // Check if player is still in range
         if (!isPlayerInRange()) {
             close();
             return;
@@ -361,8 +319,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
 
         stage.act(delta);
         stage.draw();
-
-        // Update held item position if any
         updateHeldItemPosition();
     }
 
@@ -423,31 +379,20 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         GameLogger.info("Disposing CraftingTableScreen resources");
 
         try {
-            // Return any held items to inventory first
             if (heldItem != null) {
                 returnHeldItemToInventory();
             }
-
-            // Return crafting grid items to inventory
             returnItemsToInventory();
-
-            // Dispose of stage and resources
             if (stage != null) {
                 stage.dispose();
             }
-
-            // Clear all slots
             if (craftingSlots != null) {
                 craftingSlots.clear();
             }
-
-            // Dispose of textures and other resources
             if (heldItemGroup != null) {
                 heldItemGroup.remove();
                 heldItemGroup = null;
             }
-
-            // Clear references
             craftingSlots = null;
             resultSlot = null;
             heldItem = null;
@@ -479,7 +424,6 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         heldItemGroup.clear();
 
         if (heldItem != null) {
-            // Load texture
             TextureRegion texture = TextureManager.items.findRegion(heldItem.getName().toLowerCase() + "_item");
             if (texture == null) {
                 texture = TextureManager.items.findRegion(heldItem.getName().toLowerCase());

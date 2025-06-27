@@ -12,16 +12,11 @@ public class GameLogger {
     private static PrintWriter fileWriter;
 
     static {
-        // Read logging toggles from system properties (or set them manually)
         isInfoEnabled =true;// Boolean.getBoolean("game.log.info");  // default is false
-        // Always enable errors unless explicitly disabled:
         isErrorEnabled = !Boolean.getBoolean("game.log.error.disabled");
-
-        // Optionally, setup file logging. Log file will be appended.
         try {
             fileWriter = new PrintWriter(new FileWriter("game.log", true));
         } catch (IOException e) {
-            // If file logging fails, fall back to console-only logging.
             System.err.println("Unable to open log file: " + e.getMessage());
         }
     }
@@ -54,14 +49,10 @@ public class GameLogger {
             fileWriter.flush();
         }
     }
-
-    // Optionally, allow toggling logging at runtime
     public static void setLogging(boolean infoEnabled, boolean errorEnabled) {
         isInfoEnabled = infoEnabled;
         isErrorEnabled = errorEnabled;
     }
-
-    // Call this on shutdown to close the log file
     public static void close() {
         if (fileWriter != null) {
             fileWriter.close();

@@ -67,7 +67,6 @@ public class ServerStorageSystem {
     }
 
     public synchronized WorldData loadWorld(String name) {
-        // Check cache first
         WorldData cached = worldCache.get(name);
         if (cached != null) {
             return cached;
@@ -101,22 +100,15 @@ public class ServerStorageSystem {
         try {
             String worldPath = SERVER_WORLD_DIR + world.getName() + "/";
             fs.createDirectory(worldPath);
-
-
-            // Save using temporary file
             String tempPath = worldPath + "world.json.temp";
             String finalPath = worldPath + "world.json";
 
             String jsonData = json.prettyPrint(world);
             fs.writeString(tempPath, jsonData);
-
-            // If temporary file was written successfully, move it to the actual file
             if (fs.exists(finalPath)) {
                 fs.deleteFile(finalPath);
             }
             fs.moveFile(tempPath, finalPath);
-
-            // Update cache
             worldCache.put(world.getName(), world);
 
             GameLogger.info("Saved world to server storage: " + world.getName());
@@ -169,7 +161,6 @@ public class ServerStorageSystem {
     }
 
     public void shutdown() throws InterruptedException {
-        // Save all cached data
         for (WorldData world : worldCache.values()) {
             saveWorld(world);
         }

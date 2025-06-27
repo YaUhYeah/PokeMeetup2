@@ -10,10 +10,7 @@ import io.github.pokemeetup.utils.GameLogger;
 public class Lwjgl3Launcher {
 
     public static void main(String[] args) {
-        // Log the working directory for debugging.
         GameLogger.info("Working directory: " + System.getProperty("user.dir"));
-
-        // Instantiate the game.
         CreatureCaptureGame game = new CreatureCaptureGame(false);
 
         Lwjgl3ApplicationConfiguration configuration = getDefaultConfiguration();

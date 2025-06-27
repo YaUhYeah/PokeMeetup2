@@ -15,18 +15,13 @@ public class PokemonAnimations {
     private static final int FRAME_WIDTH = SPRITE_SHEET_SIZE / FRAMES_PER_DIRECTION;  // 64
     private static final int FRAME_HEIGHT = SPRITE_SHEET_SIZE / FRAMES_PER_DIRECTION; // 64
     private static final float FRAME_DURATION = 0.2f;
-    // The first frame in each row is used as the “standing” (idle) frame.
     private final TextureRegion[] standingFrames;
-    // Animations for each direction (rows in the sprite sheet)
     private Animation<TextureRegion> walkDownAnimation;  // Row 0
     private Animation<TextureRegion> walkLeftAnimation;  // Row 1
     private Animation<TextureRegion> walkRightAnimation; // Row 2
     private Animation<TextureRegion> walkUpAnimation;    // Row 3
-    // Internal clock that tracks animation progress.
     private float stateTime;
     private TextureRegion defaultFrame;
-
-    // Used to track whether the animation should be running.
     private boolean isMoving;
     private String currentDirection;
     private boolean isInitialized;
@@ -64,22 +59,17 @@ public class PokemonAnimations {
     }
 
     private void initializeAnimations(TextureRegion spriteSheet) {
-        // Split the sprite sheet into individual frames.
         TextureRegion[][] allFrames = new TextureRegion[4][FRAMES_PER_DIRECTION];
         for (int row = 0; row < 4; row++) {
             for (int col = 0; col < FRAMES_PER_DIRECTION; col++) {
                 int x = col * FRAME_WIDTH;
                 int y = row * FRAME_HEIGHT;
                 allFrames[row][col] = new TextureRegion(spriteSheet, x, y, FRAME_WIDTH, FRAME_HEIGHT);
-
-                // Store the first frame of each row for the idle/standing pose.
                 if (col == 0) {
                     standingFrames[row] = new TextureRegion(allFrames[row][0]);
                 }
             }
         }
-
-        // Create the walking animations.
         walkDownAnimation = new Animation<>(FRAME_DURATION, allFrames[0]);
         walkLeftAnimation = new Animation<>(FRAME_DURATION, allFrames[1]);
         walkRightAnimation = new Animation<>(FRAME_DURATION, allFrames[2]);
@@ -175,7 +165,6 @@ public class PokemonAnimations {
         if (isMoving) {
             stateTime += delta;
         } else {
-            // When idle, update stateTime more slowly.
             stateTime += delta * 0.5f;
         }
     }

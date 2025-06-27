@@ -38,7 +38,6 @@ public class WeatherSystem {
     private static final float LANDING_EFFECT_DURATION = 0.3f;
 
     public void updateServerState(float delta, BiomeTransitionResult biomeTransition, float temperature, float timeOfDay) {
-        // Handle manual override
         if (manualOverrideTimer > 0) {
             manualOverrideTimer -= delta;
         } else {
@@ -50,8 +49,6 @@ public class WeatherSystem {
                     currentWeather, intensity));
             }
         }
-
-        // Handle smooth weather transitions for state
         if (transitionProgress < 1f) {
             transitionProgress = Math.min(1f, transitionProgress + delta / WEATHER_TRANSITION_DURATION);
             intensity = MathUtils.lerp(intensity, targetIntensity, transitionProgress);
@@ -92,8 +89,6 @@ public class WeatherSystem {
         this.intensity = 0f;
         this.targetIntensity = 0f;
         this.accumulation = 0f;
-
-        // Initialize textures
         if (TextureManager.effects != null) {
             this.rainDrop = TextureManager.effects.findRegion("rain_drop");
             this.snowflake = TextureManager.effects.findRegion("snowflake");
@@ -107,16 +102,12 @@ public class WeatherSystem {
             this.rainSplash = null;
             this.snowPoof = null;
         }
-
-        // Initialize particle pool for performance
         this.particlePool = new Pool<WeatherParticle>() {
             @Override
             protected WeatherParticle newObject() {
                 return new WeatherParticle();
             }
         };
-
-        // Initialize landing effect pool
         this.landingEffectPool = new Pool<LandingEffect>(LANDING_EFFECT_POOL_SIZE) {
             @Override
             protected LandingEffect newObject() {
@@ -138,11 +129,7 @@ public class WeatherSystem {
      */
     private void updateWeatherType(BiomeTransitionResult biomeTransition, float temperature, float timeOfDay) {
         float randomValue = MathUtils.random();
-
-        // Apply weather rarity modifiers
         float weatherChance = 0.3f; // Base 30% chance of weather vs clear
-
-        // Time of day modifiers
         if (timeOfDay >= 6 && timeOfDay < 10) {
             weatherChance *= 0.7f; // Less weather in morning
         } else if (timeOfDay >= 16 && timeOfDay < 20) {
@@ -150,8 +137,6 @@ public class WeatherSystem {
         } else if (timeOfDay >= 20 || timeOfDay < 6) {
             weatherChance *= 1.1f; // Slightly more at night
         }
-
-        // Temperature modifiers
         if (temperature > 30) {
             weatherChance *= 0.8f; // Less weather when hot
         } else if (temperature < 10) {
@@ -240,7 +225,6 @@ public class WeatherSystem {
     }
 
     public void update(float delta, BiomeTransitionResult biomeTransition, float temperature, float timeOfDay, GameScreen gameScreen) {
-        // Handle manual override
         if (manualOverrideTimer > 0) {
             manualOverrideTimer -= delta;
         } else {
@@ -252,18 +236,11 @@ public class WeatherSystem {
                     currentWeather, intensity, temperature));
             }
         }
-
-        // Handle smooth weather transitions
         if (transitionProgress < 1f) {
             transitionProgress = Math.min(1f, transitionProgress + delta / WEATHER_TRANSITION_DURATION);
-
-            // Smooth intensity transition
             intensity = MathUtils.lerp(intensity, targetIntensity, transitionProgress);
-
-            // Switch weather type at midpoint
             if (transitionProgress >= 0.5f && currentWeather != targetWeather) {
                 currentWeather = targetWeather;
-                // Clear particles when switching weather types
                 clearParticles();
             }
         }
@@ -313,16 +290,12 @@ public class WeatherSystem {
         while (iter.hasNext()) {
             WeatherParticle particle = iter.next();
             particle.update(delta);
-
-            // Check if particle has landed
             if (world != null && shouldCheckLanding(particle)) {
                 int tileX = (int)(particle.x / World.TILE_SIZE);
                 int tileY = Math.floorDiv((int)particle.y, World.TILE_SIZE);
 
                 if (world.isPositionLoaded(tileX, tileY)) {
                     int tileType = world.getTileTypeAt(tileX, tileY);
-
-                    // Check if particle should land on this tile
                     if (particle.y <= tileY * World.TILE_SIZE + getParticleLandingHeight(tileType)) {
                         createLandingEffect(particle);
                         iter.remove();
@@ -331,8 +304,6 @@ public class WeatherSystem {
                     }
                 }
             }
-
-            // Remove if out of bounds
             if (particle.isOutOfBounds(left, right, bottom, top)) {
                 iter.remove();
                 particlePool.free(particle);
@@ -341,7 +312,6 @@ public class WeatherSystem {
     }
 
     private boolean shouldCheckLanding(WeatherParticle particle) {
-        // Only check landing for rain and snow
         return currentWeather == WeatherType.RAIN ||
             currentWeather == WeatherType.HEAVY_RAIN ||
             currentWeather == WeatherType.SNOW ||
@@ -349,7 +319,6 @@ public class WeatherSystem {
     }
 
     private float getParticleLandingHeight(int tileType) {
-        // Different landing heights for different tile types
         if (TileType.isWaterPuddle(tileType) || tileType==TileType.WATER) {
             return 2f; // Land slightly above water
         } else if (tileType == TileType.TALL_GRASS || tileType == TileType.FOREST_TALL_GRASS) {
@@ -387,8 +356,6 @@ public class WeatherSystem {
         }
 
         float particleSpawnRate = intensity * MAX_PARTICLE_SPAWN_RATE;
-
-        // Adjust spawn rate for heavy weather types
         if (currentWeather == WeatherType.HEAVY_RAIN || currentWeather == WeatherType.THUNDERSTORM) {
             particleSpawnRate *= 1.3f; // Less aggressive multiplier
         } else if (currentWeather == WeatherType.BLIZZARD) {
@@ -410,15 +377,12 @@ public class WeatherSystem {
 
     private WeatherParticle createParticle(GameScreen gameScreen) {
         OrthographicCamera camera = gameScreen.getCamera();
-        // 1. Define the landing area on the ground (the camera's view)
         Rectangle landingZone = new Rectangle(
             camera.position.x - camera.viewportWidth * camera.zoom / 2,
             camera.position.y - camera.viewportHeight * camera.zoom / 2,
             camera.viewportWidth * camera.zoom,
             camera.viewportHeight * camera.zoom
         );
-
-        // 2. Pick a random landing spot (target) within this zone
         float targetX = MathUtils.random(landingZone.x, landingZone.x + landingZone.width);
         float targetY = MathUtils.random(landingZone.y, landingZone.y + landingZone.height);
 
@@ -440,11 +404,7 @@ public class WeatherSystem {
                     particlePool.free(particle);
                     return null;
                 }
-
-                // Randomize the fall duration to de-synchronize particles
                 fallDuration = MathUtils.random(0.1f, 1.5f);
-
-                // Calculate spawn position based on target and randomized fall duration
                 spawnX = targetX - (velocityX * fallDuration);
                 spawnY = targetY - (velocityY * fallDuration);
 
@@ -460,8 +420,6 @@ public class WeatherSystem {
                     particlePool.free(particle);
                     return null;
                 }
-
-                // Randomize fall duration for snow as well
                 fallDuration = MathUtils.random(1.0f, 4.0f); // Snow falls slower, so longer duration range
 
                 spawnX = targetX - (baseVelocityX * fallDuration);
@@ -473,7 +431,6 @@ public class WeatherSystem {
                 break;
 
             case SANDSTORM:
-                // Sandstorms blow horizontally, so this logic is different
                 float viewWidth = camera.viewportWidth * camera.zoom;
                 float viewHeight = camera.viewportHeight * camera.zoom;
 
@@ -502,8 +459,6 @@ public class WeatherSystem {
         Color prevColor = batch.getColor().cpy();
         int prevSrcFunc = batch.getBlendSrcFunc();
         int prevDstFunc = batch.getBlendDstFunc();
-
-        // Set appropriate blending for weather
         if (currentWeather == WeatherType.RAIN ||
             currentWeather == WeatherType.HEAVY_RAIN ||
             currentWeather == WeatherType.THUNDERSTORM) {
@@ -512,21 +467,15 @@ public class WeatherSystem {
         } else {
             batch.setColor(1, 1, 1, intensity * 0.8f);
         }
-
-        // Render particles
         for (WeatherParticle particle : particles) {
             particle.render(batch);
         }
-
-        // Render landing effects
         for (LandingEffect effect : activeLandingEffects) {
             effect.render(batch);
         }
 
         batch.setBlendFunction(prevSrcFunc, prevDstFunc);
         batch.setColor(prevColor);
-
-        // Render fog
         if (currentWeather == WeatherType.FOG) {
             renderFog(batch,
                 camera.position.x - camera.viewportWidth / 2,
@@ -621,12 +570,9 @@ public class WeatherSystem {
         }
 
         public void update(float delta) {
-            // Basic movement
             x += velocityX * delta;
             y += velocityY * delta;
             lifetime += delta;
-
-            // Add sway for snow particles
             if (texture != null && velocityY < -100 && velocityY > -200) { // Snow particles
                 float swayAmount = MathUtils.sin(lifetime * SNOW_SWAY_FREQUENCY + swayOffset) * SNOW_SWAY_AMPLITUDE;
                 x += swayAmount * delta;
@@ -694,8 +640,6 @@ public class WeatherSystem {
             this.lifetime = 0f;
             this.alpha = 1f;
             this.type = weatherType;
-
-            // Set texture and scale based on weather type
             if (weatherType == WeatherType.RAIN || weatherType == WeatherType.HEAVY_RAIN) {
                 this.texture = TextureManager.owFx.findRegion("rain_splash");
                 this.scale = 0.5f + MathUtils.random() * 0.3f;
@@ -707,10 +651,7 @@ public class WeatherSystem {
 
         public void update(float delta) {
             lifetime += delta;
-            // Fade out over the duration
             alpha = 1f - (lifetime / LANDING_EFFECT_DURATION);
-
-            // Expand slightly for splash effect
             if (type == WeatherType.RAIN || type == WeatherType.HEAVY_RAIN) {
                 scale += delta * 0.5f;
             }

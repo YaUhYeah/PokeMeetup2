@@ -36,27 +36,18 @@ public class DayNightCycle {
 
 
     public static Color getWorldColor(float hourOfDay) {
-        // Add debug logging
 
         Color result = new Color();
-
-        // Check if it's nighttime (including crossing midnight)
         if (hourOfDay >= NIGHT_START || hourOfDay < DAWN_START) {
             return new Color(NIGHT_COLOR);
         }
-
-        // Dawn transition
         if (hourOfDay >= DAWN_START && hourOfDay < DAY_START) {
             float progress = (hourOfDay - DAWN_START);
             return result.set(DAWN_COLOR).lerp(DAY_COLOR, progress);
         }
-
-        // Day time
         if (hourOfDay >= DAY_START && hourOfDay < DUSK_START) {
             return new Color(DAY_COLOR);
         }
-
-        // Dusk transition
         float progress = (hourOfDay - DUSK_START);
         return result.set(DAY_COLOR).lerp(NIGHT_COLOR, progress);
     }

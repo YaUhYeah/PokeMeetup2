@@ -23,7 +23,6 @@ public class RecipeManager {
     }
 
     private void initializeRecipes() {
-        // Add Wooden Axe recipe
         Map<String, Integer> axeIngredients = new HashMap<>();
         axeIngredients.put(ItemManager.ItemIDs.WOODEN_PLANKS, 3);
         axeIngredients.put(ItemManager.ItemIDs.STICK, 2);
@@ -38,8 +37,6 @@ public class RecipeManager {
             },
             true // Shaped recipe
         ));
-
-        // Add Crafting Table recipe
         Map<String, Integer> tableIngredients = new HashMap<>();
         tableIngredients.put(ItemManager.ItemIDs.WOODEN_PLANKS, 4);
         addRecipe(new CraftingRecipe(
@@ -52,8 +49,6 @@ public class RecipeManager {
             },
             true
         ));
-
-        // Add Stick recipe
         Map<String, Integer> stickIngredients = new HashMap<>();
         stickIngredients.put(ItemManager.ItemIDs.WOODEN_PLANKS, 2);
         addRecipe(new CraftingRecipe(

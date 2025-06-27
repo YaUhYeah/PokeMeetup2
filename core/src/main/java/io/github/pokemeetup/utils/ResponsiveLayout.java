@@ -40,8 +40,6 @@ public class ResponsiveLayout {
         float scale = getFontScale();
         return new Vector2(baseWidth * scale, baseHeight * scale);
     }
-
-    // Screen size categories
     public enum ScreenSize {
         SMALL, MEDIUM, LARGE
     }

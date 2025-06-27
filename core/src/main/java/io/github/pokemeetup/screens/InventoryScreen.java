@@ -76,8 +76,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         inventory.addObserver(this);
 
         GameLogger.info("InventoryScreen initialized");
-        // Removed stage listener that handled global touches.
-        // Now rely solely on InventorySlotUI logic for item placement.
     }
 
     @Override
@@ -90,11 +88,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         if (!visible) {
             GameLogger.info("InventoryScreen show() called");
             visible = true;
-
-            // If desired, we can ensure no items are incorrectly held by the player on show,
-            // but let's just leave as-is to match the stable approach from CraftingTableScreen.
-
-            // Reload inventory once on show
             reloadInventory();
 
             if (stage != null) {
@@ -176,8 +169,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
     private void setupUI() {
         float screenWidth = Gdx.graphics.getWidth();
         float screenHeight = Gdx.graphics.getHeight();
-
-        // Calculate relative sizes
         float baseSize = Math.min(screenWidth * 0.04f, screenHeight * 0.07f); // Base size for slots
         SLOT_SIZE = (int) Math.max(baseSize, 40); // Minimum size of 40
         float containerPadding = SLOT_SIZE * 0.25f;
@@ -185,8 +176,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         Table mainTable = new Table();
         mainTable.setFillParent(true);
         mainTable.center();
-
-        // Semi-transparent background
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         bgPixmap.setColor(0, 0, 0, 0.2f);
         bgPixmap.fill();
@@ -194,26 +183,17 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         TextureRegionDrawable background = new TextureRegionDrawable(new TextureRegion(bgTexture));
         mainTable.setBackground(background);
         bgPixmap.dispose();
-
-        // Create a container for everything to ensure proper centering
         Table contentContainer = new Table();
-
-        // Top section container (Crafting + Recipe)
         Table topContainer = new Table();
-
-        // Crafting section
         Table craftingContainer = new Table();
         craftingContainer.setBackground(createBackground());
         craftingContainer.pad(containerPadding);
-
-        // Crafting grid (2x2)
         Table craftingGrid1 = new Table();
         craftingGrid1.defaults().space(SLOT_SIZE * 0.1f);
 
         for (int y = 0; y < 2; y++) {
             for (int x = 0; x < 2; x++) {
                 final int index = y * 2 + x;
-                // FIX: Use the existing InventorySlotData from the CraftingGrid.
                 InventorySlotData craftSlotData = craftingGrid.getSlotData(index);
                 InventorySlotUI craftSlot = new InventorySlotUI(craftSlotData, skin, this, SLOT_SIZE);
                 craftingSlotUIs.add(craftSlot);
@@ -225,8 +205,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
                 }
             }
         }
-
-        // Arrow and result slot
         Image arrowImage = new Image(TextureManager.ui.findRegion("arrow"));
         InventorySlotData resultSlotData = new InventorySlotData(-1, InventorySlotData.SlotType.CRAFTING_RESULT, craftingGrid);
         craftingResultSlotUI = new InventorySlotUI(resultSlotData, skin, this, SLOT_SIZE);
@@ -234,16 +212,11 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         craftingContainer.add(craftingGrid1).padRight(SLOT_SIZE * 0.5f);
         craftingContainer.add(arrowImage).size(SLOT_SIZE * 0.8f).padRight(SLOT_SIZE * 0.5f);
         craftingContainer.add(craftingResultSlotUI).size(SLOT_SIZE);
-
-        // --- NEW: Explicitly constrain the crafting container's cell ---
         topContainer.add(craftingContainer)
             .padRight(SLOT_SIZE * 0.5f)
             .minWidth(SLOT_SIZE * 3)     // At least enough to show the 2x2 grid plus some extra space
             .minHeight(SLOT_SIZE * 2)
             .align(Align.topLeft);
-        // --------------------------------------------------------------
-
-        // Recipe glossary section – layout remains unchanged
         RecipeGlossaryUI recipeGlossary = new RecipeGlossaryUI(stage, skin, this, craftingSystem);
         ScrollPane recipeScroll = recipeGlossary.getRecipeScroll();
         recipeScroll.setScrollingDisabled(true, false);
@@ -262,8 +235,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         topContainer.add(recipeContainer).expandX().fillX();
 
         contentContainer.add(topContainer).padBottom(SLOT_SIZE * 0.75f).row();
-
-        // Inventory grid (unchanged)
         Table gridTable = new Table();
         gridTable.setName("gridTable");
         gridTable.setBackground(createBackground());
@@ -277,8 +248,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
             }
         }
         contentContainer.add(gridTable).row();
-
-        // Close button (unchanged)
         TextButton closeButton = new TextButton("Close", skin);
         closeButton.addListener(new ClickListener() {
             @Override
@@ -307,7 +276,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
     public void resize(int width, int height) {
         if (stage != null) {
             stage.getViewport().update(width, height, true);
-            // Force a re-layout on all UI Tables in the stage.
             for (Actor actor : stage.getActors()) {
                 if (actor instanceof Table) {
                     ((Table) actor).invalidateHierarchy();
@@ -414,8 +382,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
         if (visible) {
             GameLogger.info("InventoryScreen hide() called");
             visible = false;
-
-            // If there's still a held item, return it to the inventory now
             if (heldItem != null) {
                 ItemData heldItemData = InventoryConverter.itemToItemData(heldItem);
                 if (heldItemData != null) {
@@ -423,8 +389,6 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
                 }
                 setHeldItem(null);
             }
-
-            // Return crafting items
             craftingSystem.returnItemsToInventory();
 
             if (stage != null) {

@@ -34,8 +34,6 @@ public class PokemonDatabase {
         try {
             GameLogger.info("Initializing Pokemon Database...");
             FileSystemDelegate delegate = GameFileSystem.getInstance().getDelegate();
-
-            // Load moves first
             try {
                 String movesJson = delegate.readString(MOVE_DATA_FILE);
                 GameLogger.info("Loaded moves.json content (length: " + movesJson.length() + ")");
@@ -53,8 +51,6 @@ public class PokemonDatabase {
                 GameLogger.error("Failed to load moves: " + e.getMessage());
                 throw e;
             }
-
-            // Then load Pokémon data
             try {
                 String pokemonJson = delegate.readString(POKEMON_DATA_FILE);
                 GameLogger.info("Loaded pokemon.json content (length: " + pokemonJson.length() + ")");
@@ -88,8 +84,6 @@ public class PokemonDatabase {
                             moves
                         );
                         pokemonStats.put(name, stats);
-
-                        // Create template and load growth rate
                         PokemonTemplate template = new PokemonTemplate();
                         template.name = name;
                         template.primaryType = primaryType;
@@ -292,7 +286,6 @@ public class PokemonDatabase {
         public String name;
         public float width;
         public float height;
-        // NEW: growthRate field
         public String growthRate;
     }
 

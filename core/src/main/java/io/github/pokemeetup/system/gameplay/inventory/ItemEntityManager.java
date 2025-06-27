@@ -20,7 +20,6 @@ public class ItemEntityManager {
             ItemEntity entity = it.next().getValue();
             entity.update(delta);
             if (entity.shouldDespawn()) {
-                // Mark as picked up so we don’t send duplicate messages.
                 entity.markPickedUp();
                 it.remove();
                 if (GameContext.get().isMultiplayer()) {
@@ -61,7 +60,6 @@ public class ItemEntityManager {
         Random rand = new Random();
         for (ItemData item : chest.items) {
             if (item != null) {
-                // Scatter items around the chest position
                 float offsetX = rand.nextFloat() * 32 - 16;
                 float offsetY = rand.nextFloat() * 32 - 16;
                 spawnItemEntity(item, x + offsetX, y + offsetY);
@@ -73,22 +71,15 @@ public class ItemEntityManager {
     public void removeItemEntity(UUID entityId) {
         ItemEntity entity = itemEntities.get(entityId);
         if (entity != null && !entity.canBePickedUp()) {
-            // The item is either not ready or already picked up.
             return;
         }
         if (entity != null) {
-            // Mark it so that any further pickup requests are ignored.
             entity.markPickedUp();
-            // Remove it from the manager.
             itemEntities.remove(entityId);
-
-            // FIX: Removed the redundant network call from here.
-            // The Player class is now solely responsible for initiating the pickup message.
         }
     }
 
     public void handleRemoteItemDrop(NetworkProtocol.ItemDrop drop) {
-        // Only handle drops from other players
         if (!drop.username.equals(GameContext.get().getGameClient().getLocalUsername())) {
             ItemEntity entity = new ItemEntity(drop.itemData, drop.x, drop.y);
             itemEntities.put(entity.getEntityId(), entity);
@@ -96,7 +87,6 @@ public class ItemEntityManager {
     }
 
     public void handleRemoteItemPickup(NetworkProtocol.ItemPickup pickup) {
-        // Only handle pickups from other players
         if (!pickup.username.equals(GameContext.get().getGameClient().getLocalUsername())) {
             itemEntities.remove(pickup.entityId);
         }

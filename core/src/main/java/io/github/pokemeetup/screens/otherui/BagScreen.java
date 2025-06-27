@@ -20,8 +20,6 @@ public class BagScreen extends Window {
     private final Inventory inventory;
     private final BagSelectionListener listener;
     private Runnable onClose; // Callback to run when the bag is closed
-
-    // Define explicit lists for filtering by category.
     private static final List<String> HEALING_ITEMS = Arrays.asList("potion", "elixir");
     private static final List<String> CATCHING_ITEMS = Arrays.asList("pokeball", "greatball", "ultraball");
     private static final List<String> BATTLE_ITEMS = List.of("wooden_axe"); // example for battle items
@@ -51,7 +49,6 @@ public class BagScreen extends Window {
     }
 
     private void buildUI(Skin skin) {
-        // Create a tab header with four buttons.
         Table tabTable = new Table(skin);
         final TextButton healingTab = new TextButton("Healing", skin);
         final TextButton battleTab = new TextButton("Battle", skin);
@@ -62,14 +59,10 @@ public class BagScreen extends Window {
         tabTable.add(catchingTab).pad(5);
         tabTable.add(actionTab).pad(5);
         add(tabTable).expandX().fillX().row();
-
-        // Use a table to hold the content, wrapped in a scroll pane for better layout.
         final Table contentTable = new Table(skin);
         ScrollPane scrollPane = new ScrollPane(contentTable, skin);
         scrollPane.setFadeScrollBars(false);
         add(scrollPane).expand().fill().row();
-
-        // Initially show the "Catching" section.
         populateSection(contentTable, "catching");
 
         healingTab.addListener(new ChangeListener() {
@@ -96,8 +89,6 @@ public class BagScreen extends Window {
                 populateSection(contentTable, "action");
             }
         });
-
-        // A close button at the bottom.
         TextButton closeButton = new TextButton("Close", skin);
         add(closeButton).pad(10).expandX().fillX();
         closeButton.addListener(new ChangeListener() {
@@ -114,7 +105,6 @@ public class BagScreen extends Window {
         List<ItemData> filtered = new ArrayList<>();
         for (ItemData item : items) {
             if (item == null) continue;
-            // Use the item ID directly (which is used for identification) and compare exactly.
             String normalizedId = item.getItemId().toLowerCase();
             switch (section) {
                 case "healing":
@@ -141,7 +131,6 @@ public class BagScreen extends Window {
             contentTable.add(emptyLabel).expand().fill().center();
         } else {
             for (final ItemData item : filtered) {
-                // Display the item name (or any other display property) along with its count.
                 TextButton itemButton = new TextButton(item.getItemId() + " x" + item.getCount(), getSkin());
                 itemButton.addListener(new ChangeListener() {
                     @Override

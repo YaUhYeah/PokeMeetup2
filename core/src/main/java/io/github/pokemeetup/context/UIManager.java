@@ -18,7 +18,6 @@ public class UIManager {
     }
 
     private void initializeComponents() {
-        // Ensure the skin and required regions are loaded.
         TextureRegion hotbarBg = TextureManager.ui.findRegion("hotbar_bg");
         if (hotbarBg == null) {
             GameLogger.error("Missing 'hotbar_bg' region in skin!");
@@ -27,6 +26,5 @@ public class UIManager {
 
 
     public void resize(int width, int height) {
-        // Update positions, if needed.
     }
 }

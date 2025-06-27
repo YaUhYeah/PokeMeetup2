@@ -34,8 +34,6 @@ public class PokemonPartyWindow extends Window {
     private Table contentTable;
     private int currentPokemonIndex = -1; // Index of the Pokemon currently in battle
     private ArrayList<PokemonSlot> pokemonSlots = new ArrayList<>();
-
-    // For swapping in non–battle mode
     private int selectedIndex = -1;
     private PokemonSlot selectedSlot = null;
     private ScrollPane scrollPane;
@@ -52,8 +50,6 @@ public class PokemonPartyWindow extends Window {
         this.battleMode = battleMode;
         this.selectionListener = selectionListener;
         this.cancelCallback = cancelCallback;
-
-        // Do not call getStage() here because this actor isn’t on a stage yet.
         setModal(true);
         setMovable(false);
         if (battleMode && GameContext.get().getBattleTable() != null) {
@@ -76,18 +72,13 @@ public class PokemonPartyWindow extends Window {
      * (knobBefore) to green/yellow/red based on HP percentage.
      */
     private static void updateHPBarColor(ProgressBar bar, float percentage, Skin skin) {
-        // Clone the default progress bar style
         ProgressBar.ProgressBarStyle baseStyle = skin.get("default-horizontal", ProgressBar.ProgressBarStyle.class);
         ProgressBar.ProgressBarStyle newStyle = new ProgressBar.ProgressBarStyle(baseStyle);
-
-        // 1) Tint the background to a neutral grey
         if (baseStyle.background instanceof TextureRegionDrawable) {
             TextureRegionDrawable bg = new TextureRegionDrawable(((TextureRegionDrawable) baseStyle.background).getRegion());
             bg.tint(new Color(0.35f, 0.35f, 0.35f, 1f));
             newStyle.background = bg;
         }
-
-        // 2) Tint the fill portion (knobBefore) based on HP
         if (baseStyle.knobBefore instanceof TextureRegionDrawable) {
             TextureRegionDrawable fill = new TextureRegionDrawable(((TextureRegionDrawable) baseStyle.knobBefore).getRegion());
             if (percentage > 0.5f) {
@@ -99,8 +90,6 @@ public class PokemonPartyWindow extends Window {
             }
             newStyle.knobBefore = fill;
         }
-
-        // Optionally hide the knob itself (if you want a smoother bar)
         newStyle.knob = null;
 
         bar.setStyle(newStyle);
@@ -110,16 +99,11 @@ public class PokemonPartyWindow extends Window {
      * Resizes/positions the window to about 70% of the screen width and 50% height, then centers it.
      */
     public void show(Stage stage) {
-        // First, let the window pack to fit all content exactly
         pack();
-
-        // Now clamp it so it does not exceed 70% of width or 50% of height
         float maxW = stage.getWidth() * 0.70f;
         float maxH = stage.getHeight() * 0.50f;
         if (getWidth() > maxW) setWidth(maxW);
         if (getHeight() > maxH) setHeight(maxH);
-
-        // Center the window
         setPosition(
             (stage.getWidth() - getWidth()) / 2f,
             (stage.getHeight() - getHeight()) / 2f
@@ -136,20 +120,12 @@ public class PokemonPartyWindow extends Window {
     private void initialize() {
         Table rootTable = new Table();
         rootTable.setFillParent(true);
-
-        // Create the main content table
         contentTable = new Table();
         contentTable.pad(10);
-
-        // Put that table inside a scroll pane
         scrollPane = new ScrollPane(contentTable, getSkin());
         scrollPane.setFadeScrollBars(false);
         scrollPane.setScrollingDisabled(false, false);
-
-        // Main content area (scrollable)
         rootTable.add(scrollPane).expand().fill().row();
-
-        // If there's a cancel callback, show a "Cancel" button. Otherwise, no button.
         if (cancelCallback != null) {
             TextButton cancelButton = new TextButton("Cancel", getSkin());
             cancelButton.addListener(new ClickListener() {
@@ -185,32 +161,22 @@ public class PokemonPartyWindow extends Window {
         for (int i = 0; i < partyList.size(); i++) {
             Pokemon pokemon = partyList.get(i);
             final int slotIndex = i;
-
-            // Pass index and battle mode to the slot
             PokemonSlot slot = new PokemonSlot(this, pokemon, getSkin(), battleMode, slotIndex, i == currentPokemonIndex); // NEW: pass active status
             pokemonSlots.add(slot);
-
-            // --- Updated Click Listener ---
             slot.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
                     if (selectionMade) return;
 
                     if (battleMode) {
-                        // Prevent selecting fainted or current Pokemon in battle
                         if (pokemon.getCurrentHp() <= 0) {
-                            // Optionally show a message "This Pokemon can't battle!"
-                            // GameContext.get().getBattleTable().displayMessage(pokemon.getName() + " is unable to battle!");
                             return;
                         }
                         if (slotIndex == currentPokemonIndex) {
-                            // Optionally show message "This Pokemon is already out!"
-                            // GameContext.get().getBattleTable().displayMessage(pokemon.getName() + " is already in battle!");
                             return;
                         }
 
                         selectionMade = true;
-                        // --- Pass INDEX back, not the Pokemon object ---
                         selectionListener.onPokemonSelected(slotIndex); // MODIFIED
 
                         PokemonPartyWindow.this.addAction(Actions.sequence(
@@ -218,7 +184,6 @@ public class PokemonPartyWindow extends Window {
                             Actions.run(PokemonPartyWindow.this::remove)
                         ));
                     } else {
-                        // Non-battle mode swapping logic
                         handleSlotClick(slotIndex, slot);
                     }
                 }
@@ -251,14 +216,12 @@ public class PokemonPartyWindow extends Window {
             selectedSlot = null;
             selectedIndex = -1;
             rebuildSlots();
-            // If you have a GameScreen that displays your party, update it
             GameContext.get().getGameScreen().updatePartyDisplay();
         }
     }
 
 
     public interface PartySelectionListener {
-        // Now accepts the index of the selected Pokemon
         void onPokemonSelected(int partyIndex); // MODIFIED
     }
 
@@ -288,7 +251,6 @@ public class PokemonPartyWindow extends Window {
             this.pokemon = pokemon;
 
             this.isActiveInBattle = isActive; // Store active status
-            // Fallback if the icon is null
             TextureRegion fullIcon = pokemon.getIconSprite();
             if (fullIcon == null) {
                 fullIcon = new TextureRegion(TextureManager.getWhitePixel());
@@ -304,8 +266,6 @@ public class PokemonPartyWindow extends Window {
 
             icon = new Image(new TextureRegionDrawable(frames[0]));
             icon.setScaling(Scaling.fit);
-
-            // Build info table
             Table infoTable = new Table();
             Label nameLabel = new Label(pokemon.getName(), skin);
             Label levelLabel = new Label("Lv." + pokemon.getLevel(), skin);
@@ -330,8 +290,6 @@ public class PokemonPartyWindow extends Window {
             } else {
                 setTouchable(Touchable.enabled); // Ensure tappable otherwise
             }
-
-            // Tooltip logic
             addListener(new InputListener() {
                 @Override
                 public void enter(InputEvent event, float x, float y, int pointer, Actor fromActor) {
@@ -375,7 +333,6 @@ public class PokemonPartyWindow extends Window {
         @Override
         public void act(float delta) {
             super.act(delta);
-            // Simple animation logic to flip between frames if hovered or selected
             if (isHovered || isSelected) {
                 animTime += delta;
                 int index = (int) (animTime / 0.5f) % frames.length;
@@ -391,8 +348,6 @@ public class PokemonPartyWindow extends Window {
             if (tooltip != null && getStage() != null) {
                 float tooltipX = stageX + 15;
                 float tooltipY = stageY - tooltip.getHeight();
-
-                // Keep tooltip within stage bounds
                 if (tooltipX + tooltip.getWidth() > getStage().getWidth()) {
                     tooltipX = stageX - tooltip.getWidth() - 15;
                 }
@@ -424,22 +379,12 @@ public class PokemonPartyWindow extends Window {
             setTouchable(Touchable.disabled);
             setVisible(true);
             setZIndex(1000);
-
-            // Use a Table for content
             Table content = new Table();
             content.defaults().pad(4).left();
-
-            // Pokémon name
             Label nameLabel = new Label(pokemon.getName(), skin);
             content.add(nameLabel).padBottom(8).row();
-
-            // Nature
             content.add(new Label("Nature: " + pokemon.getNature(), skin)).row();
-
-            // Stats header
             content.add(new Label("Stats:", skin)).padTop(8).row();
-
-            // Stats table
             Table statsTable = new Table();
             statsTable.defaults().pad(2);
             Pokemon.Stats stats = pokemon.getStats();
@@ -450,8 +395,6 @@ public class PokemonPartyWindow extends Window {
             addStatRow(statsTable, "Sp. Def", stats.getSpecialDefense(), skin);
             addStatRow(statsTable, "Speed", stats.getSpeed(), skin);
             content.add(statsTable).padBottom(8).row();
-
-            // Moves section
             content.add(new Label("Moves:", skin)).padTop(8).row();
             Table movesTable = new Table();
             movesTable.defaults().pad(2);
@@ -465,8 +408,6 @@ public class PokemonPartyWindow extends Window {
 
             add(content);
             pack();
-
-            // Fade in animation
             getColor().a = 0;
             addAction(Actions.fadeIn(0.2f));
         }
@@ -474,7 +415,6 @@ public class PokemonPartyWindow extends Window {
         @Override
         public void act(float delta) {
             super.act(delta);
-            // Keep tooltip at front
             toFront();
         }
 

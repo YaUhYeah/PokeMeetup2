@@ -9,8 +9,6 @@ import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalit
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.Collection;
-
-// Social Interaction Behavior - Pokemon interact with each other
 public class SocialInteractionBehavior implements PokemonBehavior {
     private static final float INTERACTION_RANGE = 2.0f * World.TILE_SIZE;
     private static final float SOCIAL_COOLDOWN = 4.0f; // Was 10.0f
@@ -48,15 +46,11 @@ public class SocialInteractionBehavior implements PokemonBehavior {
     }
 
     private void interactWith(WildPokemon other) {
-        // Different interaction types based on personality
         if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE)) {
-            // Aggressive Pokemon might challenge others
             GameLogger.info(pokemon.getName() + " challenges " + other.getName());
         } else if (ai.hasPersonalityTrait(PokemonPersonalityTrait.CURIOUS)) {
-            // Curious Pokemon might investigate
             GameLogger.info(pokemon.getName() + " curiously approaches " + other.getName());
         } else {
-            // Peaceful interaction
             GameLogger.info(pokemon.getName() + " peacefully interacts with " + other.getName());
         }
 

@@ -74,14 +74,12 @@ public class BuildingTemplate {
     }
 
     public boolean placeBuilding(World world, int startX, int startY) {
-        // Check if area is clear
         if (!canPlaceAt(world, startX, startY)) {
             GameLogger.info("Cannot place building - area not clear");
             return false;
         }
 
         try {
-            // Place all blocks
             for (int x = 0; x < width; x++) {
                 for (int y = 0; y < height; y++) {
                     BlockData blockData = layout[x][y];
@@ -95,7 +93,6 @@ public class BuildingTemplate {
                         PlaceableBlock placedBlock = world.getBlockManager().getBlockAt(startX + x, startY + y);
                         if (placedBlock != null && blockData.isFlipped) {
                             placedBlock.toggleFlip();
-                            // Mark the chunk as dirty so flipping is saved
                             int chunkX = Math.floorDiv((int) placedBlock.getPosition().x, World.CHUNK_SIZE);
                             int chunkY = Math.floorDiv((int) placedBlock.getPosition().y, World.CHUNK_SIZE);
                             Chunk chunk = world.getChunks().get(new Vector2(chunkX, chunkY));

@@ -17,22 +17,17 @@ public class PluginConfig {
 
     public static PluginConfig load(InputStream input) {
         try {
-            // Read the content as JSON
             StringBuilder content = new StringBuilder();
             try (Scanner scanner = new Scanner(input)) {
                 while (scanner.hasNextLine()) {
                     content.append(scanner.nextLine()).append("\n");
                 }
             }
-
-            // Parse JSON to PluginConfig
             Gson gson = new GsonBuilder()
                 .setPrettyPrinting()
                 .create();
 
             PluginConfig config = gson.fromJson(content.toString(), PluginConfig.class);
-
-            // Validate required fields
             if (config.name == null || config.name.isEmpty()) {
                 throw new IllegalArgumentException("Plugin name is required");
             }
@@ -51,9 +46,6 @@ public class PluginConfig {
             throw new RuntimeException("Failed to load plugin config: " + e.getMessage(), e);
         }
     }
-
-
-    // Getters
     public String getName() { return name; }
     public String getVersion() { return version; }
     public String getMainClass() { return mainClass; }

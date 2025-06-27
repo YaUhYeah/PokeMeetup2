@@ -35,15 +35,11 @@ public class ServerWorldManager {
     private static final long CHUNK_EVICT_TIMEOUT_MS = 600_000;  // e.g. 10 minutes
     private static ServerWorldManager instance;
     private final ServerStorageSystem storageSystem;// In ServerWorldManager, add:
-    // Worlds & Chunks in memory
     private final Map<String, WorldData> activeWorlds = new ConcurrentHashMap<>();
     private final Map<String, Map<Vector2, TimedChunk>> chunkCache = new ConcurrentHashMap<>();
-    // Schedulers
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private final ExecutorService loadExecutor = Executors.newFixedThreadPool(4);
     private final BiomeManager biomeManager;
-
-    // Update constructor:
     private ServerWorldManager(ServerStorageSystem storageSystem) {
         this.storageSystem = storageSystem;
         this.biomeManager = new BiomeManager(System.currentTimeMillis());
@@ -62,16 +58,13 @@ public class ServerWorldManager {
     }
 
     private void initScheduledTasks() {
-        // Periodically auto-save worlds & evict idle chunks
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                // Save any dirty worlds
                 for (WorldData wd : activeWorlds.values()) {
                     if (wd.isDirty()) {
                         saveWorld(wd);
                     }
                 }
-                // Evict idle chunks
                 evictIdleChunks();
             } catch (Exception e) {
                 GameLogger.error("Error in scheduled task: " + e.getMessage());
@@ -93,7 +86,6 @@ public class ServerWorldManager {
             return null;
         }
         activeWorlds.put(worldName, wd);
-        // Create a chunk cache for that world
         chunkCache.put(worldName, new ConcurrentHashMap<>());
 
         GameLogger.info("Loaded world '" + worldName + "' from server storage.");
@@ -128,23 +120,11 @@ public class ServerWorldManager {
         config.setTreeSpawnRate(treeRate);
         config.setPokemonSpawnRate(pokeRate);
         wd.setConfig(config);
-
-        // Save to disk
         saveWorld(wd);
-
-        // Cache in memory
         activeWorlds.put(worldName, wd);
         chunkCache.put(worldName, new ConcurrentHashMap<>());
         return wd;
     }
-
-    // ------------------------------------------------------------------------------------
-    // CHUNK LOADING & GENERATION
-    // ------------------------------------------------------------------------------------
-
-
-    // The new load–or–generate method for the server.
-    // Modify loadChunk in ServerWorldManager.java
     public Chunk loadChunk(String worldName, int chunkX, int chunkY) {
         WorldData wd = loadWorld(worldName);
         if (wd == null) {
@@ -158,11 +138,8 @@ public class ServerWorldManager {
         TimedChunk timed = worldChunkMap.get(pos);
 
         if (timed == null || timed.chunk == null) {
-            // a) Load from disk or generate
             Chunk loaded = loadChunkFromDisk(worldName, chunkX, chunkY);
             if (loaded == null) {
-                // CRITICAL FIX: Generate new chunk with deterministic seed
-                // This ensures consistent generation across server restarts
                 long determinSeed = wd.getConfig().getSeed() +
                     (((long)chunkX << 32) | ((long)chunkY & 0xFFFFFFFFL));
 
@@ -178,21 +155,14 @@ public class ServerWorldManager {
                     }
                     GameLogger.info("Populated ServerBlockManager with " + loaded.getBlocks().size() + " new blocks for chunk " + pos);
                 }
-                // Save immediately to ensure persistence
                 saveChunk(worldName, loaded);
             }
-
-            // b) Store in cache
             timed = new TimedChunk(loaded);
             worldChunkMap.put(pos, timed);
-
-            // If we changed the chunk's boundary tiles, mark dirty & save now
             if (loaded.isDirty()) {
                 saveChunk(worldName, loaded);
             }
         }
-
-        // c) If chunk is dirty, we can also consider saving
         if (timed.chunk.isDirty()) {
             saveChunk(worldName, timed.chunk);
             timed.chunk.setDirty(false);
@@ -212,14 +182,10 @@ public class ServerWorldManager {
     private Chunk generateNewChunk(int chunkX, int chunkY, long seed) {
         int worldTileX = chunkX * Chunk.CHUNK_SIZE;
         int worldTileY = chunkY * Chunk.CHUNK_SIZE;
-
-        // Calculate chunk center for consistent biome determination
         float centerPixelX = (chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
         float centerPixelY = (chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
 
         BiomeTransitionResult btr = biomeManager.getBiomeAt(centerPixelX, centerPixelY);
-
-        // Ensure we always have a valid biome
         if (btr == null || btr.getPrimaryBiome() == null) {
             btr = new BiomeTransitionResult(
                 biomeManager.getBiome(BiomeType.PLAINS),
@@ -227,13 +193,8 @@ public class ServerWorldManager {
                 1.0f
             );
         }
-
-        // Pass the deterministic seed to the world generator
         Chunk chunk = UnifiedWorldGenerator.generateChunkForServer(
             chunkX, chunkY, seed, biomeManager);
-
-        // IMPORTANT: Force the biome to match what we calculated
-        // This ensures consistent biome assignment
         chunk.setBiome(btr.getPrimaryBiome());
 
         return chunk;
@@ -251,20 +212,17 @@ public class ServerWorldManager {
             }
             Json json = JsonConfig.getInstance();
             ChunkData cd = json.fromJson(ChunkData.class, jsonContent);
-            // Use the saved biome type if available; however, you may choose to override it.
             Biome biome = biomeManager.getBiome(cd.biomeType);
             if (biome == null) {
                 biome = biomeManager.getBiome(BiomeType.PLAINS);
             }
             Chunk chunk = new Chunk(chunkX, chunkY, biome, cd.generationSeed);
             chunk.setTileData(cd.tileData);
-            // Process blocks.
             if (cd.blockData != null) {
                 for (BlockSaveData.BlockData bd : cd.blockData) {
                     processBlockData(chunk, bd);
                 }
             }
-            // Process world objects.
             Vector2 chunkPos = new Vector2(chunkX, chunkY);
             List<WorldObject> objectList = new ArrayList<>();
             if (cd.worldObjects != null) {
@@ -279,7 +237,6 @@ public class ServerWorldManager {
                     }
                 }
             }
-            // Register the objects in the ServerWorldObjectManager.
             ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(worldName, chunkPos, objectList);
             return chunk;
         } catch (Exception e) {
@@ -305,8 +262,6 @@ public class ServerWorldManager {
 
             Vector2 pos = new Vector2(blockData.x, blockData.y);
             PlaceableBlock block = new PlaceableBlock(blockType, pos, null, blockData.isFlipped);
-
-            // Handle chest-specific data
             if (blockType == PlaceableBlock.BlockType.CHEST) {
                 block.setChestOpen(blockData.isChestOpen);
                 if (blockData.chestData != null) {
@@ -338,7 +293,6 @@ public class ServerWorldManager {
         if (cache != null) {
             for (Map.Entry<Vector2, TimedChunk> entry : cache.entrySet()) {
                 if (entry.getValue().chunk != null) {
-                    // Update last access time
                     entry.getValue().lastAccess = System.currentTimeMillis();
                     loadedChunks.put(entry.getKey(), entry.getValue().chunk);
                 }
@@ -346,11 +300,6 @@ public class ServerWorldManager {
         }
         return loadedChunks;
     }
-
-
-    // ------------------------------------------------------------------------------------
-    // CHUNK HELPER METHODS
-    // ------------------------------------------------------------------------------------
 
     private Path getChunkFilePath(String worldName, int chunkX, int chunkY) {
         return Paths.get("server", "data", "worlds", worldName, "chunks",
@@ -361,14 +310,11 @@ public class ServerWorldManager {
     public void saveChunk(String worldName, Chunk chunk) {
         if (chunk == null) return;
         try {
-            // Determine the file path for the chunk data.
             Path chunkPath = getChunkFilePath(worldName, chunk.getChunkX(), chunk.getChunkY());
             Path chunksDir = chunkPath.getParent();
             if (chunksDir != null) {
                 storageSystem.getFileSystem().createDirectory(chunksDir.toString());
             }
-
-            // Prepare the ChunkData object.
             ChunkData cd = new ChunkData();
             cd.chunkX = chunk.getChunkX();
             cd.chunkY = chunk.getChunkY();
@@ -388,27 +334,17 @@ public class ServerWorldManager {
                     }
                 }
             }
-
-            // Serialize and write the chunk data to disk.
             Json json = JsonConfig.getInstance();
             json.setOutputType(JsonWriter.OutputType.json);
             String jsonData = json.prettyPrint(cd);
             storageSystem.getFileSystem().writeString(chunkPath.toString(), jsonData);
-
-            // Mark the chunk as clean.
             chunk.setDirty(false);
-
-            // --- NEW CODE: Update the persistent WorldData ---
-            // Retrieve the current WorldData for this world.
             WorldData wd = loadWorld(worldName);
             if (wd != null) {
                 Vector2 chunkKey = new Vector2(chunk.getChunkX(), chunk.getChunkY());
-                // Update the chunk in the world data.
                 wd.getChunks().put(chunkKey, chunk);
-                // Update the world objects for that chunk.
                 wd.addChunkObjects(chunkKey, objects);
                 wd.setDirty(true);
-                // Save the updated world data.
                 saveWorld(wd);
             } else {
                 GameLogger.error("Could not load WorldData for " + worldName + " to update chunk " + chunk.getChunkX() + "," + chunk.getChunkY());
@@ -420,10 +356,6 @@ public class ServerWorldManager {
         }
     }
 
-    // ------------------------------------------------------------------------------------
-    // CHUNK EVICTION
-    // ------------------------------------------------------------------------------------
-
     private void evictIdleChunks() {
         long now = System.currentTimeMillis();
         for (Map.Entry<String, Map<Vector2, TimedChunk>> entry : chunkCache.entrySet()) {
@@ -434,9 +366,7 @@ public class ServerWorldManager {
             while (it.hasNext()) {
                 Map.Entry<Vector2, TimedChunk> e = it.next();
                 TimedChunk container = e.getValue();
-                // If chunk is idle for too long, evict it
                 if ((now - container.lastAccess) >= CHUNK_EVICT_TIMEOUT_MS) {
-                    // Save if dirty
                     if (container.chunk.isDirty()) {
                         saveChunk(worldName, container.chunk);
                     }
@@ -448,14 +378,8 @@ public class ServerWorldManager {
         }
     }
 
-    // ------------------------------------------------------------------------------------
-    // SHUTDOWN
-    // ------------------------------------------------------------------------------------
-
     public void shutdown() {
         GameLogger.info("Shutting down ServerWorldManager...");
-
-        // Save chunks
         for (Map.Entry<String, Map<Vector2, TimedChunk>> entry : chunkCache.entrySet()) {
             String worldName = entry.getKey();
             for (TimedChunk tchunk : entry.getValue().values()) {
@@ -464,23 +388,16 @@ public class ServerWorldManager {
                 }
             }
         }
-
-        // Save worlds
         for (WorldData wd : activeWorlds.values()) {
             if (wd.isDirty()) {
                 saveWorld(wd);
             }
         }
-
-        // Clean up executors
         loadExecutor.shutdown();
         scheduler.shutdown();
 
         GameLogger.info("ServerWorldManager shutdown complete.");
     }
-    // ------------------------------------------------------------------------------------
-    // INNER CLASSES
-    // ------------------------------------------------------------------------------------
 
     /**
      * For storing chunk + lastAccess time so we can evict if idle.

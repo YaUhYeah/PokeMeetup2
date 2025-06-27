@@ -84,11 +84,9 @@ public class WaterEffectsRenderer {
             boolean onWater = isEntityOnWater(entity, world);
 
             if (onWater) {
-                // Play sound only once when entering water
                 if (!entity.wasOnWater()) {
                     playWaterSound();
                 }
-                // Play continuous sound while moving (but not for WildPokemon)
                 else if (entity.isMoving() && entity.getWaterSoundTimer() <= 0) {
                     if (!(entity instanceof io.github.pokemeetup.pokemon.WildPokemon)) {
                         playWaterSound();
@@ -104,8 +102,6 @@ public class WaterEffectsRenderer {
 
             float effectWidth = World.TILE_SIZE * SCALE_FACTOR;
             float effectHeight = World.TILE_SIZE * 0.75f;
-            // IMPORTANT: Because the entity’s x is at the center,
-            // subtract half a tile width to compute the tile’s left edge.
             int tileX = MathUtils.floor((entity.getX() - World.TILE_SIZE / 2f) / World.TILE_SIZE);
             int tileY = MathUtils.floor(entity.getY() / World.TILE_SIZE);
             float tileCenterX = tileX * World.TILE_SIZE + World.TILE_SIZE / 2f;

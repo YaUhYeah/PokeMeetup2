@@ -29,8 +29,6 @@ import java.util.List;
 import static io.github.pokemeetup.screens.AndroidLoginScreen.INPUT_FIELD_HEIGHT;
 
 public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
-
-    // Android-specific constants - optimized for better visuals
     private static final float MOBILE_PADDING = 16f;
     private static final float MOBILE_FONT_SCALE = 1.3f;
     private static final float WORLD_ENTRY_HEIGHT = 120f;
@@ -77,23 +75,15 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         mobileLayout = new Table();
         mobileLayout.setFillParent(true);
         mobileLayout.setBackground(createBackground(new Color(0.08f, 0.08f, 0.08f, 1f)));
-
-        // Top bar
         createMobileTopBar();
-
-        // Main content
         if (isTablet) {
             createTabletLayout();
         } else {
             createPhoneLayout();
         }
-
-        // Bottom delete bar (hidden initially)
         createBottomActionBar();
 
         stage.addActor(mobileLayout);
-
-        // Floating action buttons
         createFloatingActionButtons();
 
         refreshWorldList();
@@ -103,8 +93,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Table topBar = new Table();
         topBar.setBackground(createBackground(new Color(0.12f, 0.12f, 0.12f, 1f)));
         topBar.pad(MOBILE_PADDING);
-
-        // Back button
         TextButton backBtn = new TextButton("◄", skin);
         backBtn.getLabel().setFontScale(2f);
         backBtn.pad(12f);
@@ -115,8 +103,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                 dispose();
             }
         });
-
-        // Title
         Label titleLabel = new Label("My Worlds", skin);
         titleLabel.setFontScale(MOBILE_FONT_SCALE * 1.4f);
 
@@ -130,11 +116,7 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Table contentArea = new Table();
         contentArea.pad(MOBILE_PADDING);
         contentArea.padBottom(80f); // Space for FAB
-
-        // Tabs
         createMobileTabs(contentArea);
-
-        // World list
         createMobileWorldList(contentArea, 1.0f);
 
         mobileLayout.add(contentArea).expand().fill().row();
@@ -144,13 +126,9 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Table contentArea = new Table();
         contentArea.pad(MOBILE_PADDING);
         contentArea.padBottom(80f);
-
-        // Two-column layout
         Table leftColumn = new Table();
         createMobileTabs(leftColumn);
         createMobileWorldList(leftColumn, 0.5f);
-
-        // Detail panel
         detailPanel = new Container<>();
         Table detailContent = createDetailPanel();
         detailPanel.setActor(detailContent);
@@ -199,8 +177,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Table worldListContent = new Table();
         worldListContent.top();
         worldListContent.defaults().padBottom(MOBILE_SPACING);
-
-        // Scroll pane
         ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle();
         scrollStyle.background = createBackground(new Color(0.1f, 0.1f, 0.1f, 0.3f));
 
@@ -219,10 +195,7 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         details.pad(MOBILE_PADDING);
 
         if (selectedWorld == null) {
-            // Empty state with icon and text
             Table emptyState = new Table();
-
-            // Add a world icon or placeholder graphic if available
             if (placeholderRegion != null) {
                 Image worldIcon = new Image(placeholderRegion);
                 worldIcon.setColor(0.4f, 0.4f, 0.4f, 1f);
@@ -243,7 +216,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
 
             details.add(emptyState).expand().center();
         } else {
-            // Large thumbnail with frame
             Table thumbnailFrame = new Table();
             thumbnailFrame.setBackground(createBackground(new Color(0.05f, 0.05f, 0.05f, 1f)));
 
@@ -258,14 +230,10 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
 
             thumbnailFrame.add(thumbnail).size(220f).pad(8f);
             details.add(thumbnailFrame).padBottom(MOBILE_SPACING * 2).row();
-
-            // World name
             Label nameLabel = new Label(selectedWorld.getName(), skin);
             nameLabel.setFontScale(MOBILE_FONT_SCALE * 1.5f);
             nameLabel.setAlignment(Align.center);
             details.add(nameLabel).padBottom(MOBILE_SPACING * 2).row();
-
-            // Info table
             Table infoTable = new Table();
             infoTable.defaults().padBottom(MOBILE_SPACING);
 
@@ -325,14 +293,11 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private void createFloatingActionButtons() {
         if (playFab != null) playFab.remove();
         if (createFab != null) createFab.remove();
-
-        // FAB container
         Table fabContainer = new Table();
         fabContainer.setFillParent(true);
         fabContainer.bottom().right().pad(MOBILE_PADDING * 1.5f);
 
         if (selectedWorld != null) {
-            // Play FAB (primary action)
             playFab = createFAB("▶", new Color(0.2f, 0.7f, 0.2f, 1f));
             playFab.addListener(new ClickListener() {
                 @Override
@@ -345,8 +310,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                     }
                 }
             });
-
-            // Create FAB (secondary)
             createFab = createFAB("+", new Color(0.2f, 0.4f, 0.8f, 1f));
             createFab.addListener(new ClickListener() {
                 @Override
@@ -358,7 +321,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
             fabContainer.add(createFab).size(FAB_SIZE).padBottom(MOBILE_SPACING).row();
             fabContainer.add(playFab).size(FAB_SIZE + 12); // Larger play button
         } else {
-            // Only create FAB
             createFab = createFAB("+", new Color(0.2f, 0.4f, 0.8f, 1f));
             createFab.addListener(new ClickListener() {
                 @Override
@@ -394,8 +356,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
 
         List<WorldData> worldList = new ArrayList<>(GameContext.get().getWorldManager().getWorlds().values());
         worldList.removeIf(world -> !shouldShowWorld(world));
-
-        // Sort by last played
         worldList.sort(Comparator.comparingLong(WorldData::getLastPlayed).reversed());
 
         if (worldList.isEmpty()) {
@@ -412,8 +372,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                 content.row();
             }
         }
-
-        // Update UI
         createFloatingActionButtons();
         if (bottomBar != null) {
             bottomBar.setVisible(selectedWorld != null);
@@ -428,13 +386,9 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Table entry = new Table();
         entry.setTouchable(Touchable.enabled);
         entry.pad(MOBILE_SPACING);
-
-        // Background
         Drawable normalBg = createRoundedBackground(new Color(0.15f, 0.15f, 0.15f, 0.8f));
         Drawable selectedBg = createRoundedBackground(new Color(0.2f, 0.4f, 0.7f, 0.9f));
         entry.setBackground(selectedWorld == world ? selectedBg : normalBg);
-
-        // Large thumbnail with frame
         Table thumbnailFrame = new Table();
         thumbnailFrame.setBackground(createBackground(new Color(0.05f, 0.05f, 0.05f, 1f)));
 
@@ -448,20 +402,12 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         thumbnail.setScaling(Scaling.fit);
 
         thumbnailFrame.add(thumbnail).size(WORLD_THUMBNAIL_SIZE - 8).pad(4f);
-
-        // Info section - FULLY HORIZONTAL
         Table infoTable = new Table();
         infoTable.left();
-
-        // World name - larger
         Label nameLabel = new Label(world.getName(), skin);
         nameLabel.setFontScale(MOBILE_FONT_SCALE * 1.2f);
         nameLabel.setEllipsis(true);
-
-        // First row: Name only
         infoTable.add(nameLabel).left().colspan(3).padBottom(6f).row();
-
-        // Second row: All stats in one line
         Label lastPlayedLabel = new Label(formatRelativeDate(world.getLastPlayed()), skin);
         lastPlayedLabel.setFontScale(MOBILE_FONT_SCALE * 0.9f);
         lastPlayedLabel.setColor(0.6f, 0.6f, 0.6f, 1f);
@@ -481,8 +427,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Label seedLabel = new Label("Seed: " + getSeedFromWorld(world), skin);
         seedLabel.setFontScale(MOBILE_FONT_SCALE * 0.9f);
         seedLabel.setColor(0.6f, 0.6f, 0.6f, 1f);
-
-        // Add all to same row
         Table statsRow = new Table();
         statsRow.add(lastPlayedLabel);
         statsRow.add(dot1);
@@ -491,27 +435,19 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         statsRow.add(seedLabel);
 
         infoTable.add(statsRow).left().row();
-
-        // Third row: Commands indicator if enabled
         if (world.commandsAllowed()) {
             Label commandsLabel = new Label("⚡ Commands Enabled", skin);
             commandsLabel.setFontScale(MOBILE_FONT_SCALE * 0.85f);
             commandsLabel.setColor(0.7f, 0.7f, 0.2f, 1f);
             infoTable.add(commandsLabel).left().padTop(4f);
         }
-
-        // Layout
         entry.add(thumbnailFrame).size(WORLD_THUMBNAIL_SIZE).padRight(MOBILE_SPACING);
         entry.add(infoTable).expand().fill();
-
-        // Touch feedback
         entry.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 selectWorld(world);
                 refreshWorldList();
-
-                // Animate
                 entry.addAction(Actions.sequence(
                     Actions.scaleTo(0.95f, 0.95f, 0.05f, Interpolation.fastSlow),
                     Actions.scaleTo(1f, 1f, 0.05f, Interpolation.slowFast)
@@ -521,8 +457,6 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
 
         return entry;
     }
-
-    // Helper methods
     private String formatRelativeDate(long timestamp) {
         if (timestamp == 0) return "Never";
 

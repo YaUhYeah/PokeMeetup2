@@ -27,8 +27,6 @@ public class ItemData {
         this.itemId = itemId;
         this.count = count;
         this.uuid = uuid != null ? uuid : UUID.randomUUID();
-
-        // Initialize durability from item template
         Item itemTemplate = ItemManager.getItemTemplate(itemId);
         if (itemTemplate != null) {
             this.durability = itemTemplate.getMaxDurability();
@@ -122,8 +120,6 @@ public class ItemData {
 
     public void setItemId(String itemId) {
         this.itemId = itemId.toLowerCase(); // Normalize to lowercase
-
-        // Retrieve item template using the consistent itemId
         Item itemTemplate = ItemManager.getItemTemplate(this.itemId);
         if (itemTemplate != null) {
             if (this.maxDurability == -1) {

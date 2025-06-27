@@ -14,7 +14,6 @@ import java.util.Collections;
 import java.util.List;
 
 public class WanderBehavior implements PokemonBehavior {
-    // Make Pokemon move more frequently by reducing cooldown.
     private static final float WANDER_COOLDOWN = 0.4f; // Was 1.0f
 
     private final WildPokemon pokemon;
@@ -37,7 +36,6 @@ public class WanderBehavior implements PokemonBehavior {
     }
 
     private void moveRandomDirection(World world) {
-        // 15% chance to just stay idle for this tick, makes movement less predictable.
         if (MathUtils.random() < 0.15f) {
             ai.setCooldown(getName(), WANDER_COOLDOWN * 1.5f); // Slightly longer cooldown if idling
             return;
@@ -46,18 +44,10 @@ public class WanderBehavior implements PokemonBehavior {
         int currentTileX = pokemon.getTileX();
         int currentTileY = pokemon.getTileY();
         String lastDirection = pokemon.getDirection();
-
-        // Create a list of potential directions
         List<String> potentialDirections = new ArrayList<>(Arrays.asList("up", "down", "left", "right"));
-
-        // Shuffle to randomize the order of non-priority directions
         Collections.shuffle(potentialDirections);
-
-        // Bias towards continuing in the same direction by moving it to the front
         potentialDirections.remove(lastDirection);
         potentialDirections.add(0, lastDirection);
-
-        // Try to move in the prioritized order
         for (String direction : potentialDirections) {
             int targetTileX = currentTileX;
             int targetTileY = currentTileY;
@@ -90,7 +80,6 @@ public class WanderBehavior implements PokemonBehavior {
 
     @Override
     public boolean canExecute() {
-        // Pokemon can decide to wander more quickly after stopping.
         return !pokemon.isMoving() &&
             !ai.isOnCooldown(getName()) &&
             ai.getStateTimer() > 0.4f; // Was 1.0f

@@ -14,8 +14,6 @@ public class GlobalInputProcessor extends InputAdapter {
     @Override
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
-
-        // Handle ESCAPE key to toggle game menu
         if (keycode == Input.Keys.ESCAPE) {
             if (currentState != InputManager.UIState.MENU) {
                 inputManager.setUIState(InputManager.UIState.MENU);
@@ -24,8 +22,6 @@ public class GlobalInputProcessor extends InputAdapter {
             }
             return true; // Event handled
         }
-
-        // Handle 'E' key to toggle inventory
         if (keycode == Input.Keys.E) {
             if (currentState == InputManager.UIState.INVENTORY ||
                 currentState == InputManager.UIState.CRAFTING ||
@@ -36,8 +32,6 @@ public class GlobalInputProcessor extends InputAdapter {
             }
             return true; // Event handled
         }
-
-        // Do not consume movement keys
         if (keycode == Input.Keys.W || keycode == Input.Keys.A ||
             keycode == Input.Keys.S || keycode == Input.Keys.D ||
             keycode == Input.Keys.UP || keycode == Input.Keys.DOWN ||
@@ -50,7 +44,6 @@ public class GlobalInputProcessor extends InputAdapter {
 
     @Override
     public boolean keyUp(int keycode) {
-        // Do not handle keyUp events for ESCAPE and E keys
         return false;
     }
 }

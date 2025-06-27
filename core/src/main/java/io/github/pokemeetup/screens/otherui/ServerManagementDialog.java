@@ -24,12 +24,8 @@ public class ServerManagementDialog extends Dialog {
 
         Table content = new Table();
         content.pad(20);
-
-        // Title
         content.add(new Label(editServer == null ? "Add Server" : "Edit Server",
             skin)).colspan(2).pad(10).row();
-
-        // Fields
         nameField = new TextField(editServer != null ? editServer.getServerName() : "", skin);
         ipField = new TextField(editServer != null ? editServer.getServerIP() : "", skin);
         tcpPortField = new TextField(editServer != null ?
@@ -48,8 +44,6 @@ public class ServerManagementDialog extends Dialog {
 
         content.add(new Label("UDP Port:", skin)).left().pad(5);
         content.add(udpPortField).width(200).pad(5).row();
-
-        // Buttons
         TextButton saveButton = new TextButton("Save", skin);
         TextButton cancelButton = new TextButton("Cancel", skin);
 
@@ -58,8 +52,6 @@ public class ServerManagementDialog extends Dialog {
         buttons.add(cancelButton).width(100).pad(10);
 
         content.add(buttons).colspan(2).pad(20);
-
-        // Event handlers
         saveButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -79,7 +71,6 @@ public class ServerManagementDialog extends Dialog {
 
     private void saveServer() {
         try {
-            // Validate input
             String name = nameField.getText().trim();
             String ip = ipField.getText().trim();
             int tcpPort = Integer.parseInt(tcpPortField.getText().trim());
@@ -88,8 +79,6 @@ public class ServerManagementDialog extends Dialog {
             if (name.isEmpty() || ip.isEmpty()) {
                 throw new IllegalArgumentException("All fields are required");
             }
-
-            // Create config
             ServerConnectionConfig config = new ServerConnectionConfig(
                 ip, tcpPort, udpPort, name,  100
             );

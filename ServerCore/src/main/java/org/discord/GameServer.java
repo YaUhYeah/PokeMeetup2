@@ -112,13 +112,10 @@ public class GameServer {
             serverPokemonSpawnManager = new ServerPokemonSpawnManager(MULTIPLAYER_WORLD_NAME);
             setupNetworkListener();
             scheduler.scheduleAtFixedRate(() -> {
-                // You can use a delta of 0.1f or any suitable value here.
-                // First update wild Pokémon state, then broadcast updates.
                 serverPokemonSpawnManager.update(0.1f);
                 serverPokemonSpawnManager.broadcastPokemonUpdates();
             }, 0, 100, TimeUnit.MILLISECONDS);// In your GameServer constructor, after worldData is initialized:
             scheduler.scheduleAtFixedRate(() -> {
-                // Update the world time by 1 second (real time)
                 worldData.updateTime(1.0f);
             }, 0, 1, TimeUnit.SECONDS);
 
@@ -158,17 +155,12 @@ public class GameServer {
      */
     private void handleServerInfoRequest(Connection connection) {
         GameLogger.info("Received ServerInfoRequest from: " + connection.getRemoteAddressTCP());
-
-        // 1. Get the server configuration
         ServerConnectionConfig serverConfig = this.config;
-
-        // 2. Read the server icon file into a byte array
         byte[] iconBytes = null;
         String iconPath = serverConfig.getIconPath(); // e.g., "server-icon.png"
 
         if (iconPath != null && !iconPath.isEmpty()) {
             try {
-                // Use the file system delegate to read the file from the server's root directory
                 iconBytes = GameFileSystem.getInstance().getDelegate().openInputStream(iconPath).readAllBytes();
             } catch (IOException e) {
                 GameLogger.error("Could not read server icon file at '" + iconPath + "': " + e.getMessage());
@@ -176,14 +168,10 @@ public class GameServer {
         } else {
             GameLogger.info("No server icon path specified in config.");
         }
-
-        // 3. Encode the byte array to a Base64 string
         String iconBase64 = null;
         if (iconBytes != null) {
             iconBase64 = Base64.getEncoder().encodeToString(iconBytes);
         }
-
-        // 4. Create the ServerInfo object to be sent
         NetworkProtocol.ServerInfo info = new NetworkProtocol.ServerInfo();
         info.name = serverConfig.getServerName();
         info.motd = serverConfig.getMotd();
@@ -191,8 +179,6 @@ public class GameServer {
         info.maxPlayers = serverConfig.getMaxPlayers();
         info.version = serverConfig.getVersion();
         info.iconBase64 = iconBase64; // Set the encoded string
-
-        // 5. Create and send the final response
         NetworkProtocol.ServerInfoResponse response = new NetworkProtocol.ServerInfoResponse();
         response.serverInfo = info;
         response.timestamp = System.currentTimeMillis();
@@ -204,7 +190,6 @@ public class GameServer {
         try {
             WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
             if (worldData == null) {
-                // Create new WorldData
                 worldData = ServerGameContext.get().getWorldManager().createWorld(
                     MULTIPLAYER_WORLD_NAME,
                     System.currentTimeMillis(),
@@ -228,17 +213,11 @@ public class GameServer {
 
             synchronized (activeConnections) {
                 try {
-                    // Existing cleanup code…
                     recentDisconnects.put(username, System.currentTimeMillis());
                     activeConnections.remove(username);
                     cleanupPlayerSession(connection.getID(), username);
-
-                    // **** REMOVE the player's ping entry ****
                     playerPingMap.remove(username);
-                    // Immediately broadcast the updated list:
                     broadcastPlayerList();
-
-                    // Notify all clients that this player left:
                     NetworkProtocol.PlayerLeft leftMessage = new NetworkProtocol.PlayerLeft();
                     leftMessage.username = username;
                     leftMessage.timestamp = System.currentTimeMillis();
@@ -259,9 +238,6 @@ public class GameServer {
             NetworkProtocol.ServerShutdown shutdownMsg = new NetworkProtocol.ServerShutdown();
             shutdownMsg.reason = "Server is shutting down";
             networkServer.sendToAllTCP(shutdownMsg);
-
-
-            // Save world state if exists
             if (worldData != null) {
                 try {
                     GameLogger.info("Saving world data during shutdown...");
@@ -305,8 +281,6 @@ public class GameServer {
             GameLogger.error("Unauthorized item drop attempt");
             return;
         }
-
-        // Validate the drop position isn't too far from player
         ServerPlayer player = activePlayers.get(username);
         if (player == null) {
             GameLogger.error("No player found for item drop");
@@ -322,27 +296,19 @@ public class GameServer {
             GameLogger.error("Item drop position too far from player");
             return;
         }
-
-        // FIX: Broadcast the drop to ALL clients, making the server authoritative.
         networkServer.sendToAllTCP(drop);
     }
 
     private void serverDestroyBlock(PlaceableBlock block) {
         if (block == null) return;
         Vector2 pos = block.getPosition();
-
-        // 1. Remove block from server state
         ServerGameContext.get().getServerBlockManager().removeBlock((int)pos.x, (int)pos.y);
-
-        // 2. Broadcast block removal to all clients
         NetworkProtocol.BlockPlacement removalMsg = new NetworkProtocol.BlockPlacement();
         removalMsg.action = NetworkProtocol.BlockAction.REMOVE;
         removalMsg.blockTypeId = block.getType().id;
         removalMsg.tileX = (int)pos.x;
         removalMsg.tileY = (int)pos.y;
         networkServer.sendToAllTCP(removalMsg);
-
-        // 3. Create and broadcast the item drop
         String itemId = block.getType().itemId;
         if (itemId != null) {
             ItemData dropData = new ItemData(itemId, 1);
@@ -352,8 +318,6 @@ public class GameServer {
             dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f;
             networkServer.sendToAllTCP(dropMsg);
         }
-
-        // 4. If it was a chest, drop its contents
         if (block.getType() == PlaceableBlock.BlockType.CHEST) {
             ChestData chestData = block.getChestData();
             if (chestData != null && chestData.items != null) {
@@ -372,19 +336,13 @@ public class GameServer {
 
     private void serverDestroyObject(WorldObject object) {
         if (object == null) return;
-
-        // 1. Remove object from server's world state
         Vector2 chunkPos = new Vector2((int) Math.floor(object.getPixelX() / (CHUNK_SIZE * TILE_SIZE)), (int) Math.floor(object.getPixelY() / (CHUNK_SIZE * TILE_SIZE)));
         ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, object.getId());
-
-        // 2. Broadcast object removal
         NetworkProtocol.WorldObjectUpdate removalMsg = new NetworkProtocol.WorldObjectUpdate();
         removalMsg.objectId = object.getId();
         removalMsg.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
         removalMsg.data = object.getSerializableData();
         networkServer.sendToAllTCP(removalMsg);
-
-        // 3. Create and broadcast the item drop
         String dropItemId = object.getType().dropItemId;
         int dropCount = object.getType().dropItemCount;
         if (dropItemId != null && dropCount > 0) {
@@ -396,10 +354,8 @@ public class GameServer {
             networkServer.sendToAllTCP(dropMsg);
         }
     }
-// In GameServer.java
 
     private WorldObject findServerChoppableObject(int tileX, int tileY) {
-        // Search a 3x3 area around the target tile to be more lenient.
         for (int x = tileX - 1; x <= tileX + 1; x++) {
             for (int y = tileY - 1; y <= tileY + 1; y++) {
                 Vector2 chunkPos = new Vector2(
@@ -411,7 +367,6 @@ public class GameServer {
                 if (objects == null || objects.isEmpty()) continue;
 
                 for (WorldObject obj : objects) {
-                    // Check if the object is choppable AND if its bounding box contains the check tile's center.
                     if (isChoppable(obj.getType()) && obj.getBoundingBox().contains(x * TILE_SIZE + TILE_SIZE/2f, y * TILE_SIZE + TILE_SIZE/2f)) {
                         GameLogger.info("Found choppable object " + obj.getId() + " at tile (" + obj.getTileX() + "," + obj.getTileY() + ") while checking ("+x+","+y+")");
                         return obj;
@@ -483,19 +438,13 @@ public class GameServer {
                 return;
             }
 
-            // 1. Update the player's position & state
-
             serverPlayer.setPosition(update.x, update.y);
             serverPlayer.setDirection(update.direction);
             serverPlayer.setMoving(update.isMoving);
-
-            // Convert pixel coords => chunk coords
             int cX = (int) Math.floor(update.x / (World.CHUNK_SIZE * World.TILE_SIZE));
             int cY = (int) Math.floor(update.y / (World.CHUNK_SIZE * World.TILE_SIZE));
             Vector2 chunkPos = new Vector2(cX, cY);
-            // Store that in the map
             playerChunkMap.put(username, chunkPos);
-            // Then update persistent data
             PlayerData playerData = ServerGameContext.get().getStorageSystem()
                 .getPlayerDataManager().loadPlayerData(UUID.nameUUIDFromBytes(update.username.getBytes()));
 
@@ -503,8 +452,6 @@ public class GameServer {
                 GameLogger.error("No player data found for active player: " + username);
                 return;
             }
-
-            // Update player data
             playerData.setX(update.x);
             playerData.setY(update.y);
             playerData.setDirection(update.direction);
@@ -518,13 +465,9 @@ public class GameServer {
             if (update.partyPokemon != null) {
                 playerData.setPartyPokemon(update.partyPokemon);
             }
-
-            // Save to storage
             UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
             ServerGameContext.get().getStorageSystem()
                 .getPlayerDataManager().savePlayerData(playerUUID, playerData);
-
-            // Broadcast update to other players
             networkServer.sendToAllExceptTCP(connection.getID(), update);
 
         } catch (Exception e) {
@@ -550,10 +493,7 @@ public class GameServer {
                 GameLogger.error("Failed to create Pokemon from spawn request");
                 return;
             }
-            // Create broadcast message
             NetworkProtocol.WildPokemonSpawn broadcastSpawn = createSpawnBroadcast(pokemon);
-
-            // Broadcast to all clients
             try {
                 networkServer.sendToAllTCP(broadcastSpawn);
                 GameLogger.info("Broadcast Pokemon spawn: " + pokemon.getName() +
@@ -594,14 +534,10 @@ public class GameServer {
         pokemonData.setLevel(pokemon.getLevel());
         pokemonData.setPrimaryType(pokemon.getPrimaryType());
         pokemonData.setSecondaryType(pokemon.getSecondaryType());
-
-        // Set stats
         if (pokemon.getStats() != null) {
             PokemonData.Stats stats = new PokemonData.Stats(pokemon.getStats());
             pokemonData.setStats(stats);
         }
-
-        // Set moves
         List<PokemonData.MoveData> moves = pokemon.getMoves().stream()
             .map(PokemonData.MoveData::fromMove)
             .filter(Objects::nonNull)
@@ -645,17 +581,12 @@ public class GameServer {
     private void handleLoginRequest(Connection connection, NetworkProtocol.LoginRequest request) {
         try {
             GameLogger.info("Processing login request for: " + request.username);
-
-            // Generate consistent UUID based on username
             UUID playerUUID = UUID.nameUUIDFromBytes(request.username.getBytes());
             GameLogger.info("Generated UUID for player: " + playerUUID);
-
-            // Try to load existing player data first
             PlayerData playerData = ServerGameContext.get().getStorageSystem()
                 .getPlayerDataManager().loadPlayerData(playerUUID);
 
             if (playerData == null) {
-                // Only create new data if none exists
                 GameLogger.info("Creating new player data for: " + request.username);
                 playerData = new PlayerData(request.username);
                 playerData.setX(0);
@@ -664,25 +595,18 @@ public class GameServer {
                 playerData.setMoving(false);
                 playerData.setInventoryItems(new ArrayList<>());
                 playerData.setPartyPokemon(new ArrayList<>());
-
-                // Save immediately and verify
                 ServerGameContext.get().getStorageSystem()
                     .getPlayerDataManager().savePlayerData(playerUUID, playerData);
                 ServerGameContext.get().getStorageSystem()
                     .getPlayerDataManager().flush(); // Force write to disk
             }
-
-            // Validate authentication
             if (!authenticateUser(request.username, request.password)) {
                 sendLoginFailure(connection, "Invalid credentials");
                 return;
             }
 
             synchronized (activeConnections) {
-                // Handle existing connection
                 handleExistingConnection(request.username);
-
-                // Create new connection
                 ConnectionInfo newConnection = new ConnectionInfo(connection.getID());
                 activeConnections.put(request.username, newConnection);
                 ServerPlayer player;
@@ -692,11 +616,8 @@ public class GameServer {
                     player = new ServerPlayer(request.username, ServerGameContext.get().getStorageSystem().getPlayerDataManager().playerCache.get(UUID.nameUUIDFromBytes(request.username.getBytes())));
                 }
                 activePlayers.put(request.username, player);
-                // Reg ister the player
                 connectedPlayers.put(connection.getID(), request.username);
                 newConnection.isAuthenticated = true;
-
-                // Send successful response
                 sendSuccessfulLoginResponse(connection, player);
                 NetworkProtocol.PlayerJoined joinedMsg = new NetworkProtocol.PlayerJoined();
                 joinedMsg.username = request.username;
@@ -705,7 +626,6 @@ public class GameServer {
                 joinedMsg.timestamp = System.currentTimeMillis();
 
                 ServerGameContext.get().getEventManager().fireEvent(new PlayerJoinEvent(request.username, playerData));
-                // Send to everyone (including the newly joined player)
                 networkServer.sendToAllTCP(joinedMsg);
                 sendActivePokemonToConnection(connection);
 
@@ -735,7 +655,6 @@ public class GameServer {
             }
         }
     }
-    // Modify handleChunkRequest in GameServer.java
     public void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
         Vector2 chunkPos = new Vector2(request.chunkX, request.chunkY);
         try {
@@ -744,32 +663,21 @@ public class GameServer {
                 GameLogger.error("Failed to load world data for chunk request at " + chunkPos);
                 return;
             }
-
-            // CRITICAL FIX: Generate a deterministic chunk seed based on world seed and position
-            // This ensures the same chunk is generated every time for the same coordinates
             long chunkSeed = worldData.getConfig().getSeed() +
                 (((long)request.chunkX << 32) | ((long)request.chunkY & 0xFFFFFFFFL));
-
-            // Load or generate chunk with proper error handling
             Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
             if (chunk == null) {
                 GameLogger.error("Failed to load/generate chunk at " + chunkPos);
                 return;
             }
-
-            // Calculate precise biome transition at chunk center for consistency
             float centerPixelX = (request.chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
             float centerPixelY = (request.chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
             BiomeTransitionResult transition = ServerGameContext.get().getWorldManager().getBiomeTransitionAt(
                 centerPixelX, centerPixelY
             );
-
-            // FIX: Save biome info to the chunk to ensure it's consistently stored
             if (transition != null && transition.getPrimaryBiome() != null) {
                 chunk.setBiome(transition.getPrimaryBiome());
             }
-
-            // Ensure world objects are consistently generated
             List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
                 .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
             if (objects == null || objects.isEmpty()) {
@@ -777,16 +685,10 @@ public class GameServer {
                     .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
                 GameLogger.info("Generated " + objects.size() + " objects for chunk " + chunkPos);
             }
-
-            // Build comprehensive chunk data with all necessary information
             NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
             chunkData.chunkX = request.chunkX;
             chunkData.chunkY = request.chunkY;
-
-            // CRITICAL FIX: Always provide biome information from the chunk
             chunkData.primaryBiomeType = chunk.getBiome().getType();
-
-            // Include complete biome transition data for visual consistency
             if (transition != null && transition.getSecondaryBiome() != null) {
                 chunkData.secondaryBiomeType = transition.getSecondaryBiome().getType();
                 chunkData.biomeTransitionFactor = transition.getTransitionFactor();
@@ -797,12 +699,8 @@ public class GameServer {
 
             chunkData.tileData = chunk.getTileData().clone(); // Send a clone to prevent modifications
             chunkData.blockData = chunk.getBlockDataForSave();
-
-            // IMPORTANT: Save the deterministic seed with the chunk data
             chunkData.generationSeed = chunkSeed;
             chunkData.timestamp = System.currentTimeMillis();
-
-            // Include all world objects with complete data
             chunkData.worldObjects = new ArrayList<>();
             if (objects != null) {
                 for (WorldObject obj : objects) {
@@ -814,15 +712,11 @@ public class GameServer {
                     }
                 }
             }
-
-            // Compress and send
             NetworkProtocol.CompressedChunkData compressed = compressChunkData(chunkData);
             if (compressed == null) {
                 GameLogger.error("Failed to compress chunk data for " + chunkPos);
                 return;
             }
-
-            // Send to client and log success with detailed information
             connection.sendTCP(compressed);
             GameLogger.info("Sent chunk " + chunkPos + " to client with " +
                 (objects != null ? objects.size() : 0) + " objects and biome: " +
@@ -840,8 +734,6 @@ public class GameServer {
         if (activePlayers.isEmpty()) {
             return;
         }
-
-        // Find the most common biome among all active players.
         Map<BiomeType, Integer> biomeCounts = new HashMap<>();
         for (ServerPlayer player : activePlayers.values()) {
             BiomeTransitionResult btr = ServerGameContext.get().getWorldManager().getBiomeTransitionAt(player.getPosition().x, player.getPosition().y);
@@ -862,16 +754,11 @@ public class GameServer {
             GameLogger.error("Could not retrieve dominant biome object. Aborting weather update.");
             return;
         }
-
-        // --- FIX: Call the new server-safe update method ---
         weatherSystem.updateServerState(1.0f, // Use a fixed delta of 1 second for each update cycle
             new BiomeTransitionResult(dominantBiome, null, 1.0f),
             temperature,
             (float) (worldData.getWorldTimeInMinutes() % (24 * 60)) / 60f
         );
-        // --- END FIX ---
-
-        // Create and broadcast the global update message
         NetworkProtocol.WorldStateUpdate update = new NetworkProtocol.WorldStateUpdate();
         update.seed = worldData.getConfig().getSeed();
         update.worldTimeInMinutes = worldData.getWorldTimeInMinutes();
@@ -909,7 +796,6 @@ public class GameServer {
 
     private NetworkProtocol.CompressedChunkData compressChunkData(NetworkProtocol.ChunkData chunkData) {
         try {
-            // Serialize ChunkData to an uncompressed byte array using Kryo.
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             int initialBufferSize = 16 * 1024;   // 16 KB
             int maxBufferSize = 256 * 1024;        // 256 KB
@@ -917,14 +803,11 @@ public class GameServer {
             output.setOutputStream(baos);
 
             Kryo kryo = new Kryo();
-            // Register all classes exactly as on the client!
             NetworkProtocol.registerClasses(kryo);
             kryo.setReferences(false);
             kryo.writeObject(output, chunkData);
             output.close();
             byte[] uncompressedData = baos.toByteArray();
-
-            // Compress the uncompressed data using LZ4.
             LZ4Factory factory = LZ4Factory.fastestInstance();
             LZ4Compressor compressor = factory.fastCompressor();
             int maxCompressedLength = compressor.maxCompressedLength(uncompressedData.length);
@@ -932,8 +815,6 @@ public class GameServer {
             int compressedLength = compressor.compress(uncompressedData, 0, uncompressedData.length,
                 compressedBuffer, 0, maxCompressedLength);
             byte[] finalCompressedData = Arrays.copyOf(compressedBuffer, compressedLength);
-
-            // Build the compressed chunk message.
             NetworkProtocol.CompressedChunkData compressed = new NetworkProtocol.CompressedChunkData();
             compressed.chunkX = chunkData.chunkX;
             compressed.chunkY = chunkData.chunkY;
@@ -941,7 +822,6 @@ public class GameServer {
             compressed.secondaryBiomeType = chunkData.secondaryBiomeType; // may be null
             compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor; // may be 0
             compressed.generationSeed = worldData.getConfig().getSeed();
-            // Save the original (uncompressed) length.
             compressed.originalLength = uncompressedData.length;
             compressed.data = finalCompressedData;
             return compressed;
@@ -958,23 +838,18 @@ public class GameServer {
             public void connected(Connection connection) {
                 try {
                     GameLogger.info("New connection attempt from: " + connection.getRemoteAddressTCP());
-                    // Check max players
                     if (playerManager.getOnlinePlayers().size() >= config.getMaxPlayers()) {
                         GameLogger.info("Connection rejected: Max players reached");
                         sendConnectionResponse(connection, false, "Server is full");
                         scheduler.schedule(() -> connection.close(), 100, TimeUnit.MILLISECONDS);
                         return;
                     }
-
-                    // Send success response
                     NetworkProtocol.ConnectionResponse response = new NetworkProtocol.ConnectionResponse();
                     response.success = true;
                     response.message = "Connection established";
                     connection.sendTCP(response);
 
                     GameLogger.info("Connection " + connection.getID() + " established - awaiting authentication");
-
-                    // Set authentication timeout
                     scheduler.schedule(() -> {
                         if (!connectedPlayers.containsKey(connection.getID())) {
                             GameLogger.info("Authentication timeout for connection: " + connection.getID());
@@ -992,7 +867,6 @@ public class GameServer {
             public void received(Connection connection, Object object) {
                 try {
                     if (object instanceof FrameworkMessage) {
-                        // Ignore KryoNet's internal messages
                         return;
                     }
 
@@ -1101,89 +975,56 @@ public class GameServer {
     }
 
     private void handleItemPickup(Connection connection, NetworkProtocol.ItemPickup pickup) {
-        // Validate the message
         if (pickup == null || pickup.entityId == null) {
             GameLogger.error("Received invalid ItemPickup message.");
             return;
         }
-
-        // Validate that the sender’s username matches the connection.
         String sender = connectedPlayers.get(connection.getID());
         if (sender == null || !sender.equals(pickup.username)) {
             GameLogger.error("Item pickup username mismatch: expected " + sender + " but got " + pickup.username);
             return;
         }
-
-        // Retrieve the item entity from the server’s item entity manager.
-        // (Assuming ServerGameContext.get().getItemEntityManager() exists.)
         ItemEntity itemEntity = ServerGameContext.get().getItemEntityManager().getItemEntity(pickup.entityId);
         if (itemEntity == null) {
             GameLogger.error("Item entity not found for pickup: " + pickup.entityId);
             return;
         }
-
-        // Remove the item from the server state.
         ServerGameContext.get().getItemEntityManager().removeItemEntity(pickup.entityId);
         GameLogger.info("Item " + pickup.entityId + " picked up by " + pickup.username);
-
-        // Optionally: update the player's inventory on the server side here.
-        // For example, retrieve the ServerPlayer for pickup.username and add itemEntity.getItemData() to their inventory.
-        // (This depends on how you want to handle authoritative inventory data on the server.)
-
-        // Broadcast the pickup to all other clients so they remove the item.
         networkServer.sendToAllExceptTCP(connection.getID(), pickup);
     }
 
     private void handleChestUpdate(Connection connection, NetworkProtocol.ChestUpdate update) {
-        // (1) Verify that the sender is authorized.
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(update.username)) {
             GameLogger.error("Unauthorized chest update from " + update.username);
             return;
         }
-
-        // (2) Find the chest position using a helper (for example, scanning placed blocks)
         Vector2 chestPos = findChestPositionInPlacedBlocks(update.chestId);
         if (chestPos == null) {
             GameLogger.error("Could not find chest position for chestId = " + update.chestId);
             return;
         }
-
-        // (3) Determine the chunk coordinates and force–load that chunk.
         int chunkX = chestPos.x >= 0 ? (int) (chestPos.x / World.CHUNK_SIZE)
             : Math.floorDiv((int) chestPos.x, World.CHUNK_SIZE);
         int chunkY = chestPos.y >= 0 ? (int) (chestPos.y / World.CHUNK_SIZE)
             : Math.floorDiv((int) chestPos.y, World.CHUNK_SIZE);
         Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
-
-        // (4) Get the chest block from the server’s block manager.
         PlaceableBlock chestBlock = ServerGameContext.get().getServerBlockManager().getChestBlock(update.chestId);
         if (chestBlock == null) {
             GameLogger.error("Chest block with id " + update.chestId + " not found even after loading chunk");
             return;
         }
-
-        // (5) Synchronize updates on a per–chest lock so that concurrent updates won’t conflict.
         Object lock = chestLocks.computeIfAbsent(update.chestId, id -> new Object());
         synchronized (lock) {
-            // Retrieve the current chest data; if none exists, create one.
             ChestData currentChest = chestBlock.getChestData();
             if (currentChest == null) {
                 currentChest = new ChestData((int) chestPos.x, (int) chestPos.y);
                 chestBlock.setChestData(currentChest);
             }
-
-            // **** FIX: Update the chest data in place (do not create a separate copy)
             currentChest.setItems(new ArrayList<>(update.items));
-
-
-            // Optionally, if you have other state (like “isOpen”) you might update that too.
-
-            // (6) Mark the chunk as dirty and force–save it so that the updated chest data is persisted.
             chunk.setDirty(true);
             ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
-
-            // (7) Broadcast the chest update to all connected clients.
             networkServer.sendToAllTCP(update);
             GameLogger.info("Processed chest update for chestId " + update.chestId + " from " + update.username);
         }
@@ -1204,14 +1045,11 @@ public class GameServer {
     }
 
     private void handleBuildingPlacement(Connection connection, NetworkProtocol.BuildingPlacement bp) {
-        // Validate that the sender’s username matches the connection
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(bp.username)) {
             GameLogger.error("Unauthorized building placement attempt by " + bp.username);
             return;
         }
-
-        // Loop over the layout and place each block.
         for (int x = 0; x < bp.width; x++) {
             for (int y = 0; y < bp.height; y++) {
                 String typeId = bp.blockTypeIds[x][y];
@@ -1227,10 +1065,6 @@ public class GameServer {
                 }
             }
         }
-
-        // (Optionally mark affected chunks as dirty, etc.)
-
-        // Broadcast the building placement to all other clients
         networkServer.sendToAllExceptTCP(connection.getID(), bp);
         GameLogger.info("Building placement by " + bp.username + " placed at (" + bp.startX + "," + bp.startY + ")");
     }
@@ -1286,8 +1120,6 @@ public class GameServer {
     private void handleRegisterRequest(Connection connection, NetworkProtocol.RegisterRequest request) {
         try {
             GameLogger.info("Processing registration request for username: " + request.username);
-
-            // Basic validation
             if (request.username == null || request.username.isEmpty() ||
                 request.password == null || request.password.isEmpty()) {
                 sendRegistrationResponse(connection, false, "Username and password are required.");
@@ -1298,14 +1130,10 @@ public class GameServer {
                     "Username must be 3-20 characters long and contain only letters, numbers, and underscores.");
                 return;
             }
-
-            // Check if username already exists
             if (databaseManager.checkUsernameExists(request.username)) {
                 sendRegistrationResponse(connection, false, "Username already exists.");
                 return;
             }
-
-            // Attempt to register the player in database
             boolean success = databaseManager.registerPlayer(request.username, request.password);
 
             if (success) {
@@ -1338,7 +1166,6 @@ public class GameServer {
 
             GameLogger.info("World manager initialized");
             initializePeriodicTasks();
-            // Load plugins
             pluginManager.loadPlugins();
             pluginManager.enablePlugins();
             GameLogger.info("Plugins loaded");
@@ -1381,7 +1208,6 @@ public class GameServer {
         ServerPlayer player = activePlayers.get(username);
         if (player == null) {
             GameLogger.error("No player instance found for authenticated user: " + username);
-            // Attempt to recover
             PlayerData savedData = ServerGameContext.get().getStorageSystem().getPlayerDataManager().loadPlayerData(UUID.nameUUIDFromBytes(username.getBytes()));
             if (savedData != null) {
                 player = new ServerPlayer(username, savedData);
@@ -1489,8 +1315,6 @@ public class GameServer {
                 player.setChoppingObject(null);
                 player.setBreakingBlock(null);
                 break;
-
-            // ... other cases
         }
     }
 
@@ -1567,7 +1391,6 @@ public class GameServer {
 
 
     private void handleWorldObjectUpdate(Connection connection, NetworkProtocol.WorldObjectUpdate update) {
-        // Ensure that only authenticated users can send updates.
         String username = connectedPlayers.get(connection.getID());
         if (username == null) {
             GameLogger.error("WorldObjectUpdate received from unauthenticated connection.");
@@ -1576,7 +1399,6 @@ public class GameServer {
 
         switch (update.type) {
             case REMOVE:
-                // Instead of checking for "x" and "y", check for "tileX" and "tileY".
                 if (update.data == null || !update.data.containsKey("tileX") || !update.data.containsKey("tileY")) {
                     GameLogger.error("WorldObjectUpdate REMOVE missing tile position data.");
                     return;
@@ -1590,36 +1412,25 @@ public class GameServer {
                     GameLogger.error("Error parsing world object tile position: " + e.getMessage());
                     return;
                 }
-                // Convert tile coordinates to pixel coordinates.
                 float x = tileX * World.TILE_SIZE;
                 float y = tileY * World.TILE_SIZE;
-
-                // Compute which chunk this object belongs to.
                 int chunkX = (int) Math.floor(x / (World.TILE_SIZE * Chunk.CHUNK_SIZE));
                 int chunkY = (int) Math.floor(y / (World.TILE_SIZE * Chunk.CHUNK_SIZE));
                 Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-                // Remove the object from the server’s world–object manager.
                 ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, update.objectId);
                 GameLogger.info("Removed world object " + update.objectId + " from chunk " + chunkPos);
-
-                // Mark the corresponding chunk as dirty and save it so that the change is persisted.
                 Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, chunkX, chunkY);
                 if (chunk != null) {
                     chunk.setDirty(true);
                     ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
                 }
-
-                // Broadcast the removal update to all connected clients.
                 networkServer.sendToAllTCP(update);
                 break;
 
             case ADD:
-                // (Handle object addition if needed.)
                 break;
 
             case UPDATE:
-                // (Handle object update if needed.)
                 break;
 
             default:
@@ -1645,10 +1456,7 @@ public class GameServer {
      * @return A choppable WorldObject if found; otherwise null.
      */
     private WorldObject findServerChoppableObject(ServerPlayer player, String direction) {
-        // Use the player's current position in pixels.
         Vector2 playerPos = player.getPosition();
-
-        // Calculate target point by offsetting the player's position.
         float searchDistance = TILE_SIZE * 1.5f;
         float targetX = playerPos.x;
         float targetY = playerPos.y;
@@ -1670,18 +1478,11 @@ public class GameServer {
                 GameLogger.error("Unknown chopping direction: " + direction);
                 return null;
         }
-
-        // Create a search rectangle centered at the target position.
-        // Here the rectangle is 2 tiles wide and 2 tiles high.
         Rectangle searchArea = new Rectangle(targetX - TILE_SIZE, targetY - TILE_SIZE, TILE_SIZE * 2, TILE_SIZE * 2);
         GameLogger.info("Chop search area: x=" + searchArea.x + " y=" + searchArea.y +
             " width=" + searchArea.width + " height=" + searchArea.height);
-
-        // Determine chunk coordinates based on the target position.
         int chunkX = (int) Math.floor(targetX / (TILE_SIZE * CHUNK_SIZE));
         int chunkY = (int) Math.floor(targetY / (TILE_SIZE * CHUNK_SIZE));
-
-        // Search the current chunk and adjacent chunks.
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 Vector2 searchChunkPos = new Vector2(chunkX + dx, chunkY + dy);
@@ -1694,7 +1495,6 @@ public class GameServer {
                 }
                 for (WorldObject obj : objects) {
                     if (isChoppable(obj.getType())) {
-                        // Use the object's bounding box (which is already defined for collision)
                         Rectangle objBounds = obj.getBoundingBox();
                         if (objBounds.overlaps(searchArea)) {
                             GameLogger.info("Found choppable object: " + obj.getType() +
@@ -1714,15 +1514,11 @@ public class GameServer {
     private void handlePokeballSpawning(Vector2 chunkPos, Chunk chunk) {
         try {
             List<WorldObject> chunkObjects = worldData.getChunkObjects().computeIfAbsent(chunkPos, k -> new ArrayList<>());
-
-            // Count existing pokeballs
             long pokeballCount = chunkObjects.stream()
                 .filter(obj -> obj.getType() == WorldObject.ObjectType.POKEBALL)
                 .count();
             Random random = new Random();
-            // Check if we can spawn a new pokeball
             if (pokeballCount < MAX_POKEBALLS_PER_CHUNK && random.nextFloat() < POKEBALL_SPAWN_CHANCE) {
-                // Find valid spawn location
                 int attempts = 10;
                 while (attempts > 0) {
                     int localX = random.nextInt(Chunk.CHUNK_SIZE);
@@ -1730,27 +1526,18 @@ public class GameServer {
 
                     int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + localX);
                     int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + localY);
-
-                    // Check if location is valid (e.g., on grass or walkable terrain)
                     if (chunk.isPassable(localX, localY)) {
-                        // Create new pokeball object
                         WorldObject pokeball = new WorldObject(
                             worldTileX,
                             worldTileY,
                             null, // Server doesn't need texture
                             WorldObject.ObjectType.POKEBALL
                         );
-
-                        // Add to chunk objects
                         chunkObjects.add(pokeball);
-
-                        // Create spawn update
                         NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
                         update.objectId = pokeball.getId();
                         update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
                         update.data = pokeball.getSerializableData();
-
-                        // Broadcast to all players
                         networkServer.sendToAllTCP(update);
 
                         GameLogger.info("Spawned pokeball at " + worldTileX + "," + worldTileY);
@@ -1784,17 +1571,13 @@ public class GameServer {
 
         switch (placement.action) {
             case PLACE:
-                // Place the block using our block manager.
                 PlaceableBlock.BlockType type = PlaceableBlock.BlockType.fromItemId(placement.blockTypeId);
                 boolean placed = ServerGameContext.get().getServerBlockManager().placeBlock(type, placement.tileX, placement.tileY, false);
                 if (placed) {
-                    // *** NEW CODE: Update the corresponding chunk ***
                     int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
                     int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
                     Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
                     if (chunk != null) {
-                        // (Assume that blockManager.placeBlock() internally creates and returns the new block.)
-                        // If not, then get the block from your block manager’s internal map:
                         Vector2 blockPos = new Vector2(placement.tileX, placement.tileY);
                         PlaceableBlock block = ServerGameContext.get().getServerBlockManager().getBlockAt(blockPos);
                         if (block != null) {
@@ -1812,9 +1595,7 @@ public class GameServer {
                 }
                 break;
             case REMOVE:
-                // Remove the block from our world.
                 ServerGameContext.get().getServerBlockManager().removeBlock(placement.tileX, placement.tileY);
-                // Also update the chunk data.
                 int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
                 int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
                 Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
@@ -1823,7 +1604,6 @@ public class GameServer {
                     chunk.setDirty(true);
                     ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
                 }
-                // Broadcast to other clients.
                 networkServer.sendToAllExceptTCP(connection.getID(), placement);
                 break;
         }

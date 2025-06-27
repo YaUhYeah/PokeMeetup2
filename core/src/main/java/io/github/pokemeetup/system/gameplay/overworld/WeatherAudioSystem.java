@@ -40,29 +40,23 @@ public class WeatherAudioSystem {
 
             if (isThundering) {
                 lightningTimer += delta;
-                // For the first 0.05 seconds, keep the flash at full intensity.
                 if (lightningTimer < 0.05f) {
                     lightningAlpha = 1.0f; // full flash
                 }
-                // Then fade out over the remainder of the flash duration.
                 else if (lightningTimer < lightningDuration) {
                     float t = (lightningTimer - 0.05f) / (lightningDuration - 0.05f);
                     lightningAlpha = MathUtils.lerp(1.0f, 0f, t);
                 } else {
-                    // End of flash effect.
                     isThundering = false;
                     lightningAlpha = 0;
                     lightningTimer = 0;
                 }
             }
-
-            // Trigger a new thunder flash if the timer has reached the next scheduled thunder.
             if (thunderTimer >= nextThunderTime) {
                 triggerThunderAndLightning(intensity);
                 resetThunderTimer();
             }
         } else {
-            // Reset lightning variables if the weather changes.
             lightningAlpha = 0;
             isThundering = false;
             lightningTimer = 0;
@@ -75,21 +69,13 @@ private float lightningTimer = 0f;
     private void triggerThunderAndLightning(float intensity) {
         isThundering = true;
         lightningTimer = 0;
-        // Start with a full-intensity flash.
         lightningAlpha = 1.0f;
-
-        // (Optionally, if you want to modulate by intensity, you could do:
-        // lightningAlpha = Math.min(1.0f, 0.7f * intensity);
-        // but a full flash often looks best.)
-
-        // Play thunder sound with random variation.
         float volume = 0.5f + (intensity * 0.5f);
         float pitch = 0.9f + (MathUtils.random() * 0.2f);
         audioManager.playWeatherSound(AudioManager.WeatherSoundEffect.THUNDER, volume, pitch);
     }
 
     private void updateWeatherSounds(WeatherSystem.WeatherType currentWeather, float intensity) {
-        // Update looping weather sounds
         switch (currentWeather) {
             case RAIN:
                 audioManager.updateWeatherLoop(AudioManager.WeatherSoundEffect.LIGHT_RAIN, intensity * 0.6f);
@@ -110,7 +96,6 @@ private float lightningTimer = 0f;
                 break;
 
             default:
-                // Stop all weather loops for clear weather
                 audioManager.stopAllWeatherLoops();
                 break;
         }
@@ -120,18 +105,10 @@ private float lightningTimer = 0f;
         if (lightningAlpha > 0) {
             Color oldColor = batch.getColor();
             batch.setColor(1, 1, 1, lightningAlpha);
-
-            // Save blend function
             int srcFunc = batch.getBlendSrcFunc();
             int dstFunc = batch.getBlendDstFunc();
-
-            // Use additive blending for lightning
             batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
-
-            // Draw full screen white rectangle for lightning flash
             batch.draw(TextureManager.getWhitePixel(), 0, 0, screenWidth, screenHeight);
-
-            // Restore original blend function and color
             batch.setBlendFunction(srcFunc, dstFunc);
             batch.setColor(oldColor);
         }

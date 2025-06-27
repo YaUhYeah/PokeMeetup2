@@ -40,13 +40,10 @@ public class SpawnCommand implements Command {
                 chatSystem.addSystemMessage("Error: World not found.");
                 return;
             }
-            // Get spawn coordinates from the world configuration.
             int tileX = currentWorld.getWorldData().getConfig().getTileSpawnX();
             int tileY = currentWorld.getWorldData().getConfig().getTileSpawnY();
             float pixelX = tileX * World.TILE_SIZE;
             float pixelY = tileY * World.TILE_SIZE;
-
-            // Teleport the player.
             player.getPosition().set(pixelX, pixelY);
             player.setTileX(tileX);
             player.setTileY(tileY);
@@ -57,13 +54,8 @@ public class SpawnCommand implements Command {
 
             chatSystem.addSystemMessage("Teleported to spawn point! (" + tileX + ", " + tileY + ")");
             GameLogger.info("Player teleported to spawn: " + pixelX + ", " + pixelY);
-
-            // **The crucial fix: Reset the chunk state.**
             currentWorld.clearChunks();
-            // Now trigger a fresh initial load (this method does not check the flag)
             currentWorld.loadChunksAroundPlayer();
-
-            // If in multiplayer mode, update the server.
             if (GameContext.get().isMultiplayer()) {
                 gameClient.sendPlayerUpdate();
                 gameClient.savePlayerState(player.getPlayerData());

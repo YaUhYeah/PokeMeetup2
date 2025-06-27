@@ -32,7 +32,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     public static final int ITEM_SIZE = 32;
     private static final float DURABILITY_BAR_HEIGHT = 4f;
     private static final float DURABILITY_BAR_PADDING = 2f;
-    // Use an instance variable for slot size so that it can be set dynamically.
     private final int slotSize;
     private final InventorySlotData slotData;
     private final Skin skin;
@@ -48,13 +47,8 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         this.skin = skin;
         this.screenInterface = screenInterface;
         this.slotSize = slotSize;
-
-        // Set the initial look and input settings.
         setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("slot_normal")));
-        // Do not call setSize() here because the layout from the parent (Table) will control it.
         setTouchable(Touchable.enabled);
-
-        // Build the UI: add contents, tooltips, observers, and input listeners.
         setupContents();
         setupTooltip();
         slotData.addObserver(this);
@@ -108,7 +102,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     }
 
     public void updateSlot() {
-        // For crafting-result slots, we retrieve the result from the crafting system.
         ItemData itemData = getSlotItemData();
         if (slotData.getSlotType() == InventorySlotData.SlotType.CRAFTING_RESULT) {
             CraftingSystem cs = screenInterface.getCraftingSystem();
@@ -140,7 +133,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                     durabilityBar.setVisible(false);
                 }
             } else {
-                // If the texture is missing, hide the image and labels.
                 itemImage.setVisible(false);
                 countLabel.setVisible(false);
                 durabilityBar.setVisible(false);
@@ -178,8 +170,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         stack.add(itemImage);
         stack.add(durabilityContainer);
         stack.add(countLabel);
-
-        // Let the parent layout (Table cell) control the final size.
         add(stack).expand().fill().size(slotSize, slotSize);
     }
 
@@ -270,8 +260,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         return Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT) || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT);
     }
 
-    // --- Click Handling Methods (unchanged logic) ---
-
     private void handleLeftClick(boolean shiftHeld) {
         InventoryLock.writeLock();
         try {
@@ -290,7 +278,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             }
 
             if (currentSlotItem == null && heldItem != null) {
-                // Place the entire held stack into an empty slot.
                 placeStackIntoEmptySlot(heldItem, slotType, heldItem.getCount());
             } else if (currentSlotItem != null && heldItem == null) {
                 pickUpEntireStack(currentSlotItem, slotType);
@@ -324,7 +311,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             if (slotType == InventorySlotData.SlotType.CRAFTING_RESULT) {
                 pickUpOneCraftedItem();
             } else if (currentSlotItem == null && heldItem != null) {
-                // Place one item from the held stack into an empty slot.
                 placeStackIntoEmptySlot(heldItem, slotType, 1);
             } else if (currentSlotItem != null && heldItem == null) {
                 pickUpHalfStack(currentSlotItem, slotType);
@@ -357,14 +343,12 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         Item heldItem = screenInterface.getHeldItemObject();
 
         if (heldItem == null) {
-            // Cursor is empty, craft one and put it on the cursor.
             ItemData craftedItemData = cs.craftAndConsume();
             if (craftedItemData != null) {
                 Item newItem = InventoryConverter.itemDataToItem(craftedItemData);
                 screenInterface.setHeldItem(newItem);
             }
         } else {
-            // Cursor has an item, check if we can stack.
             if (heldItem.getName().equals(craftableResult.getItemId()) && heldItem.isStackable()) {
                 int potentialNewCount = heldItem.getCount() + craftableResult.getCount();
                 if (potentialNewCount <= Item.MAX_STACK_SIZE) {
@@ -374,7 +358,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                         screenInterface.setHeldItem(heldItem); // Update held item view
                     }
                 }
-                // If it would over-stack, do nothing.
             }
         }
     }
@@ -428,18 +411,14 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         if (craftableResult == null) return;
 
         for (int i = 0; i < maxCrafts; i++) {
-            // Before each craft, check if the inventory has space.
             if (screenInterface.getInventory().hasSpaceFor(craftableResult)) {
                 ItemData craftedItem = cs.craftAndConsume(); // This now returns the crafted item.
                 if (craftedItem != null) {
-                    // Add the item directly to the inventory.
                     screenInterface.getInventory().addItem(craftedItem);
                 } else {
-                    // Stop if crafting fails for any reason.
                     break;
                 }
             } else {
-                // Stop if there's no more space.
                 break;
             }
         }

@@ -18,7 +18,6 @@ public class FootstepEffect {
      * @param duration  how long (in seconds) the effect takes to fade out
      */
     public FootstepEffect(Vector2 position, String direction, float duration) {
-        // Create a copy of the position so it won’t be modified externally.
         this.position = new Vector2(position);
         this.direction = direction;
         this.duration = duration;
@@ -33,7 +32,6 @@ public class FootstepEffect {
         return stateTime >= duration;
     }
     public void render(SpriteBatch batch) {
-        // Calculate fading alpha: goes from 1 to 0 over the duration.
         float computedAlpha = 1.0f - (stateTime / duration);
         TextureRegion region = null;
         if (direction.equalsIgnoreCase("down")) {
@@ -46,17 +44,11 @@ public class FootstepEffect {
             region = TextureManager.steps.findRegion("stepsRight");
         }
         if (region != null) {
-            // Instead of overriding with white, modulate the current batch color.
             Color ambient = batch.getColor(); // this is the current world tint (e.g. dark at night)
-            // Multiply the current alpha by the computed fading factor.
             float newAlpha = ambient.a * computedAlpha;
-            // Save the current color.
             Color previous = new Color(ambient);
-            // Set the batch color to the current r, g, b with the new alpha.
             batch.setColor(ambient.r, ambient.g, ambient.b, newAlpha);
-            // Draw the region centered horizontally at the given position.
             batch.draw(region, position.x - region.getRegionWidth() / 2f, position.y);
-            // Restore the previous color.
             batch.setColor(previous);
         }
     }

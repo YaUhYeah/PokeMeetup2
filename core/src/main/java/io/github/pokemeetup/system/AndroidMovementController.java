@@ -1,4 +1,3 @@
-// File: src/main/java/io/github/pokemeetup/system/AndroidMovementController.java
 package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.math.Vector2;
@@ -29,8 +28,6 @@ public class AndroidMovementController {
         if (!isActive) return;
 
         joystickCurrent.set(x, y);
-
-        // [FIX] Clamp the joystick knob to stay within the max radius
         Vector2 diff = new Vector2(joystickCurrent).sub(joystickCenter);
         if (diff.len() > MAX_JOYSTICK_RADIUS) {
             diff.setLength(MAX_JOYSTICK_RADIUS);
@@ -44,9 +41,6 @@ public class AndroidMovementController {
         isActive = false;
         inputHandler.resetMovementFlags(); // [FIX] This clears all directional flags
     }
-
-    // [MODIFIED] This method no longer controls the player directly.
-    // It now sets boolean flags in the InputHandler, just like the keyboard.
     private void updateJoystick() {
         if (!isActive) return;
 
@@ -61,14 +55,10 @@ public class AndroidMovementController {
         movementVector.nor(); // Normalize to get a direction vector
 
         float angle = movementVector.angleDeg();
-
-        // Reset all directions before setting the new one
         inputHandler.moveUp(false);
         inputHandler.moveDown(false);
         inputHandler.moveLeft(false);
         inputHandler.moveRight(false);
-
-        // Determine the primary direction and set the corresponding flag
         if (angle > 45 && angle <= 135) {
             inputHandler.moveUp(true);
         } else if (angle > 135 && angle <= 225) {
@@ -78,12 +68,8 @@ public class AndroidMovementController {
         } else {
             inputHandler.moveRight(true);
         }
-
-        // [FIX] Set running state based on how far the joystick is pushed
         inputHandler.setRunning(magnitude > 0.8f);
     }
-
-    // These getters are for the GameScreen to render the joystick UI
     public boolean isActive() { return isActive; }
     public Vector2 getJoystickCenter() { return joystickCenter; }
     public Vector2 getJoystickCurrent() { return joystickCurrent; }
@@ -91,6 +77,4 @@ public class AndroidMovementController {
     public float getMagnitude() {
         return MathUtils.clamp(movementVector.len() / MAX_JOYSTICK_RADIUS, 0, 1);
     }
-
-    // [REMOVED] The `update()` method is no longer needed here, as the `InputHandler`'s update loop now drives player movement.
 }

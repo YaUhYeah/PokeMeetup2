@@ -43,7 +43,6 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
     }
 
     private void initializeSlots() {
-        // Clear and initialize items list
         if (items == null) {
             items = new ArrayList<>(CHEST_SIZE);
         }
@@ -51,8 +50,6 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         for (int i = 0; i < CHEST_SIZE; i++) {
             items.add(null);
         }
-
-        // Initialize slot data array
         initializeSlotDataArray();
     }
 
@@ -133,8 +130,6 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         ChestData copy = new ChestData((int)position.x, (int)position.y);
         copy.chestId = UUID.fromString(this.chestId.toString()); // Deep copy UUID
         copy.isDirty = this.isDirty;
-
-        // Deep copy items
         if (this.items != null) {
             for (int i = 0; i < this.items.size(); i++) {
                 ItemData item = this.items.get(i);

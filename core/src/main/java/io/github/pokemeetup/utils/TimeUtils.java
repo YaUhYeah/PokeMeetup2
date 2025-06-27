@@ -9,10 +9,8 @@ public class TimeUtils {
 
     public static String formatTime(long timestamp) {
         if (System.currentTimeMillis() - timestamp < 24 * 60 * 60 * 1000) {
-            // If less than 24 hours ago, show only time
             return timeFormat.format(new Date(timestamp));
         }
-        // Otherwise show date and time
         return dateFormat.format(new Date(timestamp));
     }
 }

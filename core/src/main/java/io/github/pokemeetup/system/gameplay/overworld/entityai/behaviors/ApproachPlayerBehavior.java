@@ -15,8 +15,6 @@ import io.github.pokemeetup.utils.GameLogger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-// Approach Player Behavior
 public class ApproachPlayerBehavior implements PokemonBehavior {
     private static final float APPROACH_RANGE = 10.0f * World.TILE_SIZE;
     private static final float OPTIMAL_DISTANCE = 2.0f * World.TILE_SIZE;
@@ -38,14 +36,10 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
             Player player = GameContext.get().getPlayer();
             if (player != null) {
                 float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
-
-                // NEW: Check for forceful battle initiation
                 if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= ATTACK_RANGE) {
-                    // Check if GameScreen is available and not already in battle
                         if (GameContext.get().getGameScreen() != null) {
 
                             GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
-                            // Post the action to the main game thread to avoid concurrency issues with UI
                             Gdx.app.postRunnable(() -> {
                                 ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
                             });
@@ -72,8 +66,6 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
         int dy = Integer.compare(playerTileY, pokemonTileY);
 
         if (dx == 0 && dy == 0) return; // Already at target
-
-        // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
         List<String> moveOptions = new ArrayList<>();
         if (dx != 0) moveOptions.add("horizontal");
         if (dy != 0) moveOptions.add("vertical");
@@ -113,13 +105,9 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
 
         float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
             player.getX(), player.getY());
-
-        // Aggressive pokemon will continue to approach until very close
         if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE)) {
             return distance <= APPROACH_RANGE && !ai.isOnCooldown(getName());
         }
-
-        // Curious pokemon will stop at an optimal distance
         return distance <= APPROACH_RANGE && distance > OPTIMAL_DISTANCE && !ai.isOnCooldown(getName()) && MathUtils.random() < (ai.getApproachFactor() * 0.25f);
     }
 

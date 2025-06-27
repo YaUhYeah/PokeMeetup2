@@ -20,12 +20,9 @@ public class BlockTextureManager {
 
 
     private static int getCustomAnimationFrame(float stateTime) {
-        // Calculate which frame we should be on in the sequence: 0->1->2->1
         float totalCycleDuration = FRAME_DURATION * 4; // Time for complete cycle
         float cycleTime = stateTime % totalCycleDuration;
         int frame = (int) (cycleTime / FRAME_DURATION);
-
-        // Map frame numbers to our desired sequence (0->1->2->1)
         switch (frame) {
             case 0: return 0; // First frame
             case 1: return 1; // Second frame
@@ -64,13 +61,8 @@ public class BlockTextureManager {
 
 
     private void initializeBlockTextures() {
-        // Initialize existing blocks (chest, crafting table, furnace, wooden planks)
         initializeExistingBlocks();
-
-        // Initialize new house-related blocks
         initializeHouseBlocks();
-
-        // Initialize roof-related blocks
         initializeRoofBlocks();
 
         GameLogger.info("Initialized block textures - Blocks loaded: " + blockFrames.keySet());
@@ -79,7 +71,6 @@ public class BlockTextureManager {
 
 
     private void initializeHouseBlocks() {
-        // Initialize house middle section
         initializeSingleFrameBlock("house_middlesection");
         initializeSingleFrameBlock("house_middlesection_part");
         initializeSingleFrameBlock("house_midsection_part");
@@ -88,7 +79,6 @@ public class BlockTextureManager {
         initializeSingleFrameBlock("wooden_door");
     }
     private void initializeExistingBlocks() {
-        // Chest initialization
         TextureRegion chestRegion = TextureManager.blocks.findRegion("chest");
         if (chestRegion != null) {
             TextureRegion[] chestFrames = new TextureRegion[2];
@@ -113,8 +103,6 @@ public class BlockTextureManager {
             blockAnimations.put("chest", new Animation<>(FRAME_DURATION, chestFrames));
             itemIcons.put("chest", chestFrames[0]);
         }
-
-        // Crafting table initialization
         TextureRegion craftingTableRegion = TextureManager.blocks.findRegion("craftingtable");
         if (craftingTableRegion != null) {
             TextureRegion[] craftingFrames = new TextureRegion[3];
@@ -133,8 +121,6 @@ public class BlockTextureManager {
             blockAnimations.put("craftingtable", new Animation<>(FRAME_DURATION, craftingFrames));
             itemIcons.put("craftingtable", craftingFrames[0]);
         }
-
-        // Furnace initialization
         TextureRegion furnaceRegion = TextureManager.blocks.findRegion("furnace");
         if (furnaceRegion != null) {
             TextureRegion[] furnaceFrames = new TextureRegion[3];
@@ -153,8 +139,6 @@ public class BlockTextureManager {
             blockAnimations.put("furnace", new Animation<>(FRAME_DURATION, furnaceFrames));
             itemIcons.put("furnace", furnaceFrames[0]);
         }
-
-        // Wooden planks initialization
         TextureRegion woodenPlanks = TextureManager.blocks.findRegion("wooden_planks");
         if (woodenPlanks != null) {
             TextureRegion[] planksFrames = {new TextureRegion(woodenPlanks)};
@@ -164,7 +148,6 @@ public class BlockTextureManager {
         }
     }
     private void initializeRoofBlocks() {
-        // Initialize roof pieces
         initializeSingleFrameBlock("roof_corner");
         initializeSingleFrameBlock("roof_middle");
         initializeSingleFrameBlock("roof_middle_outer");

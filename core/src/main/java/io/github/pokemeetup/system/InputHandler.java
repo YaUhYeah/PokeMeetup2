@@ -1,4 +1,3 @@
-// Fixed: src/main/java/io/github/pokemeetup/system/InputHandler.java
 
 package io.github.pokemeetup.system;
 
@@ -33,16 +32,12 @@ import java.util.List;
 import java.util.UUID;
 
 public class InputHandler extends InputAdapter {
-
-    // Constants for chopping / swinging
     private static final float SWING_INTERVAL = 0.5f;
     private static final int DURABILITY_LOSS_PER_SWING = 1;
     private static final float TREE_CHOP_WITH_AXE_TIME = 2.0f;
     private static final float TREE_CHOP_WITHOUT_AXE_TIME = 5.0f;
     private static final float CHOP_SOUND_INTERVAL_WITH_AXE = 0.6f;
     private static final float CHOP_SOUND_INTERVAL_WITHOUT_AXE = 0.6f;
-
-    // References to other systems
     private boolean isChoppingOrBreaking = false;
     private float breakProgress = 0f;
     private float lastSwingSoundTime = 0f;
@@ -54,24 +49,16 @@ public class InputHandler extends InputAdapter {
     private final GameScreen gameScreen;
     private final ChestInteractionHandler chestHandler;
     private final InputManager inputManager;
-
-    // Movement key flags
     private boolean upPressed, downPressed, leftPressed, rightPressed;
-
-    // Chopping / punching / breaking flags and progress
     private boolean isChopping = false;    // true while a chop action is underway
     private boolean isPunching = false;    // true if punching (when no axe)
     private boolean isBreaking = false;    // for block breaking
-    // New flag to mark that the chopping action has reached the required progress
     private boolean chopComplete = false;
 
     private float chopProgress = 0f;
     private float swingTimer = 0f;
     private float lastChopSoundTime = 0f;
     private float lastBreakSoundTime = 0f;
-
-
-    // The current target for chopping (e.g. a tree) or breaking
     private PokemonPartyWindow partyWindow;
 
     public InputHandler(
@@ -240,7 +227,6 @@ public class InputHandler extends InputAdapter {
     /************************************************************************
      *  KeyDown / KeyUp
      ************************************************************************/
-    // Replace the keyDown method in InputHandler with this updated version:
     @Override
     public boolean keyDown(int keycode) {
         InputManager.UIState currentState = inputManager.getCurrentState();
@@ -251,7 +237,6 @@ public class InputHandler extends InputAdapter {
             keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
             GameContext.get().getPlayer().setInputHeld(true);
         }
-        // Hotbar selection via number keys
         if (currentState == InputManager.UIState.NORMAL && keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
             int slot = keycode - Input.Keys.NUM_1;
             GameContext.get().getPlayer().getHotbarSystem().setSelectedSlot(slot);
@@ -267,8 +252,6 @@ public class InputHandler extends InputAdapter {
             GameContext.get().getBuildModeUI().toggleBuildingMode();
             return true;
         }
-
-        // In build mode, numbers select from the active hotbar
         if (currentState == InputManager.UIState.BUILD_MODE && keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
             int slot = keycode - Input.Keys.NUM_1;
             BuildModeUI buildUI = GameContext.get().getBuildModeUI();
@@ -279,22 +262,16 @@ public class InputHandler extends InputAdapter {
             }
             return true;
         }
-
-        // In build mode, handle block flipping with R
         if (currentState == InputManager.UIState.BUILD_MODE) {
             if (keycode == Input.Keys.R) {
                 handleBlockFlip();
                 return true;
             }
         }
-
-        // Only process input in NORMAL or BUILD_MODE
         if (currentState != InputManager.UIState.NORMAL &&
             currentState != InputManager.UIState.BUILD_MODE) {
             return false;
         }
-
-        // Handle customizable inputs
         if (keycode == KeyBinds.getBinding(KeyBinds.INTERACT)) {
             handleInteraction();
             return true;
@@ -356,10 +333,6 @@ public class InputHandler extends InputAdapter {
             partyWindow = null;
         }
     }
-
-
-
-    // Similarly update keyUp to use KeyBinds:
     @Override
     public boolean keyUp(int keycode) {
         if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP) ||
@@ -397,7 +370,6 @@ public class InputHandler extends InputAdapter {
             return true;
         }
         if (keycode == KeyBinds.getBinding(KeyBinds.ACTION)) {
-            // Releasing the key stops the chopping action.
             stopChopOrPunch();
             return true;
         }
@@ -437,7 +409,6 @@ public class InputHandler extends InputAdapter {
 
 
     public void toggleBuildMode() {
-        // Switch the UI state between NORMAL and BUILD_MODE
         if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
             inputManager.setUIState(InputManager.UIState.NORMAL);
             GameContext.get().getPlayer().setBuildMode(false);
@@ -460,8 +431,6 @@ public class InputHandler extends InputAdapter {
      */
     public void startChopOrPunch() {
         if (isChoppingOrBreaking) return; // Action already in progress
-
-        // Find a target (prioritize blocks, then objects)
         targetBlock = findBreakableBlock();
         if (targetBlock != null) {
             isChoppingOrBreaking = true;
@@ -473,20 +442,15 @@ public class InputHandler extends InputAdapter {
         }
 
         if (isChoppingOrBreaking) {
-            // A target was found, initialize state
             breakProgress = 0f;
             lastSwingSoundTime = 0f;
             checkForAxe();
-
-            // Start animation locally
             PlayerAnimations anims = GameContext.get().getPlayer().getAnimations();
             if (hasAxe) {
                 anims.startChopping();
             } else {
                 anims.startPunching();
             }
-
-            // Send network message to start animation for other players
             if (GameContext.get().isMultiplayer()) {
                 NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
                 action.playerId = GameContext.get().getPlayer().getUsername();
@@ -542,8 +506,6 @@ public class InputHandler extends InputAdapter {
 
         GameLogger.info("Flipping block " + block.getType().id + " at " + targetX + "," + targetY);
         block.toggleFlip();
-
-        // Save updated block in chunk
         Vector2 chunkPos = new Vector2(
             Math.floorDiv(targetX, World.CHUNK_SIZE),
             Math.floorDiv(targetY, World.CHUNK_SIZE)
@@ -585,11 +547,6 @@ public class InputHandler extends InputAdapter {
      * Handles the logic for incrementing break progress while the action key is held.
      */
     private void updateBreakingProgress(float deltaTime) {
-        // [FIXED] The check for isKeyPressed was removed, as it's incorrect for touch input.
-        // The chopping state is now managed by the isChoppingOrBreaking flag, which is
-        // toggled by touchDown/touchUp and keyDown/keyUp events.
-
-        // Validate that the target is still in range and exists.
         if (targetBlock != null) {
             if (findBreakableBlock() != targetBlock) {
                 stopChopOrPunch();
@@ -607,8 +564,6 @@ public class InputHandler extends InputAdapter {
 
         breakProgress += deltaTime;
         lastSwingSoundTime += deltaTime;
-
-        // Determine required time and sound interval based on target and tool.
         float requiredTime;
         float soundInterval = hasAxe ? CHOP_SOUND_INTERVAL_WITH_AXE : CHOP_SOUND_INTERVAL_WITHOUT_AXE;
 
@@ -617,17 +572,12 @@ public class InputHandler extends InputAdapter {
         } else {
             requiredTime = targetObject.getType().getBreakTime(hasAxe);
         }
-
-        // Play sound effect at intervals.
         if (lastSwingSoundTime >= soundInterval) {
             AudioManager.getInstance().playSound(hasAxe ? AudioManager.SoundEffect.BLOCK_BREAK_WOOD : AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
             lastSwingSoundTime = 0f;
         }
-
-        // Check for completion.
         if (breakProgress >= requiredTime) {
             if (GameContext.get().isMultiplayer()) {
-                // In multiplayer, tell the server the action is complete.
                 NetworkProtocol.PlayerAction action = new NetworkProtocol.PlayerAction();
                 action.playerId = GameContext.get().getPlayer().getUsername();
                 action.actionType = NetworkProtocol.ActionType.CHOP_COMPLETE;
@@ -640,20 +590,15 @@ public class InputHandler extends InputAdapter {
                 }
                 GameContext.get().getGameClient().sendPlayerAction(action);
             } else {
-                // In single-player, destroy the object directly.
                 if (targetBlock != null) {
                     destroyBlock(targetBlock);
                 } else {
                     destroyObject(targetObject);
                 }
             }
-            // Stop the action on the client side.
             stopChopOrPunch();
         }
     }
-
-    // This method updates the chopping progress. It now waits for an additional delay equal to the full chop animation duration
-    // before calling stopChopOrPunch(), ensuring the full 4-frame chop animation is shown.
     private void updateChopping(float deltaTime) {
         if (!isValidTarget(targetObject)) {
             stopChopOrPunch();
@@ -662,8 +607,6 @@ public class InputHandler extends InputAdapter {
         chopProgress += deltaTime;
         lastChopSoundTime += deltaTime;
         swingTimer += deltaTime;
-
-        // Determine chop time based on whether the player has an axe.
         ItemData axeItem = hasAxe ? findAxeInInventory() : null;
         float chopTime = (hasAxe && axeItem != null) ? TREE_CHOP_WITH_AXE_TIME : TREE_CHOP_WITHOUT_AXE_TIME;
         float soundInterval = hasAxe ? CHOP_SOUND_INTERVAL_WITH_AXE : CHOP_SOUND_INTERVAL_WITHOUT_AXE;
@@ -680,23 +623,18 @@ public class InputHandler extends InputAdapter {
             }
             lastChopSoundTime = 0f;
         }
-
-        // Once chopProgress reaches the required chop time, mark the chop as complete
         if (chopProgress >= chopTime) {
             if (!chopComplete) {
                 GameLogger.info("Tree chopped down! " + (hasAxe ? "(with axe)" : "(without axe)"));
                 destroyObject(targetObject);
                 chopComplete = true;
             }
-            // Wait until an additional duration equal to CHOP_ANIMATION_DURATION has elapsed before stopping.
             if (chopProgress >= (chopTime + PlayerAnimations.CHOP_ANIMATION_DURATION)) {
                 stopChopOrPunch();
                 chopComplete = false;
             }
         }
     }
-
-    // degrade the axe durability per swing
     private void handleToolDurabilityPerSwing(ItemData axeItem) {
         if (axeItem == null) return;
         axeItem.updateDurability(-DURABILITY_LOSS_PER_SWING);
@@ -723,7 +661,6 @@ public class InputHandler extends InputAdapter {
     private void playToolBreakEffect() {
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.TOOL_BREAK);
-        // Switch from chop anim to punch anim
         GameContext.get().getPlayer().getAnimations().stopChopping();
         GameContext.get().getPlayer().getAnimations().startPunching();
     }
@@ -928,13 +865,10 @@ public class InputHandler extends InputAdapter {
      *  Update method called each frame
      ************************************************************************/
     public void update(float deltaTime) {
-        // Update any chopping/punching progress first.
 
         if (isChoppingOrBreaking) {
             updateBreakingProgress(deltaTime);
         }
-
-        // Only allow movement (or direction buffering) if NOT chopping/punching.
         if (!isChopping && !isPunching &&
             (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
                 inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE)) {
@@ -962,7 +896,6 @@ public class InputHandler extends InputAdapter {
                 }
             }
         }
-        // When chopping/punching, do not update or buffer a new direction.
     }
 
 

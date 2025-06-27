@@ -31,7 +31,6 @@ public class Item {
             this.maxDurability = template.getMaxDurability();
             this.durability = template.getMaxDurability();
         } else {
-            // Log error but don't crash
             GameLogger.error("Failed to find template for item: " + name);
             this.iconName = "missing";
             this.icon = TextureManager.items.findRegion("stick_item");
@@ -165,7 +164,6 @@ public class Item {
 
     public TextureRegion getIcon() {
         if (icon == null) {
-            // Try to load from TextureManager
             icon = TextureManager.items.findRegion(name.toLowerCase() + "_item");
             if (icon != null) {
                 GameLogger.info("Loaded icon for " + name + " from TextureManager");

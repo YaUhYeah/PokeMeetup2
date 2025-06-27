@@ -49,7 +49,6 @@ public class ServerWorldObjectManager {
         if (objects == null) {
             objects = new ArrayList<>();
         }
-        // Ensure that each object has an ID and its texture is loaded.
         for (WorldObject obj : objects) {
             if (obj != null) {
                 if (obj.getId() == null) {
@@ -58,7 +57,6 @@ public class ServerWorldObjectManager {
                 obj.ensureTexture();
             }
         }
-        // Populate the cache.
         setObjectsForChunk(worldName, chunkPos, objects);
         return objects;
     }

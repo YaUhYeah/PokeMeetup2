@@ -96,14 +96,9 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
                 currentWorld.save(); // Centralized save logic
             }
         }
-
-        // Dispose the current screen
         if (getScreen() != null) {
             getScreen().dispose();
         }
-
-        // Reset game-specific context but keep application-level context
-        // This prevents holding onto disposed objects like the old GameScreen
         if (GameContext.get() != null) {
             GameContext.get().setWorld(null);
             GameContext.get().setPlayer(null);
@@ -112,10 +107,7 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             GameContext.get().setInventoryScreen(null);
             GameContext.get().setCraftingScreen(null);
             GameContext.get().setChatSystem(null);
-            // DO NOT dispose the uiStage, batch, or skin here. They persist.
         }
-
-        // Transition to the world selection screen
         setScreen(new WorldSelectionScreen(this));
     }
 
@@ -126,7 +118,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     public void shutdown() {
         Gdx.app.postRunnable(() -> {
             try {
-                // Save the current world if we are in a GameScreen
                 if (getScreen() instanceof GameScreen && GameContext.get().getWorld() != null && !isMultiplayerMode()) {
                     GameLogger.info("Performing final save before shutdown...");
                     GameContext.get().getWorld().save();
@@ -154,8 +145,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
     public void dispose() {
         try {
             GameLogger.info("Starting game disposal...");
-
-            // Queue on main thread if we're not already there
             if (!Gdx.app.getType().equals(Application.ApplicationType.Desktop) ||
                 !Thread.currentThread().getName().equals("LWJGL Application")) {
 
@@ -222,7 +211,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             if (savedPlayerData != null) {
                 World currentWorld = GameContext.get().getWorld();
-                // We'll pick a safe spawn tile from the islands
                 Random rng = new Random(currentWorld.getWorldData().getConfig().getSeed());
 
                 Vector2 safeTile = biomeManager.findSafeSpawnLocation(currentWorld, rng);
@@ -243,7 +231,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             } else {
                 World currentWorld = GameContext.get().getWorld();
                 BiomeManager bm = currentWorld.getBiomeManager();
-                // We'll pick a safe spawn tile from the islands
                 Random rng = new Random(currentWorld.getWorldData().getConfig().getSeed());
                 Vector2 safeTile = bm.findSafeSpawnLocation(currentWorld, rng);
 
@@ -297,8 +284,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             verifyAssetExists(path);
             assetManager.load(path, TextureAtlas.class);
         }
-
-        // Verify required data files exist
         String[] dataFiles = {
             "Data/pokemon.json",
             "Data/biomes.json",
@@ -425,7 +410,6 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
 
             SpriteBatch mainBatch = new SpriteBatch();
             SpriteBatch uiBatch = new SpriteBatch();
-            // This UI Stage will persist across screens.
             Stage uiStage = new Stage(new ScreenViewport(), uiBatch);
             Stage battleStage = new Stage();
             Skin skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));

@@ -23,8 +23,6 @@ public class OtherPlayer implements Positionable {
         return wasOnWater;
     }
     private float animationSpeedMultiplier = 0.75f; // [NEW] Same as Player
-
-    // [MODIFIED] Replace interpolationProgress with the same state variables as Player
     private float movementProgress;
     private float animationTime = 0f;
     private int prevTileX, prevTileY;
@@ -53,12 +51,10 @@ public class OtherPlayer implements Positionable {
     private boolean wasOnWater = false;
     private float waterSoundTimer = 0f;
     private static final float ANIMATION_SPEED_MULTIPLIER = 0.75f;
-    // Basic player data.
     private final String username;
     private final Inventory inventory;
     private PlayerAnimations animations;
     private final AtomicBoolean isMoving;
-    // Positioning and interpolation.
     private final Object positionLock = new Object();
     private final Vector2 startPosition = new Vector2();
     private final Vector2 targetPosition = new Vector2();
@@ -67,51 +63,38 @@ public class OtherPlayer implements Positionable {
     private float interpolationProgress; // From 0 to 1.
     private float stateTime; // Used both for movement and action animations.
     private String direction;
-    // For rendering text.
     private BitmapFont font;
     private int ping;
 
     public OtherPlayer(String username, float x, float y) {
         this.username = (username != null && !username.isEmpty()) ? username : "Unknown";
         this.position = new Vector2(x, y);
-        // Initialize start and target positions as the current position.
         this.startPosition.set(x, y);
         this.targetPosition.set(x, y);
         this.inventory = new Inventory();
         this.direction = "down";
-        // [MODIFIED] Initialize new state variables
         this.movementProgress = 0f;
         this.animationTime = 0f;
         this.isMoving = new AtomicBoolean(false);
         this.wantsToRun = false;
         this.stateTime = 0f;
         this.interpolationProgress = 0f;
-        // Default animations (for example, “boy” animations)
         this.animations = new PlayerAnimations();
         GameLogger.info("Created OtherPlayer: " + this.username + " at (" + x + ", " + y + ")");
         prevTileX = pixelToTileX(position.x);
         prevTileY = pixelToTileY(position.y);
     }
-
-    // [MODIFIED] The network update handler now sets state, it doesn't drive movement directly.
     public void updateFromNetwork(NetworkProtocol.PlayerUpdate update) {
         synchronized (this) {
             if (update == null) return;
-
-            // Update the target position for interpolation
             this.targetPosition.set(update.x, update.y);
             this.direction = update.direction;
             this.isMoving.set(update.isMoving);
             this.wantsToRun = update.wantsToRun;
-
-            // [NEW] Check for character type update
             if (update.characterType != null && !update.characterType.equalsIgnoreCase(animations.getCharacterType())) {
-                // Reinitialize animations with the new character type.
                 animations.dispose();
                 this.animations = new PlayerAnimations(update.characterType);
             }
-
-            // [NEW] If the player is moving but we are not, start a new movement cycle
             if (update.isMoving && movementProgress >= 1.0f) {
                 startPosition.set(position);
                 movementProgress = 0f;
@@ -127,8 +110,6 @@ public class OtherPlayer implements Positionable {
         x = MathUtils.clamp(x, 0f, 1f);
         return x * x * (3 - 2 * x);
     }
-
-    // Helper methods to convert between tile and pixel coordinates.
     private float tileToPixelX(int tileX) {
         return tileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
     }
@@ -144,33 +125,21 @@ public class OtherPlayer implements Positionable {
     private int pixelToTileY(float pixelY) {
         return (int) Math.floor(pixelY / World.TILE_SIZE);
     }
-
-
-    // [REWRITTEN] The update logic now mirrors the local player's logic perfectly.
     public void update(float deltaTime) {
         synchronized (positionLock) {
-            // Determine the correct movement duration based on running state
             float moveDuration = wantsToRun
                 ? PlayerAnimations.SLOW_RUN_ANIMATION_DURATION
                 : PlayerAnimations.SLOW_WALK_ANIMATION_DURATION;
-
-            // If the current position is not yet at the target, interpolate.
             if (!position.epsilonEquals(targetPosition, 0.1f)) {
                 movementProgress = Math.min(1f, movementProgress + deltaTime / moveDuration);
-
-                // Use a smoothstep function for easing
                 float smoothProgress = smoothstep(movementProgress);
                 position.x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);
                 position.y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothProgress);
             }
-
-            // [NEW] Extrapolation Logic
             if (movementProgress >= 1f) {
                 position.set(targetPosition); // Snap to final position
                 startPosition.set(position);
                 movementProgress = 0f;
-
-                // If the last network update said the player is still moving, predict the next tile.
                 if (isMoving.get()) {
                     int nextTileX = pixelToTileX(targetPosition.x);
                     int nextTileY = pixelToTileY(targetPosition.y);
@@ -181,22 +150,16 @@ public class OtherPlayer implements Positionable {
                         case "left":  nextTileX--; break;
                         case "right": nextTileX++; break;
                     }
-
-                    // Check if the extrapolated tile is valid before moving.
                     if (GameContext.get().getWorld().isPassable(nextTileX, nextTileY)) {
                         targetPosition.set(tileToPixelX(nextTileX), tileToPixelY(nextTileY));
                     }
                 }
             }
-
-            // [MODIFIED] Unconditionally update animationTime if moving.
             if (isMoving.get()) {
                 animationTime += deltaTime * animationSpeedMultiplier;
             } else {
                 animationTime = 0f; // Reset when not moving
             }
-
-            // (Optional) Spawn footstep effects when the tile changes.
             int currentTileX = pixelToTileX(position.x);
             int currentTileY = pixelToTileY(position.y);
             if (currentTileX != prevTileX || currentTileY != prevTileY) {
@@ -224,19 +187,15 @@ public class OtherPlayer implements Positionable {
     public void render(SpriteBatch batch) {
         TextureRegion currentFrame;
         synchronized (positionLock) {
-            // First priority: if chopping, use the chopping animation.
             if (animations.isChopping()) {
                 currentFrame = animations.getCurrentFrame(direction, false, false, stateTime);
             }
-            // Second priority: if punching, use the punching animation.
             else if (animations.isPunching()) {
                 currentFrame = animations.getCurrentFrame(direction, false, false, stateTime);
             }
-            // Third: if moving, use the movement animation based on animationTime.
             else if (isMoving.get()) {
                 currentFrame = animations.getCurrentFrame(direction, true, isWantsToRun(), animationTime);
             }
-            // Otherwise, use the standing frame.
             else {
                 currentFrame = animations.getStandingFrame(direction);
             }
@@ -302,8 +261,6 @@ public class OtherPlayer implements Positionable {
                 break;
         }
     }
-
-    // Synchronized getters and setters.
     public Vector2 getPosition() {
         synchronized (positionLock) {
             return new Vector2(position);

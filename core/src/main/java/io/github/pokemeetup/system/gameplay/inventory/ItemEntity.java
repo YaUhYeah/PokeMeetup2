@@ -32,8 +32,6 @@ public class ItemEntity {
         this.pickupDelay = PICKUP_DELAY;
         this.canBePickedUp = false;
         this.pickedUp = false;  // Initially not picked up.
-
-        // Load texture
         String textureKey = itemData.getItemId().toLowerCase() + "_item";
         this.texture = TextureManager.items.findRegion(textureKey);
         if (this.texture == null) {
@@ -72,8 +70,6 @@ public class ItemEntity {
     public void markPickedUp() {
         pickedUp = true;
     }
-
-    // Getters
     public UUID getEntityId() { return entityId; }
     public ItemData getItemData() { return itemData; }
     public Vector2 getPosition() { return position; }

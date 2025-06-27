@@ -57,12 +57,8 @@ public class DisconnectionScreen implements Screen {
         this.disconnectionManager = manager;
         this.stage = new Stage(new ScreenViewport());
         this.skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
-
-        // Create main table for layout
         mainTable = new Table();
         mainTable.setFillParent(true);
-
-        // Create UI components with custom styling
         Label titleLabel = new Label("Connection Lost", createLabelStyle());
         titleLabel.setFontScale(2f);
 
@@ -71,32 +67,20 @@ public class DisconnectionScreen implements Screen {
 
         retryButton = createButton("Retry Connection", new Color(0.2f, 0.6f, 1f, 1f));
         exitButton = createButton("Exit to Menu", new Color(1f, 0.3f, 0.3f, 1f));
-
-        // Layout components
         mainTable.add(titleLabel).pad(20).row();
         mainTable.add(statusLabel).pad(10).row();
         mainTable.add(countdownLabel).pad(10).row();
-
-        // Button table for horizontal layout
         Table buttonTable = new Table();
         buttonTable.add(retryButton).pad(10).width(BUTTON_WIDTH).height(BUTTON_HEIGHT);
         buttonTable.add(exitButton).pad(10).width(BUTTON_WIDTH).height(BUTTON_HEIGHT);
 
         mainTable.add(buttonTable).pad(20).row();
-
-        // Add overlay shadow effect
         Table overlayTable = new Table();
         overlayTable.setFillParent(true);
         overlayTable.setBackground(skin.newDrawable("white", new Color(0f, 0f, 0f, 0.8f)));
-
-        // Add tables to stage
         stage.addActor(overlayTable);
         stage.addActor(mainTable);
-
-        // Set up input processing
         Gdx.input.setInputProcessor(stage);
-
-        // Add button listeners
         setupButtonListeners();
 
         GameLogger.info("DisconnectionScreen initialized with reason: " + reason);
@@ -139,11 +123,8 @@ public class DisconnectionScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        // Clear screen with dark background
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.15f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-        // Update countdown if active
         if (isRetrying) {
             countdownTime -= delta;
             if (countdownTime <= 0) {
@@ -152,8 +133,6 @@ public class DisconnectionScreen implements Screen {
             }
             updateCountdownLabel();
         }
-
-        // Update and draw stage
         stage.act(delta);
         stage.draw();
     }
@@ -222,7 +201,6 @@ public class DisconnectionScreen implements Screen {
 
     @Override
     public void hide() {
-        // Remove input processor when screen is hidden
         if (Gdx.input.getInputProcessor() == stage) {
             Gdx.input.setInputProcessor(null);
         }
@@ -230,7 +208,6 @@ public class DisconnectionScreen implements Screen {
 
     @Override
     public void pause() {
-        // Pause any active countdowns or animations
         if (isRetrying) {
             stopCountdown();
         }
@@ -238,7 +215,6 @@ public class DisconnectionScreen implements Screen {
 
     @Override
     public void resume() {
-        // Ensure input processor is set when screen resumes
         Gdx.input.setInputProcessor(stage);
     }
 
@@ -246,7 +222,6 @@ public class DisconnectionScreen implements Screen {
         Gdx.app.postRunnable(() -> {
             stopCountdown();
             statusLabel.setText("Connection restored!");
-            // Add success animation or feedback here if desired
             Timer.schedule(new Timer.Task() {
                 @Override
                 public void run() {

@@ -134,32 +134,27 @@ public class AudioManager {
             Long currentId = loopingSoundIds.get(effect);
 
             if (currentId == null || !isPlaying(effect)) {
-                // Start new loop
                 long id = sound.loop(volume * soundVolume * masterVolume);
                 loopingSoundIds.put(effect, id);
                 loopingStartTimes.put(effect, System.currentTimeMillis());
-
-                // Store duration based on effect type
                 float duration = getEffectDuration(effect);
                 loopingDurations.put(effect, duration);
             } else {
-                // Update existing loop volume
                 sound.setVolume(currentId, volume * soundVolume * masterVolume);
             }
         }
     }
 
     private float getEffectDuration(WeatherSoundEffect effect) {
-        // Define durations for each effect (in seconds)
         switch (effect) {
             case LIGHT_RAIN:
             case WIND:
             case SAND_WIND:
-                return 10.0f; // 10-second loop for ambient sounds
+                return 10.0f;
             case THUNDER:
-                return 3.0f; // 3-second duration for thunder
+                return 3.0f;
             default:
-                return 5.0f; // Default duration
+                return 5.0f;
         }
     }
 
@@ -210,7 +205,6 @@ public class AudioManager {
     }
 
     private void initializeAudio() {
-        // Load sound effects
         for (SoundEffect effect : SoundEffect.values()) {
             try {
                 Sound sound = Gdx.audio.newSound(Gdx.files.internal(effect.getPath()));
@@ -285,7 +279,6 @@ public class AudioManager {
     private void setMusicCompletionListenerForMenu() {
         if (currentMusic != null) {
             currentMusic.setOnCompletionListener(music -> {
-                // Play next menu music track
                 playMenuMusic();
             });
         }
@@ -313,7 +306,6 @@ public class AudioManager {
 
     public void setSoundVolume(float soundVolume) {
         this.soundVolume = soundVolume;
-        // Optionally update volumes of looping sounds
         updateSoundVolumes();
     }
 
@@ -342,7 +334,6 @@ public class AudioManager {
     public void setSoundEnabled(boolean soundEnabled) {
         this.soundEnabled = soundEnabled;
         if (!soundEnabled) {
-            // Stop all playing sounds if necessary
             stopAllWeatherLoops();
             stopAllAmbientSounds();
         }
@@ -438,10 +429,8 @@ public class AudioManager {
         if (currentMusic != null) {
             currentMusic.setOnCompletionListener(music -> {
                 if (pendingBiome != null && pendingBiome != currentBiome) {
-                    // Biome has changed, start music for new biome
                     startMusicForPendingBiome();
                 } else {
-                    // Biome hasn't changed, pick another random song from currentBiome
                     pendingBiome = currentBiome; // Ensure pendingBiome is set
                     startMusicForPendingBiome();
                 }

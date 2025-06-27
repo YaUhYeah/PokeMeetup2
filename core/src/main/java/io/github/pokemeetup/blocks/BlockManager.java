@@ -91,32 +91,21 @@ public class BlockManager {
 
 
     public boolean placeBlock(PlaceableBlock.BlockType type, int tileX, int tileY) {
-        // Calculate the chunk position
         int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-        // Get or load the chunk
         Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(tileX, tileY);
         if (chunk == null) {
             chunk = GameContext.get().getWorld().loadOrGenerateChunk(chunkPos);
             GameContext.get().getWorld().getChunks().put(chunkPos, chunk);
         }
-
-        // Check if there's already a block at this position
         Vector2 blockPos = new Vector2(tileX, tileY);
         if (chunk.getBlock(blockPos) != null) {
             GameLogger.info("Block already exists at position: " + blockPos);
             return false; // Can't place block on top of another block
         }
-
-        // Create the block
         PlaceableBlock block = new PlaceableBlock(type, blockPos, null, false);
-
-        // Set the texture
         block.setTexture(BlockTextureManager.getBlockFrame(block, 0));
-
-        // Add the block to the chunk
         chunk.addBlock(block);
         chunk.setDirty(true); // Mark chunk as dirty for saving
         GameLogger.info("Placed block of type " + type + " at " + blockPos);
@@ -126,27 +115,20 @@ public class BlockManager {
 
 
     public void removeBlock(int tileX, int tileY) {
-        // Calculate the chunk position
         int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-        // Get the chunk
         Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(tileX, tileY);
         if (chunk == null) {
             GameLogger.info("Chunk not loaded at position: " + chunkPos);
             return;
         }
-
-        // Check if there's a block at this position
         Vector2 blockPos = new Vector2(tileX, tileY);
         PlaceableBlock block = chunk.getBlock(blockPos);
         if (block == null) {
             GameLogger.info("No block exists at position: " + blockPos);
             return; // Can't remove a block that doesn't exist
         }
-
-        // Remove the block from the chunk
         chunk.removeBlock(blockPos);
         chunk.setDirty(true); // Mark chunk as dirty for saving
         GameLogger.info("Removed block at " + blockPos);
@@ -182,12 +164,8 @@ public class BlockManager {
                     float offsetY = 0;
 
                     Color originalColor = batch.getColor().cpy();
-
-                    // Get light level for this block's position
                     Vector2 tilePos = block.getPosition();
                     Float lightLevel = GameContext.get().getWorld().getLightLevelAtTile(tilePos);
-
-                    // Apply light level if it exists
                     if (lightLevel != null && lightLevel > 0) {
                         Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
                         Color baseColor = GameContext.get().getWorld().getCurrentWorldColor().cpy();
@@ -196,8 +174,6 @@ public class BlockManager {
                     } else {
                         batch.setColor(GameContext.get().getWorld().getCurrentWorldColor());
                     }
-
-                    // Handle flipped rendering
                     if (block.isFlipped()) {
                         batch.draw(currentFrame,
                             tileX + offsetX + blockWidth, // X position (offset + width for flip)
@@ -213,8 +189,6 @@ public class BlockManager {
                             blockHeight
                         );
                     }
-
-                    // Restore original color
                     batch.setColor(originalColor);
                 }
             }

@@ -52,8 +52,6 @@ public class PlayerDataResponseHandler {
 
     private void cleanupCache() {
         dataCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
-
-        // If still too many entries, remove oldest ones
         if (dataCache.size() > MAX_CACHE_SIZE) {
             dataCache.entrySet().stream()
                 .sorted((e1, e2) -> Long.compare(e1.getValue().timestamp, e2.getValue().timestamp))
@@ -63,13 +61,10 @@ public class PlayerDataResponseHandler {
     }
 
     public CompletableFuture<PlayerData> createRequest(UUID uuid) {
-        // Check cache first
         CachedPlayerData cached = dataCache.get(uuid);
         if (cached != null && !cached.isExpired()) {
             return CompletableFuture.completedFuture(cached.data);
         }
-
-        // Create new request
         CompletableFuture<PlayerData> future = new CompletableFuture<>();
         pendingRequests.put(uuid, future);
         return future;
@@ -79,7 +74,6 @@ public class PlayerDataResponseHandler {
         CompletableFuture<PlayerData> future = pendingRequests.remove(response.uuid);
         if (future != null) {
             if (response.success && response.playerData != null) {
-                // Cache the data
                 dataCache.put(response.uuid, new CachedPlayerData(response.playerData));
                 future.complete(response.playerData);
             } else {
@@ -90,7 +84,6 @@ public class PlayerDataResponseHandler {
 
     public void handleSaveResponse(NetworkProtocol.SavePlayerDataResponse response) {
         if (response.success) {
-            // Clear cache for this UUID to ensure fresh data on next load
             dataCache.remove(response.uuid);
             GameLogger.info("Player data saved successfully for UUID: " + response.uuid);
         } else {
@@ -110,7 +103,6 @@ public class PlayerDataResponseHandler {
     }
 
     public void shutdown() {
-        // Cancel all pending requests
         pendingRequests.forEach((uuid, future) -> {
             if (!future.isDone()) {
                 future.cancel(true);

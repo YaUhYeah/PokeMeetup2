@@ -52,21 +52,16 @@ public class GameMenu extends Actor {
     }
 
     private void handleExit() {
-        // In multiplayer mode, perform a multiplayer exit routine.
         GameClient client = GameContext.get().getGameClient();
         if (client != null && GameContext.get().isMultiplayer()) {
             performMultiplayerExit();
         } else {
-            // Otherwise use the regular single-player save-and-dispose routine.
             performSaveAndExit();
         }
     }
 
     public void resize(int width, int height) {
-        // Update the stage's viewport.
         stage.getViewport().update(width, height, true);
-
-        // Center the main menu window.
         if (menuWindow != null) {
             menuWindow.pack(); // Recalculate size if needed
             menuWindow.setPosition(
@@ -74,8 +69,6 @@ public class GameMenu extends Actor {
                 (height - menuWindow.getHeight()) / 2
             );
         }
-
-        // Center the options window as well.
         if (optionsWindow != null) {
             optionsWindow.pack();
             optionsWindow.setPosition(
@@ -129,20 +122,15 @@ public class GameMenu extends Actor {
                     loadingDialog.show(stage);
                     new Thread(() -> {
                         try {
-                            // In multiplayer, simply send the player state to the server.
                             GameClient client = GameContext.get().getGameClient();
-                            // Dispose the client
                             if (client != null) {
                                 client.dispose();
                             }
-                            // Reset the client singleton and clear the reference
                             GameClientSingleton.resetInstance();
                             GameContext.get().setGameClient(null);
-                            // (Optionally, also clear UI screens that depend on multiplayer.)
                             GameContext.get().setInventoryScreen(null);
                             GameContext.get().setCraftingScreen(null);
                             GameContext.get().setBuildModeUI(null);
-                            // Transition to the title screen (or ModeSelectionScreen)
                             Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, false));
                         } catch (Exception e) {
                             GameLogger.error("Exit failed: " + e.getMessage());
@@ -162,7 +150,6 @@ public class GameMenu extends Actor {
     }
 
     private void createMenu() {
-        // Create the menu window and table
         menuWindow = new Window("Menu", skin);
         menuWindow.setMovable(false);
         menuWindow.addListener(new InputListener() {
@@ -181,8 +168,6 @@ public class GameMenu extends Actor {
 
         menuTable = new Table();
         menuTable.defaults().pad(10).width(BUTTON_WIDTH).height(BUTTON_HEIGHT);
-
-        // Create main menu buttons
         TextButton saveButton = new TextButton("Save Game", skin);
         TextButton bagButton = new TextButton("Bag", skin);
         TextButton pokemonButton = new TextButton("Pokemon", skin);
@@ -192,7 +177,6 @@ public class GameMenu extends Actor {
         saveButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                // Only save in single-player mode
                 if (!GameContext.get().isMultiplayer()) {
                     saveGame();
                 }
@@ -213,7 +197,6 @@ public class GameMenu extends Actor {
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                // MODIFIED: Call the clean exit-to-menu method
                 GameClient client = GameContext.get().getGameClient();
                 if (client != null && GameContext.get().isMultiplayer()) {
                     performMultiplayerExit();
@@ -228,21 +211,15 @@ public class GameMenu extends Actor {
                 showOptions();
             }
         });
-
-        // Add buttons to the menu table
         menuTable.add(saveButton).row();
         menuTable.add(bagButton).row();
         menuTable.add(pokemonButton).row();
         menuTable.add(optionsButton).row();
         menuTable.add(exitButton).row();
-
-        // Add the menu table to the menu window
         menuWindow.add(menuTable).pad(MENU_PADDING);
         menuWindow.pack();
         menuWindow.setPosition((Gdx.graphics.getWidth() - menuWindow.getWidth()) / 2,
             (Gdx.graphics.getHeight() - menuWindow.getHeight()) / 2);
-
-        // Build the options menu (which also includes controller keybinds)
         createOptionsMenu();
 
         stage.addActor(menuWindow);
@@ -250,25 +227,19 @@ public class GameMenu extends Actor {
 
 
     private void showPartyScreen(boolean battleMode) {
-        // Hide menu window temporarily
         menuWindow.setVisible(false);
         if (GameContext.get().getGameScreen().getBattleSkin() != null) {
-            // Create party screen
             PokemonPartyWindow partyScreen = new PokemonPartyWindow(
                 GameContext.get().getGameScreen().getBattleSkin(),
                 GameContext.get().getPlayer().getPokemonParty(),
                 battleMode,
                 (selectedPokemon) -> {
-                    // Handle selection
                     menuWindow.setVisible(true);
                 },
                 () -> {
-                    // Handle cancel
                     menuWindow.setVisible(true);
                 }
             );
-
-            // Add to stage above other elements
             stage.addActor(partyScreen);
             partyScreen.show(stage);
         }
@@ -336,7 +307,6 @@ public class GameMenu extends Actor {
         try {
             if (GameContext.get().getGameClient() != null && GameContext.get().getPlayer().getWorld() != null) {
                 PlayerData playerData = GameContext.get().getPlayer().getPlayerData();
-                // In single-player mode, update and save the world state.
                 GameContext.get().getWorld().getWorldData().savePlayerData(
                     GameContext.get().getPlayer().getUsername(), playerData, false);
                 WorldManager.getInstance().saveWorld(GameContext.get().getWorld().getWorldData());
@@ -391,8 +361,6 @@ public class GameMenu extends Actor {
 
         Table optionsTable = new Table();
         optionsTable.pad(MENU_PADDING);
-
-        // Audio settings
         Label musicLabel = new Label("Music Volume", skin);
         musicSlider = new Slider(0f, 1f, 0.1f, false, skin);
         musicSlider.setValue(AudioManager.getInstance().getMusicVolume());
@@ -406,8 +374,6 @@ public class GameMenu extends Actor {
 
         soundEnabled = new CheckBox(" Sound Enabled", skin);
         soundEnabled.setChecked(AudioManager.getInstance().isSoundEnabled());
-
-        // Buttons to open keybind dialogs
         TextButton keyBindsButton = new TextButton("Keyboard Key Bindings", skin);
         keyBindsButton.addListener(new ClickListener() {
             @Override
@@ -425,8 +391,6 @@ public class GameMenu extends Actor {
                 dialog.show(stage);
             }
         });
-
-        // Add audio settings to options table
         optionsTable.add(keyBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(20).row();
         optionsTable.add(controllerBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(10).row();
         optionsTable.add(musicLabel).left().padBottom(10).row();
@@ -435,8 +399,6 @@ public class GameMenu extends Actor {
         optionsTable.add(soundLabel).left().padBottom(10).row();
         optionsTable.add(soundSlider).width(200).padBottom(5).row();
         optionsTable.add(soundEnabled).left().padBottom(20).row();
-
-        // Save and Cancel buttons for options
         TextButton saveButton = new TextButton("Save", skin);
         saveButton.addListener(new ClickListener() {
             @Override

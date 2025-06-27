@@ -34,8 +34,6 @@ public class FollowPackBehavior implements PokemonBehavior {
     private WildPokemon findPackLeader() {
         UUID leaderId = ai.getPackLeaderId();
         if (leaderId == null) return null;
-
-        // In a real implementation, you'd get this from the spawn manager
         Collection<WildPokemon> nearbyPokemon = GameContext.get().getWorld()
             .getPokemonSpawnManager().getPokemonInRange(
                 pokemon.getX(), pokemon.getY(), MAX_FOLLOW_DISTANCE);
@@ -52,8 +50,6 @@ public class FollowPackBehavior implements PokemonBehavior {
     private void followLeader(WildPokemon leader) {
         float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
             leader.getX(), leader.getY());
-
-        // Only follow if too far away
         if (distance <= FOLLOW_DISTANCE) {
             return;
         }
@@ -68,8 +64,6 @@ public class FollowPackBehavior implements PokemonBehavior {
 
         int dx = Integer.compare(leaderTileX, pokemonTileX);
         int dy = Integer.compare(leaderTileY, pokemonTileY);
-
-        // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
         List<String> moveOptions = new ArrayList<>();
         if (dx != 0) moveOptions.add("horizontal");
         if (dy != 0) moveOptions.add("vertical");

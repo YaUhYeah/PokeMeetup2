@@ -1,4 +1,3 @@
-// File: src/main/java/io/github/pokemeetup/system/gameplay/overworld/mechanics/AutoTileSystem.java
 package io.github.pokemeetup.system.gameplay.overworld.mechanics;
 
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -23,8 +22,6 @@ public class AutoTileSystem {
      */
     public void applyShorelineAutotiling(Chunk chunk, int animFrame, World world) {
         final int size = Chunk.CHUNK_SIZE;
-
-        // Step 1: Identify "shore" tiles. A shore tile is any non-water tile with a water neighbor.
         boolean[][] shoreMap = new boolean[size][size];
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
@@ -37,15 +34,11 @@ public class AutoTileSystem {
                 }
             }
         }
-
-        // Step 2: Prepare the chunk's overlay array
         TextureRegion[][] overlay = chunk.getAutotileRegions();
         if (overlay == null) {
             overlay = new TextureRegion[size][size];
             chunk.setAutotileRegions(overlay);
         }
-
-        // Step 3: For each "shore" tile, build the 32×32 tile from a 4–bit edge mask.
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
                 if (!shoreMap[x][y]) {
@@ -56,7 +49,6 @@ public class AutoTileSystem {
                 int worldY = chunk.getChunkY() * size + y;
                 int mask = computeEdgeMask(world, worldX, worldY);
                 TextureRegion base32 = TextureManager.getAutoTileRegion("sand_shore", mask, animFrame);
-                // FIX: Check for null base region before using it.
                 if (base32 == null) {
                     System.err.println("AutoTileSystem.applyShorelineAutotiling: base32 is null for mask " + mask + " at (" + x + "," + y + ")");
                     overlay[x][y] = null;
@@ -66,8 +58,6 @@ public class AutoTileSystem {
                 overlay[x][y] = comp;
             }
         }
-
-        // Step 4: Apply inside-corner overlays (if the sub–tile sheet is available)
         TextureRegion cornerSheet = TextureManager.getSubTile("sand_shore", animFrame, 2, 0);
         if (cornerSheet != null) {
             TextureRegion miniTL = new TextureRegion(cornerSheet, 0, 0, 16, 16);
@@ -108,8 +98,6 @@ public class AutoTileSystem {
         if (isWater(world, worldX - 1, worldY)) mask |= 8;  // left
         return mask;
     }
-
-    // Inside corner checks: diagonal is water, but the two orthogonal neighbors are beach
     private boolean isInnerCornerTopLeft(World world, int worldX, int worldY) {
         return isBeach(world, worldX, worldY + 1) && isBeach(world, worldX - 1, worldY) && isWater(world, worldX - 1, worldY + 1);
     }
@@ -125,8 +113,6 @@ public class AutoTileSystem {
     private boolean isInnerCornerBottomRight(World world, int worldX, int worldY) {
         return isBeach(world, worldX, worldY - 1) && isBeach(world, worldX + 1, worldY) && isWater(world, worldX + 1, worldY - 1);
     }
-
-    // Basic checks
     private boolean isBeach(int tileID) {
         return (tileID == TileType.BEACH_SAND ||
             tileID == TileType.BEACH_GRASS ||

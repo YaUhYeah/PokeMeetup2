@@ -333,7 +333,6 @@ public final class GameContext {
     }
 
     public void dispose() {
-        // Dispose of SpriteBatches
         if (batch != null) {
             batch.dispose();
         }
@@ -343,7 +342,6 @@ public final class GameContext {
         if (uiBatch != null) {
             uiBatch.dispose();
         }
-        // Dispose of Stages
         if (uiStage != null) {
             uiStage.dispose();
         }

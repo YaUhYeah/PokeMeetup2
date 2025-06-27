@@ -80,8 +80,6 @@ public class ServerConnectionConfig {
     public static ServerConnectionConfig getDefault() {
         return new ServerConnectionConfig("localhost", 55555, 55556, "Local Server", 100);
     }
-
-    // Getters and Setters
     public String getIconPath() { return iconPath; }
     public void setIconPath(String iconPath) { this.iconPath = iconPath; }
     public String getMotd() { return motd; }

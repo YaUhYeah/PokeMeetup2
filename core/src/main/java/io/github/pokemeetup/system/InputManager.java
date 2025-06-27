@@ -22,7 +22,6 @@ public class InputManager {
         this.inputMultiplexer = new InputMultiplexer();
         this.currentState = UIState.NORMAL;
         this.globalInputProcessor = new GlobalInputProcessor(this);
-        // Initialize input processors based on the initial state
         updateInputProcessors();
     }
 
@@ -39,18 +38,15 @@ public class InputManager {
     }
 
     private void handleUIStateChange() {
-        // First, hide all UIs to ensure a clean state
         hideAllUI();
 
         switch (currentState) {
             case NORMAL:
-                // Show the regular hotbar
                 if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
                     GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(true);
                 }
                 break;
             case BUILD_MODE:
-                // Show the build mode UI (which contains its own hotbars)
                 if (GameContext.get().getBuildModeUI() != null) {
                     GameContext.get().getBuildModeUI().setVisible(true);
                     GameContext.get().getBuildModeUI().refreshBuildInventory();
@@ -70,7 +66,6 @@ public class InputManager {
                 break;
             case BATTLE:
             case STARTER_SELECTION:
-                // These are managed separately
                 break;
         }
         if (gameScreen.getInputHandler() != null) {
@@ -79,15 +74,12 @@ public class InputManager {
     }
 
     public void hideAllUI() {
-        // Hide regular hotbar
         if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
             GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(false);
         }
-        // Hide build mode UI
         if (GameContext.get().getBuildModeUI() != null) {
             GameContext.get().getBuildModeUI().setVisible(false);
         }
-        // Hide other screens...
         if (gameScreen.getInventoryScreen() != null) {
             gameScreen.getInventoryScreen().hide();
         }
@@ -136,7 +128,6 @@ public class InputManager {
     }
 
     public void updateInputProcessors() {
-        // Clear any previously added processors.
         inputMultiplexer.clear();
 
         if (currentState == UIState.CHAT && GameContext.get().getChatSystem() != null) {
@@ -144,18 +135,11 @@ public class InputManager {
             Gdx.input.setInputProcessor(inputMultiplexer);
             return; // When chat is active, it gets exclusive input priority.
         }
-
-
-        // 2) The main UI Stage (HUD, overlays, etc.)
         if (GameContext.get().getUiStage() != null) {
             inputMultiplexer.addProcessor(GameContext.get().getUiStage());
         }
-
-        // 3) Add the Stage relevant to our current UI state
         switch (currentState) {
             case STARTER_SELECTION:
-                // If you have a separate Stage for starter UI, add it here.
-                // Otherwise, your starter selection is already a table in the UiStage, so do nothing.
                 break;
 
             case INVENTORY:
@@ -176,7 +160,6 @@ public class InputManager {
                 break;
 
             case MENU:
-                // If your GameMenu has its own Stage:
                 if (GameContext.get().getGameMenu() != null &&
                     GameContext.get().getGameMenu().getStage() != null) {
                     inputMultiplexer.addProcessor(
@@ -202,19 +185,12 @@ public class InputManager {
 
             case NORMAL:
             case BUILD_MODE:
-                // Nothing special to add here.
                 break;
         }
-
-        // 4) The main in‑game InputHandler (movement, chop/punch, etc.)
         if (gameScreen.getInputHandler() != null) {
             inputMultiplexer.addProcessor(gameScreen.getInputHandler());
         }
-
-        // 5) GlobalInputProcessor last (for ESC key, or “always-listen” input)
         inputMultiplexer.addProcessor(globalInputProcessor);
-
-        // Finally, set this multiplexer as the active input processor
         Gdx.input.setInputProcessor(inputMultiplexer);
     }
 

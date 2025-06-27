@@ -1,4 +1,3 @@
-// Additional Behavior Implementations
 package io.github.pokemeetup.system.gameplay.overworld.entityai.behaviors;
 
 import com.badlogic.gdx.math.Vector2;
@@ -9,8 +8,6 @@ import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
 import io.github.pokemeetup.utils.GameLogger;
-
-// Territorial Behavior - Actively defends territory boundaries
 public class TerritorialBehavior implements PokemonBehavior {
     private static final float TERRITORY_AGGRESSION_RANGE = 3.0f * World.TILE_SIZE;
 
@@ -46,15 +43,11 @@ public class TerritorialBehavior implements PokemonBehavior {
             GameLogger.info(pokemon.getName() + " is defending its territory!");
             isDefending = true;
         }
-
-        // Move towards the boundary between player and territory center
         Vector2 territory = ai.getTerritoryCenter();
         int pokemonTileX = (int)(pokemon.getX() / World.TILE_SIZE);
         int pokemonTileY = (int)(pokemon.getY() / World.TILE_SIZE);
         int playerTileX = (int)(player.getX() / World.TILE_SIZE);
         int playerTileY = (int)(player.getY() / World.TILE_SIZE);
-
-        // Move towards player but stop at territory edge
         int dx = Integer.compare(playerTileX, pokemonTileX);
         int dy = Integer.compare(playerTileY, pokemonTileY);
 

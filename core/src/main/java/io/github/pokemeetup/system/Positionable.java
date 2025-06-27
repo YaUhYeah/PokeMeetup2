@@ -12,8 +12,6 @@ public interface Positionable {
     Vector2 getPosition();
     boolean isMoving();
     void setCharacterType(String characterType);
-
-    // Methods for water interaction state
     boolean wasOnWater();
     void setWasOnWater(boolean onWater);
     float getWaterSoundTimer();

@@ -14,21 +14,16 @@ import java.util.*;
 public class DeploymentHelper {
     public static void createServerDeployment(Path deploymentDir) throws IOException {
         System.out.println("Creating server deployment in: " + deploymentDir.toAbsolutePath());
-
-        // Create directory structure
         createDirectory(deploymentDir);
         createDirectory(Paths.get(deploymentDir.toString(), "config"));
         createDirectory(Paths.get(deploymentDir.toString(), "plugins"));
         createDirectory(Paths.get(deploymentDir.toString(), "worlds"));
         createDirectory(Paths.get(deploymentDir.toString(), "server/data"));
-       // Check if we're running from JAR or development environment
         Path serverJar;
         if (isRunningFromJar()) {
-            // When running from JAR, use the current JAR
             serverJar = getCurrentJarPath();
             System.out.println("Running from JAR: " + serverJar);
         } else {
-            // In development, look for the JAR in build directory
             serverJar = Paths.get("server.jar");
             System.out.println("Running in development mode, looking for: " + serverJar);
         }
@@ -38,22 +33,13 @@ public class DeploymentHelper {
             System.out.println("Copied server JAR successfully");
         } else {
             System.out.println("Warning: Server JAR not found at: " + serverJar);
-            // Continue anyway as we might be in development mode
         }
-
-        // Create configurations
         createDefaultConfig(deploymentDir);
-
-        // Create start scripts
         createStartScripts(deploymentDir);
-
-        // Make shell script executable on Unix
         Path startSh = Paths.get(deploymentDir.toString(), "start.sh");
         if (Files.exists(startSh)) {
             startSh.toFile().setExecutable(true);
         }
-
-        // Create README
         createReadme(deploymentDir);
 
         System.out.println("Server deployment completed successfully");
@@ -79,21 +65,13 @@ public class DeploymentHelper {
             System.out.println("Created directory: " + dir);
         }
     }
-
-
-
-
-    // Helper method to create both start scripts
     private static void createStartScripts(Path deploymentDir) throws IOException {
-        // Create Windows batch file
         try {
             createWindowsScript(deploymentDir);
             System.out.println("Created start.bat successfully");
         } catch (IOException e) {
             throw new IOException("Failed to create start.bat: " + e.getMessage());
         }
-
-        // Create Unix shell script
         try {
             createUnixScript(deploymentDir);
             System.out.println("Created start.sh successfully");
@@ -101,8 +79,6 @@ public class DeploymentHelper {
             throw new IOException("Failed to create start.sh: " + e.getMessage());
         }
     }
-
-    // Create Windows batch script
     private static void createWindowsScript(Path deploymentDir) throws IOException {
         String batScript =
             "@echo off\n" +
@@ -125,8 +101,6 @@ public class DeploymentHelper {
         Path batPath = Paths.get(deploymentDir.toString(), "start.bat");
         Files.write(batPath, batScript.getBytes(StandardCharsets.UTF_8));
     }
-
-    // Create Unix shell script
     private static void createUnixScript(Path deploymentDir) throws IOException {
         String shScript =
             "#!/bin/bash\n\n" +
@@ -145,8 +119,6 @@ public class DeploymentHelper {
 
         Path shPath = Paths.get(deploymentDir.toString(), "start.sh");
         Files.write(shPath, shScript.getBytes(StandardCharsets.UTF_8));
-
-        // Make shell script executable
         try {
             shPath.toFile().setExecutable(true);
         } catch (SecurityException e) {

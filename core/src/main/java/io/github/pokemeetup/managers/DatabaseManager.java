@@ -166,7 +166,6 @@ public class DatabaseManager {
     }
 
     public boolean authenticatePlayer(String username, String password) {
-        // Updated to use password_hash column name
         String query = "SELECT password_hash FROM PLAYERS WHERE username = ?";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {

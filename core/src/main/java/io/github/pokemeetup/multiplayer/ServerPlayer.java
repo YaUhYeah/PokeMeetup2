@@ -1,4 +1,3 @@
-// ... inside file: src/main/java/io/github/pokemeetup/multiplayer/ServerPlayer.java
 
 package io.github.pokemeetup.multiplayer;
 
@@ -73,7 +72,6 @@ public class ServerPlayer {
         synchronized (inventoryLock) {
             for (ItemData item : inventory.getAllItems()) {
                 if (item != null && item.getItemId().equals(ItemManager.ItemIDs.WOODEN_AXE)) {
-                    // Also check if the axe has durability left
                     if (item.getDurability() > 0) {
                         return true;
                     }
@@ -89,15 +87,10 @@ public class ServerPlayer {
 
     public PlayerData getData() {
         synchronized (dataLock) {
-            // Create a fresh copy with current state
             PlayerData currentData = playerData.copy();
-
-            // Ensure inventory is synced
             synchronized (inventoryLock) {
                 currentData.setInventoryItems(new ArrayList<>(inventory.getAllItems()));
             }
-
-            // Ensure pokemon party is synced
             synchronized (partyPokemon) {
                 currentData.setPartyPokemon(new ArrayList<>(partyPokemon));
             }
@@ -114,12 +107,9 @@ public class ServerPlayer {
             }
 
             try {
-                // Create deep copy and validate
                 PlayerData validatedData = newData.copy();
 
                 this.playerData = validatedData;
-
-                // Update inventory atomically
                 synchronized (inventoryLock) {
                     if (validatedData.getInventoryItems() != null) {
                         this.inventory.clear();
@@ -130,8 +120,6 @@ public class ServerPlayer {
                         }
                     }
                 }
-
-                // Update party atomically
                 synchronized (partyPokemon) {
                     this.partyPokemon.clear();
                     if (validatedData.getPartyPokemon() != null) {

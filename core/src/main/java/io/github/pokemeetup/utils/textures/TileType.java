@@ -4,35 +4,24 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class TileType {
-    // Base terrain types
     public static final int WATER = 0;
     public static final int GRASS = 1;
     public static final int SAND = 2;
     public static final int ROCK = 3;
     public static final int SNOW = 4;
-
-    // Special terrain types
     public static final int HAUNTED_GRASS = 5;
     public static final int SNOW_TALL_GRASS = 6;
     public static final int HAUNTED_TALL_GRASS = 7;
     public static final int HAUNTED_SHROOM = 8;
     public static final int HAUNTED_SHROOMS = 9;
     public static final int TALL_GRASS = 10;
-
-    // Forest types
     public static final int FOREST_GRASS = 11;
     public static final int FOREST_TALL_GRASS = 12;
-
-    // Rain forest types
     public static final int RAIN_FOREST_GRASS = 13;
     public static final int RAIN_FOREST_TALL_GRASS = 14;
-
-    // Desert types
     public static final int DESERT_SAND = 15;
     public static final int DESERT_ROCKS = 16;
     public static final int DESERT_GRASS = 17;
-
-    // Decorative types
     public static final int FLOWER_1 = 18;
     public static final int FLOWER_2 = 19;
     public static final int FLOWER = 20;
@@ -43,16 +32,10 @@ public class TileType {
 
     public static final int MOUNTAIN_CORNER_INNER_TOPLEFT = 27;
     public static final int MOUNTAIN_CORNER_INNER_BOTTOMRIGHT = 30;
-
-    // Mountain Features
     public static final int MOUNTAIN_STAIRS_LEFT = 31; // Left side stairs
     public static final int MOUNTAIN_STAIRS_RIGHT = 32; // Right side stairs
     public static final int STAIRS = 235;
-
-    // Mountain Snow Variants
     public static final int MOUNTAIN_SNOW_BASE = 36;
-
-    // Mountain Tiles
     public static final int MOUNTAIN_BASE = 25;       // Base mountain tile
     public static final int MOUNTAIN_PEAK = 26;       // Mountain peak
     public static final int MOUNTAIN_SLOPE_LEFT = 27; // Left slope
@@ -63,15 +46,10 @@ public class TileType {
     public static final int MOUNTAIN_CORNER_TR = 34;  // Top-right corner
     public static final int MOUNTAIN_CORNER_BL = 35;  // Bottom-left corner
     public static final int MOUNTAIN_CORNER_BR = 36;  // Bottom-right corner
-    // Mountain Corner Types
     public static final int MOUNTAIN_CORNER_OUTER_TOPLEFT = 39;
     public static final int MOUNTAIN_CORNER_OUTER_BOTTOMRIGHT = 42;
-
-    // Mountain Base Components
     public static final int MOUNTAIN_BASE_EDGE = 38;      // Basic mountain edge tile
     public static final int MOUNTAIN_PATH = 40;           // Walkable mountain path
-
-    // Mountain Edges
     public static final int MOUNTAIN_EDGE_LEFT = 47;      // Left edge
     public static final int MOUNTAIN_EDGE_RIGHT = 48;     // Right edge
     public static final int MOUNTAIN_EDGE_TOP = 49;       // Top edge
@@ -146,23 +124,13 @@ public class TileType {
         tileTypeNames.put(WATER_PUDDLE_BOTTOM_LEFT, "water_puddle_bottom_left_corner");
         tileTypeNames.put(WATER_PUDDLE_BOTTOM_MIDDLE, "water_puddle_bottom_middle");
         tileTypeNames.put(WATER_PUDDLE_BOTTOM_RIGHT, "water_puddle_bottom_right_corner");
-
-        // Initialize special terrain names
         tileTypeNames.put(HAUNTED_GRASS, "haunted_grass");
         tileTypeNames.put(HAUNTED_SHROOM, "haunted_shroom");
         tileTypeNames.put(HAUNTED_SHROOMS, "haunted_shrooms");
-
-        // Initialize forest names
         tileTypeNames.put(FOREST_GRASS, "forest_grass");
-
-        // Initialize rain forest names
         tileTypeNames.put(RAIN_FOREST_GRASS, "rainforest_grass");
         tileTypeNames.put(STAIRS, "tile052");
-
-        // Initialize desert names
         tileTypeNames.put(DESERT_SAND, "desert_sand");
-
-        // Initialize decorative names with indices where needed
         tileTypeNames.put(FLOWER, "flower");
         tileTypeNames.put(FLOWER_1, "flower");
         tileTypeNames.put(FLOWER_2, "flower");
@@ -225,8 +193,6 @@ public class TileType {
         tileTypeNames.put(FOREST_TALL_GRASS_OVERLAY, "forest_tall_grass_overlay");
         tileTypeNames.put(DESERT_TALL_GRASS_OVERLAY, "desert_grass_overlay");
         tileTypeNames.put(BEACH_TALL_GRASS_OVERLAY, "beach_tall_grass_overlay");
-
-        // Add mountain tiles to main tile names
         tileTypeNames.putAll(mountainTileNames);
     }
 
@@ -254,7 +220,6 @@ public class TileType {
     }
 
     public static boolean isPassableTile(int tileType) {
-        // Basic terrain types that are passable
         if (tileType == GRASS || tileType == SAND || tileType == SNOW_TALL_GRASS || tileType == SNOW || tileType == SNOW_2 || tileType == SNOW_3 || tileType == GRASS_3 || tileType == FOREST_TALL_GRASS || tileType == HAUNTED_SHROOM || tileType == HAUNTED_SHROOMS || tileType == MOUNTAIN_STAIRS ||
             tileType == HAUNTED_GRASS || tileType == HAUNTED_TALL_GRASS || tileType == FOREST_GRASS || tileType == RAIN_FOREST_TALL_GRASS ||
             tileType == RAIN_FOREST_GRASS || tileType == DESERT_SAND || tileType == DESERT_GRASS || tileType == FLOWER_2 || tileType == GRASS_2 || tileType == TALL_GRASS || tileType == TALL_GRASS_2 || tileType == TALL_GRASS_3 || tileType == FLOWER_1 || tileType == FLOWER
@@ -264,7 +229,6 @@ public class TileType {
         if (isWaterPuddle(tileType)) {
             return true;
         }
-        // Mountain types that are passable (stairs and paths)
         return tileType == MOUNTAIN_STAIRS_LEFT || tileType == MOUNTAIN_STAIRS_RIGHT || tileType == MOUNTAIN_TILE_CENTER ||
             tileType == STAIRS;
     }

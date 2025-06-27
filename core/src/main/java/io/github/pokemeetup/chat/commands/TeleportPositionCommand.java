@@ -42,8 +42,6 @@ public class TeleportPositionCommand implements Command {
         String[] argsArray = args.split(" ");
         try {
             GameLogger.info("Executing tp command...");
-
-            // Get player and world from the global context.
             Player player = GameContext.get().getPlayer();
             if (player == null) {
                 chatSystem.addSystemMessage("Error: Player not found");
@@ -58,12 +56,8 @@ public class TeleportPositionCommand implements Command {
                 chatSystem.addSystemMessage("Invalid arguments. Use: " + getUsage());
                 return;
             }
-
-            // Parse target tile coordinates.
             int tileX = Integer.parseInt(argsArray[0]);
             int tileY = Integer.parseInt(argsArray[1]);
-
-            // *** NEW CHECK: Ensure the target is within the world border ***
             if (!currentWorld.isWithinWorldBounds(tileX, tileY)) {
                 chatSystem.addSystemMessage("Error: Teleport location (" + tileX + ", " + tileY + ") is outside the world border.");
                 return;
@@ -71,8 +65,6 @@ public class TeleportPositionCommand implements Command {
 
             float pixelX = tileX * World.TILE_SIZE;
             float pixelY = tileY * World.TILE_SIZE;
-
-            // Teleport the player by updating his position and tile coordinates.
             player.getPosition().set(pixelX, pixelY);
             player.setTileX(tileX);
             player.setTileY(tileY);
@@ -80,17 +72,12 @@ public class TeleportPositionCommand implements Command {
             player.setY(pixelY);
             player.setRenderPosition(new Vector2(pixelX, pixelY));
             player.setMoving(false);
-
-            // Reset the chunk state so that a fresh set of chunks are loaded around the new position.
             currentWorld.clearChunks();
             currentWorld.loadChunksAroundPlayer();
-
-            // If in multiplayer mode, update the server.
             if (GameContext.get().isMultiplayer()) {
                 gameClient.sendPlayerUpdate();
                 gameClient.savePlayerState(player.getPlayerData());
             }
-            // Multiplayer Mode: Send position update to server
             if (GameContext.get().isMultiplayer()) {
                 NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
                 update.username = player.getUsername();

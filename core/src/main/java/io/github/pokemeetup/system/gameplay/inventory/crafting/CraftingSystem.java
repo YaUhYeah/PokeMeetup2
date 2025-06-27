@@ -86,7 +86,6 @@ public class CraftingSystem {
 
     private boolean matchesShapedRecipe(RecipeManager.CraftingRecipe recipe) {
         String[][] pattern = recipe.getPattern();
-        // Compute frequency for each non-null symbol in the pattern
         Map<String, Integer> symbolFrequency = new HashMap<>();
         for (int r = 0; r < pattern.length; r++) {
             for (int c = 0; c < pattern[r].length; c++) {
@@ -96,11 +95,7 @@ public class CraftingSystem {
                 }
             }
         }
-
-        // Build the expected mapping: for each symbol, we expect a specific item.
-        // We assume that for each symbol, its frequency matches one ingredient’s required count.
         Map<String, String> expectedMapping = new HashMap<>();
-        // Make a copy of the ingredients map (itemId -> count)
         Map<String, Integer> ingredients = new HashMap<>(recipe.getIngredients());
 
         for (Map.Entry<String, Integer> symbolEntry : symbolFrequency.entrySet()) {
@@ -115,12 +110,9 @@ public class CraftingSystem {
                 }
             }
             if (!found) {
-                // No matching ingredient with the exact count – pattern does not match recipe.
                 return false;
             }
         }
-
-        // Try the recipe pattern at every possible starting position in the grid.
         int patternHeight = pattern.length;
         int patternWidth = pattern[0].length;
         for (int startRow = 0; startRow <= gridSize - patternHeight; startRow++) {
@@ -146,8 +138,6 @@ public class CraftingSystem {
                     continue;
                 }
                 if (slotItem == null) return false;
-
-                // Instead of inferring, check against our expected mapping.
                 String expectedItemId = expectedMapping.get(symbol);
                 if (expectedItemId == null || !expectedItemId.equals(slotItem.getItemId())) {
                     return false;
@@ -156,7 +146,6 @@ public class CraftingSystem {
                 usedSlots.add(gridIndex);
             }
         }
-        // Ensure all grid slots not used by the pattern are empty.
         for (int i = 0; i < craftingGrid.getSize(); i++) {
             if (!usedSlots.contains(i) && craftingGrid.getItemAt(i) != null) {
                 return false;
@@ -169,24 +158,18 @@ public class CraftingSystem {
     private boolean matchesShapelessRecipe(RecipeManager.CraftingRecipe recipe) {
         Map<String, Integer> required = new HashMap<>(recipe.getIngredients());
         Map<String, Integer> found = new HashMap<>();
-
-        // Count all items in grid
         for (int i = 0; i < craftingGrid.getSize(); i++) {
             ItemData item = craftingGrid.getItemAt(i);
             if (item != null) {
                 found.merge(item.getItemId(), item.getCount(), Integer::sum);
             }
         }
-
-        // Check if we have all required items
         for (Map.Entry<String, Integer> entry : required.entrySet()) {
             int foundCount = found.getOrDefault(entry.getKey(), 0);
             if (foundCount < entry.getValue()) {
                 return false;
             }
         }
-
-        // Check if we have no extra items
         return found.keySet().equals(required.keySet());
     }
 
@@ -231,8 +214,6 @@ public class CraftingSystem {
                 GameLogger.error("Recipe mismatch for result: " + resultSlot.getItemId());
                 return null;
             }
-
-            // Consume ingredients from the grid
             for (Map.Entry<String, Integer> entry : recipe.getIngredients().entrySet()) {
                 consumeItemsFromGrid(entry.getKey(), entry.getValue());
             }

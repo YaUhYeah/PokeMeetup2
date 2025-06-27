@@ -63,13 +63,9 @@ public class Biome {
         if (distribution == null || distribution.isEmpty()) {
             throw new IllegalArgumentException("Tile distribution cannot be null or empty");
         }
-
-        // If allowed types is empty, initialize it from the distribution
         if (allowedTileTypes.isEmpty()) {
             allowedTileTypes = new ArrayList<>(distribution.keySet());
         }
-
-        // Add any missing tile types to allowed types
         for (Integer tileType : distribution.keySet()) {
             if (!allowedTileTypes.contains(tileType)) {
                 allowedTileTypes.add(tileType);
@@ -81,8 +77,6 @@ public class Biome {
         double totalWeight = distribution.values().stream()
             .mapToDouble(Integer::doubleValue)
             .sum();
-
-        // Normalize weights if needed
         if (Math.abs(totalWeight - 100.0) > 0.001) {
             Map<Integer, Integer> normalizedDist = new HashMap<>();
 
@@ -90,8 +84,6 @@ public class Biome {
                 double normalizedValue = (entry.getValue() / totalWeight) * 100.0;
                 normalizedDist.put(entry.getKey(), (int) Math.round(normalizedValue));
             }
-
-            // Adjust for rounding errors
             int finalTotal = normalizedDist.values().stream()
                 .mapToInt(Integer::intValue)
                 .sum();
@@ -118,7 +110,6 @@ public class Biome {
     private Map<Integer, Integer> beachTileDistribution;
     public Map<Integer, Integer> getBeachTileDistribution() {
         if (beachTileDistribution == null || beachTileDistribution.isEmpty()) {
-            // Fallback distribution: 100% BEACH_SAND.
             Map<Integer, Integer> defaultBeach = new HashMap<>();
             defaultBeach.put(TileType.BEACH_SAND, 60);
             defaultBeach.put(TileType.BEACH_GRASS, 20);
@@ -163,7 +154,6 @@ public class Biome {
         this.allowedTileTypes = allowedTileTypes;
     }
     private void useFallbackDistribution() {
-        // Provide safe default distribution
         Map<Integer, Integer> fallback = new HashMap<>();
         fallback.put(1, 70);  // grass
         fallback.put(2, 20);  // dirt
@@ -175,8 +165,6 @@ public class Biome {
         GameLogger.info(String.format("Biome %s using fallback distribution: %s",
             name, fallback));
     }
-
-    // Add this method to validate the entire biome state
     public void validate() {
         if (allowedTileTypes == null) {
             allowedTileTypes = new ArrayList<>();

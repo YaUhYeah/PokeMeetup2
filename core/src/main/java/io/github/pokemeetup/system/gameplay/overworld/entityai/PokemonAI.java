@@ -27,8 +27,6 @@ public class PokemonAI {
     private PokemonBehavior activeBehavior;
     private UUID packLeaderId;
     private Set<UUID> packMembers = new HashSet<>();
-
-    // Movement state
     private float stateTimer = 0f;
     private Vector2 patrolTarget;
     private List<Vector2> patrolRoute = new ArrayList<>();
@@ -51,16 +49,12 @@ public class PokemonAI {
 
     private Set<PokemonPersonalityTrait> generatePersonalityTraits() {
         Set<PokemonPersonalityTrait> traits = new HashSet<>();
-
-        // Primary personality (always has one)
         PokemonPersonalityTrait[] primaryTraits = {
             PokemonPersonalityTrait.AGGRESSIVE, PokemonPersonalityTrait.PASSIVE,
             PokemonPersonalityTrait.CURIOUS, PokemonPersonalityTrait.TIMID,
             PokemonPersonalityTrait.TERRITORIAL, PokemonPersonalityTrait.LAZY
         };
         traits.add(primaryTraits[MathUtils.random(primaryTraits.length - 1)]);
-
-        // Social behavior (70% chance)
         if (MathUtils.random() < 0.7f) {
             PokemonPersonalityTrait[] socialTraits = {
                 PokemonPersonalityTrait.PACK_LEADER, PokemonPersonalityTrait.FOLLOWER,
@@ -68,14 +62,10 @@ public class PokemonAI {
             };
             traits.add(socialTraits[MathUtils.random(socialTraits.length - 1)]);
         }
-
-        // Time preference (30% chance)
         if (MathUtils.random() < 0.3f) {
             traits.add(MathUtils.randomBoolean() ?
                 PokemonPersonalityTrait.NOCTURNAL : PokemonPersonalityTrait.DIURNAL);
         }
-
-        // Species-specific traits
         addSpeciesSpecificTraits(traits);
 
         return traits;
@@ -109,8 +99,6 @@ public class PokemonAI {
         behaviors.add(new IdleBehavior(pokemon, this));
         behaviors.add(new WanderBehavior(pokemon, this));
         behaviors.add(new FleeBehavior(pokemon, this));
-
-        // Conditional behaviors based on personality
         if (hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE)) {
             behaviors.add(new ApproachPlayerBehavior(pokemon, this));
             behaviors.add(new TerritorialBehavior(pokemon, this));
@@ -132,8 +120,6 @@ public class PokemonAI {
         if (hasPersonalityTrait(PokemonPersonalityTrait.FOLLOWER)) {
             behaviors.add(new FollowPackBehavior(pokemon, this));
         }
-
-        // Sort behaviors by priority
         behaviors.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
     }
 
@@ -142,15 +128,11 @@ public class PokemonAI {
 
         Vector2 center = territoryCenter;
         float radius = territoryRadius * 0.7f; // Patrol within territory
-
-        // Create a circular patrol route
         int numPoints = MathUtils.random(3, 6);
         for (int i = 0; i < numPoints; i++) {
             float angle = (i * MathUtils.PI2) / numPoints;
             float x = center.x + MathUtils.cos(angle) * radius;
             float y = center.y + MathUtils.sin(angle) * radius;
-
-            // Snap to tile grid
             int tileX = Math.round(x / World.TILE_SIZE);
             int tileY = Math.round(y / World.TILE_SIZE);
 
@@ -167,11 +149,7 @@ public class PokemonAI {
 
         stateTimer += delta;
         updateBehaviorCooldowns(delta);
-
-        // Handle species-specific special abilities
         handleSpecialAbilities(world);
-
-        // Find and execute highest priority behavior
         PokemonBehavior newBehavior = selectBehavior();
         if (newBehavior != activeBehavior) {
             if (activeBehavior != null) {
@@ -193,8 +171,6 @@ public class PokemonAI {
                 return behavior;
             }
         }
-
-        // Default to idle if no other behavior can execute
         return behaviors.stream()
             .filter(b -> b instanceof IdleBehavior)
             .findFirst()
@@ -258,13 +234,11 @@ public class PokemonAI {
     }
 
     private void performBurrow(World world) {
-        // Similar to teleport but shorter range and different flavor
         performTeleport(world);
         setCooldown("burrow", 20f);
     }
 
     private void performPhase(World world) {
-        // Ghost types can "phase" through one obstacle
         int currentTileX = (int)(pokemon.getX() / World.TILE_SIZE);
         int currentTileY = (int)(pokemon.getY() / World.TILE_SIZE);
 
@@ -291,12 +265,9 @@ public class PokemonAI {
     }
 
     private void performElectricDisplay() {
-        // Visual/audio effect only - could trigger particle effects
         GameLogger.info(pokemon.getName() + " creates an electric display");
         setCooldown("electric_display", 15f);
     }
-
-    // Getters and utility methods
     public boolean hasPersonalityTrait(PokemonPersonalityTrait trait) {
         return personalityTraits.contains(trait);
     }
@@ -354,8 +325,6 @@ public class PokemonAI {
     public AIState getCurrentState() { return currentState; }
     public void setCurrentState(AIState state) { this.currentState = state; }
     public float getStateTimer() { return stateTimer; }
-
-    // Pack management
     public void setPackLeader(UUID leaderId) { this.packLeaderId = leaderId; }
     public UUID getPackLeaderId() { return packLeaderId; }
     public void addPackMember(UUID memberId) { packMembers.add(memberId); }

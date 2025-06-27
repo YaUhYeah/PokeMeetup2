@@ -44,8 +44,6 @@ public class ServerConfigManager {
     }
 
     public void addServer(ServerConnectionConfig config) {
-        // The .equals() method in ServerConnectionConfig now checks IP and port.
-        // The 'false' argument ensures .equals() is used for comparison.
         if (!servers.contains(config, false)) {
             servers.add(config);
             saveServers();
@@ -79,26 +77,19 @@ public class ServerConfigManager {
                     ServerConnectionConfig.class, fileContent);
 
                 if (loadedServers != null && loadedServers.size > 0) {
-                    // Use a HashSet to automatically handle duplicates based on our new equals/hashCode
                     HashSet<ServerConnectionConfig> uniqueSet = new HashSet<>();
                     for (ServerConnectionConfig server : loadedServers) {
                         if (!uniqueSet.add(server)) {
                             GameLogger.info("Removed duplicate server on load: " + server.getServerName());
                         }
                     }
-
-                    // If duplicates were found, the set size will be smaller.
                     boolean wasCleaned = uniqueSet.size() < loadedServers.size;
-
-                    // Update the main server list with the unique servers
                     servers.clear();
                     for(ServerConnectionConfig uniqueServer : uniqueSet) {
                         servers.add(uniqueServer);
                     }
 
                     GameLogger.info("Loaded " + servers.size + " unique servers.");
-
-                    // If the list was cleaned, save it back to the file.
                     if(wasCleaned) {
                         saveServers();
                     }

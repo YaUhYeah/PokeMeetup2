@@ -5,7 +5,6 @@ import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 
 public class IdleBehavior implements PokemonBehavior {
-    // Shorter idle times to encourage more frequent movement.
     private static final float MIN_IDLE_TIME = 0.3f; // Was 0.5f
     private static final float MAX_IDLE_TIME = 1.2f; // Was 1.5f
 

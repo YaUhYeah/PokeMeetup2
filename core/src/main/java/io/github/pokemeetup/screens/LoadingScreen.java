@@ -46,13 +46,9 @@ public class LoadingScreen implements Screen {
 
         progressBar = new ProgressBar(0, 1, 0.01f, false, progressStyle);
         progressBar.setSize(PROGRESS_BAR_WIDTH, PROGRESS_BAR_HEIGHT);
-
-        // Labels
         Label.LabelStyle labelStyle = new Label.LabelStyle(skin.getFont("default-font"), Color.WHITE);
         statusLabel = new Label("", labelStyle);
         progressLabel = new Label("", labelStyle);
-
-        // Layout
         mainTable.add(statusLabel).pad(10).row();
         mainTable.add(progressBar).width(PROGRESS_BAR_WIDTH).height(PROGRESS_BAR_HEIGHT).pad(10).row();
         mainTable.add(progressLabel).pad(10);
@@ -71,18 +67,12 @@ public class LoadingScreen implements Screen {
     public void render(float delta) {
         elapsedTime += delta;
         updateTimer += delta;
-
-        // Update status at intervals
         if (updateTimer >= UPDATE_INTERVAL) {
             updateTimer = 0;
             updateLoadingStatus();
         }
-
-        // Clear screen
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.1f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-        // Check if next screen is ready
         if (nextScreen instanceof GameScreen) {
             GameScreen gameScreen = (GameScreen) nextScreen;
 
@@ -90,7 +80,6 @@ public class LoadingScreen implements Screen {
                 GameLogger.info("Game screen initialized, transitioning...");
                 progress = 1;
                 updateUI();
-                // Add small delay before transition
                 if (elapsedTime > 0.5f) {
                     game.setScreen(nextScreen);
                     dispose();
@@ -127,7 +116,6 @@ public class LoadingScreen implements Screen {
     }
 
     private void updateProgress() {
-        // Update progress based on actual loading state
         if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getChunks() != null) {
             int totalRequired = (World.INITIAL_LOAD_RADIUS * 2 + 1) *
                 (World.INITIAL_LOAD_RADIUS * 2 + 1);

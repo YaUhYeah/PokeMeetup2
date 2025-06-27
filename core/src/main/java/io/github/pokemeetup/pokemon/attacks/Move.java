@@ -59,10 +59,7 @@ public class Move {
     private MoveEffect effect;
     private boolean canFlinch;
 
-    // Constructors, Getters, and Setters
-
     public Move() {
-        // Default constructor
     }
 
     public String getName() {
@@ -125,9 +122,6 @@ public class Move {
             this.duration = duration;
         }
 
-
-        // Getters and Setters
-
         public Pokemon.Status getStatusEffect() {
             return statusEffect;
         }
@@ -176,8 +170,6 @@ public class Move {
             this.sound = sound;
         }
     }
-
-    // Builder pattern for move creation
     public static class Builder {
         private final Move move;
 

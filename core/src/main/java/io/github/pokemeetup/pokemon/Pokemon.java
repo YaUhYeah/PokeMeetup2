@@ -32,10 +32,7 @@ public class Pokemon {
     private boolean flinched = false;
     private int confusedTurns = 0;
     private String nature;
-    // NEW: Stat stage tracking (-6 to +6)
     private Map<String, Integer> statStages; // "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
-
-    // NEW: Status duration counters
     private int paralysisTurns = 0; // Example, may not be needed depending on paralysis implementation
     private int confusionTurns = 0;
     private boolean confused = false; // Separate flag for confusion state
@@ -66,7 +63,6 @@ public class Pokemon {
     public Pokemon(String name, int level,
                    int speciesBaseHp, int speciesBaseAttack, int speciesBaseDefense,
                    int speciesBaseSpAtk, int speciesBaseSpDef, int speciesBaseSpeed) {
-        // Save species base stats for later use
         this.speciesBaseHp = speciesBaseHp;
         this.speciesBaseAttack = speciesBaseAttack;
         this.speciesBaseDefense = speciesBaseDefense;
@@ -114,7 +110,6 @@ public class Pokemon {
         statStages.put("evasion", 0);  // Often handled differently
     }
     protected Pokemon(boolean noTexture) {
-        // We assume 'noTexture' is true
         this.uuid = UUID.randomUUID();
         this.statStages = new HashMap<>(); // Initialize stages here too
         this.name = "";         // Will be set later by the subclass
@@ -144,13 +139,10 @@ public class Pokemon {
         Pokemon p = new Pokemon(true);
         p.name = name;
         p.level = level;
-        // Optionally, if you want to load base stats from your database template:
         PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
         if (template != null) {
             p.growthRate = template.growthRate != null ? template.growthRate : "Medium Fast";
-            // You might assign speciesBase* values here if needed.
         }
-        // Then calculate stats:
         p.calculateStats();
         p.currentHp = p.stats.getHp();
         return p;
@@ -274,14 +266,9 @@ public class Pokemon {
         resetStatStages(); // Reset stat stages on heal
         calculateStats(); // Recalculate stats after resetting stages
     }
-
-    // FIX: This method previously also reset status effects, which is incorrect for drain moves.
-    // It is now an alias for restoreHealth.
     public void heal(int amount) {
         restoreHealth(amount);
     }
-
-    // NEW: A dedicated method to restore HP without affecting status.
     public void restoreHealth(int amount) {
         this.currentHp = Math.min(this.stats.getHp(), this.currentHp + amount);
     }
@@ -296,14 +283,11 @@ public class Pokemon {
     public void setStatus(Status newStatus) {
         if (newStatus == null || this.status != Status.NONE) {
             if (newStatus == Status.ASLEEP && this.status == Status.ASLEEP) {
-                // Allow refreshing sleep duration maybe? Or just ignore.
             } else if (newStatus != Status.NONE) {
                 GameLogger.info(name + " is already " + this.status + ", cannot apply " + newStatus);
             }
             return;
         }
-
-        // Check type immunities
         if ((newStatus == Status.POISONED || newStatus == Status.BADLY_POISONED) &&
             (primaryType == PokemonType.POISON || secondaryType == PokemonType.POISON ||
                 primaryType == PokemonType.STEEL || secondaryType == PokemonType.STEEL)) {
@@ -333,8 +317,6 @@ public class Pokemon {
         } else {
             GameLogger.info(name + " is now " + newStatus);
         }
-
-        // Initialize status-specific counters
         switch (newStatus) {
             case ASLEEP:
                 sleepTurns = MathUtils.random(1, 3); // Standard sleep 1-3 turns
@@ -345,7 +327,6 @@ public class Pokemon {
             default:
                 break;
         }
-        // Recalculate stats if status affects them (e.g., paralysis, burn)
         calculateStats();
     }
 
@@ -366,16 +347,13 @@ public class Pokemon {
         int newStage = MathUtils.clamp(currentStage + change, -6, 6);
 
         if (newStage == currentStage) {
-            // Already at max or min, stage didn't change
             GameLogger.info(name + "'s " + statName + " won't go any " + (change > 0 ? "higher!" : "lower!"));
             return false;
         }
 
         statStages.put(key, newStage);
-        // Recalculate stats potentially affected by the stage change (like speed for paralysis)
         calculateStats();
         GameLogger.info(name + "'s " + statName + (change > 0 ? " rose!" : " fell!"));
-        // TODO: Add BattleTable message display here
         return true;
     }
 
@@ -412,15 +390,11 @@ public class Pokemon {
         if (currentHp <= 0) {
             return false;
         }
-
-        // Flinch has highest priority
         if (flinched) {
             flinched = false; // Flinch lasts only one turn
             GameContext.get().getBattleTable().queueMessage(name + " flinched!");
             return false;
         }
-
-        // Check major status conditions
         switch (status) {
             case ASLEEP:
                 sleepTurns--;
@@ -450,8 +424,6 @@ public class Pokemon {
             default:
                 break;
         }
-
-        // Check confusion (handled after major statuses)
         if (confused) {
             GameContext.get().getBattleTable().queueMessage(name + " is confused!");
             confusionTurns--;
@@ -550,8 +522,6 @@ public class Pokemon {
             levelUp();
             GameLogger.info(String.format("%s gained %d experience points!",
                 getName(), currentExperience - expNeeded));
-
-            // Update experience for next level check
             currentExperience -= expNeeded;
             expNeeded = getExperienceForNextLevel();
         }
@@ -565,22 +535,14 @@ public class Pokemon {
     private void levelUp() {
         level++;
         GameLogger.info(getName() + " leveled up to " + level + "!");
-
-        // Use the ChatSystem for a level-up message.
         GameContext.get().getChatSystem().addSystemMessage(getName() + " leveled up to " + level + "!");
-
-        // Save old stats for comparison...
         int oldHp = stats.getHp();
         int oldAttack = stats.getAttack();
         int oldDefense = stats.getDefense();
         int oldSpAtk = stats.getSpecialAttack();
         int oldSpDef = stats.getSpecialDefense();
         int oldSpeed = stats.getSpeed();
-
-        // Recalculate stats...
         calculateStats();
-
-        // Optionally, show stat increases (you might log these or add additional system messages)
         showStatIncrease("HP", oldHp, stats.getHp());
         showStatIncrease("Attack", oldAttack, stats.getAttack());
         showStatIncrease("Defense", oldDefense, stats.getDefense());
@@ -591,8 +553,6 @@ public class Pokemon {
         calculateStats();
         int hpIncrease = stats.getHp() - oldHp;
         currentHp += hpIncrease; // Also increase current HP
-
-        // Check for new moves
         learnNewMovesAtLevel(level);
     }
 
@@ -614,7 +574,6 @@ public class Pokemon {
     }
 
     public TextureRegion getCurrentIconFrame(float delta) {
-        // Update the timer
         frameTimer += delta;
         if (frameTimer >= frameDuration) {
             frameTimer = 0;
@@ -625,10 +584,7 @@ public class Pokemon {
 
     private void loadIcons(TextureAtlas atlas) {
         String baseName = name.toUpperCase();
-//        GameLogger.info("Loading sprites for: " + baseName);
-        // Load battle and icon sprites
         iconSprite = atlas.findRegion(baseName + "_icon");
-        // Load overworld sprite sheet
     }
 
     private void loadOverworld(TextureAtlas atlas) {
@@ -650,15 +606,12 @@ public class Pokemon {
     }
 
     private void learnNewMovesAtLevel(int level) {
-        // Get the list of move entries from the Pokémon Database
         List<PokemonDatabase.MoveEntry> moveEntries = PokemonDatabase.getTemplate(name).moves;
         for (PokemonDatabase.MoveEntry entry : moveEntries) {
             if (entry.level == level) {
-                // Learn the new move:
                 Move newMove = PokemonDatabase.getMoveByName(entry.name);
                 if (newMove != null) {
                     Move clonedMove = PokemonDatabase.cloneMove(newMove);
-                    // If fewer than 4 moves, simply add the new move.
                     if (moves.size() < 4) {
                         moves.add(clonedMove);
                         GameLogger.info(name + " learned " + entry.name + "!");
@@ -666,11 +619,9 @@ public class Pokemon {
                             GameContext.get().getBattleTable().displayMessage(name + " learned " + entry.name + "!");
                         }
                     } else {
-                        // Otherwise, prompt the user to choose which move to replace.
                         if (GameContext.get().getBattleTable() != null) {
                             GameContext.get().getBattleTable().showMoveReplacementDialog(clonedMove);
                         } else {
-                            // Fallback: auto–replace the first move.
                             moves.remove(0);
                             moves.add(clonedMove);
                             GameLogger.info(name + " learned " + entry.name + " by replacing an old move!");
@@ -687,16 +638,13 @@ public class Pokemon {
 
     private void loadFront(TextureAtlas atlas) {
         String baseName = name.toUpperCase();
-        // Load battle and icon sprites
         frontSprite = atlas.findRegion(baseName + "_front");
         frontShinySprite = atlas.findRegion(baseName + "_front_shiny");
-        // Load overworld sprite sheet
 
     }
 
     private void loadBack(TextureAtlas atlas) {
         String baseName = name.toUpperCase();
-        // Load battle and icon sprites
         backSprite = atlas.findRegion(baseName + "_back");
         backShinySprite = atlas.findRegion(baseName + "_back_shiny");
 
@@ -776,7 +724,6 @@ public class Pokemon {
         if (animations != null) {
             TextureRegion currentFrame = animations.getCurrentFrame(direction, isMoving);
             batch.draw(currentFrame, position.x, position.y);
-//            GameLogger.info("Rendering Pokémon: " + name + " at position: " + position);
         }
     }
 
@@ -791,8 +738,6 @@ public class Pokemon {
     private boolean calculateShinyStatus() {
         return new Random().nextInt(4096) == 0; // 1/4096 chance in modern games
     }
-
-    // Getters and setters
     public String getName() {
         return name;
     }
@@ -895,38 +840,27 @@ public class Pokemon {
 
 
     int calculateStat(int base, int iv, int ev) {
-        // Example uses a nature modifier with ±10% random variation.
         float natureModifier = 1.0f + (new Random().nextFloat() * 0.2f - 0.1f);
         return (int) (((2 * base + iv + (float) ev / 4) * level / 100f + 5) * natureModifier);
     }
-
-    // --- Modified calculateStats ---
-    // Apply stat stage modifiers AND status modifiers
     public void calculateStats() {
-        // Calculate base stats from IVs/EVs/Level/Nature (keep existing logic)
         stats.setHp(((2 * speciesBaseHp + stats.ivs[0] + stats.evs[0] / 4) * level / 100) + level + 10);
         int baseAttack = calculateStat(speciesBaseAttack, stats.ivs[1], stats.evs[1]);
         int baseDefense = calculateStat(speciesBaseDefense, stats.ivs[2], stats.evs[2]);
         int baseSpAtk = calculateStat(speciesBaseSpAtk, stats.ivs[3], stats.evs[3]);
         int baseSpDef = calculateStat(speciesBaseSpDef, stats.ivs[4], stats.evs[4]);
         int baseSpeed = calculateStat(speciesBaseSpeed, stats.ivs[5], stats.evs[5]);
-
-        // Apply stat stage modifiers
         stats.setAttack(Math.max(1, (int) (baseAttack * getStatModifier("attack"))));
         stats.setDefense(Math.max(1, (int) (baseDefense * getStatModifier("defense"))));
         stats.setSpecialAttack(Math.max(1, (int) (baseSpAtk * getStatModifier("spAtk"))));
         stats.setSpecialDefense(Math.max(1, (int) (baseSpDef * getStatModifier("spDef"))));
         stats.setSpeed(Math.max(1, (int) (baseSpeed * getStatModifier("speed"))));
-
-        // Apply status condition modifiers (e.g., paralysis halves speed)
         if (status == Status.PARALYZED) {
             stats.setSpeed(stats.getSpeed() / 2);
         }
-        // Apply burn attack reduction (halves physical attack)
         if (status == Status.BURNED) {
             stats.setAttack(stats.getAttack() / 2);
         }
-        // Ensure stats don't drop below 1
         stats.setAttack(Math.max(1, stats.getAttack()));
         stats.setDefense(Math.max(1, stats.getDefense()));
         stats.setSpecialAttack(Math.max(1, stats.getSpecialAttack()));

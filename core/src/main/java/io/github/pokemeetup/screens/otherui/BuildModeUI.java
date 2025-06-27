@@ -34,8 +34,6 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-// Changed from Group to Table to handle layout and resizing automatically.
 public class BuildModeUI extends Table {
     private static final float SLOT_SIZE = 40f;
     private static final int HOTBAR_SLOTS = 9;
@@ -61,30 +59,15 @@ public class BuildModeUI extends Table {
         this.blockTextureManager = new BlockTextureManager();
         this.shapeRenderer = new ShapeRenderer();
         this.smartBuildingManager = new SmartBuildingManager(GameContext.get().getWorld());
-
-        // This ensures the table takes up the whole screen space,
-        // allowing us to align its contents precisely.
         this.setFillParent(true);
-        // Align all content in this table to the bottom edge.
         this.bottom();
-
-        // This table will hold the block hotbar
         this.hotbarTable = new Table();
-
-        // This is the hotbar for entire buildings
         this.buildingHotbar = new BuildingHotbar(skin);
         buildingHotbar.setVisible(false);
-
-        // Add both hotbars to a Stack so they occupy the same space.
-        // We will toggle their visibility to switch between them.
         Stack hotbarStack = new Stack(hotbarTable, buildingHotbar);
-
-        // Add a "Build Mode" label that will appear above the hotbars.
         Label buildModeLabel = new Label("Build Mode", skin);
         buildModeLabel.setColor(Color.YELLOW);
         this.add(buildModeLabel).padBottom(5).row(); // .row() moves to the next line
-
-        // Add the hotbar stack below the label.
         this.add(hotbarStack);
 
         GameContext.get().getPlayer().getInventory().addObserver(this::refreshBuildInventory);
@@ -321,7 +304,6 @@ public class BuildModeUI extends Table {
         if (itemToConsume.getCount() <= 0) {
             GameContext.get().getPlayer().getInventory().removeItem(itemToConsume);
         } else {
-            // This is important for observers
             GameContext.get().getPlayer().getInventory().notifyObservers();
         }
     }

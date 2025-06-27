@@ -47,8 +47,6 @@ public class PlayerData {
             this.direction = player.getDirection();
             this.isMoving = player.isMoving();
             this.wantsToRun = player.isRunning();
-
-            // Update the character type from the player instance.
             this.setCharacterType(player.getCharacterType());
 
             this.inventoryItems = new ArrayList<>(Collections.nCopies(Inventory.INVENTORY_SIZE, null));
@@ -89,14 +87,10 @@ public class PlayerData {
 
     public boolean validateAndRepairState() {
         boolean wasRepaired = false;
-
-        // Validate username
         if (username == null || username.trim().isEmpty()) {
             GameLogger.error("Critical: PlayerData has null/empty username");
             return false;
         }
-
-        // Initialize/repair collections
         if (inventoryItems == null) {
             inventoryItems = new ArrayList<>();
             wasRepaired = true;
@@ -106,8 +100,6 @@ public class PlayerData {
             partyPokemon = new ArrayList<>();
             wasRepaired = true;
         }
-
-        // Validate position
         if (Float.isNaN(x) || Float.isInfinite(x)) {
             x = 0;
             wasRepaired = true;
@@ -116,8 +108,6 @@ public class PlayerData {
             y = 0;
             wasRepaired = true;
         }
-
-        // Validate direction
         if (direction == null) {
             direction = "down";
             wasRepaired = true;
@@ -140,15 +130,11 @@ public class PlayerData {
             GameLogger.error("Cannot apply PlayerData to a null player.");
             return;
         }
-
-        // Update basic state (position, direction, movement)
         player.setX(this.x);
         player.setY(this.y);
         player.setDirection(this.direction);
         player.setMoving(this.isMoving);
         player.setRunning(this.wantsToRun);
-
-        // Also update the character type in the Player instance.
         player.setCharacterType(this.characterType);
 
         if (player.getInventory() != null) {
@@ -163,8 +149,6 @@ public class PlayerData {
         } else {
             GameLogger.info("No saved inventory items for player: " + username);
         }
-
-        // Always update the Pokémon party: clear the party then add saved Pokémon.
         if (player.getPokemonParty() != null) {
             player.getPokemonParty().clearParty();
         }
@@ -185,8 +169,6 @@ public class PlayerData {
 
         GameLogger.info("Applied saved PlayerData to player: " + username);
     }
-
-    // --- New methods for character type support ---
     public String getCharacterType() {
         return characterType;
     }

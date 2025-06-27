@@ -24,13 +24,9 @@ public class HotbarSystem {
         GameLogger.info("Creating HotbarSystem with skin: " + skin);
         this.hotbarTable = new Table();
         this.skin = skin;
-
-        // Create a container table for centered positioning at the bottom.
         Table containerTable = new Table();
         containerTable.setFillParent(true);
         containerTable.bottom().padBottom(VERTICAL_OFFSET);
-
-        // Set a background for the hotbar if available.
         TextureRegion hotbarBg = TextureManager.ui.findRegion("hotbar_bg");
         if (hotbarBg == null) {
             GameLogger.error("Skin is missing region 'hotbar_bg'! Hotbar will not be visible.");
@@ -50,22 +46,15 @@ public class HotbarSystem {
 
     public void updateHotbar() {
         hotbarTable.clear();
-        // Loop through each hotbar slot.
         for (int i = 0; i < HOTBAR_SIZE; i++) {
             final int slotIndex = i;
-            // Create a new HotbarSlot.
             HotbarSlot slot = new HotbarSlot(i == selectedSlot, skin);
-
-            // Set item data if available.
             ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
             if (item != null) {
                 slot.setItem(item);
             }
-
-            // Wrap the slot in a container so that its touch area is well defined.
             Container<HotbarSlot> slotContainer = new Container<HotbarSlot>(slot);
             slotContainer.setTouchable(Touchable.enabled);
-            // Add a ClickListener to the container.
             slotContainer.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {

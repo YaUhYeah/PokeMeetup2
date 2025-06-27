@@ -68,7 +68,6 @@ public class PokemonParty {
             if (activePokemonIndex >= 0 && activePokemonIndex < party.size()) {
                 return party.get(activePokemonIndex);
             }
-            // Fallback: reset to first healthy Pokemon
             Pokemon healthy = getFirstHealthyPokemon();
             if (healthy != null) {
                 activePokemonIndex = party.indexOf(healthy);
@@ -113,8 +112,6 @@ public class PokemonParty {
         synchronized (partyLock) {
             if (index >= 0 && index < party.size()) {
                 Pokemon removed = party.remove(index);
-
-                // Update active Pokemon index if necessary
                 if (index == activePokemonIndex) {
                     activePokemonIndex = 0; // Reset to first Pokemon
                 } else if (index < activePokemonIndex) {
@@ -136,8 +133,6 @@ public class PokemonParty {
         synchronized (partyLock) {
             if (index1 >= 0 && index1 < party.size() &&
                 index2 >= 0 && index2 < party.size()) {
-
-                // Update active Pokemon index if necessary
                 if (activePokemonIndex == index1) {
                     activePokemonIndex = index2;
                 } else if (activePokemonIndex == index2) {

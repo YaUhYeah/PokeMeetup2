@@ -37,7 +37,6 @@ public class UnifiedWorldGenerator {
     });
 
     public static Chunk generateChunk(int chunkX, int chunkY, long worldSeed, BiomeManager biomeManager) {
-        // determine an approximate biome at chunk center
         float centerWorldX = (chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
         float centerWorldY = (chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
 
@@ -46,15 +45,12 @@ public class UnifiedWorldGenerator {
         if (primary == null) primary = GameContext.get().getBiomeManager().getBiome(BiomeType.PLAINS);
 
         Chunk chunk = new Chunk(chunkX, chunkY, primary, worldSeed);
-
-        // The new "fill"
         fillChunkTiles(chunk, worldSeed, GameContext.get().getBiomeManager());
 
         return chunk;
     }
 
     private static List<WorldObject> spawnWorldObjects(Chunk chunk, int[][] tiles, long worldSeed) {
-        // Use the new enhanced spawner for better object distribution
         return EnhancedWorldObjectSpawner.spawnWorldObjects(chunk, tiles, worldSeed);
     }
 
@@ -70,11 +66,8 @@ public class UnifiedWorldGenerator {
      */
     public static Chunk generateChunkForServer(int chunkX, int chunkY, long worldSeed, BiomeManager biomeManager) {
         try {
-            // Determine biome at a fixed point (center of chunk) for consistency
             float centerWorldX = (chunkX * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
             float centerWorldY = (chunkY * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-
-            // Round coordinates for deterministic queries
             centerWorldX = (float) (Math.floor(centerWorldX / 10.0f) * 10.0f);
             centerWorldY = (float) (Math.floor(centerWorldY / 10.0f) * 10.0f);
 
@@ -84,8 +77,6 @@ public class UnifiedWorldGenerator {
                 GameLogger.error("Null primary biome at (" + chunkX + "," + chunkY + "), defaulting to PLAINS");
                 primary = biomeManager.getBiome(BiomeType.PLAINS);
             }
-
-            // Create a new chunk with the determined primary biome and deterministic seed
             Chunk chunk = new Chunk(chunkX, chunkY, primary, worldSeed);
 
             final int size = Chunk.CHUNK_SIZE;
@@ -93,59 +84,39 @@ public class UnifiedWorldGenerator {
             final int sampleW = size + 2 * MARGIN;
             final int sampleH = size + 2 * MARGIN;
             int[][] sampleTiles = new int[sampleW][sampleH];
-
-            // Create a chunk-specific sub-seed for local variation that's still deterministic
             long chunkSpecificSeed = worldSeed + (((long)chunkX << 32) | ((long)chunkY & 0xFFFFFFFFL));
             Random chunkRng = new Random(chunkSpecificSeed);
-
-            // Phase 1: Sample tiles with deterministic noise
             for (int sx = 0; sx < sampleW; sx++) {
                 for (int sy = 0; sy < sampleH; sy++) {
                     int worldTileX = (chunkX * size) + (sx - MARGIN);
                     int worldTileY = (chunkY * size) + (sy - MARGIN);
                     float worldX = worldTileX * World.TILE_SIZE;
                     float worldY = worldTileY * World.TILE_SIZE;
-
-                    // Ensure rounded coordinates for deterministic queries
                     worldX = (float) (Math.floor(worldX / 10.0f) * 10.0f);
                     worldY = (float) (Math.floor(worldY / 10.0f) * 10.0f);
-
-                    // Use biome manager's domain warp
                     float[] warped = biomeManager.domainWarp(worldX, worldY);
-
-                    // Find closest island using deterministic approach
                     BiomeManager.Island isl = biomeManager.findClosestIsland(warped[0], warped[1]);
                     if (isl == null) {
                         sampleTiles[sx][sy] = TileType.WATER;
                         continue;
                     }
-
-                    // Use deterministic distance calculation
                     float dx = warped[0] - isl.centerX;
                     float dy = warped[1] - isl.centerY;
                     float dist = (float) Math.sqrt(dx * dx + dy * dy);
                     float angle = MathUtils.atan2(dy, dx);
-
-                    // Use the island's seed for consistent distortion
                     float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
                     distort = Math.max(0, distort);
-
-                    // Use consistent coefficients
                     float newExpandFactor = 1.3f;
                     float reducedFactor = 0.1f;
                     float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
-
-                    // Define fixed beach band size
                     float beachBand = effectiveRadius * 0.1f;
                     float innerThreshold = effectiveRadius;
                     float outerThreshold = effectiveRadius + beachBand;
 
                     if (dist < innerThreshold) {
-                        // Land tile: use the land biome Voronoi method
                         BiomeTransitionResult landTrans = biomeManager.landBiomeVoronoi(warped[0], warped[1]);
                         sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(landTrans, worldX, worldY, worldSeed);
                     } else if (dist < outerThreshold) {
-                        // Beach tiles
                         BiomeTransitionResult beachTrans = new BiomeTransitionResult(
                             biomeManager.getBiome(BiomeType.BEACH),
                             null,
@@ -153,49 +124,28 @@ public class UnifiedWorldGenerator {
                         );
                         sampleTiles[sx][sy] = TileDataPicker.pickBeachTile(beachTrans, worldX, worldY, worldSeed);
                     } else {
-                        // Ocean tiles
                         sampleTiles[sx][sy] = TileType.WATER;
                     }
                 }
             }
-
-            // Phase 2: Remove inland ocean pockets for visual consistency
             removeInlandOceanPockets(sampleTiles);
-
-            // Phase 3: Copy the central region to chunk tiles
             int[][] tiles = new int[size][size];
             for (int lx = 0; lx < size; lx++) {
                 System.arraycopy(sampleTiles[lx + MARGIN], MARGIN, tiles[lx], 0, size);
             }
             chunk.setTileData(tiles);
-
-
-
-            // Apply mountain generation if needed, using the deterministic chunk-specific seed
             applyMountainsIfNeeded(chunk, tiles, chunkSpecificSeed);
-
-            // Generate objects with the same deterministic seed
             List<WorldObject> objects = spawnWorldObjects(chunk, tiles, chunkSpecificSeed);
-
-            // Log what we've generated for debugging
             GameLogger.info("Generated chunk (" + chunkX + "," + chunkY + ") with " +
                 objects.size() + " objects, biome: " + primary.getType());
-
-            // Store the objects and mark as dirty
             chunk.setWorldObjects(objects);
             chunk.setDirty(true);
-
-            // CRITICAL FIX: Force the chunk biome to match what was determined at the center
-            // This ensures consistent biome assignment
             chunk.setBiome(primary);
 
             return chunk;
         } catch (Exception e) {
-            // Add robust error handling to prevent crashes
             GameLogger.error("Error generating chunk at (" + chunkX + "," + chunkY + "): " + e.getMessage());
             e.printStackTrace();
-
-            // Return a fallback chunk in case of errors
             Biome fallbackBiome = biomeManager.getBiome(BiomeType.PLAINS);
             Chunk fallbackChunk = new Chunk(chunkX, chunkY, fallbackBiome, worldSeed);
             int[][] fallbackTiles = new int[CHUNK_SIZE][CHUNK_SIZE];
@@ -215,43 +165,28 @@ public class UnifiedWorldGenerator {
      * Fills the chunk's tile data with a large island ring, ensuring beach outside
      * the island boundary, then ocean beyond, plus smoothing any random pockets.
      */
-    // The new method in UnifiedWorldGenerator:
     private static void fillChunkTiles(Chunk chunk, long worldSeed, BiomeManager biomeManager) {
         final int size = Chunk.CHUNK_SIZE;
         final int chunkX = chunk.getChunkX();
         final int chunkY = chunk.getChunkY();
-
-        // Prepare the tile array
         int[][] tiles = new int[size][size];
-
-        // We'll sample a slightly bigger region around the chunk
-        // so that transitions along chunk edges are smoother.
         final int MARGIN = 2;
         final int sampleW = size + 2 * MARGIN;
         final int sampleH = size + 2 * MARGIN;
         int[][] sampleTiles = new int[sampleW][sampleH];
-
-        // Phase 1: For each tile in the expanded sample area:
         for (int sx = 0; sx < sampleW; sx++) {
             for (int sy = 0; sy < sampleH; sy++) {
-                // Convert to actual world tile coords:
                 int worldTileX = (chunkX * size) + (sx - MARGIN);
                 int worldTileY = (chunkY * size) + (sy - MARGIN);
 
                 float worldX = worldTileX * World.TILE_SIZE;
                 float worldY = worldTileY * World.TILE_SIZE;
-
-                // 1) domain-warp
                 float[] warped = GameContext.get().getBiomeManager().domainWarp(worldX, worldY);
-
-                // 2) find closest island => ocean/land
                 BiomeManager.Island isl = GameContext.get().getBiomeManager().findClosestIsland(warped[0], warped[1]);
                 if (isl == null) {
                     sampleTiles[sx][sy] = TileType.WATER;
                     continue;
                 }
-
-                // distance, distortion => effectiveRadius
                 float dx = warped[0] - isl.centerX;
                 float dy = warped[1] - isl.centerY;
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
@@ -270,16 +205,13 @@ public class UnifiedWorldGenerator {
                 float outerThreshold = effectiveRadius + (beachBand * 0.5f);
 
                 if (dist < innerThreshold) {
-                    // land => pick tile from the land Voronoi approach
                     BiomeTransitionResult landTrans = GameContext.get().getBiomeManager().landBiomeVoronoi(warped[0], warped[1]);
                     sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(
                         landTrans, worldX, worldY, worldSeed
                     );
                 } else if (dist > outerThreshold) {
-                    // ocean
                     sampleTiles[sx][sy] = TileType.WATER;
                 } else {
-                    // beach ring => blend from beach → ocean
                     float t = (dist - innerThreshold) / (outerThreshold - innerThreshold);
                     BiomeTransitionResult beachTrans = new BiomeTransitionResult(
                         GameContext.get().getBiomeManager().getBiome(BiomeType.BEACH),
@@ -290,16 +222,10 @@ public class UnifiedWorldGenerator {
                 }
             }
         }
-
-        // Phase 2: remove small "inland pockets" of water if you want
         removeInlandOceanPockets(sampleTiles);
-
-        // Phase 3: copy the central region (the real chunk) out of sampleTiles
         for (int lx = 0; lx < size; lx++) {
             System.arraycopy(sampleTiles[lx + MARGIN], MARGIN, tiles[lx], 0, size);
         }
-
-        // set chunk tile data
         chunk.setTileData(tiles);
         try {
             new AutoTileSystem().applyShorelineAutotiling(chunk, 0, GameContext.get().getWorld());
@@ -308,13 +234,10 @@ public class UnifiedWorldGenerator {
         }
         applyMountainsIfNeeded(chunk, tiles, worldSeed);
         chunk.setDirty(true);
-
-        // spawn objects (trees, stones, etc.)
         List<WorldObject> objects = spawnWorldObjects(chunk, tiles, worldSeed);
         GameLogger.info("spawnWorldObjects produced " + objects.size() + " objects for chunk (" +
             chunk.getChunkX() + "," + chunk.getChunkY() + ").");
         chunk.setWorldObjects(objects);
-        // find "dominant" chunk–wide biome for display
         Biome chunkBiome = findDominantBiomeInChunk(chunk, biomeManager);
         chunk.setBiome(chunkBiome);
     }
@@ -328,40 +251,28 @@ public class UnifiedWorldGenerator {
     private static void removeInlandOceanPockets(int[][] sampleTiles) {
         int w = sampleTiles.length;
         int h = sampleTiles[0].length;
-
-        // We'll keep track of visited, and anything that is water connected to boundary is "ocean"
         boolean[][] visited = new boolean[w][h];
-
-        // We'll BFS from edges: any water tile on the boundary means that region is ocean
         Queue<Point> queue = new LinkedList<>();
-
-        // 1) Add edge water tiles to queue
         for (int x = 0; x < w; x++) {
-            // top row
             if (sampleTiles[x][0] == TileType.WATER) {
                 visited[x][0] = true;
                 queue.add(new Point(x, 0));
             }
-            // bottom row
             if (sampleTiles[x][h - 1] == TileType.WATER) {
                 visited[x][h - 1] = true;
                 queue.add(new Point(x, h - 1));
             }
         }
         for (int y = 0; y < h; y++) {
-            // left col
             if (sampleTiles[0][y] == TileType.WATER) {
                 visited[0][y] = true;
                 queue.add(new Point(0, y));
             }
-            // right col
             if (sampleTiles[w - 1][y] == TileType.WATER) {
                 visited[w - 1][y] = true;
                 queue.add(new Point(w - 1, y));
             }
         }
-
-        // 2) BFS to mark all connected "ocean"
         int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         while (!queue.isEmpty()) {
             Point p = queue.poll();
@@ -375,13 +286,9 @@ public class UnifiedWorldGenerator {
                 }
             }
         }
-
-        // 3) Any water tile that is NOT visited => it's an inland pocket => fill it with random land
-        // For simplicity, fill with grass or something
         for (int x = 0; x < w; x++) {
             for (int y = 0; y < h; y++) {
                 if (sampleTiles[x][y] == TileType.WATER && !visited[x][y]) {
-                    // We fill it with some land tile, e.g. grass
                     sampleTiles[x][y] = TileType.GRASS; // or pick something random
                 }
             }
@@ -393,12 +300,10 @@ public class UnifiedWorldGenerator {
      * them to the chunk's tile array.
      */
     private static void applyMountainsIfNeeded(Chunk chunk, int[][] tiles, long worldSeed) {
-        // We'll skip if the chunk is purely ocean or purely beach
         BiomeType mainBiome = chunk.getBiome().getType();
         if (mainBiome == BiomeType.OCEAN || mainBiome == BiomeType.BEACH) {
             return;
         }
-        // Decide how many layers
         long chunkSeed = generateChunkSeed(worldSeed, chunk.getChunkX(), chunk.getChunkY());
         Random rng = new Random(chunkSeed);
 
@@ -406,10 +311,7 @@ public class UnifiedWorldGenerator {
         if (maxLayers <= 0) {
             return;
         }
-
-        // Build an array for mountain bands
         int[][] elevationBands = new int[CHUNK_SIZE][CHUNK_SIZE];
-        // Zero out ocean & beach
         for (int lx = 0; lx < CHUNK_SIZE; lx++) {
             for (int ly = 0; ly < CHUNK_SIZE; ly++) {
                 if (tiles[lx][ly] == TileType.WATER || tiles[lx][ly] == TileType.BEACH_SAND) {
@@ -417,16 +319,10 @@ public class UnifiedWorldGenerator {
                 }
             }
         }
-
-        // Actually generate the shape
         ElevationLogic.generateMountainShape(
             maxLayers, rng, elevationBands, chunk.getChunkX(), chunk.getChunkY(), worldSeed
         );
-
-        // Additional smoothing if needed
         ElevationLogic.smoothElevationBands(elevationBands, rng);
-
-        // Now apply the mountain tile-IDs to the chunk's tile array
         ElevationLogic.applyMountainTiles(tiles, elevationBands);
         ElevationLogic.autotileCliffs(elevationBands, tiles);
         ElevationLogic.addStairsBetweenLayers(elevationBands, tiles);
@@ -482,19 +378,15 @@ public class UnifiedWorldGenerator {
                                               List<WorldObject> currentChunkObjects,
                                               Biome biome,
                                               WorldObject.ObjectType objectType) {
-        // Convert local coordinates (within this chunk) to world tile coordinates.
         int worldTileX = chunk.getChunkX() * Chunk.CHUNK_SIZE + localX;
         int worldTileY = chunk.getChunkY() * Chunk.CHUNK_SIZE + localY;
         int tileType = chunk.getTileType(localX, localY);
-
-        // Basic checks
         if (!chunk.isPassable(localX, localY)) {
             return false;
         }
         if (!biome.getAllowedTileTypes().contains(tileType)) {
             return false;
         }
-        // Extra restrictions: do not place on disallowed terrain types.
         if (tileType == TileType.ROCK ||
             tileType == TileType.BEACH_STARFISH ||
             tileType == TileType.BEACH_SHELL ||
@@ -509,7 +401,6 @@ public class UnifiedWorldGenerator {
             tileType == TileType.FLOWER_2) {
             return false;
         }
-        // Create a candidate object at the desired location.
         WorldObject candidate = new WorldObject(worldTileX, worldTileY, null, objectType);
         candidate.ensureTexture();
 
@@ -518,20 +409,14 @@ public class UnifiedWorldGenerator {
     }
 
     private static boolean collidesWithAny(WorldObject candidate, List<WorldObject> existing) {
-        // Use the placement bounding box for overlap checks
         Rectangle candidateBounds = candidate.getPlacementBoundingBox();
-        // Define a spacing margin equal to one tile
         float spacing = (float) (World.TILE_SIZE * 1.5);
-
-        // Inflate candidate bounds by the spacing margin
         Rectangle paddedCandidate = new Rectangle(
             candidateBounds.x - spacing,
             candidateBounds.y - spacing,
             candidateBounds.width + 2 * spacing,
             candidateBounds.height + 2 * spacing
         );
-
-        // Check overlap against every placed object using their placement bounding boxes
         for (WorldObject other : existing) {
             if (paddedCandidate.overlaps(other.getPlacementBoundingBox())) {
                 return true;
@@ -570,10 +455,6 @@ public class UnifiedWorldGenerator {
         h = (h * 31) + cy;
         return h;
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Below: Smaller "helper classes" (TileDataPicker, ElevationLogic, BFS, etc.)
-    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * A simpler tile–picking approach for land vs. beach. This is basically
@@ -633,7 +514,6 @@ public class UnifiedWorldGenerator {
             if (primary != null) {
                 Map<Integer, Integer> beachDist = primary.getBeachTileDistribution();
                 if (beachDist != null && !beachDist.isEmpty()) {
-                    // Weighted random pick
                     int total = 0;
                     for (int v : beachDist.values()) {
                         total += v;
@@ -652,7 +532,6 @@ public class UnifiedWorldGenerator {
                     }
                 }
             }
-            // fallback
             return TileType.BEACH_SAND;
         }
 
@@ -700,8 +579,6 @@ public class UnifiedWorldGenerator {
                     return e.getKey();
                 }
             }
-
-            // fallback
             List<Integer> fallback = p.getAllowedTileTypes();
             if (fallback != null && !fallback.isEmpty()) {
                 return fallback.get(0);
@@ -717,7 +594,6 @@ public class UnifiedWorldGenerator {
     private static class ElevationLogic {
 
         public static int determineLayersForBiome(Random rand, BiomeType biome) {
-            // Simple logic: reduce the chance of random lumps
             float baseChance;
             switch (biome) {
                 case SNOW:
@@ -756,7 +632,6 @@ public class UnifiedWorldGenerator {
 
             for (int x = 0; x < size; x++) {
                 for (int y = 0; y < size; y++) {
-                    // Dist from nearest peak
                     double minDist = Double.MAX_VALUE;
                     for (Point p : peaks) {
                         double dx = x - p.x;
@@ -766,11 +641,8 @@ public class UnifiedWorldGenerator {
                             minDist = dd;
                         }
                     }
-                    // Convert distance to an "elevation" 0..1
                     double distFactor = minDist / baseRadius;
                     double elev = Math.max(0, 1.0 - distFactor);
-
-                    // Add some noise
                     float tileWX = (chunkX * size + x) * 0.5f;
                     float tileWY = (chunkY * size + y) * 0.5f;
                     double coarse = OpenSimplex2.noise2(worldSeed + 777, tileWX * 0.05f, tileWY * 0.05f) * 0.15;
@@ -778,8 +650,6 @@ public class UnifiedWorldGenerator {
                     elev += coarse + detail;
 
                     elev = Math.max(0, Math.min(1, elev));
-
-                    // band thresholds
                     int band = 0;
                     if (maxLayers == 1) {
                         if (elev > 0.3) band = 1;
@@ -790,7 +660,6 @@ public class UnifiedWorldGenerator {
                     bands[x][y] = band;
                 }
             }
-            // Erode + smooth
             applyErosion(bands, rand);
             smoothForCohesion(bands);
         }
@@ -862,7 +731,6 @@ public class UnifiedWorldGenerator {
                             if (bands[nx][ny] == band) sameCount++;
                         }
                     }
-                    // if it’s too isolated, reduce band
                     if (sameCount < 4 && band > 1) {
                         temp[x][y] = band - 1;
                     } else {
@@ -896,8 +764,6 @@ public class UnifiedWorldGenerator {
             int band = bands[x][y];
             if (band <= 0) return;
             boolean isLowest = (band == 1);
-
-            // We'll do your same approach of checking neighbors
             int n = getBand(x, y + 1, bands);
             int s = getBand(x, y - 1, bands);
             int e = getBand(x + 1, y, bands);
@@ -922,8 +788,6 @@ public class UnifiedWorldGenerator {
             int botRightCorner = isLowest
                 ? TileType.MOUNTAIN_TILE_BOT_RIGHT_GRASS_BG
                 : TileType.MOUNTAIN_TILE_BOT_RIGHT_ROCK_BG;
-
-            // Then the usual set of conditions (same as your code)
             if (!topLower && !botLower && !leftLower && !rightLower) {
                 tiles[x][y] = TileType.MOUNTAIN_TILE_CENTER;
                 return;
@@ -984,7 +848,6 @@ public class UnifiedWorldGenerator {
         }
 
         private static int pickCliffTile(boolean top, boolean bot, boolean left, boolean right, int original) {
-            // Same logic as your "chooseCliffTile" snippet
             int lowers = 0;
             if (top) lowers++;
             if (bot) lowers++;
@@ -999,12 +862,10 @@ public class UnifiedWorldGenerator {
             if (bot && lowers == 1) return TileType.MOUNTAIN_TILE_BOT_MID;
             if (left && lowers == 1) return TileType.MOUNTAIN_TILE_MID_LEFT;
             if (right && lowers == 1) return TileType.MOUNTAIN_TILE_MID_RIGHT;
-            // fallback
             return original;
         }
 
         public static void addStairsBetweenLayers(int[][] bands, int[][] tiles) {
-            // same BFS approach as your original code for placing stairs
             int size = bands.length;
             for (int from = 0; from < 2; from++) {
                 int to = from + 1;
@@ -1023,7 +884,6 @@ public class UnifiedWorldGenerator {
         }
 
         public static void finalizeStairAccess(int[][] tiles, int[][] bands) {
-            // same idea as your code
             int size = tiles.length;
             for (int x = 0; x < size; x++) {
                 for (int y = 0; y < size; y++) {
@@ -1063,15 +923,11 @@ public class UnifiedWorldGenerator {
             int down = getBand(x, y - 1, bands);
             int left = getBand(x - 1, y, bands);
             int right = getBand(x + 1, y, bands);
-            // if top < band but bottom=band, left=band, right=band => let's call it an "edge"
-            // etc
             if (up < band && down == band && left == band && right == band) return true;
             if (down < band && up == band && left == band && right == band) return true;
             if (left < band && right == band && up == band && down == band) return true;
             return right < band && left == band && up == band && down == band;
         }
-
-        // same as your code
         private static boolean isCliffTile(int tile) {
             return tile != TileType.MOUNTAIN_TILE_CENTER
                 && tile != TileType.GRASS
@@ -1188,8 +1044,6 @@ public class UnifiedWorldGenerator {
             return arr[x][y];
         }
     }
-
-    // Simple BFS point
     private static class Point {
         int x, y;
 

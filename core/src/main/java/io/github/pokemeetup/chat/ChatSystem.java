@@ -193,8 +193,6 @@ public class ChatSystem extends Table {
         messageHistoryIndex = messageHistory.size();
         inactiveTimer = 0;
         chatWindow.getColor().a = 1f;
-
-        // Use the InputManager to set the state
         GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.CHAT);
 
         Gdx.app.postRunnable(() -> {
@@ -212,8 +210,6 @@ public class ChatSystem extends Table {
         if (Gdx.app.getType() == Application.ApplicationType.Android) {
             Gdx.input.setOnscreenKeyboardVisible(false);
         }
-
-        // Restore the input state to normal via the InputManager
         GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.NORMAL);
     }
 
@@ -381,8 +377,6 @@ public class ChatSystem extends Table {
                         inputField.setText("/");
                         inputField.setCursorPosition(1);
                     }
-                    // This is a crucial change. We must `stop()` the event so that
-                    // the game's movement input handler doesn't also process the 'T' key.
                     event.stop();
                     return true;
                 }

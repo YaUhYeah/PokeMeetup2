@@ -8,8 +8,6 @@ import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
-
-// Investigate Behavior
 public class InvestigateBehavior implements PokemonBehavior {
     private static final float INVESTIGATION_RANGE = 20.0f * World.TILE_SIZE;
 
@@ -52,8 +50,6 @@ public class InvestigateBehavior implements PokemonBehavior {
         int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
         int targetTileX = (int) (investigationTarget.x / World.TILE_SIZE);
         int targetTileY = (int) (investigationTarget.y / World.TILE_SIZE);
-
-        // If we've reached the investigation point
         if (pokemonTileX == targetTileX && pokemonTileY == targetTileY) {
             investigationTarget = null;
             ai.setCooldown(getName(), 10.0f);

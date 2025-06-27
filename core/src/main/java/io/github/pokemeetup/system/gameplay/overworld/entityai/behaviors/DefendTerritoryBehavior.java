@@ -15,8 +15,6 @@ import io.github.pokemeetup.utils.GameLogger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-// Defend Territory Behavior - More aggressive territory defense
 public class DefendTerritoryBehavior implements PokemonBehavior {
     private static final float CHASE_DISTANCE = 20.0f * World.TILE_SIZE;
 
@@ -91,8 +89,6 @@ public class DefendTerritoryBehavior implements PokemonBehavior {
         int dy = Integer.compare(playerTileY, pokemonTileY);
 
         if (dx == 0 && dy == 0) return;
-
-        // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
         List<String> moveOptions = new ArrayList<>();
         if (dx != 0) moveOptions.add("horizontal");
         if (dy != 0) moveOptions.add("vertical");

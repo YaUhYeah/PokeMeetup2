@@ -36,37 +36,22 @@ public class ServerLauncher {
     public static void main(String[] args) {
         Server h2Server = null;
         try {
-            // Initialize server deployment
             logger.info("Initializing server deployment...");
             DeploymentHelper.createServerDeployment(SERVER_ROOT);
             logger.info("Server deployment initialized");
-
-            // Initialize file system
             GameFileSystem.getInstance().setDelegate(new ServerFileDelegate());
             logger.info("Server file system initialized");
-
-            // Start H2 Database Server
             h2Server = startH2Server();
-
-            // Load server configuration
             ServerConnectionConfig config = loadServerConfig();
             logger.info("Server configuration loaded");
-
-            // Initialize storage
             storage = new ServerStorageSystem();
             logger.info("Storage system initialized");
-
-            // Initialize world management
             ServerWorldManager serverWorldManager = ServerWorldManager.getInstance(storage);
             logger.info("World manager initialized");
-
-            // Initialize ServerGameContext first!
             ServerWorldObjectManager worldObjectManager = new ServerWorldObjectManager();
             worldObjectManager.initializeWorld(MULTIPLAYER_WORLD_NAME);
             ServerGameContext.init(serverWorldManager, storage, worldObjectManager, new ItemEntityManager(), new ServerBlockManager(), null, new EventManager());
             logger.info("Server game context initialized");
-
-            // In your ServerLauncher (or similar startup routine):
             WorldData worldData = serverWorldManager.loadWorld("multiplayer_world");
             if (worldData == null) {
                 logger.info("No existing world; creating new multiplayer world...");
@@ -75,16 +60,10 @@ public class ServerLauncher {
             }
             logger.info("World loaded – warming up spawn area chunks");
             generateInitialChunks(serverWorldManager, worldData);
-
-
-
-            // Start game server
             GameServer server = new GameServer(config);
             server.start();
             ServerGameContext.get().setGameServer(server);
             logger.info("Game server started successfully");
-
-            // Add shutdown hook
             addShutdownHook(server, h2Server);
 
         } catch (Exception e) {
@@ -101,18 +80,12 @@ public class ServerLauncher {
 
     private static void generateInitialChunks(ServerWorldManager serverWorldManager, WorldData worldData) {
         logger.info("Generating initial spawn chunks...");
-
-        // Generate a larger initial area to ensure good transitions
-        int radius = 2;  // This gives us a 5x5 area
-
-        // First pass: Generate all chunks
+        int radius = 2;
         for (int x = -radius; x <= radius; x++) {
             for (int y = -radius; y <= radius; y++) {
                 try {
-                    // Load/generate the chunk
                     Chunk chunk = serverWorldManager.loadChunk("multiplayer_world", x, y);
                     if (chunk != null) {
-                        // Save immediately to ensure proper object placement
                         serverWorldManager.saveChunk("multiplayer_world", chunk);
                         logger.info(String.format("Generated chunk at (%d, %d)", x, y));
                     }
@@ -121,16 +94,12 @@ public class ServerLauncher {
                 }
             }
         }
-
-        // Second pass: Verify all chunks and objects
         for (int x = -radius; x <= radius; x++) {
             for (int y = -radius; y <= radius; y++) {
                 Vector2 chunkPos = new Vector2(x, y);
                 List<WorldObject> objects = worldData.getChunkObjects().get(chunkPos);
                 if (objects != null) {
                     logger.info(String.format("Chunk (%d, %d) contains %d objects", x, y, objects.size()));
-
-                    // Log object positions for debugging
                     for (WorldObject obj : objects) {
                         if (obj != null) {
                             logger.fine(String.format("- %s at (%d,%d)",
@@ -142,8 +111,6 @@ public class ServerLauncher {
         }
 
         logger.info("Initial spawn chunks generated");
-
-        // Final world save
         serverWorldManager.saveWorld(worldData);
     }
 
@@ -190,7 +157,6 @@ public class ServerLauncher {
         } catch (Exception e) {
             Path iconPath = SERVER_ROOT.resolve(DEFAULT_ICON);
             if (!Files.exists(iconPath)) {
-                // Copy default icon from resources
                 try (InputStream is = ServerLauncher.class.getResourceAsStream("/assets/default-server-icon.png")) {
                     if (is != null) {
                         Files.copy(is, iconPath);

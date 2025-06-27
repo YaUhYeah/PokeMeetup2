@@ -60,7 +60,6 @@ public class WorldSelectionScreen implements Screen {
     private Table worldListTable;
     private Table infoPanel;
     WorldData selectedWorld;
-    // Buttons
     private TextButton playButton;
     private TextButton createButton;
     private TextButton deleteButton;
@@ -119,45 +118,30 @@ public class WorldSelectionScreen implements Screen {
         updateScreenSizes();
         refreshWorldList();
     }
-
-    // Adjust layout on resizing
     private void updateScreenSizes() {
         screenWidth = Gdx.graphics.getWidth();
         screenHeight = Gdx.graphics.getHeight();
-
-        // Calculate relative sizes
         float buttonWidth = Math.max(MIN_BUTTON_WIDTH, screenWidth * 0.2f);
         float buttonHeight = Math.max(MIN_BUTTON_HEIGHT, screenHeight * 0.08f);
         float worldListWidth = Math.max(MIN_WORLD_LIST_WIDTH, screenWidth * 0.55f);
         float infoPanelWidth = Math.max(MIN_INFO_PANEL_WIDTH, screenWidth * 0.35f);
-
-        // Update UI elements with new sizes
         updateUIElements(buttonWidth, buttonHeight, worldListWidth, infoPanelWidth);
     }
 
     private void updateUIElements(float buttonWidth, float buttonHeight,
                                   float worldListWidth, float infoPanelWidth) {
-        // Calculate font scale based on screen size
         float fontScale = Math.max(0.8f, Math.min(screenWidth, screenHeight) / 1000f);
-
-        // Update main table padding
         if (mainTable != null) {
             mainTable.pad(screenWidth * 0.02f); // 2% of screen width
-
-            // Update title scaling
             Label titleLabel = mainTable.findActor("titleLabel");
             if (titleLabel != null) {
                 titleLabel.setFontScale(fontScale * 1.5f);
             }
         }
-
-        // Update button sizes and font scales
         updateButton(createButton, buttonWidth, buttonHeight, fontScale);
         updateButton(playButton, buttonWidth, buttonHeight, fontScale);
         updateButton(deleteButton, buttonWidth, buttonHeight, fontScale);
         updateButton(backButton, buttonWidth, buttonHeight, fontScale);
-
-        // Update scroll pane and info panel sizes
         if (worldListScroll != null && contentTable != null) {
             worldListTable.padRight(screenWidth * 0.02f);
             Cell<?> scrollCell = contentTable.getCell(worldListScroll);
@@ -170,16 +154,12 @@ public class WorldSelectionScreen implements Screen {
                 infoPanelCell.width(infoPanelWidth);
             }
         }
-
-        // Update world entry sizes
         if (worldListTable != null) {
             for (Actor actor : worldListTable.getChildren()) {
                 if (actor instanceof Table) {
                     Table entry = (Table) actor;
                     float entryPadding = screenWidth * 0.01f;
                     entry.pad(entryPadding);
-
-                    // Update thumbnail size
                     Image thumbnail = entry.findActor("thumbnail");
                     if (thumbnail != null) {
                         float thumbnailSize = Math.max(60f, screenWidth * 0.08f);
@@ -188,8 +168,6 @@ public class WorldSelectionScreen implements Screen {
                             thumbnailCell.size(thumbnailSize);
                         }
                     }
-
-                    // Update labels in the entry
                     for (Actor child : entry.getChildren()) {
                         if (child instanceof Label) {
                             ((Label) child).setFontScale(fontScale);
@@ -231,8 +209,6 @@ public class WorldSelectionScreen implements Screen {
         titleLabel.setFontScale(2.0f);
         mainTable.add(titleLabel).colspan(4).pad(20);
         mainTable.row();
-
-        // Tab buttons
         Table tabTable = new Table();
         tabGroup = new ButtonGroup<>();
 
@@ -244,8 +220,6 @@ public class WorldSelectionScreen implements Screen {
         }
         mainTable.add(tabTable).colspan(4).pad(10);
         mainTable.row();
-
-        // Sorting buttons
         Table sortTable = new Table();
         TextButton sortByNameButton = new TextButton("Sort by Name", skin);
         TextButton sortByDateButton = new TextButton("Sort by Date", skin);
@@ -259,8 +233,6 @@ public class WorldSelectionScreen implements Screen {
 
         mainTable.add(sortTable).colspan(4).pad(10);
         mainTable.row();
-
-        // World list setup
         worldListTable = new Table();
         worldListTable.top();
         worldListTable.defaults().expandX().fillX().pad(5f);
@@ -273,8 +245,6 @@ public class WorldSelectionScreen implements Screen {
         worldListScroll = new ScrollPane(worldListTable, scrollPaneStyle);
         worldListScroll.setFadeScrollBars(false);
         worldListScroll.setScrollingDisabled(true, false);
-
-        // Info panel
         infoPanel = new Table(skin);
         infoPanel.background("default-pane");
         infoPanel.pad(10);
@@ -536,36 +506,24 @@ public class WorldSelectionScreen implements Screen {
         }
 
         infoPanel.defaults().left().pad(5);
-
-        // World name
         Label nameLabel = new Label(selectedWorld.getName(), skin);
         nameLabel.setFontScale(1.5f);
         infoPanel.add(nameLabel).expandX();
         infoPanel.row();
-
-        // Last played
         Label lastPlayedLabel = new Label("Last played: " + formatDate(selectedWorld.getLastPlayed()), skin);
         lastPlayedLabel.setFontScale(1.0f);
         infoPanel.add(lastPlayedLabel);
         infoPanel.row();
-
-        // World size
         infoPanel.add(new Label("World size: " + World.WORLD_SIZE + " x " + World.WORLD_SIZE, skin));
         infoPanel.row();
-
-        // Seed
         long seed = getSeedFromWorld(selectedWorld);
         infoPanel.add(new Label("Seed: " + seed, skin));
         infoPanel.row();
-
-        // Played time
         long playedTimeMillis = selectedWorld.getPlayedTime();
         String playedTimeStr = formatPlayedTime(playedTimeMillis);
         Label playedTimeLabel = new Label("Played time: " + playedTimeStr, skin);
         infoPanel.add(playedTimeLabel);
         infoPanel.row();
-
-        // Username
         String username = selectedWorld.getPlayers() != null && !selectedWorld.getPlayers().isEmpty()
             ? selectedWorld.getPlayers().keySet().iterator().next()
             : "Player";
@@ -602,7 +560,6 @@ public class WorldSelectionScreen implements Screen {
     void showCreateWorldDialog() {
         CharacterPreviewDialog characterDialog = new CharacterPreviewDialog(stage, skin,
             (selectedCharacterType) -> {
-                // Show the world creation dialog after character selection
                 showWorldCreationDialog(selectedCharacterType);
             });
         characterDialog.show(stage);
@@ -647,8 +604,6 @@ public class WorldSelectionScreen implements Screen {
                 }
             }
         };
-
-        // Create input fields
         TextField nameField = new TextField("", skin);
         nameField.setName("nameField");
         nameField.setMessageText("World name");
@@ -664,8 +619,6 @@ public class WorldSelectionScreen implements Screen {
         TextField dialogUsernameField = new TextField("", skin);
         dialogUsernameField.setName("usernameField");
         dialogUsernameField.setMessageText("Your username (optional)");
-
-        // Add fields to dialog
         dialog.getContentTable().add(new Label("World Name:", skin)).left().padBottom(5);
         dialog.getContentTable().row();
         dialog.getContentTable().add(nameField).width(300).padBottom(15);
@@ -718,35 +671,23 @@ public class WorldSelectionScreen implements Screen {
         try {
             GameLogger.info("Creating new world '" + name + "' with commands " +
                 (cheatsAllowed ? "enabled" : "disabled"));
-
-            // Create world
             WorldData world = GameContext.get().getWorldManager().createWorld(name, seed, 0.15f, 0.05f);
             if (world == null) {
                 showError("Failed to create world");
                 return;
             }
-
-            // Immediately set and save the commands flag
             world.setCommandsAllowed(cheatsAllowed);
             GameLogger.info("Set initial commands state: " + world.commandsAllowed());
-
-            // Create and assign world config
             WorldData.WorldConfig config = new WorldData.WorldConfig(seed);
             config.setTreeSpawnRate(0.15f);
             config.setPokemonSpawnRate(0.05f);
             world.setConfig(config);
-
-            // Create new player data and set the character type (e.g., "boy" or "girl")
             PlayerData playerData = new PlayerData(username);
             playerData.setCharacterType(characterType);
             world.savePlayerData(username, playerData, false);
-
-            // Force an immediate save of the world
             GameContext.get().getWorldManager().saveWorld(world);
 
             GameLogger.info("World creation complete - Commands enabled: " + world.commandsAllowed());
-
-            // Generate a thumbnail and update UI
             generateWorldThumbnail(world);
             refreshWorldList();
             selectWorld(world);
@@ -760,8 +701,6 @@ public class WorldSelectionScreen implements Screen {
     public void loadSelectedWorld(String username) {
         try {
             GameLogger.info("Starting world load: " + selectedWorld.getName());
-
-            // (1) Save the current world state (if applicable)
             if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
                 boolean currentIsMultiplayer = GameContext.get().getGameClient() != null &&
                     GameContext.get().isMultiplayer();
@@ -775,42 +714,26 @@ public class WorldSelectionScreen implements Screen {
                     );
                 }
             }
-
-            // (2) Clean up the old client state
             if (GameContext.get().getGameClient() != null) {
                 GameContext.get().getGameClient().dispose();
                 GameContext.get().setGameClient(null);
             }
-
-            // (3) Force a reload of the world data from disk rather than reusing the in-memory selectedWorld.
-            // This is the key change.
             WorldData reloadedWorldData = GameContext.get().getWorldManager().loadAndValidateWorld(selectedWorld.getName());
             if (reloadedWorldData == null) {
                 throw new IOException("Failed to load world data from disk for world: " + selectedWorld.getName());
             }
-            // Update the last played timestamp (if needed)
             reloadedWorldData.setLastPlayed(System.currentTimeMillis());
-
-            // (4) Retrieve the correct player data for this world from the reloaded data.
             PlayerData worldSpecificPlayerData = reloadedWorldData.getPlayerData(username, false);
             if (worldSpecificPlayerData == null) {
                 worldSpecificPlayerData = new PlayerData(username);
             }
-
-            // (5) Initialize the world using the reloaded data.
             game.initializeWorld(reloadedWorldData.getName(), false);
-
-            // (6) Set up the singleplayer client.
             GameContext.get().setGameClient(GameClientSingleton.getSinglePlayerInstance(GameContext.get().getPlayer()));
             GameContext.get().getGameClient().setSinglePlayer(true);
             GameContext.get().setMultiplayer(false);
-
-            // (7) Apply the saved player data to the new player.
             if (GameContext.get().getPlayer() != null) {
                 GameContext.get().getPlayer().updateFromPlayerData(worldSpecificPlayerData);
             }
-
-            // (8) Create and switch to a new GameScreen.
             GameScreen newScreen = new GameScreen(game, username,
                 GameContext.get().getGameClient(), selectedWorld.commandsAllowed(), reloadedWorldData.getName());
             GameContext.get().setGameScreen(newScreen);
@@ -831,21 +754,13 @@ public class WorldSelectionScreen implements Screen {
 
         try {
             GameLogger.info("Starting thumbnail generation for: " + worldData.getName());
-
-            // Create new FBO
             fbo = new FrameBuffer(Pixmap.Format.RGBA8888, THUMBNAIL_SIZE, THUMBNAIL_SIZE, false);
             batch = new SpriteBatch();
-
-            // Create minimal world just for a screenshot
             tempWorld = initializeWorldDirectly(worldData);
-
-            // Setup camera
             OrthographicCamera camera = new OrthographicCamera();
             camera.setToOrtho(false, 16 * World.TILE_SIZE, 16 * World.TILE_SIZE);
             camera.position.set(World.DEFAULT_X_POSITION, World.DEFAULT_Y_POSITION, 0);
             camera.update();
-
-            // Render into FBO
             fbo.begin();
             Gdx.gl.glViewport(0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
             Gdx.gl.glClearColor(0.529f, 0.808f, 0.922f, 1);
@@ -866,12 +781,8 @@ public class WorldSelectionScreen implements Screen {
             Pixmap pixmap = Pixmap.createFromFrameBuffer(0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
             fbo.end();
             Gdx.gl.glViewport(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-
-            // Flip the pixmap
             Pixmap flippedPixmap = flipPixmap(pixmap);
             pixmap.dispose();
-
-            // Save thumbnail to file
             FileHandle thumbnailDir = Gdx.files.local("thumbnails");
             if (!thumbnailDir.exists()) {
                 thumbnailDir.mkdirs();
@@ -912,13 +823,9 @@ public class WorldSelectionScreen implements Screen {
             ? worldData.getConfig().getSeed()
             : System.currentTimeMillis();
         World world = new World(worldData.getName(), seed);
-        // Create and set a dummy player first.
         Player tempPlayer = new Player(World.DEFAULT_X_POSITION, World.DEFAULT_Y_POSITION, world, "ThumbnailGen");
         world.setPlayer(tempPlayer);
-        // **NEW: Set the temporary world into the GameContext**
         GameContext.get().setWorld(world);
-
-        // Synchronously load/generate chunks around the player's tile position.
         int radius = INITIAL_LOAD_RADIUS;
         int playerTileX = tempPlayer.getTileX();
         int playerTileY = tempPlayer.getTileY();
@@ -928,7 +835,6 @@ public class WorldSelectionScreen implements Screen {
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dy = -radius; dy <= radius; dy++) {
                 Vector2 chunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                // Directly generate (or load from disk) the chunk
                 Chunk chunk = world.loadOrGenerateChunk(chunkPos);
                 if (chunk != null) {
                     world.chunks.put(chunkPos, chunk);
@@ -957,8 +863,6 @@ public class WorldSelectionScreen implements Screen {
     @Override
     public void render(float delta) {
         AudioManager.getInstance().update(delta);
-
-        // Handle back/escape key
         if (Gdx.input.isKeyJustPressed(Input.Keys.BACK) || Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             game.setScreen(new ModeSelectionScreen(game));
             dispose();

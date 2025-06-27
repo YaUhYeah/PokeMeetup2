@@ -10,8 +10,6 @@ public class KeyBinds {
     private static final String PREF_NAME = "keybinds";
     private static Map<String, Integer> currentBinds = new HashMap<>();
     private static final Map<String, Integer> defaultBinds = new HashMap<>();
-
-    // Action names
     public static final String MOVE_UP = "Move Up";
     public static final String MOVE_DOWN = "Move Down";
     public static final String MOVE_LEFT = "Move Left";
@@ -23,7 +21,6 @@ public class KeyBinds {
     public static final String ACTION = "Action";
 
     static {
-        // Set default bindings
         defaultBinds.put(MOVE_UP, Input.Keys.W);
         defaultBinds.put(MOVE_DOWN, Input.Keys.S);
         defaultBinds.put(MOVE_LEFT, Input.Keys.A);

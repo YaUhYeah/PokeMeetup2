@@ -12,8 +12,6 @@ import io.github.pokemeetup.utils.GameLogger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-// Pack Leader Behavior - Coordinates pack movement and behavior
 public class PackLeaderBehavior implements PokemonBehavior {
     private static final float PACK_COORDINATION_RANGE = 16.0f * World.TILE_SIZE;
     private static final float LEADERSHIP_COOLDOWN = 0.5f;
@@ -36,7 +34,6 @@ public class PackLeaderBehavior implements PokemonBehavior {
     }
 
     private void coordinatePackMovement() {
-        // Determine where the pack should move
         if (packDestination == null || hasReachedDestination()) {
             packDestination = selectNewPackDestination();
         }
@@ -50,8 +47,6 @@ public class PackLeaderBehavior implements PokemonBehavior {
     private Vector2 selectNewPackDestination() {
         World world = GameContext.get().getWorld();
         if (world == null) return null;
-
-        // Choose a destination within territory if territorial, otherwise random
         Vector2 center = ai.hasPersonalityTrait(PokemonPersonalityTrait.TERRITORIAL) ?
             ai.getTerritoryCenter() : new Vector2(pokemon.getX(), pokemon.getY());
 
@@ -95,8 +90,6 @@ public class PackLeaderBehavior implements PokemonBehavior {
         int dy = Integer.compare(destTileY, pokemonTileY);
 
         if (dx == 0 && dy == 0) return;
-
-        // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
         List<String> moveOptions = new ArrayList<>();
         if (dx != 0) moveOptions.add("horizontal");
         if (dy != 0) moveOptions.add("vertical");
@@ -124,8 +117,6 @@ public class PackLeaderBehavior implements PokemonBehavior {
     }
 
     private void signalPackMembers() {
-        // Pack members will detect leader movement and follow
-        // This is handled in the FollowPackBehavior
         GameLogger.info("Pack leader " + pokemon.getName() + " signals movement");
     }
 

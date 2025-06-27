@@ -47,8 +47,6 @@ public class RecipeGlossaryUI {
     private void setupUI() {
         recipeList = new Table();
         recipeList.top().left();
-
-        // Style the scroll pane
         ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle(skin.get(ScrollPane.ScrollPaneStyle.class));
         scrollStyle.background = new TextureRegionDrawable(TextureManager.ui.findRegion("hotbar_bg"))
             .tint(new Color(0.2f, 0.2f, 0.2f, 0.7f));
@@ -63,22 +61,16 @@ public class RecipeGlossaryUI {
     private void populateRecipes() {
         recipeList.clear();
         List<RecipeManager.CraftingRecipe> recipes = RecipeManager.getInstance().getAllRecipes();
-
-        // Compute available grid dimension (e.g., 2 for a 2x2 grid, 3 for a 3x3 grid)
         int availableDimension = (int) Math.sqrt(craftingSystem.getCraftingGrid().getSize());
 
         for (RecipeManager.CraftingRecipe recipe : recipes) {
             if (recipe.isShaped()) {
-                // Get the dimensions of the recipe's pattern
                 int patternRows = recipe.getPattern().length;
                 int patternCols = recipe.getPattern()[0].length;
-
-                // If the recipe requires a grid larger than what is available, skip it.
                 if (patternRows > availableDimension || patternCols > availableDimension) {
                     continue;
                 }
             } else {
-                // For shapeless recipes, ensure the total ingredient count fits in the grid
                 int totalIngredients = recipe.getIngredients().values().stream().mapToInt(Integer::intValue).sum();
                 if (totalIngredients > availableDimension * availableDimension) {
                     continue;
@@ -94,14 +86,10 @@ public class RecipeGlossaryUI {
 
     private void createRecipeEntry(RecipeManager.CraftingRecipe recipe) {
         Table entry = new Table();
-
-        // Result display with fixed width
         Table resultDisplay = new Table();
         resultDisplay.add(createItemDisplay(recipe.getResult()))
             .width(SLOT_SIZE * 3)
             .left();
-
-        // Ingredients with scrolling if needed
         Table ingredientsList = new Table();
         ScrollPane ingredientsScroll = new ScrollPane(ingredientsList);
         recipe.getIngredients().forEach((itemId, count) -> {
@@ -109,8 +97,6 @@ public class RecipeGlossaryUI {
             ingredient.setFontScale(SLOT_SIZE * 0.025f);
             ingredientsList.add(ingredient).padRight(10).left().row();
         });
-
-        // Fixed widths to prevent horizontal scroll
         entry.add(resultDisplay).width(SLOT_SIZE * 3).pad(5);
         entry.add(ingredientsScroll).width(SLOT_SIZE * 4).pad(5);
         entry.add(createCraftButton(recipe)).pad(5);
@@ -146,30 +132,19 @@ public class RecipeGlossaryUI {
         Inventory inventory = screenInterface.getInventory();
         Map<String, Integer> required = recipe.getIngredients();
         String[][] pattern = recipe.getPattern();
-
-        // Check if we have all ingredients
         boolean hasAll = required.entrySet().stream()
             .allMatch(entry -> hasEnoughItems(inventory, entry.getKey(), entry.getValue()));
-
-        // [NEW] Check if the player's inventory has space for the result
         boolean hasSpace = inventory.hasSpaceFor(recipe.getResult());
 
         if (hasAll && hasSpace) {
-            // Auto-place items in the crafting grid (this consumes them from the inventory)
             placeItemsInGrid(pattern, recipe.isShaped());
-
-            // [FIXED] Trigger the craft, which consumes grid items and returns the result
             ItemData craftedItem = craftingSystem.craftAndConsume();
-
-            // [FIXED] Add the crafted item to the player's inventory
             if (craftedItem != null) {
                 inventory.addItem(craftedItem);
             }
         } else if (!hasAll) {
-            // Show a "missing ingredients" message if materials are insufficient
             showMissingIngredientsDialog(required);
         } else {
-            // [NEW] Show an "inventory full" message if there's no space
             showInventoryFullDialog();
         }
     }
@@ -186,13 +161,11 @@ public class RecipeGlossaryUI {
     }
 
     private void placeItemsInGrid(String[][] pattern, boolean shaped) {
-        // Clear existing grid
         for (int i = 0; i < craftingSystem.getCraftingGrid().getSize(); i++) {
             craftingSystem.setItemInGrid(i, null);
         }
 
         if (shaped) {
-            // Calculate grid dimension (assumed square) and compute offsets to center the pattern.
             int totalSlots = craftingSystem.getCraftingGrid().getSize();
             int gridDimension = (int) Math.sqrt(totalSlots);
             int patternRows = pattern.length;
@@ -203,7 +176,6 @@ public class RecipeGlossaryUI {
             for (int row = 0; row < patternRows; row++) {
                 for (int col = 0; col < patternCols; col++) {
                     if (pattern[row][col] != null) {
-                        // Use the grid dimension and offset to calculate the proper grid index.
                         int gridIndex = (offsetRow + row) * gridDimension + (offsetCol + col);
                         String symbol = pattern[row][col];
                         String itemId = null;
@@ -222,7 +194,6 @@ public class RecipeGlossaryUI {
                 }
             }
         } else {
-            // For shapeless recipes, a simple sequential placement can be used.
             int gridSize = craftingSystem.getCraftingGrid().getSize();
             int index = 0;
             for (String[] strings : pattern) {
@@ -235,7 +206,6 @@ public class RecipeGlossaryUI {
                             itemId = ItemManager.ItemIDs.STICK;
                         }
                         if (itemId != null) {
-                            // Place item in the next available slot in grid order
                             while (index < gridSize && craftingSystem.getItemInGrid(index) != null) {
                                 index++;
                             }
@@ -260,8 +230,6 @@ public class RecipeGlossaryUI {
             if (item != null && item.getItemId().equals(itemId) && item.getCount() >= count) {
                 ItemData result = item.copy();
                 result.setCount(count);
-
-                // Update original item count
                 int newCount = item.getCount() - count;
                 if (newCount <= 0) {
                     inventory.removeItemAt(i);

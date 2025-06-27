@@ -25,8 +25,6 @@ public class ControllerBindsDialog extends Dialog {
         bindsTable.defaults().pad(5);
         createLayout(skin);
         getContentTable().add(bindsTable).grow().pad(20);
-
-        // Reset and Close buttons
         TextButton resetButton = new TextButton("Reset to Defaults", skin);
         resetButton.addListener(new ChangeListener() {
             @Override
@@ -49,14 +47,10 @@ public class ControllerBindsDialog extends Dialog {
         buttonTable.add(resetButton).pad(10);
         buttonTable.add(closeButton).pad(10);
         getButtonTable().add(buttonTable);
-
-        // Listen for numeric or other inputs to set new bindings
         addListener(new InputListener(){
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
                 if(waitingButton != null) {
-                    // For simplicity, we use the numeric value as the new binding.
-                    // In a real app, you’d probably want to wait for a controller button event.
                     ControllerBinds.setBinding(waitingAction, keycode);
                     ((TextButton)waitingButton).setText(String.valueOf(ControllerBinds.getBinding(waitingAction)));
                     waitingButton = null;
@@ -70,7 +64,6 @@ public class ControllerBindsDialog extends Dialog {
 
     private void createLayout(Skin skin) {
         bindsTable.clear();
-        // Create a row for each binding.
         for (Map.Entry<String, Integer> entry : ControllerBinds.getCurrentBinds().entrySet()) {
             String action = entry.getKey();
             String bindingText = String.valueOf(entry.getValue());

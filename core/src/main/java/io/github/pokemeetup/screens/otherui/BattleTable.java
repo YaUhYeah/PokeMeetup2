@@ -40,16 +40,12 @@ public class BattleTable extends Table {
     private final Skin skin;
     private final Pokemon enemyPokemon;
     private Pokemon playerPokemon;
-
-    // UI Elements
     private Image playerPokemonImage, enemyPokemonImage;
     private ProgressBar playerHPBar, enemyHPBar, expBar;
     private Label playerInfoLabel, enemyInfoLabel, battleText;
     private Image playerStatusIcon, enemyStatusIcon;
     private Table actionMenu, moveSelectionTable;
     private TextButton fightButton, bagButton, pokemonButton, runButton;
-
-    // State Management
     private BattleState currentState;
     private BattleCallback callback;
     private boolean isAnimating = false;
@@ -66,8 +62,6 @@ public class BattleTable extends Table {
     private static final float POST_DAMAGE_DELAY = 0.8f;
     private static final float POST_EFFECT_DELAY = 1.0f;
     private static final float MULTI_HIT_DELAY = 0.3f;
-
-    // Type effectiveness colors
     private static final HashMap<Pokemon.PokemonType, Color> TYPE_COLORS = new HashMap<Pokemon.PokemonType, Color>() {{
         put(Pokemon.PokemonType.FIRE, new Color(1, 0.3f, 0.3f, 1));
         put(Pokemon.PokemonType.WATER, new Color(0.2f, 0.6f, 1, 1));
@@ -94,23 +88,15 @@ public class BattleTable extends Table {
     static {
         initializeTypeEffectiveness();
     }
-
-    // Instance fields
     private TextureRegion platformTexture;
     private Image playerPlatform, enemyPlatform;
     private float stateTimer = 0;
-
-    // Enhanced UI elements
     private Table weatherDisplay;
     private Label weatherLabel;
     private boolean moveSelectionActive = false;
-
-    // Enhanced battle tracking
     private int turnCount = 0;
     private float criticalHitChance = 0.0625f; // Base 6.25% crit chance
     private Map<Pokemon, Integer> leechSeedTargets = new HashMap<>();
-
-    // Message queue for better text flow
 
     private enum BattleState {
         INTRO,
@@ -131,8 +117,6 @@ public class BattleTable extends Table {
         CATCHING,
         MESSAGE_DISPLAY
     }
-
-    // Message class for queue
     private static class BattleMessage {
         String text;
         float duration;
@@ -153,7 +137,6 @@ public class BattleTable extends Table {
         setFillParent(true);
         setTouchable(Touchable.enabled);
         setZIndex(100);
-        // stage.addActor(this); // REMOVED - GameScreen is responsible for adding this table.
         stage.setViewport(new FitViewport(BATTLE_SCREEN_WIDTH, BATTLE_SCREEN_HEIGHT));
         stage.getViewport().update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
 
@@ -174,22 +157,17 @@ public class BattleTable extends Table {
     }
 
     private static void initializeTypeEffectiveness() {
-        // Initialize all type effectiveness
         for (Pokemon.PokemonType type : Pokemon.PokemonType.values()) {
             typeEffectiveness.put(type, new ObjectMap<>());
             for (Pokemon.PokemonType defType : Pokemon.PokemonType.values()) {
                 typeEffectiveness.get(type).put(defType, 1.0f);
             }
         }
-
-        // Normal type
         initTypeEffectiveness(Pokemon.PokemonType.NORMAL, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.ROCK, 0.5f);
             put(Pokemon.PokemonType.GHOST, 0.0f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
         }});
-
-        // Fire type
         initTypeEffectiveness(Pokemon.PokemonType.FIRE, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 0.5f);
             put(Pokemon.PokemonType.WATER, 0.5f);
@@ -200,8 +178,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.DRAGON, 0.5f);
             put(Pokemon.PokemonType.STEEL, 2.0f);
         }});
-
-        // Water type
         initTypeEffectiveness(Pokemon.PokemonType.WATER, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 2.0f);
             put(Pokemon.PokemonType.WATER, 0.5f);
@@ -210,8 +186,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.ROCK, 2.0f);
             put(Pokemon.PokemonType.DRAGON, 0.5f);
         }});
-
-        // Electric type
         initTypeEffectiveness(Pokemon.PokemonType.ELECTRIC, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.WATER, 2.0f);
             put(Pokemon.PokemonType.ELECTRIC, 0.5f);
@@ -220,8 +194,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.FLYING, 2.0f);
             put(Pokemon.PokemonType.DRAGON, 0.5f);
         }});
-
-        // Grass type
         initTypeEffectiveness(Pokemon.PokemonType.GRASS, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 0.5f);
             put(Pokemon.PokemonType.WATER, 2.0f);
@@ -234,8 +206,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.DRAGON, 0.5f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
         }});
-
-        // Ice type
         initTypeEffectiveness(Pokemon.PokemonType.ICE, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 0.5f);
             put(Pokemon.PokemonType.WATER, 0.5f);
@@ -246,8 +216,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.DRAGON, 2.0f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
         }});
-
-        // Fighting type
         initTypeEffectiveness(Pokemon.PokemonType.FIGHTING, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.NORMAL, 2.0f);
             put(Pokemon.PokemonType.ICE, 2.0f);
@@ -261,8 +229,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.STEEL, 2.0f);
             put(Pokemon.PokemonType.FAIRY, 0.5f);
         }});
-
-        // Poison type
         initTypeEffectiveness(Pokemon.PokemonType.POISON, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.GRASS, 2.0f);
             put(Pokemon.PokemonType.POISON, 0.5f);
@@ -272,8 +238,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.STEEL, 0.0f);
             put(Pokemon.PokemonType.FAIRY, 2.0f);
         }});
-
-        // Ground type
         initTypeEffectiveness(Pokemon.PokemonType.GROUND, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 2.0f);
             put(Pokemon.PokemonType.ELECTRIC, 2.0f);
@@ -284,8 +248,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.ROCK, 2.0f);
             put(Pokemon.PokemonType.STEEL, 2.0f);
         }});
-
-        // Flying type
         initTypeEffectiveness(Pokemon.PokemonType.FLYING, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.ELECTRIC, 0.5f);
             put(Pokemon.PokemonType.GRASS, 2.0f);
@@ -294,8 +256,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.ROCK, 0.5f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
         }});
-
-        // Psychic type
         initTypeEffectiveness(Pokemon.PokemonType.PSYCHIC, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIGHTING, 2.0f);
             put(Pokemon.PokemonType.POISON, 2.0f);
@@ -303,8 +263,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.DARK, 0.0f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
         }});
-
-        // Bug type
         initTypeEffectiveness(Pokemon.PokemonType.BUG, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 0.5f);
             put(Pokemon.PokemonType.GRASS, 2.0f);
@@ -317,8 +275,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.STEEL, 0.5f);
             put(Pokemon.PokemonType.FAIRY, 0.5f);
         }});
-
-        // Rock type
         initTypeEffectiveness(Pokemon.PokemonType.ROCK, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 2.0f);
             put(Pokemon.PokemonType.ICE, 2.0f);
@@ -328,23 +284,17 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.BUG, 2.0f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
         }});
-
-        // Ghost type
         initTypeEffectiveness(Pokemon.PokemonType.GHOST, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.NORMAL, 0.0f);
             put(Pokemon.PokemonType.PSYCHIC, 2.0f);
             put(Pokemon.PokemonType.GHOST, 2.0f);
             put(Pokemon.PokemonType.DARK, 0.5f);
         }});
-
-        // Dragon type
         initTypeEffectiveness(Pokemon.PokemonType.DRAGON, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.DRAGON, 2.0f);
             put(Pokemon.PokemonType.STEEL, 0.5f);
             put(Pokemon.PokemonType.FAIRY, 0.0f);
         }});
-
-        // Dark type
         initTypeEffectiveness(Pokemon.PokemonType.DARK, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIGHTING, 0.5f);
             put(Pokemon.PokemonType.PSYCHIC, 2.0f);
@@ -352,8 +302,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.DARK, 0.5f);
             put(Pokemon.PokemonType.FAIRY, 0.5f);
         }});
-
-        // Steel type
         initTypeEffectiveness(Pokemon.PokemonType.STEEL, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 0.5f);
             put(Pokemon.PokemonType.WATER, 0.5f);
@@ -363,8 +311,6 @@ public class BattleTable extends Table {
             put(Pokemon.PokemonType.STEEL, 0.5f);
             put(Pokemon.PokemonType.FAIRY, 2.0f);
         }});
-
-        // Fairy type
         initTypeEffectiveness(Pokemon.PokemonType.FAIRY, new ObjectMap<Pokemon.PokemonType, Float>() {{
             put(Pokemon.PokemonType.FIRE, 0.5f);
             put(Pokemon.PokemonType.FIGHTING, 2.0f);
@@ -382,16 +328,12 @@ public class BattleTable extends Table {
 
     private static ProgressBar.ProgressBarStyle createHPBarStyle(float percentage) {
         ProgressBar.ProgressBarStyle style = new ProgressBar.ProgressBarStyle();
-
-        // Background drawable
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         bgPixmap.setColor(0.2f, 0.2f, 0.2f, 0.8f);
         bgPixmap.fill();
         Texture bgTexture = new Texture(bgPixmap);
         style.background = new TextureRegionDrawable(new TextureRegion(bgTexture));
         bgPixmap.dispose();
-
-        // Foreground (knob) drawable
         Pixmap fgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         Color barColor;
         if (percentage > 0.5f) {
@@ -411,8 +353,6 @@ public class BattleTable extends Table {
 
         return style;
     }
-
-    // Enhanced message system
     public void queueMessage(String text, float duration, Runnable onComplete) {
         messageQueue.offer(new BattleMessage(text, duration, onComplete));
         if (!processingMessage) {
@@ -454,8 +394,6 @@ public class BattleTable extends Table {
         battleText.clearActions();
         battleText.getColor().a = 1f;
     }
-
-    // Enhanced move replacement dialog
     public void showMoveReplacementDialog(final Move newMove) {
         final Window replacementWindow = new Window("Learn New Move", skin);
         replacementWindow.setModal(true);
@@ -472,8 +410,6 @@ public class BattleTable extends Table {
         Label instructionLabel = new Label("But " + playerPokemon.getName() + " already knows 4 moves.\nSelect a move to forget:", skin);
         instructionLabel.setAlignment(Align.center);
         content.add(instructionLabel).colspan(2).pad(10).row();
-
-        // Display current moves with details
         final java.util.List<Move> currentMoves = playerPokemon.getMoves();
         Table movesTable = new Table();
 
@@ -517,8 +453,6 @@ public class BattleTable extends Table {
         }
 
         content.add(movesTable).colspan(2).row();
-
-        // Option to not learn the move
         TextButton cancelButton = new TextButton("Don't learn " + newMove.getName(), skin);
         cancelButton.addListener(new ClickListener() {
             @Override
@@ -559,47 +493,28 @@ public class BattleTable extends Table {
      */
     private void setupLayout() {
         clear(); // Clear any previous actors from the table
-
-        // 1. Background
-        // A random battle background is selected.
         String bgName = "bg-grass"; // Default
-        // You could add logic here to pick a background based on biome
         TextureRegion background = TextureManager.battlebacks.findRegion(bgName);
         if (background != null) {
             setBackground(new TextureRegionDrawable(background));
         }
-
-        // 2. Platforms for the Pokémon
-        // These are images that the Pokémon sprites will "stand" on.
         TextureRegion platformTexture = TextureManager.battlebacks.findRegion("battle_platform");
         Image playerPlatform = new Image(platformTexture);
         Image enemyPlatform = new Image(platformTexture);
         playerPlatform.setScaling(Scaling.fit);
         enemyPlatform.setScaling(Scaling.fit);
-
-        // 3. Main container table to organize the screen
         Table mainContainer = new Table();
         mainContainer.setFillParent(true);
-
-        // This Stack will hold the enemy's platform and sprite
         Stack enemyStack = new Stack();
         enemyStack.add(enemyPlatform);
         enemyStack.add(enemyPokemonImage);
-
-        // This Stack will hold the player's platform and sprite
         Stack playerStack = new Stack();
         playerStack.add(playerPlatform);
         playerStack.add(playerPokemonImage);
-
-        // The info boxes for HP, level, etc.
         Table enemyInfoBox = createInfoBox(enemyPokemon, enemyInfoLabel, enemyHPBar, enemyStatusIcon);
         Table playerInfoBox = createInfoBox(playerPokemon, playerInfoLabel, playerHPBar, playerStatusIcon);
-
-        // Add the EXP bar to the player's info box
         playerInfoBox.row();
         playerInfoBox.add(expBar).colspan(2).width(HP_BAR_WIDTH).height(6).pad(2, 5, 5, 5).left();
-
-        // Arrange the main components on the screen
         mainContainer.add(enemyInfoBox).expand().top().left().pad(20).width(250);
         mainContainer.add(enemyStack).expand().top().right().pad(20, 0, 0, 50).size(200, 100);
         mainContainer.row();
@@ -607,22 +522,16 @@ public class BattleTable extends Table {
         mainContainer.add(playerInfoBox).expand().bottom().right().pad(0, 0, 80, 20).width(250);
 
         addActor(mainContainer);
-
-        // The message box at the bottom
         Table messageBox = new Table(skin);
         messageBox.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("battle_message_box")));
         battleText.setWrap(true);
         messageBox.add(battleText).expand().fill().pad(10, 20, 10, 20);
-
-        // Use a separate Stack to layer the message box and action menu
         Stack bottomUI = new Stack();
         bottomUI.setFillParent(true);
         bottomUI.add(messageBox);
         bottomUI.add(actionMenu); // The action menu will sit on top
 
         addActor(bottomUI);
-
-        // Position the action menu (initially invisible)
         actionMenu.pack();
         actionMenu.setPosition(
             getWidth() - actionMenu.getWidth() - 10,
@@ -637,10 +546,7 @@ public class BattleTable extends Table {
      */
     private Table createActionMenu() {
         Table menu = new Table(skin);
-        // Using a semi-transparent background for a modern feel
         menu.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("battle_choice_box")));
-
-        // Button style for a cleaner look
         TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle(skin.get("default", TextButton.TextButtonStyle.class));
         buttonStyle.fontColor = Color.BLACK;
 
@@ -648,14 +554,10 @@ public class BattleTable extends Table {
         bagButton = new TextButton("BAG", buttonStyle);
         pokemonButton = new TextButton("POKEMON", buttonStyle);
         runButton = new TextButton("RUN", buttonStyle);
-
-        // Arrange buttons in a 2x2 grid
         menu.add(fightButton).width(120).height(50).pad(5);
         menu.add(bagButton).width(120).height(50).pad(5).row();
         menu.add(pokemonButton).width(120).height(50).pad(5);
         menu.add(runButton).width(120).height(50).pad(5);
-
-        // Add listeners to handle clicks
         fightButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) handleFightButton(); } });
         bagButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) handleBagButton(); } });
         pokemonButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) handlePokemonButton(); } });
@@ -671,8 +573,6 @@ public class BattleTable extends Table {
      */
     private void updateUI() {
         if (playerPokemon == null || enemyPokemon == null) return;
-
-        // Player UI Update
         playerInfoLabel.setText(String.format("%s Lv.%d", playerPokemon.getName(), playerPokemon.getLevel()));
         playerHPBar.setRange(0, playerPokemon.getStats().getHp());
         playerHPBar.setValue(playerPokemon.getCurrentHp());
@@ -680,8 +580,6 @@ public class BattleTable extends Table {
         expBar.setRange(0, playerPokemon.getExperienceForNextLevel());
         expBar.setValue(playerPokemon.getCurrentExperience());
         updateStatusIcon(playerPokemon, playerStatusIcon);
-
-        // Enemy UI Update
         enemyInfoLabel.setText(String.format("%s Lv.%d", enemyPokemon.getName(), enemyPokemon.getLevel()));
         enemyHPBar.setRange(0, enemyPokemon.getStats().getHp());
         enemyHPBar.setValue(enemyPokemon.getCurrentHp());
@@ -695,13 +593,9 @@ public class BattleTable extends Table {
     private Table createInfoBox(Pokemon pokemon, Label nameLabel, ProgressBar hpBar, Image statusIcon) {
         Table infoBox = new Table(skin);
         infoBox.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("battle_info_box")));
-
-        // First row: Name and Level
         Table nameRow = new Table();
         nameRow.add(nameLabel).expandX().left();
         infoBox.add(nameRow).left().pad(8, 12, 0, 12).row();
-
-        // Second row: Status icon and HP bar
         Table hpRow = new Table();
         hpRow.add(statusIcon).size(STATUS_ICON_WIDTH, STATUS_ICON_HEIGHT).left().padRight(5);
         hpRow.add(hpBar).width(HP_BAR_WIDTH).height(10).expandX().fillX();
@@ -786,7 +680,6 @@ public class BattleTable extends Table {
     }
 
     private void initializeUIComponents() {
-        // Create battle text label
         battleText = new Label("", skin);
         battleText.setWrap(true);
         battleText.setAlignment(Align.center);
@@ -795,24 +688,16 @@ public class BattleTable extends Table {
         float tableHeight = (getHeight() > 0 ? getHeight() : BATTLE_SCREEN_HEIGHT);
         battleText.setSize(tableWidth, 30);
         battleText.setPosition(0, tableHeight - 40);
-
-        // Create info labels
         playerInfoLabel = new Label("", skin);
         enemyInfoLabel = new Label("", skin);
         updateInfoLabels();
-
-        // Create action menu
         actionMenu = new Table(skin);
         actionMenu.setBackground(createTranslucentBackground(0.5f));
         actionMenu.defaults().space(10);
-
-        // Create buttons with enhanced styling
         fightButton = new TextButton("FIGHT", skin);
         bagButton = new TextButton("BAG", skin);
         pokemonButton = new TextButton("POKEMON", skin);
         runButton = new TextButton("RUN", skin);
-
-        // Add listeners
         fightButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -840,8 +725,6 @@ public class BattleTable extends Table {
                 attemptRun();
             }
         });
-
-        // Arrange buttons in a 2x2 grid
         actionMenu.add(fightButton).width(180).height(50);
         actionMenu.add(bagButton).width(180).height(50);
         actionMenu.row();
@@ -850,8 +733,6 @@ public class BattleTable extends Table {
         actionMenu.pack();
 
         updateActionMenuPosition();
-
-        // Initially hide the menu
         actionMenu.setVisible(false);
         actionMenu.setTouchable(Touchable.disabled);
 
@@ -903,8 +784,6 @@ public class BattleTable extends Table {
 
         float hpRatio = enemyPokemon.getCurrentHp() / (float) enemyPokemon.getStats().getHp();
         float captureChance = MathUtils.clamp(1 - hpRatio, 0.1f, 0.9f);
-
-        // Adjust capture chance based on ball type
         if (pokeball.getItemId().toLowerCase().contains("great")) {
             captureChance *= 1.5f;
         } else if (pokeball.getItemId().toLowerCase().contains("ultra")) {
@@ -915,7 +794,6 @@ public class BattleTable extends Table {
     }
 
     private void handlePotionUse(ItemData potion) {
-        // Show party screen for potion use
         showPartyScreenForItem(potion);
     }
 
@@ -1006,7 +884,6 @@ public class BattleTable extends Table {
     }
 
     private void updateWeatherDisplay() {
-        // This would be connected to a weather system if implemented
         weatherDisplay.setVisible(false);
     }
 
@@ -1025,8 +902,6 @@ public class BattleTable extends Table {
         mainContainer.setFillParent(true);
         mainContainer.top().padTop(10);
         mainContainer.setBackground(createTranslucentBackground(0.5f));
-
-        // Enemy section
         Table enemySection = new Table();
         enemySection.add(enemyInfoLabel).expandX().right().pad(10).row();
 
@@ -1039,8 +914,6 @@ public class BattleTable extends Table {
         enemyStack.add(enemyPlatform);
         enemyStack.add(enemyPokemonImage);
         enemySection.add(enemyStack).expand().right().padRight(stage.getWidth() * 0.1f).row();
-
-        // Player section
         Table playerSection = new Table();
         playerSection.add(playerInfoLabel).expandX().left().pad(10).row();
 
@@ -1055,8 +928,6 @@ public class BattleTable extends Table {
         playerStack.add(playerPlatform);
         playerStack.add(playerPokemonImage);
         playerSection.add(playerStack).expand().left().padLeft(stage.getWidth() * 0.1f).row();
-
-        // Control section
         Table controlSection = new Table();
         controlSection.setBackground(createTranslucentBackground(0.7f));
         controlSection.add(battleText).expandX().fillX().pad(10).row();
@@ -1110,8 +981,6 @@ public class BattleTable extends Table {
         enemyPokemonImage.setSize(baseSize * enemyAspect, baseSize);
         playerPokemonImage.setScaling(Scaling.none);
         enemyPokemonImage.setScaling(Scaling.none);
-
-        // Create status icon images
         playerStatusIcon = new Image();
         enemyStatusIcon = new Image();
         playerStatusIcon.setVisible(false);
@@ -1180,7 +1049,6 @@ public class BattleTable extends Table {
                 float currentValue = bar.getValue();
                 bar.addAction(Actions.parallel(
                     Actions.run(() -> {
-                        // Animate value change
                         bar.setValue(targetValue);
                     }),
                     Actions.alpha(0.8f, 0.1f),
@@ -1249,8 +1117,6 @@ public class BattleTable extends Table {
         if (callback != null) {
             callback.onStatusChange(enemyPokemon, Pokemon.Status.FAINTED);
         }
-
-        // Faint animation
         enemyPokemonImage.addAction(Actions.sequence(
             Actions.parallel(
                 Actions.fadeOut(1.0f), Actions.moveBy(0, -20, 1.0f)
@@ -1260,7 +1126,6 @@ public class BattleTable extends Table {
                 playerPokemon.addExperience(expGained);
                 queueMessage(playerPokemon.getName() + " gained " + expGained + " EXP!");
                 updateExpBar();
-                // -- MODIFY THIS LINE --
                 queueMessage("", 1.5f, () -> finishBattle(BattleOutcome.WIN));
             })
         ));
@@ -1274,8 +1139,6 @@ public class BattleTable extends Table {
         if (callback != null) {
             callback.onStatusChange(playerPokemon, Pokemon.Status.FAINTED);
         }
-
-        // Faint animation
         playerPokemonImage.addAction(Actions.sequence(
             Actions.parallel(
                 Actions.fadeOut(1.0f), Actions.moveBy(0, -20, 1.0f)
@@ -1284,7 +1147,6 @@ public class BattleTable extends Table {
                 if (hasAvailablePokemon()) {
                     transitionToState(BattleState.FORCED_SWITCH); showForcedSwitchPartyScreen();
                 } else {
-                    // -- MODIFY THIS LINE --
                     finishBattle(BattleOutcome.LOSS);
                 }
             })
@@ -1296,7 +1158,6 @@ public class BattleTable extends Table {
     private void finishBattle(BattleOutcome outcome) {
         isAnimating = true;
         SequenceAction endSequence = Actions.sequence(
-            // Add a small delay for final messages to be read
             Actions.delay(1.15f),
             Actions.run(() -> {
                 if (callback != null) {
@@ -1399,7 +1260,6 @@ public class BattleTable extends Table {
         }));
 
         moveSequence.addAction(Actions.run(() -> {
-            // Pass the calculated damage to applyMoveEffect
             applyMoveEffect(move.getEffect(), attacker, defender, damageHolder[0]);
         }));
         moveSequence.addAction(Actions.delay(1.0f));
@@ -1412,8 +1272,6 @@ public class BattleTable extends Table {
 
     private void applyMoveEffect(Move.MoveEffect effect, Pokemon attacker, Pokemon target, float damageDealt) {
         if (effect == null) return;
-
-        // Apply Status Effect
         Pokemon.Status statusToApply = effect.getStatusEffect();
         if (statusToApply != null && statusToApply != Pokemon.Status.NONE) {
             Pokemon.Status previousStatus = target.getStatus();
@@ -1440,8 +1298,6 @@ public class BattleTable extends Table {
                 queueMessage("But it failed!");
             }
         }
-
-        // Apply Stat Changes
         Map<String, Integer> statChanges = effect.getStatModifiers();
         if (statChanges != null && !statChanges.isEmpty()) {
             Pokemon effectTarget = target;
@@ -1456,8 +1312,6 @@ public class BattleTable extends Table {
                 }
             }
         }
-
-        // NEW: Handle DRAIN effect
         if (effect.getEffectType() != null && effect.getEffectType().equalsIgnoreCase("DRAIN")) {
             int healAmount = Math.max(1, (int)(damageDealt * 0.5f)); // Heal 50% of damage, at least 1 HP
             float oldHp = attacker.getCurrentHp();
@@ -1597,28 +1451,18 @@ public class BattleTable extends Table {
         int level = attacker.getLevel();
         float attackStat = move.isSpecial() ? attacker.getStats().getSpecialAttack() : attacker.getStats().getAttack();
         float defenseStat = move.isSpecial() ? defender.getStats().getSpecialDefense() : defender.getStats().getDefense();
-
-        // Apply Burn modifier to physical attack
         if (attacker.getStatus() == Pokemon.Status.BURNED && !move.isSpecial()) {
             attackStat *= 0.5f;
         }
 
         float baseDamage = (((2 * level) / 5f + 2) * move.getPower() * attackStat / defenseStat) / 50f + 2;
-
-        // STAB (Same-Type Attack Bonus)
         float stab = (attacker.getPrimaryType() == move.getType() || attacker.getSecondaryType() == move.getType()) ? 1.5f : 1.0f;
-
-        // Type Effectiveness
         float typeMultiplier = calculateTypeEffectiveness(move, defender);
-
-        // Critical Hit
         boolean isCritical = MathUtils.random() < 0.0625f;
         if (isCritical) {
             queueMessage("A critical hit!");
             baseDamage *= 1.5f;
         }
-
-        // Random variance
         float randomModifier = MathUtils.random(0.85f, 1.0f);
 
         return baseDamage * stab * typeMultiplier * randomModifier;
@@ -1700,8 +1544,6 @@ public class BattleTable extends Table {
         float oldHP = target.getCurrentHp();
         float newHP = Math.max(0, oldHP - damage);
         target.setCurrentHp(newHP);
-
-        // Animate the HP bar
         ProgressBar targetBar = (target == playerPokemon) ? playerHPBar : enemyHPBar;
         animateHPChange(targetBar, oldHP, newHP, target.getStats().getHp());
     }
@@ -1729,8 +1571,6 @@ public class BattleTable extends Table {
 
         playerPokemon.applyEndOfTurnEffects();
         enemyPokemon.applyEndOfTurnEffects();
-
-        // Handle Leech Seed
         if (leechSeedTargets.containsKey(playerPokemon)) {
             int damage = playerPokemon.getStats().getHp() / 8;
             playerPokemon.setCurrentHp(Math.max(0, playerPokemon.getCurrentHp() - damage));
@@ -1839,8 +1679,6 @@ public class BattleTable extends Table {
         Label titleLabel = new Label("Select a move:", skin);
         titleLabel.setFontScale(1.1f);
         moveSelectionTable.add(titleLabel).colspan(2).padBottom(10).row();
-
-        // Display moves in a 2x2 grid with details
         int moveCount = 0;
         for (final Move move : moves) {
             Table moveButton = new Table();
@@ -1933,7 +1771,6 @@ public class BattleTable extends Table {
             transitionToState(BattleState.ENEMY_TURN);
         }
     }
-// In src/main/java/io/github/pokemeetup/screens/otherui/BattleTable.java
 
     public void attemptCapture(WildPokemon wildPokemon, float captureChance) {
         if (currentState == BattleState.CATCHING) return;
@@ -1963,8 +1800,6 @@ public class BattleTable extends Table {
                         Actions.delay(1.0f),
                         Actions.run(() -> {
                             if (callback != null) {
-                                // *** FIX IS HERE ***
-                                // A successful capture is a WIN
                                 callback.onBattleEnd(BattleOutcome.WIN);
                             }
                         })

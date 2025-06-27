@@ -31,7 +31,6 @@ public class CharacterPreviewDialog extends Dialog {
     private PlayerAnimations girlAnimations;
     private PlayerAnimations currentAnimations;
     private TextureRegion currentFrame;
-    // Instead of storing "walk_down" etc., store only the direction.
     private String currentAnimation = "down";
     private boolean isAnimating = true;
     private TextButton boyButton;
@@ -41,8 +40,6 @@ public class CharacterPreviewDialog extends Dialog {
         super("Choose Your Character", skin);
         this.stage = stage;
         this.skin = skin;
-
-        // Initialize animations
         boyAnimations = new PlayerAnimations("boy");
         girlAnimations = new PlayerAnimations("girl");
         currentAnimations = boyAnimations;
@@ -50,8 +47,6 @@ public class CharacterPreviewDialog extends Dialog {
         createLayout();
         setupPreviewArea();
         setupConfirmationButtons(callback);
-
-        // Add preview animation update task (about 60 FPS)
         Timer.schedule(new Timer.Task() {
             @Override
             public void run() {
@@ -63,8 +58,6 @@ public class CharacterPreviewDialog extends Dialog {
     private void createLayout() {
         Table mainTable = getContentTable();
         mainTable.pad(10);
-
-        // Character selection buttons
         Table buttonTable = new Table();
         buttonTable.defaults().pad(5).width(BUTTON_WIDTH).height(BUTTON_HEIGHT);
 
@@ -92,25 +85,17 @@ public class CharacterPreviewDialog extends Dialog {
                 }
             }
         });
-
-        // Set up button group
         ButtonGroup<TextButton> characterGroup = new ButtonGroup<>(boyButton, girlButton);
         characterGroup.setMinCheckCount(1);
         characterGroup.setMaxCheckCount(1);
 
         buttonTable.add(boyButton);
         buttonTable.add(girlButton);
-
-        // Preview area
         previewTable = new Table();
         previewTable.setBackground(new TextureRegionDrawable(new TextureRegion(new Texture(createPreviewBackground()))));
-
-        // Main layout
         Table contentTable = new Table();
         contentTable.add(buttonTable).padBottom(10).row();
         contentTable.add(previewTable).size(PREVIEW_WIDTH + 20, PREVIEW_HEIGHT + 20).padBottom(10).row();
-
-        // Direction controls
         Table controlsTable = new Table();
         TextButton prevAnim = new TextButton("<", skin);
         TextButton nextAnim = new TextButton(">", skin);
@@ -139,14 +124,11 @@ public class CharacterPreviewDialog extends Dialog {
         contentTable.add(controlsTable);
 
         mainTable.add(contentTable);
-
-        // Set initial selection
         boyButton.setChecked(true);
         boyButton.setColor(Color.SKY);
     }
 
     private void setupPreviewArea() {
-        // Start by displaying the standing frame for "down"
         previewTable.add(new Image(currentAnimations.getStandingFrame("down"))).size(PREVIEW_WIDTH, PREVIEW_HEIGHT);
     }
 
@@ -184,7 +166,6 @@ public class CharacterPreviewDialog extends Dialog {
     private void updatePreviewAnimation() {
         if (isAnimating) {
             stateTime += Gdx.graphics.getDeltaTime();
-            // currentAnimation already holds "down", "up", etc.
             currentFrame = currentAnimations.getCurrentFrame(currentAnimation, true, false, stateTime);
 
             Gdx.app.postRunnable(() -> {
@@ -195,7 +176,6 @@ public class CharacterPreviewDialog extends Dialog {
     }
 
     private void cycleAnimation(int direction) {
-        // Use an array of directions without the "walk_" prefix.
         String[] animTypes = {"down", "up", "left", "right"};
         int currentIndex = Arrays.asList(animTypes).indexOf(currentAnimation);
         if (currentIndex == -1) currentIndex = 0;
@@ -204,15 +184,12 @@ public class CharacterPreviewDialog extends Dialog {
 
         currentAnimation = animTypes[currentIndex];
         stateTime = 0f;
-
-        // Force immediate update of the preview frame.
         if (currentAnimations != null) {
             currentFrame = currentAnimations.getCurrentFrame(currentAnimation, true, false, stateTime);
         }
     }
 
     private void updateAnimationLabel(Label label) {
-        // Capitalize the first letter (e.g., "down" becomes "Down")
         label.setText(currentAnimation.substring(0, 1).toUpperCase() + currentAnimation.substring(1));
     }
 

@@ -42,8 +42,6 @@
 
     public class LoginScreen implements Screen {
 
-        // == Constants ==
-
         public static final String SERVERS_PREFS = "ServerPrefs";
         public static final float MIN_WIDTH = 300f;
         public static final float MAX_WIDTH = 500f;
@@ -51,12 +49,8 @@
         private static final int MIN_HEIGHT = 600;
         private static final float CONNECTION_TIMEOUT = 10f;
         private static final int MAX_CONNECTION_ATTEMPTS = 3;
-
-        // Virtual resolution (for the FitViewport)
         private static final float VIRTUAL_WIDTH = 800;
         private static final float VIRTUAL_HEIGHT = 600;
-
-        // == Fields ==
         public final Stage stage;
         public final Skin skin;
         public final CreatureCaptureGame game;
@@ -106,8 +100,6 @@
             pixmap.fill();
             skin.add("white", new Texture(pixmap));
             pixmap.dispose();
-
-            // Load servers from the manager
             this.servers = ServerConfigManager.getInstance().getServers();
 
             createUIComponents();
@@ -126,7 +118,6 @@
 
             Gdx.input.setInputProcessor(stage);
         }
-        // == Screen Implementation ==
 
         @Override
         public void show() {
@@ -150,8 +141,6 @@
 
             stage.act(delta);
             stage.draw();
-
-            // <-- CHANGED: We do not call any "client.connect()" here
             if (GameContext.get().getGameClient() != null) {
                 GameContext.get().getGameClient().tick();
             }
@@ -169,25 +158,20 @@
 
         @Override
         public void pause() {
-            // Not needed
         }
 
         @Override
         public void resume() {
-            // Not needed
         }
 
         @Override
         public void hide() {
-            // Not needed
         }
 
         @Override
         public void dispose() {
             stage.dispose();
         }
-
-        // == UI Creation & Setup ==
 
         private void createUIComponents() {
             mainTable = new Table();
@@ -304,8 +288,6 @@
             mainTable.add(darkPanel);
             darkPanel.pack();
             stage.addActor(mainTable);
-
-            // Place the back button at top-left
             Table topLeftTable = new Table();
             topLeftTable.setFillParent(true);
             topLeftTable.top().left();
@@ -353,8 +335,6 @@
             return scrollPane;
         }
 
-        // == Server Management ==
-
         void showServerDialog(ServerConnectionConfig editServer) {
             ServerManagementDialog dialog = new ServerManagementDialog(
                 skin,
@@ -364,7 +344,6 @@
                         ServerConfigManager.getInstance().removeServer(editServer);
                     }
                     ServerConfigManager.getInstance().addServer(config);
-                    // **REFRESH**: After saving, get the updated list from the manager and refresh the UI
                     this.servers = ServerConfigManager.getInstance().getServers();
                     updateServerList();
                 }
@@ -386,7 +365,6 @@
             String serverKey = forServer.getServerIP() + ":" + forServer.getTcpPort();
 
             if (info.iconBase64 != null && !info.iconBase64.isEmpty()) {
-                // Decode the string into bytes on the current (network) thread. This is safe.
                 final byte[] iconBytes;
                 try {
                     iconBytes = Base64.getDecoder().decode(info.iconBase64);
@@ -394,27 +372,17 @@
                     GameLogger.error("Invalid Base64 string for server icon: " + e.getMessage());
                     return;
                 }
-
-                // *** THE FIX IS HERE ***
-                // Schedule the graphics-related work to run on the main rendering thread.
                 Gdx.app.postRunnable(() -> {
                     try {
-                        // 1. Create a Pixmap from the byte array
                         Pixmap pixmap = new Pixmap(iconBytes, 0, iconBytes.length);
-
-                        // 2. Create a Texture from the Pixmap (this is the OpenGL call)
                         Texture iconTexture = new Texture(pixmap);
                         pixmap.dispose(); // Dispose the pixmap after the texture is created
-
-                        // 3. Store the new texture in our cache, disposing the old one if it exists
                         if (serverIcons.containsKey(serverKey)) {
                             serverIcons.get(serverKey).dispose();
                         }
                         serverIcons.put(serverKey, iconTexture);
 
                         GameLogger.info("Successfully created texture for server: " + forServer.getServerName());
-
-                        // 4. After creating the texture, refresh the UI list
                         updateServerList();
 
                     } catch (Exception e) {
@@ -422,7 +390,6 @@
                     }
                 });
             } else {
-                // If there's no icon, just refresh the UI with other info (like player count)
                 Gdx.app.postRunnable(this::updateServerList);
             }
         }
@@ -432,24 +399,17 @@
             if (selectedServer == null) {
                 return;
             }
-
-            // Get the client (it might need to be created if not already connected)
             GameClient client = new GameClient(selectedServer);
-
-            // Set up a temporary listener to handle just this response
             client.getClient().addListener(new Listener() {
                 @Override
                 public void received(Connection connection, Object object) {
                     if (object instanceof NetworkProtocol.ServerInfoResponse) {
-                        // Once we get the response, process it and then remove this listener
                         handleServerInfoResponse(((NetworkProtocol.ServerInfoResponse) object).serverInfo, selectedServer);
                         client.getClient().removeListener(this);
                         client.dispose(); // Clean up the temporary client
                     }
                 }
             });
-
-            // Connect and send the request
             try {
                 client.getClient().start();
                 client.getClient().connect(5000, selectedServer.getServerIP(), selectedServer.getTcpPort(), selectedServer.getUdpPort());
@@ -481,9 +441,6 @@
             confirm.button("No", false);
             confirm.show(stage);
         }
-
-
-        // **This is the core of the "auto-refresh"**. It rebuilds the UI list from the `servers` array.
         private void updateServerList() {
             serverListTable.clear();
             serverListTable.top();
@@ -524,18 +481,11 @@
             Table iconContainer = new Table();
             Image iconImage = new Image(); // Create the Image widget
             iconImage.setSize(32, 32);
-
-            // Get the unique key for this server
             String serverKey = server.getServerIP() + ":" + server.getTcpPort();
-
-            // Check if we have a cached icon texture for this server
             if (serverIcons.containsKey(serverKey)) {
                 iconImage.setDrawable(new TextureRegionDrawable(new TextureRegion(serverIcons.get(serverKey))));
             } else {
-                // If not, use a default placeholder and request the info
                 addDefaultIcon(iconContainer); // Your existing method to show a placeholder
-                // Note: You would trigger the request here if you want it to happen automatically.
-                // For now, let's assume it's triggered by a manual refresh or selection.
             }
 
             iconContainer.add(iconImage).size(32);
@@ -594,12 +544,8 @@
          */
         private void selectAndRefreshServer(ServerConnectionConfig server, Table selectedEntry) {
             if (server == null) return;
-
-            // Set the selected server and update the visual highlight
             selectedServer = server;
             updateServerSelection(selectedEntry);
-
-            // Trigger the network request to get the latest info (icon, player count, etc.)
             refreshSelectedServerInfo();
         }
         private void addDefaultIcon(Table container) {
@@ -630,8 +576,6 @@
                 }
             }
         }
-
-        // == Listeners & Event Handling ==
 
         private void setupListeners() {
             if (loginButton != null) {
@@ -682,9 +626,6 @@
 
             loginButton.padTop(touchPadding).padBottom(touchPadding);
             registerButton.padTop(touchPadding).padBottom(touchPadding);
-
-            // If needed, you can add ripple effect here for mobile, etc.
-            // ...
         }
 
         private void handleConnectionTimeout() {
@@ -717,8 +658,6 @@
             dialog.button("Cancel", false);
             dialog.show(stage);
         }
-
-        // == Login Flow ==
         void attemptLogin() {
             final String username = usernameField.getText().trim();
             final String password = passwordField.getText().trim();
@@ -736,30 +675,22 @@
             statusLabel.setText("Connecting to server...");
             connectionProgress.setVisible(true);
             connectionProgress.setValue(0f);
-
-            // <-- CHANGED: We always create exactly ONE GameClient here, no extra calls
             final GameClient client = new GameClient(selectedServer);
             GameContext.get().setGameClient(client);
-
-            // Now use the single connectIfNeeded
             isConnecting = true;  // mark that we are mid-connection
             connectionTimer = 0;  // reset the local timer
             client.connectIfNeeded(
-                // onSuccess
                 () -> {
                     Gdx.app.postRunnable(() -> {
                         statusLabel.setText("Connected. Logging in...");
-                        // Now do the login request
                         client.sendLoginRequest(
                             username,
                             password,
                             (NetworkProtocol.LoginResponse lr) -> {
-                                // This is your “onResponse”
                                 isConnecting = false;
                                 connectionProgress.setVisible(false);
 
                                 if (lr.success) {
-                                    // Optionally store credentials if remember me is checked:
                                     if (rememberMeBox.isChecked()) {
                                         saveCredentials(username, password);
                                     }
@@ -771,7 +702,6 @@
                                 }
                             },
                             (String error) -> {
-                                // onError from sendLoginRequest
                                 isConnecting = false;
                                 connectionProgress.setVisible(false);
                                 setUIEnabled(true);
@@ -780,10 +710,7 @@
                         );
                     });
                 },
-
-                // onError
                 (String errorMsg) -> {
-                    // Connection error
                     Gdx.app.postRunnable(() -> {
                         isConnecting = false;
                         connectionProgress.setVisible(false);
@@ -806,15 +733,11 @@
                 );
                 GameContext.get().setGameScreen(gameScreen);
                 loadingScreen.setNextScreen(gameScreen);
-
-                // Do not call dispose() on the login screen here.
             } catch (Exception e) {
                 GameLogger.error("Failed to transition to game: " + e.getMessage());
                 showError("Failed to start game: " + e.getMessage());
             }
         }
-
-        // == Registration Flow ==
 
         void attemptRegistration() {
             if (isConnecting) return;
@@ -836,12 +759,8 @@
             feedbackLabel.setText("");
             connectionProgress.setVisible(true);
             connectionProgress.setValue(0);
-
-            // <-- CHANGED: Only create a single new GameClient
             final GameClient client = new GameClient(selectedServer);
             GameContext.get().setGameClient(client);
-
-            // Connect asynchronously and then send registration request with callbacks
             client.connectIfNeeded(
                 () -> {
                     Gdx.app.postRunnable(() -> {
@@ -905,8 +824,6 @@
             dialog.setModal(true);
             dialog.show(stage);
         }
-
-        // == Utility & Validation ==
 
 
         private boolean validateRegistrationInput(String username, String password) {
@@ -1038,26 +955,19 @@
                         ServerConnectionConfig.class, fileContent);
 
                     if (loadedServers != null && loadedServers.size > 0) {
-                        // Use a HashSet to automatically handle duplicates based on our new equals/hashCode
                         HashSet<ServerConnectionConfig> uniqueSet = new HashSet<>();
                         for (ServerConnectionConfig server : loadedServers) {
                             if (!uniqueSet.add(server)) {
                                 GameLogger.info("Removed duplicate server on load: " + server.getServerName());
                             }
                         }
-
-                        // If duplicates were found, the set size will be smaller.
                         boolean wasCleaned = uniqueSet.size() < loadedServers.size;
-
-                        // Update the main server list with the unique servers
                         servers.clear();
                         for(ServerConnectionConfig uniqueServer : uniqueSet) {
                             servers.add(uniqueServer);
                         }
 
                         GameLogger.info("Loaded " + servers.size + " unique servers.");
-
-                        // If the list was cleaned, save it back to the file.
                         if(wasCleaned) {
                             saveServers();
                         }
@@ -1095,8 +1005,6 @@
                 GameLogger.error("Failed to save servers: " + e.getMessage());
             }
         }
-
-        // == Inner Class ==
 
         private static class ServerEntry {
             public String name;

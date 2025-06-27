@@ -30,29 +30,15 @@ public class AndroidLauncher extends AndroidApplication {
     protected void onCreate(Bundle savedInstanceState) {
         try {
             super.onCreate(savedInstanceState);
-
-            // Log the start of initialization
             Log.d("AndroidLauncher", "Starting game initialization");
-
-            // Create delegate FIRST
             AndroidFileSystemDelegate fileDelegate = new AndroidFileSystemDelegate(this);
-
-            // Initialize GameFileSystem BEFORE accessing getInstance
             GameFileSystem fileSystem = GameFileSystem.getInstance();
             fileSystem.setDelegate(fileDelegate);
-
-            // Debug log to verify delegate
             Log.d("AndroidLauncher", "File system delegate initialized: " +
                 (fileSystem.getDelegate() != null ? fileSystem.getDelegate().getClass().getSimpleName() : "null"));
-
-            // Configure Android
             AndroidApplicationConfiguration config = new AndroidApplicationConfiguration();
             configureAndroidSettings(config);
-
-            // Pre-verify critical files exist in assets
             verifyAssetFiles();
-
-            // Initialize the game
             CreatureCaptureGame game = new CreatureCaptureGame(true);
             initialize(game, config);
 
@@ -68,11 +54,8 @@ public class AndroidLauncher extends AndroidApplication {
 
     private void verifyAssetFiles() {
         try {
-            // List all assets first for debugging
             String[] assets = getAssets().list("");
             Log.d("AndroidLauncher", "Root assets: " + Arrays.toString(assets));
-
-            // Try both Data and data directories
             String[] dataFiles = null;
             try {
                 dataFiles = getAssets().list("Data");
@@ -85,8 +68,6 @@ public class AndroidLauncher extends AndroidApplication {
                     Log.e("AndroidLauncher", "Could not find Data or data directory");
                 }
             }
-
-            // Specifically verify biomes.json
             boolean biomesFound = false;
             String[] biomePaths = {
                     "Data/biomes.json",
@@ -124,7 +105,6 @@ public class AndroidLauncher extends AndroidApplication {
         boolean found = false;
         for (String variant : variants) {
             try (InputStream is = getAssets().open(variant)) {
-                // Read a small amount to verify file is readable
                 byte[] buffer = new byte[1024];
                 int bytesRead = is.read(buffer);
                 if (bytesRead > 0) {
@@ -133,7 +113,6 @@ public class AndroidLauncher extends AndroidApplication {
                     break;
                 }
             } catch (IOException ignored) {
-                // Try next variant
             }
         }
 

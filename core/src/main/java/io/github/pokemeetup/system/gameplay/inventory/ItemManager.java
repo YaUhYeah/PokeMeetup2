@@ -34,16 +34,12 @@ public class ItemManager {
 
         GameLogger.info("Initializing ItemManager with atlas...");
         logAvailableRegions(atlas);
-
-        // Register standard items...
         Map<String, String> standardItems = new HashMap<>();
         standardItems.put(ItemIDs.POTION, "potion_item");
         standardItems.put(ItemIDs.ELIXIR, "elixir_item");
         standardItems.put(ItemIDs.POKEBALL, "pokeball_item");
         standardItems.put(ItemIDs.WOODEN_AXE, "wooden_axe_item");
         standardItems.put(ItemIDs.STICK, "stick_item");
-
-        // Register block items
         for (PlaceableBlock.BlockType blockType : PlaceableBlock.BlockType.values()) {
             String itemId = blockType.getId().toLowerCase();
             String textureKey = itemId + "_item";
@@ -81,16 +77,12 @@ public class ItemManager {
 
     private static void initializeServerItems() {
         GameLogger.info("Initializing ItemManager in server mode...");
-
-        // Register standard items
         Map<String, String> standardItems = new HashMap<>();
         standardItems.put(ItemIDs.POTION, "potion");
         standardItems.put(ItemIDs.ELIXIR, "elixir");
         standardItems.put(ItemIDs.POKEBALL, "pokeball");
         standardItems.put(ItemIDs.WOODEN_AXE, "wooden_axe");
         standardItems.put(ItemIDs.STICK, "stick");
-
-        // Register block items
         for (PlaceableBlock.BlockType blockType : PlaceableBlock.BlockType.values()) {
             String itemId = blockType.getId().toLowerCase();
             standardItems.put(itemId, itemId);
@@ -98,7 +90,6 @@ public class ItemManager {
 
         for (Map.Entry<String, String> entry : standardItems.entrySet()) {
             String itemId = entry.getKey().toLowerCase();
-            // Create items without textures in server mode
             Item item = new Item(itemId, entry.getValue(), null);
 
             if (itemId.equals(ItemIDs.WOODEN_AXE)) {
@@ -184,7 +175,6 @@ public class ItemManager {
     public static void validateItems() {
         GameLogger.info("Validating initialized items...");
         if (isServerMode) {
-            // Simple validation for server mode
             GameLogger.info("Validating server items...");
             for (Map.Entry<String, Item> entry : items.entrySet()) {
                 GameLogger.info("Validated server item: " + entry.getKey());
@@ -234,8 +224,6 @@ public class ItemManager {
     public static boolean isInitialized() {
         return initialized;
     }
-
-    // Helper methods
     private static void logAvailableRegions(TextureAtlas atlas) {
         GameLogger.info("Available regions in atlas:");
         for (TextureAtlas.AtlasRegion region : atlas.getRegions()) {

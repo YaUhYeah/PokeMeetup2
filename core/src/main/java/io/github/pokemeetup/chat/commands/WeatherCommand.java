@@ -28,7 +28,6 @@ public class WeatherCommand implements Command {
 
     @Override
     public String getUsage() {
-        // Note: The 4th argument is optional
         return "/weather <set|get> <weatherType|blank> <intensity|blank> [time in seconds]";
     }
 
@@ -42,8 +41,6 @@ public class WeatherCommand implements Command {
         String[] argsArray = args.split(" ");
         try {
             GameLogger.info("Executing weather command");
-
-            // Retrieve the player and world context.
             Player player = GameContext.get().getPlayer();
             if (player == null) {
                 chatSystem.addSystemMessage("Error: Player not found");
@@ -56,15 +53,11 @@ public class WeatherCommand implements Command {
                 return;
             }
             currentWorld.getWeatherSystem().setWorld(currentWorld);
-
-            // Get current weather
             if (argsArray[0].equalsIgnoreCase("get")) {
                 chatSystem.addSystemMessage("Current weather is: "
                     + currentWorld.getWeatherSystem().getCurrentWeather().name());
                 return;
             }
-
-            // Set new weather
             if (argsArray[0].equalsIgnoreCase("set")) {
                 if (argsArray.length < 3) {
                     chatSystem.addSystemMessage("Usage: " + getUsage());
@@ -81,7 +74,6 @@ public class WeatherCommand implements Command {
                         currentWorld.getWeatherSystem().setWeather(weather, intensity);
                         weatherFound = true;
                         String response = "Weather set to: " + weather.name() + " with intensity: " + intensity;
-                        // Check for an optional time argument to override automatic biome changes.
                         if (argsArray.length >= 4) {
                             float duration = Float.parseFloat(argsArray[3]);
                             currentWorld.getWeatherSystem().setManualOverrideTimer(duration);

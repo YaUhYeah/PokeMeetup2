@@ -10,8 +10,6 @@ import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalit
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-// Patrol Behavior
 public class PatrolBehavior implements PokemonBehavior {
     private final WildPokemon pokemon;
     private final PokemonAI ai;
@@ -43,21 +41,14 @@ public class PatrolBehavior implements PokemonBehavior {
             int targetTileY = (int) (currentTarget.y / World.TILE_SIZE);
             int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);
             int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-
-            // Check if we've reached the patrol point
             if (pokemonTileX == targetTileX && pokemonTileY == targetTileY) {
-                // Move to next patrol point
                 int nextIndex = (ai.getCurrentPatrolIndex() + 1) % ai.getPatrolRoute().size();
                 ai.setCurrentPatrolIndex(nextIndex);
                 ai.setCooldown(getName(), 0.75f); // Was 2.0f
                 return;
             }
-
-            // Move towards current patrol point
             int dx = Integer.compare(targetTileX, pokemonTileX);
             int dy = Integer.compare(targetTileY, pokemonTileY);
-
-            // FIX: Ensure cardinal movement by randomly choosing a valid axis to move on.
             List<String> moveOptions = new ArrayList<>();
             if (dx != 0) moveOptions.add("horizontal");
             if (dy != 0) moveOptions.add("vertical");

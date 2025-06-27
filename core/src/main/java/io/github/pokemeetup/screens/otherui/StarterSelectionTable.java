@@ -17,10 +17,7 @@ import io.github.pokemeetup.utils.ResponsiveLayout;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class StarterSelectionTable extends Table {
-    // Use a static instance variable to enforce one instance at a time.
     private static StarterSelectionTable instance = null;
-
-    // UI elements and fields (non‑final so they can be initialized in every run)
     private Label pokemonInfoLabel;
     private TextButton confirmButton;
     private Pokemon selectedStarter;
@@ -31,25 +28,17 @@ public class StarterSelectionTable extends Table {
     private Skin skin;
     private Label titleLabel;
     private Table starters;  // Container for starter options
-
-    // Base constants for layout
     private static final float BASE_TITLE_SCALE = 2.0f;
     private static final float BASE_PADDING = 20f;
     private static final float BASE_BUTTON_WIDTH = 300f;
     private static final float BASE_BUTTON_HEIGHT = 80f;
-
-    // Private constructor
     public StarterSelectionTable(Skin skin) {
         this.skin = skin;
         GameLogger.info("Creating StarterSelectionTable");
-
-        // (Optional) Adjust window size for testing.
         Gdx.graphics.setWindowedMode(
             Math.max(800, Gdx.graphics.getWidth()),
             Math.max(600, Gdx.graphics.getHeight())
         );
-
-        // Setup this table
         setFillParent(true);
         setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("starter-bg")));
         setTouchable(Touchable.enabled);
@@ -57,17 +46,11 @@ public class StarterSelectionTable extends Table {
         Table mainContainer = new Table();
         mainContainer.center();
         mainContainer.defaults().center().pad(20);
-
-        // Top spacer for vertical centering
         mainContainer.add().expandY().row();
-
-        // Title label
         titleLabel = new Label("Choose Your First Partner!", skin);
         titleLabel.setFontScale(BASE_TITLE_SCALE);
         titleLabel.setAlignment(Align.center);
         mainContainer.add(titleLabel).expandX().center().padBottom(40).row();
-
-        // Starter options container
         starters = new Table();
         starters.defaults().pad(BASE_PADDING).space(40);
         starters.center();
@@ -75,8 +58,6 @@ public class StarterSelectionTable extends Table {
         addStarterOption(starters, "CHARMANDER", "A fierce fire-type partner with a burning tail.");
         addStarterOption(starters, "SQUIRTLE", "A sturdy water-type partner with a protective shell.");
         mainContainer.add(starters).expandX().center().padBottom(40).row();
-
-        // Info label
         pokemonInfoLabel = new Label("Click on a Pokemon to learn more!", skin);
         pokemonInfoLabel.setWrap(true);
         pokemonInfoLabel.setAlignment(Align.center);
@@ -84,8 +65,6 @@ public class StarterSelectionTable extends Table {
         Table infoContainer = new Table();
         infoContainer.add(pokemonInfoLabel).width(Gdx.graphics.getWidth() * 0.6f).pad(30);
         mainContainer.add(infoContainer).expandX().center().padBottom(30).row();
-
-        // Confirm button
         confirmButton = new TextButton("Choose Pokemon!", skin);
         confirmButton.setDisabled(true);
         confirmButton.getLabel().setFontScale(1.5f);
@@ -98,8 +77,6 @@ public class StarterSelectionTable extends Table {
             }
         });
         mainContainer.add(confirmButton).size(BASE_BUTTON_WIDTH, BASE_BUTTON_HEIGHT).padBottom(40).row();
-
-        // Bottom spacer for vertical centering
         mainContainer.add().expandY().row();
 
         add(mainContainer).expand().fill();
@@ -130,8 +107,6 @@ public class StarterSelectionTable extends Table {
         Table cell = new Table();
         cell.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("slot_normal")));
         cell.center();
-
-        // Add Pokemon sprite
         TextureRegion sprite = TextureManager.getPokemonfront().findRegion(pokemonName + "_front");
         if (sprite != null) {
             Image image = new Image(sprite);
@@ -141,20 +116,15 @@ public class StarterSelectionTable extends Table {
                 .size(imageSize.x, imageSize.y)
                 .center().pad(ResponsiveLayout.getPadding()).row();
         }
-        // Add Pokemon name label
         Label nameLabel = new Label(pokemonName, skin);
         nameLabel.setFontScale(ResponsiveLayout.getFontScale());
         cell.add(nameLabel).center().pad(ResponsiveLayout.getPadding());
-
-        // Add click listener
         cell.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 selectStarter(pokemonName, description, cell);
             }
         });
-
-        // Add the cell with fixed size
         Vector2 cellSize = ResponsiveLayout.getElementSize(180, 200);
         container.add(cell).size(cellSize.x, cellSize.y).center();
     }
@@ -185,7 +155,6 @@ public class StarterSelectionTable extends Table {
                 starter.setCurrentHp(starter.getStats().getHp());
                 break;
         }
-        // Set base stats for all starters
         Pokemon.Stats stats = starter.getStats();
         stats.setHp(20);
         stats.setAttack(12);

@@ -28,7 +28,6 @@ public class ServerFileDelegate implements FileSystemDelegate {
         }
     }
     public ServerFileDelegate() {
-        // Use working directory as base path
         this.basePath = System.getProperty("user.dir");
         logger.info("Initialized server file system with base path: " + basePath);
     }

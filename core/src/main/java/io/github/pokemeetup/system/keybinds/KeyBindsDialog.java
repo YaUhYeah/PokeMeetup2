@@ -16,18 +16,10 @@ public class KeyBindsDialog extends Dialog {
 
     public KeyBindsDialog(Skin skin) {
         super("Key Bindings", skin);
-
-        // Main container for our rows
         keyBindsTable = new Table(skin);
         keyBindsTable.defaults().pad(5);
-
-        // Build the layout with headings
         createLayout(skin);
-
-        // Add the entire table to the dialog
         getContentTable().add(keyBindsTable).grow().pad(20);
-
-        // Add Reset and Close buttons at the bottom
         TextButton resetButton = new TextButton("Reset to Defaults", skin);
         resetButton.addListener(new ChangeListener() {
             @Override
@@ -51,18 +43,13 @@ public class KeyBindsDialog extends Dialog {
         buttonTable.add(closeButton).pad(10);
 
         getButtonTable().add(buttonTable);
-
-        // Capture keyboard events to set new key bindings
         addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
-                // If we're waiting for a key press to set a new binding:
                 if (waitingButton != null) {
-                    // Escape can cancel the rebind
                     if (keycode != Input.Keys.ESCAPE) {
                         KeyBinds.setBinding(waitingAction, keycode);
                     }
-                    // Update button text to newly bound key (or revert if ESC)
                     ((TextButton)waitingButton).setText(
                         KeyBinds.getKeyName(KeyBinds.getBinding(waitingAction))
                     );
@@ -77,25 +64,17 @@ public class KeyBindsDialog extends Dialog {
 
     private void createLayout(Skin skin) {
         keyBindsTable.clear();
-
-        // We'll separate actions into categories for clarity:
         keyBindsTable.add(new Label("Movement Keys", skin))
             .colspan(2).align(Align.left).padBottom(5).row();
-
-        // Movement actions in a fixed order:
         addKeyBindRow(KeyBinds.MOVE_UP, skin);
         addKeyBindRow(KeyBinds.MOVE_DOWN, skin);
         addKeyBindRow(KeyBinds.MOVE_LEFT, skin);
         addKeyBindRow(KeyBinds.MOVE_RIGHT, skin);
         addKeyBindRow(KeyBinds.SPRINT, skin);
-
-        // Add a small separator or extra padding
         keyBindsTable.add().colspan(2).height(15).row();
 
         keyBindsTable.add(new Label("Other Actions", skin))
             .colspan(2).align(Align.left).padBottom(5).row();
-
-        // Other actions in a fixed order:
         addKeyBindRow(KeyBinds.INTERACT, skin);
         addKeyBindRow(KeyBinds.ACTION, skin);
         addKeyBindRow(KeyBinds.BUILD_MODE, skin);
@@ -106,7 +85,6 @@ public class KeyBindsDialog extends Dialog {
      * Builds a single row: Label + Rebind-Button
      */
     private void addKeyBindRow(String action, Skin skin) {
-        // Safeguard if the user manually removed or changed the map
         if (!KeyBinds.getCurrentBinds().containsKey(action)) {
             return;
         }
@@ -122,7 +100,6 @@ public class KeyBindsDialog extends Dialog {
         bindButton.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                // If we're already waiting for a key, revert the old button text
                 if (waitingButton != null) {
                     ((TextButton)waitingButton).setText(
                         KeyBinds.getKeyName(KeyBinds.getBinding(waitingAction))

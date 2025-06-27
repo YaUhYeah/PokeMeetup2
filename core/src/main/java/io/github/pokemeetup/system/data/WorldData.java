@@ -90,8 +90,6 @@ public class WorldData {
             copy.lastPlayed = this.lastPlayed;
             copy.isDirty = this.isDirty;
             copy.username = this.username;
-
-            // Copy config
             if (this.config != null) {
                 WorldConfig configCopy = new WorldConfig(this.config.getSeed());
                 configCopy.setTreeSpawnRate(this.config.getTreeSpawnRate());
@@ -109,27 +107,18 @@ public class WorldData {
             } else {
                 copy.setPlayers(new HashMap<>());
             }
-            // Copy player UUIDs
             if (this.playerUUIDs != null) {
                 copy.playerUUIDs = new HashSet<>(this.playerUUIDs);
             }
-
-            // Copy Pokemon data
             if (this.pokemonData != null) {
                 copy.pokemonData = this.pokemonData.copy();
             }
-
-            // Copy block data if exists
             if (this.blockData != null) {
                 copy.blockData = this.blockData.copy();
             }
-
-            // Copy chunk references (chunks themselves are managed separately)
             if (this.chunks != null) {
                 copy.chunks = new HashMap<>(this.chunks);
             }
-
-            // Deep copy chunk objects
             if (this.chunkObjects != null) {
                 copy.dynamicObjects = new HashMap<>();
                 for (Map.Entry<Vector2, List<WorldObject>> entry : this.chunkObjects.entrySet()) {
@@ -190,8 +179,6 @@ public class WorldData {
             this.pokemonData = new PokemonData();
             setDirty(true);
         }
-
-        // Validate Pokemon in player data
         if (players != null) {
             for (PlayerData player : players.values()) {
                 if (player.getPartyPokemon() != null) {
@@ -231,16 +218,12 @@ public class WorldData {
         if (blockData == null) {
             GameLogger.error("blockData is null during validation. Blocks may not be loaded correctly.");
         }
-
-        // Validate players data
         if (players != null) {
             for (Map.Entry<String, PlayerData> entry : players.entrySet()) {
                 PlayerData playerData = entry.getValue();
                 if (playerData.getInventoryItems() == null) {
                     playerData.setInventoryItems(new ArrayList<>());
                 }
-
-                // Validate each inventory item
                 for (int i = 0; i < playerData.getInventoryItems().size(); i++) {
                     ItemData item = playerData.getInventoryItems().get(i);
                     if (item != null && item.getUuid() == null) {
@@ -286,7 +269,6 @@ public class WorldData {
                     backup.setDayLength(this.dayLength);
                     backup.setPlayers(new HashMap<>(this.players));
                     backup.setBlockData(this.blockData);
-                    // Save backup
                     WorldManager.getInstance().saveWorld(backup);
                     GameLogger.info("Created backup of world: " + name);
                 }
@@ -373,9 +355,7 @@ public class WorldData {
 
     public void savePlayerData(String username, PlayerData data, boolean isMultiplayer) {
         if (isMultiplayer) {
-            // Multiplayer mode logic (just store UUID reference)
         } else {
-            // Singleplayer mode: store actual data
             if (data != null && username != null) {
                 this.players.put(username, data.copy());
                 this.isDirty = true;
@@ -386,8 +366,6 @@ public class WorldData {
 
     public PlayerData getPlayerData(String username, boolean isMultiplayer) {
         if (isMultiplayer) {
-            // In multiplayer mode, this should not be used directly
-            // Instead, use ServerStorageSystem to get player data
             GameLogger.error("Attempted to get player data directly in multiplayer mode");
             return null;
         } else {
@@ -495,8 +473,6 @@ public class WorldData {
         public WorldConfig(long seed) {
             this.seed = seed;
         }
-
-        // Getters and Setters
         public long getSeed() {
             return seed;
         }
@@ -542,6 +518,5 @@ public class WorldData {
         public String type;
         public float x, y;
         public String id;
-        // Add other object properties
     }
 }

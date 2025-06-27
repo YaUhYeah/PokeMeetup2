@@ -30,42 +30,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Smoother transitions between biomes
  */
 public class BiomeManager {
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 1. TUNING CONSTANTS & FIELD DEFINITIONS
-    // ─────────────────────────────────────────────────────────────────────────
-
-    // MAJOR CHANGE: Increased scales for larger biomes (lower frequency = larger features)
     private static final float TEMPERATURE_SCALE = 0.00015f; // Was 0.0008f - now 5x larger
     private static final float MOISTURE_SCALE = 0.00018f;    // Was 0.0008f - now 4.5x larger
     private static final float ALTITUDE_SCALE = 0.0002f;     // Was 0.001f - now 5x larger
-
-    // Multi-scale noise for more interesting variation
     private static final float TEMPERATURE_SCALE_DETAIL = 0.001f;  // Fine detail
     private static final float MOISTURE_SCALE_DETAIL = 0.0012f;    // Fine detail
-
-    // Domain warp parameters (slightly reduced for smoother transitions)
     private static final float FREQ_WARP_1 = 0.0002f; // Was 0.0003f
     private static final float AMP_WARP_1 = 4f;       // Was 5f
     private static final float FREQ_WARP_2 = 0.0005f; // Was 0.0006f
     private static final float AMP_WARP_2 = 1.5f;     // Was 2f
-
-    // Island parameters
     private static final int ISLAND_COUNT = 50;
     private static final float ISLAND_MIN_RADIUS = 3000f;
     private static final float ISLAND_MAX_RADIUS = 8000f;
     private static final float WORLD_RADIUS = 50000f;
-
-    // MAJOR CHANGE: Reduced Voronoi sites for larger biome regions
     private static final int NUM_BIOME_SITES = 120; // Was 400 - now 3x larger regions
-
-    // Biome clustering radius - biomes within this distance tend to be similar
     private static final float BIOME_CLUSTER_RADIUS = 8000f;
-
-    // Transition smoothing distance
     private static final float TRANSITION_DISTANCE = 2000f;
-
-    // Cache and state
     private final Map<Vector2, BiomeTransitionResult[][]> chunkBiomeCache = new ConcurrentHashMap<>();
     private final long temperatureSeed;
     private final long moistureSeed;
@@ -78,10 +58,6 @@ public class BiomeManager {
     private final long warpSeed;
     private final Map<BiomeType, Biome> biomes;
     private long baseSeed;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2. CONSTRUCTOR & INITIALIZATION
-    // ─────────────────────────────────────────────────────────────────────────
 
     public BiomeManager(long baseSeed) {
         this.baseSeed = baseSeed;
@@ -100,18 +76,12 @@ public class BiomeManager {
         generateRandomIslands(baseSeed);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 3. BIOME CLUSTERING SYSTEM (NEW)
-    // ─────────────────────────────────────────────────────────────────────────
-
     /**
      * Generate biome clusters to ensure similar biomes group together
      */
     private void generateBiomeClusters(long seed) {
         biomeClusters.clear();
         Random rng = new Random(seed ^ 0xCAFEBABEL);
-
-        // Define cluster archetypes
         BiomeClusterType[] clusterTypes = {
             BiomeClusterType.HOT_DRY,      // Desert regions
             BiomeClusterType.HOT_WET,      // Rainforest regions
@@ -120,8 +90,6 @@ public class BiomeManager {
             BiomeClusterType.TEMPERATE,    // Forest/plains regions
             BiomeClusterType.MYSTICAL      // Cherry/haunted regions
         };
-
-        // Generate 15-25 major cluster regions
         int clusterCount = 15 + rng.nextInt(11);
 
         for (int i = 0; i < clusterCount; i++) {
@@ -147,19 +115,13 @@ public class BiomeManager {
         for (int i = 0; i < NUM_BIOME_SITES; i++) {
             float x = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
             float y = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
-
-            // Find nearest cluster to influence this site
             BiomeCluster nearestCluster = findNearestCluster(x, y);
-
-            // MAJOR CHANGE: Reduced random offsets for more consistent biomes
             double tOff = 0.0;
             double mOff = 0.0;
 
             if (nearestCluster != null) {
                 float distToCluster = Vector2.dst(x, y, nearestCluster.x, nearestCluster.y);
                 float influence = 1.0f - Math.min(1.0f, distToCluster / (nearestCluster.radius * 2));
-
-                // Apply cluster-based offsets
                 switch (nearestCluster.type) {
                     case HOT_DRY:
                         tOff = 0.3 * influence;   // Higher temperature
@@ -178,18 +140,15 @@ public class BiomeManager {
                         mOff = 0.2 * influence;   // Higher moisture
                         break;
                     case TEMPERATE:
-                        // Small random variation for temperate zones
                         tOff = (rng.nextFloat() - 0.5) * 0.1 * influence;
                         mOff = (rng.nextFloat() - 0.5) * 0.1 * influence;
                         break;
                     case MYSTICAL:
-                        // Moderate temperature with varied moisture
                         tOff = 0.1 * influence;
                         mOff = (rng.nextFloat() - 0.3) * 0.2 * influence;
                         break;
                 }
             } else {
-                // Sites far from clusters get small random variation
                 tOff = (rng.nextFloat() - 0.5) * 0.1;
                 mOff = (rng.nextFloat() - 0.5) * 0.1;
             }
@@ -217,27 +176,14 @@ public class BiomeManager {
         return nearest;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. ENHANCED BIOME CLASSIFICATION
-    // ─────────────────────────────────────────────────────────────────────────
-
     private Biome classifySiteToBiome(BiomeSite site, float wx, float wy) {
-        // Multi-scale temperature sampling
         double baseTemp = NoiseCache.getNoise(temperatureSeed, wx, wy, TEMPERATURE_SCALE);
         double detailTemp = NoiseCache.getNoise(temperatureSeed + 1, wx, wy, TEMPERATURE_SCALE_DETAIL) * 0.1;
-
-        // Multi-scale moisture sampling
         double baseMoist = NoiseCache.getNoise(moistureSeed, wx, wy, MOISTURE_SCALE);
         double detailMoist = NoiseCache.getNoise(moistureSeed + 1, wx, wy, MOISTURE_SCALE_DETAIL) * 0.1;
-
-        // Altitude with less variation
         double baseAltitude = NoiseCache.getNoise(altitudeSeed, wx, wy, ALTITUDE_SCALE);
-
-        // Combine base and detail
         double temp = baseTemp + detailTemp + site.tempOffset;
         double moist = baseMoist + detailMoist + site.moistOffset;
-
-        // Add very subtle local variation
         double localVar = OpenSimplex2.noise2(detailSeed ^ site.siteDetail, wx * 0.0001, wy * 0.0001) * 0.02;
 
         temp = Math.min(Math.max(0, temp + localVar), 1);
@@ -248,15 +194,10 @@ public class BiomeManager {
         return getBiome(type);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 5. SMOOTH TRANSITIONS
-    // ─────────────────────────────────────────────────────────────────────────
-
     /**
      * Enhanced Voronoi with smoother transitions
      */
     public BiomeTransitionResult landBiomeVoronoi(float wx, float wy) {
-        // Find nearest sites (up to 4 for smoother blending)
         List<SiteDistance> nearestSites = findNearestSites(wx, wy, 4);
 
         if (nearestSites.isEmpty()) {
@@ -267,33 +208,20 @@ public class BiomeManager {
             Biome b = classifySiteToBiome(nearestSites.get(0).site, wx, wy);
             return new BiomeTransitionResult(b, null, 1f);
         }
-
-        // Calculate smooth blending weights
         float totalWeight = 0;
         for (SiteDistance sd : nearestSites) {
-            // Use inverse distance with smoothing
             sd.weight = 1f / (1f + sd.distance / TRANSITION_DISTANCE);
             totalWeight += sd.weight;
         }
-
-        // Normalize weights
         for (SiteDistance sd : nearestSites) {
             sd.weight /= totalWeight;
         }
-
-        // Get primary and secondary biomes
         Biome primary = classifySiteToBiome(nearestSites.get(0).site, wx, wy);
         Biome secondary = classifySiteToBiome(nearestSites.get(1).site, wx, wy);
-
-        // Calculate smooth transition factor
         float d1 = nearestSites.get(0).distance;
         float d2 = nearestSites.get(1).distance;
         float raw = d2 / (d1 + d2);
-
-        // Enhanced smoothstep for even smoother transitions
         float t = smoothStep(smoothStep(raw));
-
-        // Prevent harsh desert-snow transitions
         if ((primary.getType() == BiomeType.SNOW && secondary.getType() == BiomeType.DESERT) ||
             (primary.getType() == BiomeType.DESERT && secondary.getType() == BiomeType.SNOW)) {
             return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
@@ -320,10 +248,6 @@ public class BiomeManager {
     private static float smoothStep(float t) {
         return t * t * (3f - 2f * t);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 6. EXISTING METHODS (with minor adjustments)
-    // ─────────────────────────────────────────────────────────────────────────
 
     public void setBaseSeed(long baseSeed) {
         this.baseSeed = baseSeed;
@@ -623,10 +547,6 @@ public class BiomeManager {
         return b;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 7. HELPER CLASSES
-    // ─────────────────────────────────────────────────────────────────────────
-
     public static class Island {
         public float centerX, centerY, radius;
         public long seed;
@@ -737,51 +657,35 @@ public class BiomeManager {
         public void setSpawnChances(Map<String, Double> c) { spawnChances = c; }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 8. ENHANCED BIOME CLASSIFIER
-    // ─────────────────────────────────────────────────────────────────────────
-
     private static class BiomeClassifier {
 
         /**
          * Enhanced biome classification with better thresholds for expansive biomes
          */
         public static BiomeType determineBiomeType(double temperature, double moisture, double altitude, long detailSeed, long siteDetail) {
-            // Adjust temperature based on altitude (gentler curve)
             double adjustedTemp = temperature - (altitude * 0.3f); // Was 0.4f
             adjustedTemp = Math.min(Math.max(0, adjustedTemp), 1);
 
             double t = adjustedTemp;
             double m = moisture;
-
-            // === Improved Biome Thresholds for Larger Regions ===
-
-            // Very Cold (expanded threshold)
             if (t < 0.2) { // Was 0.15
                 if (m < 0.35) return BiomeType.HAUNTED; // Expanded haunted range
                 return BiomeType.SNOW;
             }
-
-            // Cold (expanded threshold)
             if (t < 0.35) { // Was 0.3
                 if (m < 0.25 && altitude > 0.5) return BiomeType.HAUNTED;
                 if (m > 0.6) return BiomeType.SNOW; // Cold and wet = snow
                 return BiomeType.PLAINS; // Cold temperate
             }
-
-            // Very Hot (expanded threshold)
             if (t > 0.7) { // Was 0.75
                 if (m > 0.6) return BiomeType.RAIN_FOREST;
                 if (m < 0.35) return BiomeType.DESERT; // Expanded desert range
                 return BiomeType.PLAINS;
             }
-
-            // Temperate zones (main biome variety)
             if (m > 0.65) { // Wet temperate
                 if (t > 0.55) return BiomeType.RAIN_FOREST;
                 return BiomeType.FOREST;
             } else if (m > 0.35) { // Moderate moisture
-                // Use noise for special biome placement
                 double detailNoise = OpenSimplex2.noise2(siteDetail ^ detailSeed, t * 8, m * 8);
 
                 if (detailNoise > 0.6 && altitude < 0.5 && t > 0.45) {
@@ -790,8 +694,6 @@ public class BiomeManager {
                 if (detailNoise < -0.5 && t < 0.45) {
                     return BiomeType.HAUNTED; // Haunted forests in cooler areas
                 }
-
-                // Default to forest with some plains
                 if (detailNoise > 0.3 || detailNoise < -0.3) {
                     return BiomeType.FOREST;
                 }

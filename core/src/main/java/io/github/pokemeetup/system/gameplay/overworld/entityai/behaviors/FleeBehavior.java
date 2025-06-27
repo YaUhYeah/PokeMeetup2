@@ -7,8 +7,6 @@ import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
-
-// Flee Behavior
 public class FleeBehavior implements PokemonBehavior {
     private static final float FLEE_SPEED_MULTIPLIER = 0.5f; // Faster movement
     private static final int MAX_FLEE_STEPS = 32;
@@ -73,7 +71,6 @@ public class FleeBehavior implements PokemonBehavior {
             fleeStepsRemaining--;
             ai.setCurrentState(PokemonAI.AIState.FLEEING);
         } else {
-            // Try alternative directions
             tryAlternativeFleeDirection(world);
         }
 
@@ -115,8 +112,6 @@ public class FleeBehavior implements PokemonBehavior {
                 return;
             }
         }
-
-        // No valid escape route
         fleeStepsRemaining = 0;
     }
 

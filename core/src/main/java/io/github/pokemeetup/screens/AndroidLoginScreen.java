@@ -23,8 +23,6 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class AndroidLoginScreen extends LoginScreen {
-
-    // Layout constants
     private static final float MIN_BUTTON_HEIGHT = 48f;
     private static final float OPTIMAL_BUTTON_HEIGHT = 56f;
     private static final float PADDING_SMALL = 12f;
@@ -33,8 +31,6 @@ public class AndroidLoginScreen extends LoginScreen {
     static final float INPUT_FIELD_HEIGHT = 56f;
     private static final float SERVER_ICON_SIZE = 40f;
     private static final float SERVER_ENTRY_MIN_HEIGHT = 64f;
-
-    // Dynamic layout properties
     private float currentFontScale;
     private float screenDensity;
     private boolean isSmallScreen;
@@ -56,17 +52,11 @@ public class AndroidLoginScreen extends LoginScreen {
         float width = Gdx.graphics.getWidth();
         float height = Gdx.graphics.getHeight();
         screenDensity = Gdx.graphics.getDensity();
-
-        // Calculate screen size in DP (density-independent pixels)
         float widthDp = width / screenDensity;
         float heightDp = height / screenDensity;
-
-        // Determine device type and orientation
         isLandscape = width > height;
         isSmallScreen = Math.min(widthDp, heightDp) < 360;
         isTablet = Math.min(widthDp, heightDp) >= 600;
-
-        // Calculate appropriate font scale
         float baseScale = Math.min(widthDp / 360f, heightDp / 640f);
         currentFontScale = MathUtils.clamp(baseScale * 1.2f, 0.8f, 1.6f);
 
@@ -76,15 +66,9 @@ public class AndroidLoginScreen extends LoginScreen {
 
     private void setupAdaptiveUI() {
         stage.clear();
-
-        // Background setup
         setupBackground();
-
-        // Main layout container
         mobileLayout = new Table();
         mobileLayout.setFillParent(true);
-
-        // Choose layout based on screen properties
         if (isLandscape && !isSmallScreen) {
             setupLandscapeLayout();
         } else {
@@ -92,18 +76,13 @@ public class AndroidLoginScreen extends LoginScreen {
         }
 
         stage.addActor(mobileLayout);
-
-        // Back button overlay
         createBackButton();
     }
 
     private void setupBackground() {
-        // Gradient background
         Image darkBg = new Image(skin.newDrawable("white", new Color(0.05f, 0.05f, 0.08f, 1f)));
         darkBg.setFillParent(true);
         stage.addActor(darkBg);
-
-        // Optional ethereal overlay
         if (TextureManager.ui != null && TextureManager.ui.findRegion("ethereal") != null) {
             Image ethereal = new Image(TextureManager.ui.findRegion("ethereal"));
             ethereal.setFillParent(true);
@@ -116,27 +95,19 @@ public class AndroidLoginScreen extends LoginScreen {
     private void setupPortraitLayout() {
         float padding = isSmallScreen ? PADDING_SMALL : PADDING_MEDIUM;
         mobileLayout.pad(padding);
-
-        // Dynamic container that adjusts based on content
         dynamicContainer = new Container<>();
         Table content = new Table();
-
-        // Title section
         titleLabel = new Label("PokéMeetup", skin);
         float titleScale = currentFontScale * (isSmallScreen ? 1.8f : 2.2f);
         titleLabel.setFontScale(titleScale);
         titleLabel.setAlignment(Align.center);
 
         content.add(titleLabel).padTop(padding * 2).padBottom(padding * 2).row();
-
-        // Main content area with scroll if needed
         Table mainContent = new Table();
 
         if (isSmallScreen) {
-            // Compact layout for small screens
             setupCompactPortraitContent(mainContent);
         } else {
-            // Standard portrait layout
             setupStandardPortraitContent(mainContent);
         }
 
@@ -146,8 +117,6 @@ public class AndroidLoginScreen extends LoginScreen {
         contentScroll.setOverscroll(false, true);
 
         content.add(contentScroll).expand().fill().row();
-
-        // Status section at bottom
         Table statusSection = createStatusSection();
         content.add(statusSection).fillX().padTop(padding);
 
@@ -159,21 +128,13 @@ public class AndroidLoginScreen extends LoginScreen {
     private void setupLandscapeLayout() {
         float padding = isTablet ? PADDING_LARGE : PADDING_MEDIUM;
         mobileLayout.pad(padding);
-
-        // Title at top
         titleLabel = new Label("PokéMeetup", skin);
         titleLabel.setFontScale(currentFontScale * 2.5f);
         titleLabel.setAlignment(Align.center);
         mobileLayout.add(titleLabel).colspan(2).padBottom(padding * 2).row();
-
-        // Two-column layout
         Table leftColumn = new Table();
         Table rightColumn = new Table();
-
-        // Left: Server selection
         setupServerSection(leftColumn, true);
-
-        // Right: Login form
         setupLoginSection(rightColumn, true);
 
         float columnRatio = isTablet ? 0.4f : 0.45f;
@@ -182,16 +143,12 @@ public class AndroidLoginScreen extends LoginScreen {
         mobileLayout.add(rightColumn).width(Value.percentWidth(1f - columnRatio, mobileLayout))
             .expandY().fillY();
         mobileLayout.row();
-
-        // Status bar at bottom
         Table statusSection = createStatusSection();
         mobileLayout.add(statusSection).colspan(2).fillX().padTop(padding);
     }
 
     private void setupCompactPortraitContent(Table content) {
         float padding = PADDING_SMALL;
-
-        // Tabbed interface for compact screens
         Table tabs = new Table();
         TextButton serverTab = new TextButton("Servers", skin);
         TextButton loginTab = new TextButton("Login", skin);
@@ -207,8 +164,6 @@ public class AndroidLoginScreen extends LoginScreen {
         tabs.add(loginTab).expandX().fillX().height(48f);
 
         content.add(tabs).fillX().padBottom(padding).row();
-
-        // Content that switches based on tab
         Stack contentStack = new Stack();
 
         Table serverContent = new Table();
@@ -219,8 +174,6 @@ public class AndroidLoginScreen extends LoginScreen {
 
         contentStack.add(serverContent);
         contentStack.add(loginContent);
-
-        // Tab switching logic
         serverTab.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
@@ -245,17 +198,11 @@ public class AndroidLoginScreen extends LoginScreen {
 
     private void setupStandardPortraitContent(Table content) {
         float padding = PADDING_MEDIUM;
-
-        // Server section
         Table serverSection = new Table();
         setupServerSection(serverSection, false);
         content.add(serverSection).fillX().padBottom(padding * 2).row();
-
-        // Divider
         Image divider = new Image(skin.newDrawable("white", new Color(0.2f, 0.2f, 0.2f, 0.5f)));
         content.add(divider).fillX().height(1f).padBottom(padding * 2).row();
-
-        // Login section
         Table loginSection = new Table();
         setupLoginSection(loginSection, false);
         content.add(loginSection).fillX();
@@ -263,8 +210,6 @@ public class AndroidLoginScreen extends LoginScreen {
 
     private void setupServerSection(Table container, boolean expanded) {
         float padding = isSmallScreen ? PADDING_SMALL : PADDING_MEDIUM;
-
-        // Header
         Table header = new Table();
         Label serverLabel = new Label("Select Server", skin);
         serverLabel.setFontScale(currentFontScale * 1.2f);
@@ -282,8 +227,6 @@ public class AndroidLoginScreen extends LoginScreen {
         header.add(addBtn).size(40f * currentFontScale);
 
         container.add(header).fillX().padBottom(padding).row();
-
-        // Server list
         Table serverListContent = new Table();
         serverListContent.top();
 
@@ -299,8 +242,6 @@ public class AndroidLoginScreen extends LoginScreen {
                 serverListContent.add(entry).fillX().expandX().padBottom(padding / 2).row();
             }
         }
-
-        // Scroll pane with appropriate height
         serverScrollPane = new ScrollPane(serverListContent, skin);
         serverScrollPane.setFadeScrollBars(true);
         serverScrollPane.setScrollingDisabled(true, false);
@@ -318,8 +259,6 @@ public class AndroidLoginScreen extends LoginScreen {
         entry.setTouchable(Touchable.enabled);
 
         float padding = isSmallScreen ? PADDING_SMALL : PADDING_MEDIUM;
-
-        // Dynamic background
         Color normalColor = new Color(0.12f, 0.12f, 0.15f, 0.8f);
         Color selectedColor = new Color(0.15f, 0.3f, 0.6f, 0.9f);
 
@@ -328,12 +267,8 @@ public class AndroidLoginScreen extends LoginScreen {
 
         entry.setBackground(selectedServer == server ? selectedBg : normalBg);
         entry.pad(padding);
-
-        // Icon
         Image icon = new Image(skin.newDrawable("white", new Color(0.3f, 0.4f, 0.6f, 1f)));
         float iconSize = SERVER_ICON_SIZE * currentFontScale;
-
-        // Server info
         Table infoTable = new Table();
         Label nameLabel = new Label(server.getServerName(), skin);
         nameLabel.setFontScale(currentFontScale);
@@ -348,8 +283,6 @@ public class AndroidLoginScreen extends LoginScreen {
 
         entry.add(icon).size(iconSize).padRight(padding);
         entry.add(infoTable).expand().fill();
-
-        // Actions for selected
         if (selectedServer == server && !isSmallScreen) {
             Table actions = new Table();
             TextButton editBtn = new TextButton("✎", skin);
@@ -378,8 +311,6 @@ public class AndroidLoginScreen extends LoginScreen {
             actions.add(deleteBtn).size(btnSize);
             entry.add(actions).padLeft(padding);
         }
-
-        // Selection
         entry.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -393,14 +324,10 @@ public class AndroidLoginScreen extends LoginScreen {
 
     private void setupLoginSection(Table container, boolean expanded) {
         float padding = isSmallScreen ? PADDING_SMALL : PADDING_MEDIUM;
-
-        // Login header
         Label loginLabel = new Label("Login", skin);
         loginLabel.setFontScale(currentFontScale * 1.4f);
         loginLabel.setAlignment(Align.center);
         container.add(loginLabel).padBottom(padding * 1.5f).row();
-
-        // Username
         Label usernameLabel = new Label("Username", skin);
         usernameLabel.setFontScale(currentFontScale);
         container.add(usernameLabel).left().padBottom(padding / 2).row();
@@ -409,8 +336,6 @@ public class AndroidLoginScreen extends LoginScreen {
         usernameField.setMessageText("Enter username");
         container.add(usernameField).fillX().height(INPUT_FIELD_HEIGHT * currentFontScale)
             .padBottom(padding * 1.5f).row();
-
-        // Password
         Label passwordLabel = new Label("Password", skin);
         passwordLabel.setFontScale(currentFontScale);
         container.add(passwordLabel).left().padBottom(padding / 2).row();
@@ -421,13 +346,9 @@ public class AndroidLoginScreen extends LoginScreen {
         passwordField.setPasswordCharacter('•');
         container.add(passwordField).fillX().height(INPUT_FIELD_HEIGHT * currentFontScale)
             .padBottom(padding).row();
-
-        // Remember me
         rememberMeBox = new CheckBox(" Remember Me", skin);
         rememberMeBox.getLabel().setFontScale(currentFontScale);
         container.add(rememberMeBox).left().padBottom(padding * 2).row();
-
-        // Buttons
         Table buttonTable = new Table();
 
         loginButton = new TextButton("Login", skin);
@@ -530,16 +451,11 @@ public class AndroidLoginScreen extends LoginScreen {
     @Override
     public void resize(int width, int height) {
         super.resize(width, height);
-
-        // Re-analyze screen properties
         analyzeScreenProperties();
-
-        // Rebuild UI if orientation changed
         boolean newLandscape = width > height;
         if (newLandscape != isLandscape) {
             setupAdaptiveUI();
         } else {
-            // Just update font scales
             updateAllFontScales(stage.getRoot());
         }
     }
@@ -568,12 +484,8 @@ public class AndroidLoginScreen extends LoginScreen {
     @Override
     public void show() {
         super.show();
-
-        // Smooth fade in
         stage.getRoot().setColor(1, 1, 1, 0);
         stage.getRoot().addAction(Actions.fadeIn(0.3f));
-
-        // Focus username field
         stage.setKeyboardFocus(usernameField);
     }
 }

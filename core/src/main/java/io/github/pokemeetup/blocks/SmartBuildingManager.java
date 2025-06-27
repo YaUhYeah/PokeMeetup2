@@ -21,7 +21,6 @@ public class SmartBuildingManager {
     }
 
     private void initializeSmartBlocks() {
-        // Initialize roof configuration
         SmartBlockConfig roofConfig = new SmartBlockConfig("roof");
         roofConfig.addVariant(new ConnectionPattern(false, true, true, true),
             PlaceableBlock.BlockType.ROOF_CORNER);
@@ -30,8 +29,6 @@ public class SmartBuildingManager {
         roofConfig.addVariant(new ConnectionPattern(true, false, true, true),
             PlaceableBlock.BlockType.ROOF_INSIDE);
         smartBlocks.put("roof", roofConfig);
-
-        // Initialize wall configuration
         SmartBlockConfig wallConfig = new SmartBlockConfig("wall");
         wallConfig.addVariant(new ConnectionPattern(true, true, false, false),
             PlaceableBlock.BlockType.WOODEN_PLANKS);
