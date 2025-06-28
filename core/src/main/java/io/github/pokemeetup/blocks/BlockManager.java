@@ -21,58 +21,6 @@ public class BlockManager {
         GameLogger.info("Initialized BlockManager");
     }
 
-    public boolean placeBlockFromPlayer(PlaceableBlock.BlockType type) {
-        if (type == null || GameContext.get().getPlayer() == null || GameContext.get().getWorld() == null) {
-            GameLogger.error("Invalid parameters for player block placement");
-            return false;
-        }
-
-        Vector2 targetPos = calculateTargetPosition(GameContext.get().getPlayer());
-        int targetX = (int) targetPos.x;
-        int targetY = (int) targetPos.y;
-
-        GameLogger.info("Checking placement - Player(" + GameContext.get().getPlayer().getTileX() + "," + GameContext.get().getPlayer().getTileY() +
-            ") Target(" + targetX + "," + targetY + ") Dir:" + GameContext.get().getPlayer().getDirection());
-
-        if (!isValidPlacement(targetX, targetY, GameContext.get().getWorld())) {
-            return false;
-        }
-
-        if (GameContext.get().getGameClient() != null && GameContext.get().isMultiplayer()) {
-            NetworkProtocol.BlockPlacement placement = new NetworkProtocol.BlockPlacement();
-            placement.username = GameContext.get().getPlayer().getUsername();
-            placement.blockTypeId = type.id;
-            placement.tileX = targetX;
-            placement.tileY = targetY;
-            placement.action = NetworkProtocol.BlockAction.PLACE;
-            GameContext.get().getGameClient().sendBlockPlacement(placement);
-        }
-        return placeBlock(type, targetX, targetY);
-    }
-
-    private Vector2 calculateTargetPosition(Player player) {
-        int targetX = player.getTileX();
-        int targetY = player.getTileY();
-
-        switch (player.getDirection()) {
-            case "up":
-                targetY++;
-                break;
-            case "down":
-                targetY--;
-                break;
-            case "left":
-                targetX--;
-                break;
-            case "right":
-                targetX++;
-                break;
-        }
-
-        return new Vector2(targetX, targetY);
-    }
-
-
     public PlaceableBlock getBlockAt(int worldX, int worldY) {
         Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(worldX, worldY);
         if (chunk == null) return null;
@@ -80,14 +28,6 @@ public class BlockManager {
         return chunk.getBlock(blockPos);
     }
 
-    private boolean isValidPlacement(int tileX, int tileY, World world) {
-        if (!world.isPassable(tileX, tileY)) {
-            GameLogger.info("Cannot place at non-passable location");
-            return false;
-        }
-
-        return true;
-    }
 
 
     public boolean placeBlock(PlaceableBlock.BlockType type, int tileX, int tileY) {

@@ -54,9 +54,7 @@ public class Lwjgl3Launcher {
         Lwjgl3ApplicationConfiguration configuration = new Lwjgl3ApplicationConfiguration();
         configuration.setTitle("Capsule Story");
         configuration.useVsync(true);
-
-        int refreshRate = Lwjgl3ApplicationConfiguration.getDisplayMode().refreshRate;
-        configuration.setForegroundFPS(refreshRate > 0 ? refreshRate + 1 : 60);
+        configuration.setForegroundFPS(60);
 
         configuration.setWindowedMode(800, 600);
         configuration.setWindowIcon("libgdx128.png", "libgdx64.png", "libgdx32.png", "libgdx16.png");

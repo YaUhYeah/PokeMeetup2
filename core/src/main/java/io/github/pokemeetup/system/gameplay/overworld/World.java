@@ -52,8 +52,8 @@ public class World {
     public static final int CHUNK_SIZE = 16;
     public static final float INTERACTION_RANGE = TILE_SIZE * 1.6f;
     private static final float COLOR_TRANSITION_SPEED = 2.0f;
-    private static final int MAX_CHUNK_LOAD_RADIUS = 10;  // or 10, adjust as needed
-    private static final int MAX_LOADED_CHUNKS = 200;         // or whatever limit you want
+    private static final int MAX_CHUNK_LOAD_RADIUS = 10;
+    private static final int MAX_LOADED_CHUNKS = 150;
     private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000;
     private static final int MAX_CHUNKS_INTEGRATED_PER_FRAME = 16;
     private static final int MAX_CHUNK_RETRY = 3;
@@ -354,36 +354,11 @@ public class World {
         return order;
     }
 
-    public void savePlayerData(String username, PlayerData data) {
-        if (worldData != null) {
-            boolean isMultiplayer = false;
-            if (GameContext.get().getGameClient() != null) {
-                isMultiplayer = GameContext.get().isMultiplayer();
-            }
-
-            if (isMultiplayer) {
-                UUID playerUUID = UUID.nameUUIDFromBytes(username.getBytes());
-                GameContext.get().getGameClient().savePlayerData(playerUUID, data);
-            } else {
-                worldData.savePlayerData(username, data, false);
-            }
-        }
-    }
 
     private boolean isMultiplayerOperation() {
         return GameContext.get().isMultiplayer();
     }
 
-    public BiomeTransitionResult getBiomeTransitionAt(float worldX, float worldY) {
-        int chunkX = Math.floorDiv((int) worldX, Chunk.CHUNK_SIZE * World.TILE_SIZE);
-        int chunkY = Math.floorDiv((int) worldY, Chunk.CHUNK_SIZE * World.TILE_SIZE);
-        Vector2 chunkPos = new Vector2(chunkX, chunkY);
-        BiomeTransitionResult stored = biomeTransitions.get(chunkPos);
-        if (stored != null) {
-            return stored;
-        }
-        return GameContext.get().getBiomeManager().getBiomeAt(worldX, worldY);
-    }
 
     public void processChunkData(NetworkProtocol.ChunkData chunkData) {
         if (chunkData == null) {
@@ -452,196 +427,6 @@ public class World {
             GameLogger.error("Attempted to store invalid biome transition for chunk: " + chunkPos);
         }
     }
-
-    private int getDefaultTileForBiome(Biome biome) {
-        if (biome == null) return TileType.GRASS;
-
-        List<Integer> allowedTiles = biome.getAllowedTileTypes();
-        if (allowedTiles != null && !allowedTiles.isEmpty()) {
-            return allowedTiles.get(0);
-        }
-        switch (biome.getType()) {
-            case SNOW:
-                return TileType.SNOW;
-            case DESERT:
-                return TileType.DESERT_SAND;
-            case BEACH:
-                return TileType.BEACH_SAND;
-            case FOREST:
-                return TileType.FOREST_GRASS;
-            case HAUNTED:
-                return TileType.HAUNTED_GRASS;
-            case RAIN_FOREST:
-                return TileType.RAIN_FOREST_GRASS;
-            case RUINS:
-                return TileType.RUINS_GRASS;
-            case OCEAN:
-                return TileType.WATER;
-            default:
-                return TileType.GRASS;
-        }
-    }
-
-    /**
-     * Generates fallback tile data for a chunk when server data is invalid
-     */
-    private void generateFallbackTileData(Chunk chunk, Biome biome) {
-        int defaultTile = getDefaultTileForBiome(biome);
-        int[][] tiles = new int[Chunk.CHUNK_SIZE][Chunk.CHUNK_SIZE];
-
-        for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
-            for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
-                tiles[x][y] = defaultTile;
-            }
-        }
-
-        chunk.setTileData(tiles);
-    }
-
-    private void mergeChunkData(Chunk source, Chunk target) {
-        if (source == null || target == null) {
-            GameLogger.error("Cannot merge chunks: null chunk provided");
-            return;
-        }
-
-        try {
-            Vector2 chunkPos = new Vector2(target.getChunkX(), target.getChunkY());
-            if (source.getTileData() != null && target.getTileData() == null) {
-                GameLogger.error("Target chunk missing tile data, using source data");
-                target.setTileData(cloneTileData(source.getTileData()));
-            }
-            int[][] sourceBands = getElevationBands(source);
-            if (sourceBands != null) {
-                GameLogger.info("Preserved elevation bands for chunk " + chunkPos);
-            }
-            if (source.getAutotileRegions() != null && target.getAutotileRegions() == null) {
-                target.setAutotileRegions(source.getAutotileRegions());
-            }
-            if (source.getSeatileRegions() != null && target.getSeatileRegions() == null) {
-                target.setSeatileRegions(source.getSeatileRegions());
-            }
-            mergeBlockData(source, target);
-            if (target.getBiome() == null && source.getBiome() != null) {
-                target.setBiome(source.getBiome());
-                GameLogger.error("Target chunk missing biome, using source biome: " + source.getBiome().getType());
-            }
-            target.setDirty(true);
-
-            GameLogger.info("Successfully merged chunk data for " + chunkPos);
-        } catch (Exception e) {
-            GameLogger.error("Error merging chunk data: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Retrieves elevation bands from a chunk, handling potential reflection if not directly accessible
-     */
-    private int[][] getElevationBands(Chunk chunk) {
-        try {
-            Field elevationField = Chunk.class.getDeclaredField("elevationBands");
-            elevationField.setAccessible(true);
-            return (int[][]) elevationField.get(chunk);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Creates a deep copy of tile data to prevent cross-reference issues
-     */
-    private int[][] cloneTileData(int[][] source) {
-        if (source == null) return null;
-
-        int[][] clone = new int[source.length][];
-        for (int i = 0; i < source.length; i++) {
-            if (source[i] != null) {
-                clone[i] = source[i].clone();
-            }
-        }
-        return clone;
-    }
-
-    /**
-     * Creates a deep copy of elevation bands
-     */
-    private int[][] cloneElevationBands(int[][] source) {
-        return cloneTileData(source); // Reuse the same cloning logic
-    }
-
-    /**
-     * Merges block data between chunks, preserving client-side blocks that aren't in server data
-     */
-    private void mergeBlockData(Chunk source, Chunk target) {
-        Map<Vector2, PlaceableBlock> sourceBlocks = source.getBlocks();
-        Map<Vector2, PlaceableBlock> targetBlocks = target.getBlocks();
-
-        if (sourceBlocks == null || sourceBlocks.isEmpty()) {
-            return; // No source blocks to merge
-        }
-
-        if (targetBlocks == null) {
-            targetBlocks = new HashMap<>();
-            target.setBlocks(targetBlocks);
-        }
-        for (Map.Entry<Vector2, PlaceableBlock> entry : sourceBlocks.entrySet()) {
-            Vector2 blockPos = entry.getKey();
-            PlaceableBlock sourceBlock = entry.getValue();
-            if (!targetBlocks.containsKey(blockPos)) {
-                PlaceableBlock clonedBlock = cloneBlock(sourceBlock);
-                if (clonedBlock != null) {
-                    targetBlocks.put(blockPos, clonedBlock);
-                }
-            } else {
-                PlaceableBlock targetBlock = targetBlocks.get(blockPos);
-                mergeBlockProperties(sourceBlock, targetBlock);
-            }
-        }
-    }
-
-    /**
-     * Creates a clone of a PlaceableBlock with all its properties
-     */
-    private PlaceableBlock cloneBlock(PlaceableBlock source) {
-        if (source == null) return null;
-
-        try {
-            PlaceableBlock clone = new PlaceableBlock(
-                source.getType(),
-                new Vector2(source.getPosition()),
-                source.getTexture(),
-                source.isFlipped()
-            );
-            if (source.getType() == PlaceableBlock.BlockType.CHEST && source.getChestData() != null) {
-                clone.setChestData(source.getChestData().copy());
-                clone.setChestOpen(source.isChestOpen());
-            }
-
-            return clone;
-        } catch (Exception e) {
-            GameLogger.error("Failed to clone block: " + e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Merges properties from a source block to a target block
-     */
-    private void mergeBlockProperties(PlaceableBlock source, PlaceableBlock target) {
-        if (source == null || target == null || source.getType() != target.getType()) {
-            return;
-        }
-        if (source.getType() == PlaceableBlock.BlockType.CHEST) {
-            if (target.getChestData() == null && source.getChestData() != null) {
-                target.setChestData(source.getChestData().copy());
-                target.setChestOpen(source.isChestOpen());
-            }
-        }
-        if (target.getTexture() == null && source.getTexture() != null) {
-            target.setTexture(source.getTexture());
-        }
-    }
-
     private void processBlockData(Chunk chunk, BlockSaveData.BlockData bd) {
         PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromId(bd.type);
         if (blockType != null) {
@@ -1667,7 +1452,7 @@ public class World {
                 batch.setColor(currentWorldColor);
             }
             waterEffectManager.render(batch);
-        } finally {      // IMPORTANT: Always restore the original color when done
+        } finally {
             batch.setColor(originalColor);
         }
     }

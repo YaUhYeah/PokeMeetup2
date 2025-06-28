@@ -17,7 +17,7 @@ public class PokemonCaptureAnimation extends Actor {
     private final CaptureListener listener;
     private final Vector2 startPos;
     private final Vector2 targetPos;
-    private final float captureChance; // Value between 0 and 1
+    private final float captureChance;
     private float stateTime;
     private boolean reachedTarget;
     private boolean wiggleStarted;
@@ -26,9 +26,6 @@ public class PokemonCaptureAnimation extends Actor {
     private final float enemyOrigX, enemyOrigY;
     private final float ARC_HEIGHT = 50f;
 
-    /**
-     * Updated constructor includes an enemy actor parameter.
-     */
     public PokemonCaptureAnimation(TextureAtlas capsuleThrowAtlas, Vector2 startPos, Vector2 targetPos,
                                    float throwDuration, float captureChance, CaptureListener listener,
                                    Actor enemyPokemonActor) {

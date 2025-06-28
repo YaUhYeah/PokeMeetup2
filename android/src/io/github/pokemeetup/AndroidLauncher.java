@@ -94,32 +94,6 @@ public class AndroidLauncher extends AndroidApplication {
         }
     }
 
-    private void verifyAssetFile(String path) throws IOException {
-        String[] variants = {
-            path,
-            path.toLowerCase(),
-            "assets/" + path,
-            path.replace("Data/", "Data/")
-        };
-
-        boolean found = false;
-        for (String variant : variants) {
-            try (InputStream is = getAssets().open(variant)) {
-                byte[] buffer = new byte[1024];
-                int bytesRead = is.read(buffer);
-                if (bytesRead > 0) {
-                    Log.d("AndroidLauncher", "Successfully verified file: " + variant);
-                    found = true;
-                    break;
-                }
-            } catch (IOException ignored) {
-            }
-        }
-
-        if (!found) {
-            throw new IOException("Could not find or read file: " + path);
-        }
-    }
 
     private void configureAndroidSettings(AndroidApplicationConfiguration config) {
         config.useGL30 = false;

@@ -31,8 +31,7 @@ import static io.github.pokemeetup.screens.AndroidLoginScreen.INPUT_FIELD_HEIGHT
 public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private static final float MOBILE_PADDING = 16f;
     private static final float MOBILE_FONT_SCALE = 1.3f;
-    private static final float WORLD_ENTRY_HEIGHT = 120f;
-    private static final float WORLD_THUMBNAIL_SIZE = 100f; // Much larger thumbnail
+    private static final float WORLD_THUMBNAIL_SIZE = 100f;
     private static final float BUTTON_HEIGHT = 56f;
     private static final float FAB_SIZE = 56f;
     private static final float MOBILE_SPACING = 12f;

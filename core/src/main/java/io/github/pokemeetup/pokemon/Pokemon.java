@@ -135,18 +135,6 @@ public class Pokemon {
             getBaseStat(name, "speed"));
     }
 
-    public static Pokemon createServerPokemon(String name, int level) {
-        Pokemon p = new Pokemon(true);
-        p.name = name;
-        p.level = level;
-        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
-        if (template != null) {
-            p.growthRate = template.growthRate != null ? template.growthRate : "Medium Fast";
-        }
-        p.calculateStats();
-        p.currentHp = p.stats.getHp();
-        return p;
-    }
 
     /**
      * Helper method to look up a given stat for a Pokémon by name.
