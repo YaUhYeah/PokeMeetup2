@@ -653,7 +653,7 @@ public class WorldSelectionScreen implements Screen {
         dialog.show(stage);
     }
 
-    private void deleteSelectedWorld() {
+    void deleteSelectedWorld() {
         try {
             GameContext.get().getWorldManager().deleteWorld(selectedWorld.getName());
             selectedWorld = null;
@@ -667,7 +667,7 @@ public class WorldSelectionScreen implements Screen {
         }
     }
 
-    private void createNewWorld(String name, long seed, String username, boolean cheatsAllowed, String characterType) {
+    void createNewWorld(String name, long seed, String username, boolean cheatsAllowed, String characterType) {
         try {
             GameLogger.info("Creating new world '" + name + "' with commands " +
                 (cheatsAllowed ? "enabled" : "disabled"));

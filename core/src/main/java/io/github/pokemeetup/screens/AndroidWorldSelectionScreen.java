@@ -3,37 +3,32 @@ package io.github.pokemeetup.screens;
 import com.badlogic.gdx.*;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.*;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
-import com.badlogic.gdx.scenes.scene2d.ui.Stack;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Scaling;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.context.GameContext;
+import io.github.pokemeetup.screens.otherui.CharacterPreviewDialog;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.utils.GameLogger;
-import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
-
-import static io.github.pokemeetup.screens.AndroidLoginScreen.INPUT_FIELD_HEIGHT;
 
 public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private static final float MOBILE_PADDING = 16f;
     private static final float MOBILE_FONT_SCALE = 1.3f;
     private static final float WORLD_THUMBNAIL_SIZE = 100f;
     private static final float BUTTON_HEIGHT = 56f;
-    private static final float FAB_SIZE = 56f;
+    private static final float FAB_SIZE = 64f; // Increased from 56f
     private static final float MOBILE_SPACING = 12f;
 
     private Table mobileLayout;
@@ -41,10 +36,13 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private Container<Table> detailPanel;
     private TextButton playFab;
     private TextButton createFab;
+    private TextButton deleteFab;
     private boolean isTablet;
     private Table bottomBar;
     private Dialog activeDialog;
     private String currentFilter = "All";
+    private Label emptyStateLabel;
+    private Table worldListContent;
 
     public AndroidWorldSelectionScreen(CreatureCaptureGame game) {
         super(game);
@@ -74,17 +72,21 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         mobileLayout = new Table();
         mobileLayout.setFillParent(true);
         mobileLayout.setBackground(createBackground(new Color(0.08f, 0.08f, 0.08f, 1f)));
+
         createMobileTopBar();
+
         if (isTablet) {
             createTabletLayout();
         } else {
             createPhoneLayout();
         }
-        createBottomActionBar();
 
         stage.addActor(mobileLayout);
+
+        // Create FABs after main layout
         createFloatingActionButtons();
 
+        // Initial refresh
         refreshWorldList();
     }
 
@@ -92,6 +94,7 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         Table topBar = new Table();
         topBar.setBackground(createBackground(new Color(0.12f, 0.12f, 0.12f, 1f)));
         topBar.pad(MOBILE_PADDING);
+
         TextButton backBtn = new TextButton("◄", skin);
         backBtn.getLabel().setFontScale(2f);
         backBtn.pad(12f);
@@ -102,6 +105,7 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                 dispose();
             }
         });
+
         Label titleLabel = new Label("My Worlds", skin);
         titleLabel.setFontScale(MOBILE_FONT_SCALE * 1.4f);
 
@@ -114,7 +118,8 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private void createPhoneLayout() {
         Table contentArea = new Table();
         contentArea.pad(MOBILE_PADDING);
-        contentArea.padBottom(80f); // Space for FAB
+        contentArea.padBottom(100f); // Extra space for FABs
+
         createMobileTabs(contentArea);
         createMobileWorldList(contentArea, 1.0f);
 
@@ -124,10 +129,12 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private void createTabletLayout() {
         Table contentArea = new Table();
         contentArea.pad(MOBILE_PADDING);
-        contentArea.padBottom(80f);
+        contentArea.padBottom(100f);
+
         Table leftColumn = new Table();
         createMobileTabs(leftColumn);
         createMobileWorldList(leftColumn, 0.5f);
+
         detailPanel = new Container<>();
         Table detailContent = createDetailPanel();
         detailPanel.setActor(detailContent);
@@ -173,9 +180,10 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     }
 
     private void createMobileWorldList(Table container, float widthPercent) {
-        Table worldListContent = new Table();
+        worldListContent = new Table();
         worldListContent.top();
         worldListContent.defaults().padBottom(MOBILE_SPACING);
+
         ScrollPane.ScrollPaneStyle scrollStyle = new ScrollPane.ScrollPaneStyle();
         scrollStyle.background = createBackground(new Color(0.1f, 0.1f, 0.1f, 0.3f));
 
@@ -229,10 +237,12 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
 
             thumbnailFrame.add(thumbnail).size(220f).pad(8f);
             details.add(thumbnailFrame).padBottom(MOBILE_SPACING * 2).row();
+
             Label nameLabel = new Label(selectedWorld.getName(), skin);
             nameLabel.setFontScale(MOBILE_FONT_SCALE * 1.5f);
             nameLabel.setAlignment(Align.center);
             details.add(nameLabel).padBottom(MOBILE_SPACING * 2).row();
+
             Table infoTable = new Table();
             infoTable.defaults().padBottom(MOBILE_SPACING);
 
@@ -264,40 +274,37 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         table.add(row).fillX().row();
     }
 
-    private void createBottomActionBar() {
-        bottomBar = new Table();
-        bottomBar.setBackground(createBackground(new Color(0.12f, 0.12f, 0.12f, 1f)));
-        bottomBar.pad(MOBILE_PADDING);
+    private void createFloatingActionButtons() {
+        // Remove existing FABs
+        if (playFab != null) playFab.remove();
+        if (createFab != null) createFab.remove();
+        if (deleteFab != null) deleteFab.remove();
 
-        TextButton deleteBtn = new TextButton("Delete World", skin);
-        deleteBtn.getLabel().setFontScale(MOBILE_FONT_SCALE);
-        deleteBtn.pad(12f, 24f, 12f, 24f);
-        deleteBtn.setColor(1f, 0.3f, 0.3f, 1f);
+        Table fabContainer = new Table();
+        fabContainer.setFillParent(true);
+        fabContainer.bottom().right().pad(MOBILE_PADDING * 2f);
 
-        deleteBtn.addListener(new ClickListener() {
+        // Create FAB - always visible
+        createFab = createFAB("+", new Color(0.2f, 0.4f, 0.8f, 1f), "Create World");
+        createFab.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                if (selectedWorld != null) {
-                    showDeleteConfirmDialog();
-                }
+                showCreateWorldDialog();
             }
         });
 
-        bottomBar.add(deleteBtn).expandX().fillX().height(BUTTON_HEIGHT);
-        bottomBar.setVisible(false);
-
-        mobileLayout.add(bottomBar).fillX().height(80f);
-    }
-
-    private void createFloatingActionButtons() {
-        if (playFab != null) playFab.remove();
-        if (createFab != null) createFab.remove();
-        Table fabContainer = new Table();
-        fabContainer.setFillParent(true);
-        fabContainer.bottom().right().pad(MOBILE_PADDING * 1.5f);
-
         if (selectedWorld != null) {
-            playFab = createFAB("▶", new Color(0.2f, 0.7f, 0.2f, 1f));
+            // Delete FAB
+            deleteFab = createFAB("🗑", new Color(0.8f, 0.2f, 0.2f, 1f), "Delete");
+            deleteFab.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    showDeleteConfirmDialog();
+                }
+            });
+
+            // Play FAB - larger and prominent
+            playFab = createFAB("▶", new Color(0.2f, 0.7f, 0.2f, 1f), "Play");
             playFab.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
@@ -309,85 +316,112 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                     }
                 }
             });
-            createFab = createFAB("+", new Color(0.2f, 0.4f, 0.8f, 1f));
-            createFab.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    showCreateWorldDialog();
-                }
-            });
 
+            // Layout: vertical stack
+            fabContainer.add(deleteFab).size(FAB_SIZE).padBottom(MOBILE_SPACING).row();
             fabContainer.add(createFab).size(FAB_SIZE).padBottom(MOBILE_SPACING).row();
-            fabContainer.add(playFab).size(FAB_SIZE + 12); // Larger play button
+            fabContainer.add(playFab).size(FAB_SIZE * 1.2f); // Larger play button
         } else {
-            createFab = createFAB("+", new Color(0.2f, 0.4f, 0.8f, 1f));
-            createFab.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    showCreateWorldDialog();
-                }
-            });
-
             fabContainer.add(createFab).size(FAB_SIZE);
         }
 
         stage.addActor(fabContainer);
     }
 
-    private TextButton createFAB(String text, Color color) {
+    private TextButton createFAB(String icon, Color color, String tooltip) {
         TextButton.TextButtonStyle fabStyle = new TextButton.TextButtonStyle();
         fabStyle.up = skin.newDrawable("default-round-large", color);
         fabStyle.down = skin.newDrawable("default-round-large", color.cpy().mul(0.8f));
+        fabStyle.over = skin.newDrawable("default-round-large", color.cpy().mul(1.1f));
         fabStyle.font = skin.getFont("default-font");
 
-        TextButton fab = new TextButton(text, fabStyle);
-        fab.getLabel().setFontScale(2f);
+        TextButton fab = new TextButton(icon, fabStyle);
+        fab.getLabel().setFontScale(2.2f);
         fab.setColor(1, 1, 1, 0.95f);
+
+        // Add shadow effect
+        fab.padBottom(4f);
+
+        // Add tooltip on long press (simulated with hover for now)
+        fab.addListener(new InputListener() {
+            @Override
+            public void enter(InputEvent event, float x, float y, int pointer, Actor fromActor) {
+                fab.addAction(Actions.scaleTo(1.1f, 1.1f, 0.1f, Interpolation.fastSlow));
+            }
+
+            @Override
+            public void exit(InputEvent event, float x, float y, int pointer, Actor toActor) {
+                fab.addAction(Actions.scaleTo(1f, 1f, 0.1f, Interpolation.slowFast));
+            }
+        });
 
         return fab;
     }
 
     public void refreshWorldList() {
-        if (worldScrollPane == null) return;
+        if (worldListContent == null) return;
 
-        Table content = (Table) worldScrollPane.getWidget();
-        content.clear();
+        worldListContent.clear();
 
         List<WorldData> worldList = new ArrayList<>(GameContext.get().getWorldManager().getWorlds().values());
         worldList.removeIf(world -> !shouldShowWorld(world));
         worldList.sort(Comparator.comparingLong(WorldData::getLastPlayed).reversed());
 
         if (worldList.isEmpty()) {
-            Label emptyLabel = new Label("No worlds found.\nTap + to create one!", skin);
-            emptyLabel.setFontScale(MOBILE_FONT_SCALE * 1.1f);
-            emptyLabel.setAlignment(Align.center);
-            emptyLabel.setWrap(true);
-            emptyLabel.setColor(0.5f, 0.5f, 0.5f, 1f);
-            content.add(emptyLabel).expand().center().pad(60f);
+            // Create proper empty state
+            Table emptyStateContainer = new Table();
+            emptyStateContainer.setFillParent(true);
+
+            if (placeholderRegion != null) {
+                Image icon = new Image(placeholderRegion);
+                icon.setColor(0.3f, 0.3f, 0.3f, 1f);
+                emptyStateContainer.add(icon).size(120f).padBottom(20f).row();
+            }
+
+            emptyStateLabel = new Label("No worlds found", skin);
+            emptyStateLabel.setFontScale(MOBILE_FONT_SCALE * 1.2f);
+            emptyStateLabel.setAlignment(Align.center);
+            emptyStateLabel.setColor(0.6f, 0.6f, 0.6f, 1f);
+            emptyStateContainer.add(emptyStateLabel).row();
+
+            Label instructionLabel = new Label("Tap + to create one!", skin);
+            instructionLabel.setFontScale(MOBILE_FONT_SCALE);
+            instructionLabel.setAlignment(Align.center);
+            instructionLabel.setColor(0.5f, 0.5f, 0.5f, 1f);
+            emptyStateContainer.add(instructionLabel).padTop(8f);
+
+            worldListContent.add(emptyStateContainer).expand().center();
         } else {
             for (WorldData world : worldList) {
                 Table entry = createMobileWorldEntry(world);
-                content.add(entry).fillX().expandX();
-                content.row();
+                worldListContent.add(entry).fillX().expandX();
+                worldListContent.row();
             }
         }
-        createFloatingActionButtons();
-        if (bottomBar != null) {
-            bottomBar.setVisible(selectedWorld != null);
-        }
 
+        // Update FABs
+        createFloatingActionButtons();
+
+        // Update detail panel for tablets
         if (isTablet && detailPanel != null) {
             detailPanel.setActor(createDetailPanel());
         }
+
+        // Force layout update
+        worldListContent.invalidateHierarchy();
+        worldScrollPane.invalidate();
+        stage.act(0);
     }
 
     private Table createMobileWorldEntry(WorldData world) {
         Table entry = new Table();
         entry.setTouchable(Touchable.enabled);
         entry.pad(MOBILE_SPACING);
+
         Drawable normalBg = createRoundedBackground(new Color(0.15f, 0.15f, 0.15f, 0.8f));
         Drawable selectedBg = createRoundedBackground(new Color(0.2f, 0.4f, 0.7f, 0.9f));
         entry.setBackground(selectedWorld == world ? selectedBg : normalBg);
+
         Table thumbnailFrame = new Table();
         thumbnailFrame.setBackground(createBackground(new Color(0.05f, 0.05f, 0.05f, 1f)));
 
@@ -401,12 +435,15 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         thumbnail.setScaling(Scaling.fit);
 
         thumbnailFrame.add(thumbnail).size(WORLD_THUMBNAIL_SIZE - 8).pad(4f);
+
         Table infoTable = new Table();
         infoTable.left();
+
         Label nameLabel = new Label(world.getName(), skin);
         nameLabel.setFontScale(MOBILE_FONT_SCALE * 1.2f);
         nameLabel.setEllipsis(true);
         infoTable.add(nameLabel).left().colspan(3).padBottom(6f).row();
+
         Label lastPlayedLabel = new Label(formatRelativeDate(world.getLastPlayed()), skin);
         lastPlayedLabel.setFontScale(MOBILE_FONT_SCALE * 0.9f);
         lastPlayedLabel.setColor(0.6f, 0.6f, 0.6f, 1f);
@@ -419,34 +456,29 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         playTimeLabel.setFontScale(MOBILE_FONT_SCALE * 0.9f);
         playTimeLabel.setColor(0.6f, 0.6f, 0.6f, 1f);
 
-        Label dot2 = new Label(" • ", skin);
-        dot2.setFontScale(MOBILE_FONT_SCALE * 0.9f);
-        dot2.setColor(0.4f, 0.4f, 0.4f, 1f);
-
-        Label seedLabel = new Label("Seed: " + getSeedFromWorld(world), skin);
-        seedLabel.setFontScale(MOBILE_FONT_SCALE * 0.9f);
-        seedLabel.setColor(0.6f, 0.6f, 0.6f, 1f);
         Table statsRow = new Table();
         statsRow.add(lastPlayedLabel);
         statsRow.add(dot1);
         statsRow.add(playTimeLabel);
-        statsRow.add(dot2);
-        statsRow.add(seedLabel);
 
         infoTable.add(statsRow).left().row();
+
         if (world.commandsAllowed()) {
             Label commandsLabel = new Label("⚡ Commands Enabled", skin);
             commandsLabel.setFontScale(MOBILE_FONT_SCALE * 0.85f);
             commandsLabel.setColor(0.7f, 0.7f, 0.2f, 1f);
             infoTable.add(commandsLabel).left().padTop(4f);
         }
+
         entry.add(thumbnailFrame).size(WORLD_THUMBNAIL_SIZE).padRight(MOBILE_SPACING);
         entry.add(infoTable).expand().fill();
+
         entry.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 selectWorld(world);
                 refreshWorldList();
+
                 entry.addAction(Actions.sequence(
                     Actions.scaleTo(0.95f, 0.95f, 0.05f, Interpolation.fastSlow),
                     Actions.scaleTo(1f, 1f, 0.05f, Interpolation.slowFast)
@@ -456,6 +488,161 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
 
         return entry;
     }
+
+    @Override
+    protected void showCreateWorldDialog() {
+        CharacterPreviewDialog characterDialog = new CharacterPreviewDialog(stage, skin,
+            (selectedCharacterType) -> {
+                showMobileWorldCreationDialog(selectedCharacterType);
+            });
+        characterDialog.show(stage);
+    }
+
+    private void showMobileWorldCreationDialog(String characterType) {
+        Dialog dialog = new Dialog("Create New World", skin) {
+            @Override
+            protected void result(Object object) {
+                if ((Boolean) object) {
+                    TextField nameField = findActor("nameField");
+                    CheckBox cheatsAllowed = findActor("cheatsAllowed");
+                    TextField seedField = findActor("seedField");
+                    TextField dialogUsernameField = findActor("usernameField");
+
+                    boolean commandsEnabled = cheatsAllowed != null && cheatsAllowed.isChecked();
+                    String worldName = nameField.getText().trim();
+                    String seedText = seedField.getText().trim();
+                    String username = dialogUsernameField.getText().trim();
+
+                    if (worldName.isEmpty()) {
+                        showError("World name cannot be empty");
+                        return;
+                    }
+                    if (username.isEmpty()) {
+                        username = "Player";
+                    }
+
+                    long seed;
+                    if (seedText.isEmpty()) {
+                        seed = System.currentTimeMillis();
+                    } else {
+                        try {
+                            seed = Long.parseLong(seedText);
+                        } catch (NumberFormatException e) {
+                            showError("Seed must be a valid number");
+                            return;
+                        }
+                    }
+
+                    createNewWorld(worldName, seed, username, commandsEnabled, characterType);
+                }
+            }
+        };
+
+        // Make dialog mobile-friendly
+        dialog.setMovable(false);
+        dialog.setModal(true);
+        dialog.setKeepWithinStage(true);
+
+        Table content = dialog.getContentTable();
+        content.pad(MOBILE_PADDING * 2);
+
+        float inputWidth = Math.min(Gdx.graphics.getWidth() * 0.8f, 400f);
+
+        TextField nameField = new TextField("", skin);
+        nameField.setName("nameField");
+        nameField.setMessageText("World name");
+
+        TextField seedField = new TextField("", skin);
+        seedField.setName("seedField");
+        seedField.setMessageText("Seed (optional)");
+
+        TextField dialogUsernameField = new TextField("", skin);
+        dialogUsernameField.setName("usernameField");
+        dialogUsernameField.setMessageText("Your username");
+
+        CheckBox cheatsAllowed = new CheckBox(" Enable Commands", skin);
+        cheatsAllowed.setName("cheatsAllowed");
+        cheatsAllowed.setChecked(false);
+        cheatsAllowed.getLabel().setFontScale(MOBILE_FONT_SCALE);
+        cheatsAllowed.getImageCell().size(32f);
+
+        // Add fields with proper mobile spacing
+        content.add(createMobileLabel("World Name:")).left().padBottom(8f).row();
+        content.add(nameField).width(inputWidth).height(BUTTON_HEIGHT).padBottom(20f).row();
+
+        content.add(createMobileLabel("Seed (optional):")).left().padBottom(8f).row();
+        content.add(seedField).width(inputWidth).height(BUTTON_HEIGHT).padBottom(20f).row();
+
+        content.add(createMobileLabel("Username:")).left().padBottom(8f).row();
+        content.add(dialogUsernameField).width(inputWidth).height(BUTTON_HEIGHT).padBottom(20f).row();
+
+        content.add(cheatsAllowed).left().padBottom(20f).row();
+
+        // Mobile-friendly buttons
+        TextButton createBtn = new TextButton("Create", skin);
+        TextButton cancelBtn = new TextButton("Cancel", skin);
+        createBtn.getLabel().setFontScale(MOBILE_FONT_SCALE);
+        cancelBtn.getLabel().setFontScale(MOBILE_FONT_SCALE);
+
+        dialog.button(createBtn, true).getButtonTable().getCell(createBtn).size(150f, BUTTON_HEIGHT).pad(10f);
+        dialog.button(cancelBtn, false).getButtonTable().getCell(cancelBtn).size(150f, BUTTON_HEIGHT).pad(10f);
+
+        dialog.show(stage);
+        activeDialog = dialog;
+
+        // Center dialog
+        dialog.setPosition(
+            (Gdx.graphics.getWidth() - dialog.getWidth()) / 2f,
+            (Gdx.graphics.getHeight() - dialog.getHeight()) / 2f
+        );
+    }
+
+    private Label createMobileLabel(String text) {
+        Label label = new Label(text, skin);
+        label.setFontScale(MOBILE_FONT_SCALE);
+        return label;
+    }
+
+    @Override
+    protected void showDeleteConfirmDialog() {
+        Dialog dialog = new Dialog("Delete World", skin) {
+            @Override
+            protected void result(Object object) {
+                if ((Boolean) object) {
+                    deleteSelectedWorld();
+                }
+            }
+        };
+
+        dialog.setMovable(false);
+        dialog.setModal(true);
+
+        Label messageLabel = new Label("Are you sure you want to delete\n'" + selectedWorld.getName() + "'?\n\nThis cannot be undone!", skin);
+        messageLabel.setFontScale(MOBILE_FONT_SCALE);
+        messageLabel.setAlignment(Align.center);
+        messageLabel.setWrap(true);
+
+        dialog.getContentTable().pad(MOBILE_PADDING * 2);
+        dialog.getContentTable().add(messageLabel).width(Math.min(Gdx.graphics.getWidth() * 0.8f, 400f));
+
+        TextButton deleteBtn = new TextButton("Delete", skin);
+        TextButton cancelBtn = new TextButton("Cancel", skin);
+        deleteBtn.getLabel().setFontScale(MOBILE_FONT_SCALE);
+        cancelBtn.getLabel().setFontScale(MOBILE_FONT_SCALE);
+        deleteBtn.setColor(1f, 0.3f, 0.3f, 1f);
+
+        dialog.button(deleteBtn, true).getButtonTable().getCell(deleteBtn).size(150f, BUTTON_HEIGHT).pad(10f);
+        dialog.button(cancelBtn, false).getButtonTable().getCell(cancelBtn).size(150f, BUTTON_HEIGHT).pad(10f);
+
+        dialog.show(stage);
+        activeDialog = dialog;
+
+        dialog.setPosition(
+            (Gdx.graphics.getWidth() - dialog.getWidth()) / 2f,
+            (Gdx.graphics.getHeight() - dialog.getHeight()) / 2f
+        );
+    }
+
     private String formatRelativeDate(long timestamp) {
         if (timestamp == 0) return "Never";
 
@@ -503,7 +690,12 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     @Override
     public void resize(int width, int height) {
         super.resize(width, height);
-        createFloatingActionButtons();
+        if (activeDialog != null && activeDialog.isVisible()) {
+            activeDialog.setPosition(
+                (width - activeDialog.getWidth()) / 2f,
+                (height - activeDialog.getHeight()) / 2f
+            );
+        }
     }
 
     @Override

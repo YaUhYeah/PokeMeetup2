@@ -9,15 +9,11 @@ import io.github.pokemeetup.utils.storage.JsonConfig;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
-public class WorldManager {// In WorldManager (or a new StorageManager utility)
+public class WorldManager {
     private static final String WORLDS_BASE_DIR = "worlds/";
     private static final String SINGLE_PLAYER_DIR = WORLDS_BASE_DIR + "singleplayer/";
     private static WorldManager instance;
-    private final ExecutorService storageExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, WorldData> worlds;
     private final Object worldLock = new Object();
     private final String baseDirectory;
@@ -38,17 +34,7 @@ public class WorldManager {// In WorldManager (or a new StorageManager utility)
         }
         return instance;
     }
-    public void disposeStorage() {
-        storageExecutor.shutdown();
-        try {
-            if (!storageExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                storageExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            storageExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
+
 
     public synchronized void init() {
         if (isInitialized) {
