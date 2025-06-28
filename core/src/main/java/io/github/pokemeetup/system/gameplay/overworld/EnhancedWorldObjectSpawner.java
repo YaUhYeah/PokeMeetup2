@@ -122,11 +122,11 @@ public class EnhancedWorldObjectSpawner {
      */
     private static int getMaxTreesOfType(WorldObject.ObjectType type, Biome biome) {
         if (type == WorldObject.ObjectType.APRICORN_TREE) {
-            return 2; // Limit to 2 apricorn trees per chunk
+            return 2;
         } else if (biome.getType() == BiomeType.FOREST || biome.getType() == BiomeType.RAIN_FOREST) {
-            return 10; // More trees in forest biomes
+            return 10;
         } else {
-            return 4; // Default for other biomes
+            return 4;
         }
     }
 
