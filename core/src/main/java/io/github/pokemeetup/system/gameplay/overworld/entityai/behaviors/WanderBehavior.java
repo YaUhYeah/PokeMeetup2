@@ -14,10 +14,14 @@ import java.util.Collections;
 import java.util.List;
 
 public class WanderBehavior implements PokemonBehavior {
-    private static final float WANDER_COOLDOWN = 0.4f; // Was 1.0f
+    private static final float MIN_PAUSE_TIME = 0.5f;
+    private static final float MAX_PAUSE_TIME = 1.5f;
 
     private final WildPokemon pokemon;
     private final PokemonAI ai;
+
+    private int stepsRemaining = 0;
+    private String currentWanderDirection = null;
 
     public WanderBehavior(WildPokemon pokemon, PokemonAI ai) {
         this.pokemon = pokemon;
@@ -26,44 +30,71 @@ public class WanderBehavior implements PokemonBehavior {
 
     @Override
     public void execute(float delta) {
-        if (!pokemon.isMoving()) {
-            World world = GameContext.get().getWorld();
-            if (world != null) {
-                moveRandomDirection(world);
-                ai.setCooldown(getName(), WANDER_COOLDOWN);
+        if (pokemon.isMoving()) {
+            return; // Don't decide a new move while already moving
+        }
+
+        if (stepsRemaining > 0) {
+            moveAlongPath();
+        } else if (!ai.isOnCooldown(getName())) {
+            decideNewWanderPath();
+        }
+    }
+
+    private void decideNewWanderPath() {
+        List<String> potentialDirections = new ArrayList<>(Arrays.asList("up", "down", "left", "right"));
+        Collections.shuffle(potentialDirections);
+
+        // Try to find a valid direction to start a new path
+        for (String direction : potentialDirections) {
+            int nextTileX = pokemon.getTileX();
+            int nextTileY = pokemon.getTileY();
+
+            switch (direction) {
+                case "up":    nextTileY++; break;
+                case "down":  nextTileY--; break;
+                case "left":  nextTileX--; break;
+                case "right": nextTileX++; break;
+            }
+
+            if (GameContext.get().getWorld().isPassable(nextTileX, nextTileY) && isWithinWanderRange(nextTileX, nextTileY)) {
+                currentWanderDirection = direction;
+                stepsRemaining = MathUtils.random(1, 4); // New path of 1-4 steps
+                moveAlongPath(); // Take the first step
+                return;
             }
         }
     }
 
-    private void moveRandomDirection(World world) {
-        if (MathUtils.random() < 0.15f) {
-            ai.setCooldown(getName(), WANDER_COOLDOWN * 1.5f); // Slightly longer cooldown if idling
+    private void moveAlongPath() {
+        if (currentWanderDirection == null || stepsRemaining <= 0) {
             return;
         }
 
-        int currentTileX = pokemon.getTileX();
-        int currentTileY = pokemon.getTileY();
-        String lastDirection = pokemon.getDirection();
-        List<String> potentialDirections = new ArrayList<>(Arrays.asList("up", "down", "left", "right"));
-        Collections.shuffle(potentialDirections);
-        potentialDirections.remove(lastDirection);
-        potentialDirections.add(0, lastDirection);
-        for (String direction : potentialDirections) {
-            int targetTileX = currentTileX;
-            int targetTileY = currentTileY;
+        int targetTileX = pokemon.getTileX();
+        int targetTileY = pokemon.getTileY();
 
-            switch (direction) {
-                case "up":    targetTileY++; break;
-                case "down":  targetTileY--; break;
-                case "left":  targetTileX--; break;
-                case "right": targetTileX++; break;
-            }
+        switch (currentWanderDirection) {
+            case "up":    targetTileY++; break;
+            case "down":  targetTileY--; break;
+            case "left":  targetTileX--; break;
+            case "right": targetTileX++; break;
+        }
 
-            if (world.isPassable(targetTileX, targetTileY) && isWithinWanderRange(targetTileX, targetTileY)) {
-                pokemon.moveToTile(targetTileX, targetTileY, direction);
-                ai.setCurrentState(PokemonAI.AIState.WANDERING);
-                return;
+        if (GameContext.get().getWorld().isPassable(targetTileX, targetTileY) && isWithinWanderRange(targetTileX, targetTileY)) {
+            pokemon.moveToTile(targetTileX, targetTileY, currentWanderDirection);
+            stepsRemaining--;
+
+            if (stepsRemaining <= 0) {
+                // Path is complete, set a cooldown for a natural pause
+                ai.setCooldown(getName(), MathUtils.random(MIN_PAUSE_TIME, MAX_PAUSE_TIME));
+                currentWanderDirection = null;
             }
+        } else {
+            // Path is blocked, stop wandering and pause
+            stepsRemaining = 0;
+            currentWanderDirection = null;
+            ai.setCooldown(getName(), MathUtils.random(MIN_PAUSE_TIME, MAX_PAUSE_TIME));
         }
     }
 
@@ -71,18 +102,14 @@ public class WanderBehavior implements PokemonBehavior {
         if (!ai.hasPersonalityTrait(PokemonPersonalityTrait.TERRITORIAL)) {
             return true; // No territory restrictions
         }
-
         Vector2 territory = ai.getTerritoryCenter();
-        float distance = Vector2.dst(tileX * World.TILE_SIZE, tileY * World.TILE_SIZE,
-            territory.x, territory.y);
+        float distance = Vector2.dst(tileX * World.TILE_SIZE, tileY * World.TILE_SIZE, territory.x, territory.y);
         return distance <= ai.getTerritoryRadius();
     }
 
     @Override
     public boolean canExecute() {
-        return !pokemon.isMoving() &&
-            !ai.isOnCooldown(getName()) &&
-            ai.getStateTimer() > 0.4f; // Was 1.0f
+        return !pokemon.isMoving();
     }
 
     @Override

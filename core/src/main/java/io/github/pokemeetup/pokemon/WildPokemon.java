@@ -17,6 +17,7 @@ import io.github.pokemeetup.system.gameplay.overworld.multiworld.PokemonSpawnMan
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static io.github.pokemeetup.system.gameplay.PokemonAnimations.IDLE_BOUNCE_DURATION;
 
@@ -58,6 +59,7 @@ public class WildPokemon extends Pokemon implements Positionable {
     private PokemonDespawnAnimation despawnAnimation;
     private float idleAnimationTime = 0;
     private boolean isIdling = false;
+
     public WildPokemon(String name, int level) {
         super(name, level);
         this.pixelX = 0;
@@ -102,10 +104,16 @@ public class WildPokemon extends Pokemon implements Positionable {
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, TextureRegion overworldSprite) {
         super(name, level);
-        this.pixelX = pixelX + (World.TILE_SIZE / 2f);
-        this.pixelY = pixelY;
-        this.x = this.pixelX;
-        this.y = this.pixelY;
+
+        // FIX: Normalize the incoming pixel coordinates to prevent misalignment from spawner's Math.round().
+        // This robustly finds the tile the coordinate is in and centers the Pokémon on that tile.
+        int tileX = MathUtils.floor((float) pixelX / World.TILE_SIZE);
+        int tileY = MathUtils.floor((float) pixelY / World.TILE_SIZE);
+        this.x = tileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
+        this.y = tileY * World.TILE_SIZE;
+        this.pixelX = this.x; // Keep pixelX field in sync with the centered x for consistency.
+        this.pixelY = this.y;
+
         this.networkSync = new PokemonNetworkSyncComponent(this);
         this.isNetworkControlled = false;
         this.startPosition = new Vector2(this.x, this.y);
@@ -117,6 +125,7 @@ public class WildPokemon extends Pokemon implements Positionable {
 
         setSpawnTime((long) (System.currentTimeMillis() / 1000f));
         initializePokemonData(name, level);
+        initializeBoundingBox();
     }
 
     private void initializePokemonData(String name, int level) {
@@ -169,6 +178,7 @@ public class WildPokemon extends Pokemon implements Positionable {
             return ((2 * base + iv + ev / 4) * level / 100) + 5;
         }
     }
+
     public void setAi(Object ai) {
         if (ai instanceof PokemonAI) {
             this.enhancedAI = (PokemonAI) ai;
@@ -177,23 +187,15 @@ public class WildPokemon extends Pokemon implements Positionable {
             this.legacyAI = ai;
             this.enhancedAI = null;
         }
-    }  public Rectangle getBoundingBox() {
-        return new Rectangle(
-            (float)getTileX() * World.TILE_SIZE,
-            (float)getTileY() * World.TILE_SIZE,
-            World.TILE_SIZE,
-            World.TILE_SIZE
-        );
     }
+
 
 
     public Object getAi() {
         return enhancedAI != null ? enhancedAI : legacyAI;
     }
 
-    public PokemonAI getEnhancedAI() {
-        return enhancedAI;
-    }
+
     public void setNetworkControlled(boolean networkControlled) {
         this.isNetworkControlled = networkControlled;
     }
@@ -207,6 +209,7 @@ public class WildPokemon extends Pokemon implements Positionable {
     public PokemonNetworkSyncComponent getNetworkSync() {
         return networkSync;
     }
+
     public void update(float delta, World world) {
         if (world == null) return;
 
@@ -332,8 +335,10 @@ public class WildPokemon extends Pokemon implements Positionable {
             boundingBox.setSize(collisionWidth, collisionHeight);
         }
     }
+
     private boolean wasOnWater = false;
     private float waterSoundTimer = 0f;
+
     @Override
     public boolean wasOnWater() {
         return wasOnWater;
@@ -362,11 +367,11 @@ public class WildPokemon extends Pokemon implements Positionable {
     }
 
     public int getTileX() {
-        return (int) (x / TILE_SIZE);
+        return MathUtils.floor(x / TILE_SIZE);
     }
 
     public int getTileY() {
-        return (int) (y / TILE_SIZE);
+        return MathUtils.floor(y / TILE_SIZE);
     }
 
     @Override
@@ -407,12 +412,14 @@ public class WildPokemon extends Pokemon implements Positionable {
             batch.setColor(originalColor);
         }
     }
+
     public TextureRegion getCurrentFrame() {
         if (animations != null) {
             return animations.getCurrentFrame(direction, isMoving);
         }
         return null;
     }
+
     public boolean isExpired() {
         if (isExpired) return true;
         float currentTime = System.currentTimeMillis() / 1000f;
@@ -429,13 +436,24 @@ public class WildPokemon extends Pokemon implements Positionable {
             despawnAnimation = new PokemonDespawnAnimation(getX(), getY(), FRAME_WIDTH, FRAME_HEIGHT);
         }
     }
-    public World getWorld() { return world; }
-    public void setWorld(World world) { this.world = world; }
 
-    public float getX() { return x; }
+    public World getWorld() {
+        return world;
+    }
+
+    public void setWorld(World world) {
+        this.world = world;
+    }
+
+    public float getX() {
+        return x;
+    }
 
 
-    public float getY() { return y; }
+    public float getY() {
+        return y;
+    }
+
     public void setX(float x) {
         this.pixelX = x;
         this.x = x;
@@ -447,28 +465,51 @@ public class WildPokemon extends Pokemon implements Positionable {
     }
 
     @Override
-    public String getDirection() { return direction; }
-    public void setDirection(String direction) { this.direction = direction; }
+    public String getDirection() {
+        return direction;
+    }
+
+    public void setDirection(String direction) {
+        this.direction = direction;
+    }
 
     @Override
-    public boolean isMoving() { return isMoving; }
+    public boolean isMoving() {
+        return isMoving;
+    }
 
     @Override
     public void setCharacterType(String characterType) {
 
     }
 
-    public void setMoving(boolean moving) { this.isMoving = moving; }
+    public void setMoving(boolean moving) {
+        this.isMoving = moving;
+    }
 
-    public boolean isAddedToParty() { return isAddedToParty; }
-    public void setAddedToParty(boolean addedToParty) { isAddedToParty = addedToParty; }
+    public boolean isAddedToParty() {
+        return isAddedToParty;
+    }
+
+    public void setAddedToParty(boolean addedToParty) {
+        isAddedToParty = addedToParty;
+    }
 
 
     @Override
-    public PokemonAnimations getAnimations() { return animations; }
+    public PokemonAnimations getAnimations() {
+        return animations;
+    }
 
-    public float getWidth() { return width; }
-    public float getHeight() { return height; }
+    public float getWidth() {
+        return width;
+    }
 
-    public void setSpawnTime(long spawnTime) { this.spawnTime = spawnTime; }
+    public float getHeight() {
+        return height;
+    }
+
+    public void setSpawnTime(long spawnTime) {
+        this.spawnTime = spawnTime;
+    }
 }

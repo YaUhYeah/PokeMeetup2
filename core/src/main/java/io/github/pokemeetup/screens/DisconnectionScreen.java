@@ -17,7 +17,7 @@ import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.utils.GameLogger;
 
 public class DisconnectionScreen implements Screen {
-    private static final float RETRY_INTERVAL = 5f; // 5 seconds between retries
+    private static final float RETRY_INTERVAL = 5f;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final float BUTTON_WIDTH = 200f;
     private static final float BUTTON_HEIGHT = 50f;

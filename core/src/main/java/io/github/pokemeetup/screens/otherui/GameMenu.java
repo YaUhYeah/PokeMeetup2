@@ -423,6 +423,9 @@ public class GameMenu extends Actor {
             (Gdx.graphics.getHeight() - optionsWindow.getHeight()) / 2);
         optionsWindow.setVisible(false);
         stage.addActor(optionsWindow);
+
+        // **FIX**: Added listeners for real-time audio changes
+        setupAudioListeners();
     }
 
     private void setupAudioListeners() {
@@ -482,6 +485,18 @@ public class GameMenu extends Actor {
     }
 
     private void saveAudioSettings() {
+        // Apply settings to AudioManager
+        float musicVol = musicSlider.getValue();
+        boolean musicOn = musicEnabled.isChecked();
+        float soundVol = soundSlider.getValue();
+        boolean soundOn = soundEnabled.isChecked();
+
+        AudioManager.getInstance().setMusicVolume(musicVol);
+        AudioManager.getInstance().setMusicEnabled(musicOn);
+        AudioManager.getInstance().setSoundVolume(soundVol);
+        AudioManager.getInstance().setSoundEnabled(soundOn);
+
+        // Save to Preferences
         Preferences prefs = Gdx.app.getPreferences("audio_settings");
         prefs.putFloat("music_volume", musicSlider.getValue());
         prefs.putFloat("sound_volume", soundSlider.getValue());

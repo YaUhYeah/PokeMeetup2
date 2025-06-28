@@ -15,9 +15,11 @@ import io.github.pokemeetup.utils.GameLogger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
 public class ApproachPlayerBehavior implements PokemonBehavior {
     private static final float APPROACH_RANGE = 10.0f * World.TILE_SIZE;
     private static final float OPTIMAL_DISTANCE = 2.0f * World.TILE_SIZE;
+    private static final float ATTACK_RANGE = 1.25f * World.TILE_SIZE;
 
     private final WildPokemon pokemon;
     private final PokemonAI ai;
@@ -27,29 +29,39 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
         this.ai = ai;
     }
 
-    private static final float ATTACK_RANGE = 1.25f * World.TILE_SIZE;
-
     @Override
     public void execute(float delta) {
-        if (!pokemon.isMoving()) {
-            if (ai.isOnCooldown(getName())) return;
-            Player player = GameContext.get().getPlayer();
-            if (player != null) {
-                float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
-                if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= ATTACK_RANGE) {
-                        if (GameContext.get().getGameScreen() != null) {
+        // [FIX] Execute logic only when not already moving to a tile.
+        if (pokemon.isMoving()) {
+            return;
+        }
 
-                            GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
-                            Gdx.app.postRunnable(() -> {
-                                ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
-                            });
-                            ai.setCooldown(getName(), 15f); // Cooldown after attempting to battle
-                        }
-                        return;
+        Player player = GameContext.get().getPlayer();
+        if (player == null) return;
 
-                }
-                moveTowardsPlayer(player);
+        float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
+
+        // Stop approaching if close enough (for curious pokemon) or if battle is initiated.
+        if (!ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= OPTIMAL_DISTANCE) {
+            ai.setCurrentState(PokemonAI.AIState.IDLE);
+            ai.setCooldown(getName(), 2.0f); // Pause before deciding to approach again.
+            return;
+        }
+
+        if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= ATTACK_RANGE) {
+            if (GameContext.get().getGameScreen() != null && !GameContext.get().getBattleSystem().isInBattle()) {
+                GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
+                Gdx.app.postRunnable(() -> {
+                    ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
+                });
+                ai.setCooldown(getName(), 15f); // Long cooldown after initiating battle.
             }
+            return;
+        }
+
+        // If not on cooldown from a failed move, attempt to move.
+        if (!ai.isOnCooldown(getName())) {
+            moveTowardsPlayer(player);
         }
     }
 
@@ -65,12 +77,14 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
         int dx = Integer.compare(playerTileX, pokemonTileX);
         int dy = Integer.compare(playerTileY, pokemonTileY);
 
-        if (dx == 0 && dy == 0) return; // Already at target
+        if (dx == 0 && dy == 0) return;
+
         List<String> moveOptions = new ArrayList<>();
         if (dx != 0) moveOptions.add("horizontal");
         if (dy != 0) moveOptions.add("vertical");
         Collections.shuffle(moveOptions);
 
+        boolean moveMade = false;
         for (String move : moveOptions) {
             int targetTileX = pokemonTileX;
             int targetTileY = pokemonTileY;
@@ -84,16 +98,21 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
                 direction = dy > 0 ? "up" : "down";
             }
 
-
             if (world.isPassable(targetTileX, targetTileY)) {
                 pokemon.moveToTile(targetTileX, targetTileY, direction);
                 ai.setCurrentState(PokemonAI.AIState.APPROACHING);
-                ai.setCooldown(getName(), 0.5f); // Was 1.0f
-                return; // Move made, exit
+                moveMade = true;
+                break;
             }
+        }
+
+        // [FIX] Only set a cooldown if the Pokemon gets stuck and cannot move.
+        if (!moveMade) {
+            ai.setCooldown(getName(), 0.5f);
         }
     }
 
+    @Override
     public boolean canExecute() {
         if (!ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) &&
             !ai.hasPersonalityTrait(PokemonPersonalityTrait.CURIOUS)) {
@@ -105,9 +124,11 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
 
         float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
             player.getX(), player.getY());
+
         if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE)) {
-            return distance <= APPROACH_RANGE && !ai.isOnCooldown(getName());
+            return distance <= APPROACH_RANGE; // Always try to approach if aggressive and in range
         }
+
         return distance <= APPROACH_RANGE && distance > OPTIMAL_DISTANCE && !ai.isOnCooldown(getName()) && MathUtils.random() < (ai.getApproachFactor() * 0.25f);
     }
 

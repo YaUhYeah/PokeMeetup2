@@ -315,17 +315,35 @@ public class AudioManager {
 
     public void setMusicEnabled(boolean musicEnabled) {
         this.musicEnabled = musicEnabled;
-        if (currentMusic != null) {
-            if (musicEnabled) {
+        if (musicEnabled) {
+            // If music is being turned ON
+            if (currentMusic != null) {
+                // If there's a track, play it if it's not already
                 if (!currentMusic.isPlaying()) {
                     currentMusic.play();
                 }
+                // And ensure its volume is correct
                 currentMusic.setVolume(musicVolume * masterVolume);
             } else {
+                // No current music track. Figure out what should be playing.
+                // A simple check: if a biome is set, we're in-game. Otherwise, menu.
+                if (this.currentBiome != null) {
+                    // To force the check in updateBiomeMusic without changing its logic:
+                    BiomeType temp = this.currentBiome;
+                    this.currentBiome = null; // This will make the 'currentBiome != newBiome' check pass
+                    updateBiomeMusic(temp);
+                } else {
+                    playMenuMusic();
+                }
+            }
+        } else {
+            // Music is being turned OFF
+            if (currentMusic != null && currentMusic.isPlaying()) {
                 currentMusic.pause();
             }
         }
     }
+
 
     public boolean isSoundEnabled() {
         return soundEnabled;
@@ -343,16 +361,20 @@ public class AudioManager {
     }
 
     public void updateBiomeMusic(BiomeType newBiome) {
-        if (!musicEnabled || (pendingBiome != null && newBiome == pendingBiome)) return;
+        if (!musicEnabled) return;
 
-        if (currentBiome != newBiome) {
+        // If we are already fading into this biome, do nothing
+        if (pendingBiome != null && newBiome == pendingBiome) return;
+
+        // Condition to start new music: biome is different OR music is enabled but nothing is playing.
+        if (currentBiome != newBiome || (currentMusic == null || !currentMusic.isPlaying())) {
             pendingBiome = newBiome;
             GameLogger.info("Pending biome set to: " + pendingBiome);
 
-            if (currentMusic != null && menuMusicList.contains(currentMusic)) {
+            if (currentMusic != null && currentMusic.isPlaying()) {
                 isFadingOutMusic = true;
                 fadeOutMusicTimer = MUSIC_FADE_DURATION;
-            } else if (currentMusic == null || !currentMusic.isPlaying()) {
+            } else {
                 startMusicForPendingBiome();
             }
         }

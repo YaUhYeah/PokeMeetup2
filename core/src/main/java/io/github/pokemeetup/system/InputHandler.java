@@ -327,12 +327,7 @@ public class InputHandler extends InputAdapter {
     }
 
 
-    private void closePartyWindow() {
-        if (partyWindow != null) {
-            partyWindow.remove(); // Remove the actor from its parent stage.
-            partyWindow = null;
-        }
-    }
+
     @Override
     public boolean keyUp(int keycode) {
         if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP) ||
@@ -397,7 +392,7 @@ public class InputHandler extends InputAdapter {
                 break;
         }
         if (player.getInventory().removeItem(itemData)) {
-            player.getHotbarSystem().updateHotbar();
+            GameContext.get().getHotbarSystem().updateHotbar();
             if (GameContext.get().isMultiplayer()) {
                 GameContext.get().getGameClient().sendItemDrop(itemData, new Vector2(dropX, dropY));
             } else {

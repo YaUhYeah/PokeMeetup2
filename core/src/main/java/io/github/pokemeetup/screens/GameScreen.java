@@ -146,6 +146,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         GameContext.get().setUiStage(new Stage(new ScreenViewport()));
         this.battleSystem = new BattleSystemHandler();
+        GameContext.get().setBattleSystem(this.battleSystem);
         try {
             initializeBasicResources();
 
@@ -177,6 +178,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameContext.get().setUiStage(new Stage(new ScreenViewport()));
 
         this.battleSystem = new BattleSystemHandler();
+        GameContext.get().setBattleSystem(this.battleSystem);
         try {
             initializeBasicResources();
 
@@ -1352,8 +1354,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             }
         }
         player.getInventory().clear();
-        if (player.getHotbarSystem() != null) {
-            player.getHotbarSystem().updateHotbar(); // Visually update the hotbar
+        if (GameContext.get().getHotbarSystem() != null) {
+            GameContext.get().getHotbarSystem().updateHotbar(); // Visually update the hotbar
         }
         Random rand = new Random();
         for (ItemData item : itemsToDrop) {
@@ -1555,7 +1557,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
-        renderHotbar(delta);
         if (GameContext.get().getUiStage() != null) {
             GameContext.get().getUiStage().getViewport().apply();
             GameContext.get().getUiStage().act(delta);

@@ -23,11 +23,12 @@ public class FollowPackBehavior implements PokemonBehavior {
 
     @Override
     public void execute(float delta) {
-        if (!pokemon.isMoving()) {
-            WildPokemon leader = findPackLeader();
-            if (leader != null) {
-                followLeader(leader);
-            }
+        if (pokemon.isMoving()) {
+            return;
+        }
+        WildPokemon leader = findPackLeader();
+        if (leader != null) {
+            followLeader(leader);
         }
     }
 
@@ -46,33 +47,33 @@ public class FollowPackBehavior implements PokemonBehavior {
 
         return null;
     }
-
     private void followLeader(WildPokemon leader) {
-        float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
-            leader.getX(), leader.getY());
+        float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), leader.getX(), leader.getY());
         if (distance <= FOLLOW_DISTANCE) {
-            return;
+            return; // Already close enough.
         }
 
         World world = GameContext.get().getWorld();
         if (world == null) return;
 
-        int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);
-        int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-        int leaderTileX = (int) (leader.getX() / World.TILE_SIZE);
-        int leaderTileY = (int) (leader.getY() / World.TILE_SIZE);
+        int pokemonTileX = pokemon.getTileX();
+        int pokemonTileY = pokemon.getTileY();
+        int leaderTileX = leader.getTileX();
+        int leaderTileY = leader.getTileY();
 
         int dx = Integer.compare(leaderTileX, pokemonTileX);
         int dy = Integer.compare(leaderTileY, pokemonTileY);
+
         List<String> moveOptions = new ArrayList<>();
         if (dx != 0) moveOptions.add("horizontal");
         if (dy != 0) moveOptions.add("vertical");
         Collections.shuffle(moveOptions);
-        String direction;
 
+        boolean moveMade = false;
         for (String move : moveOptions) {
             int targetTileX = pokemonTileX;
             int targetTileY = pokemonTileY;
+            String direction;
 
             if (move.equals("horizontal")) {
                 targetTileX += dx;
@@ -85,9 +86,14 @@ public class FollowPackBehavior implements PokemonBehavior {
             if (world.isPassable(targetTileX, targetTileY)) {
                 pokemon.moveToTile(targetTileX, targetTileY, direction);
                 ai.setCurrentState(PokemonAI.AIState.FOLLOWING);
-                ai.setCooldown(getName(), 0.5f); // Was 1.0f
-                return; // Move made, exit
+                moveMade = true;
+                break;
             }
+        }
+
+        // [FIX] Only set a cooldown if blocked.
+        if (!moveMade) {
+            ai.setCooldown(getName(), 1.0f);
         }
     }
 

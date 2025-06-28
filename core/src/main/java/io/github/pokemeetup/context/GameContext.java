@@ -1,4 +1,4 @@
-package io.github.pokemeetup.context;
+ package io.github.pokemeetup.context;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -26,7 +26,7 @@ public final class GameContext {
 
     private static GameContext instance;
     private final CreatureCaptureGame game;
-    private final BattleSystemHandler battleSystem;
+    private BattleSystemHandler battleSystem;
     private ChatSystem chatSystem;
     private BattleTable battleTable;
     private boolean isMultiplayer;
@@ -306,6 +306,10 @@ public final class GameContext {
 
     public BattleSystemHandler getBattleSystem() {
         return battleSystem;
+    }
+
+    public void setBattleSystem(BattleSystemHandler battleSystem) {
+        this.battleSystem = battleSystem;
     }
 
     public InventoryScreen getInventoryScreen() {
