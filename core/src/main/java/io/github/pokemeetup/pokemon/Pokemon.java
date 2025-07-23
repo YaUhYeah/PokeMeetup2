@@ -1,4 +1,4 @@
-
+// Path: src/main/java/io/github/pokemeetup/pokemon/Pokemon.java
 package io.github.pokemeetup.pokemon;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -10,6 +10,7 @@ import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.attacks.Move;
 import io.github.pokemeetup.pokemon.data.PokemonDatabase;
 import io.github.pokemeetup.screens.otherui.BattleTable;
+import io.github.pokemeetup.screens.otherui.EvolutionScreen;
 import io.github.pokemeetup.system.gameplay.PokemonAnimations;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -100,6 +101,7 @@ public class Pokemon {
         calculateStats();
         this.currentHp = stats.getHp();
     }
+
     public void resetStatStages() {
         statStages.put("attack", 0);
         statStages.put("defense", 0);
@@ -109,6 +111,7 @@ public class Pokemon {
         statStages.put("accuracy", 0); // Often handled differently, but include for completeness
         statStages.put("evasion", 0);  // Often handled differently
     }
+
     protected Pokemon(boolean noTexture) {
         this.uuid = UUID.randomUUID();
         this.statStages = new HashMap<>(); // Initialize stages here too
@@ -254,9 +257,11 @@ public class Pokemon {
         resetStatStages(); // Reset stat stages on heal
         calculateStats(); // Recalculate stats after resetting stages
     }
+
     public void heal(int amount) {
         restoreHealth(amount);
     }
+
     public void restoreHealth(int amount) {
         this.currentHp = Math.min(this.stats.getHp(), this.currentHp + amount);
     }
@@ -268,6 +273,7 @@ public class Pokemon {
     public Status getStatus() {
         return status;
     }
+
     public void setStatus(Status newStatus) {
         if (newStatus == null || this.status != Status.NONE) {
             if (newStatus == Status.ASLEEP && this.status == Status.ASLEEP) {
@@ -320,8 +326,9 @@ public class Pokemon {
 
     /**
      * Modifies a specific stat stage, clamped between -6 and +6.
+     *
      * @param statName "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
-     * @param change Amount to change by (e.g., -1 for Growl, +2 for Swords Dance)
+     * @param change   Amount to change by (e.g., -1 for Growl, +2 for Swords Dance)
      * @return True if the stage was changed, false if it was already at the limit.
      */
     public boolean modifyStatStage(String statName, int change) {
@@ -349,6 +356,7 @@ public class Pokemon {
      * Gets the multiplier for a stat based on its current stage.
      * Formula: stage > 0 ? (2 + stage) / 2 : 2 / (2 - stage)
      * Accuracy/Evasion use a different formula: stage > 0 ? (3 + stage) / 3 : 3 / (3 - stage)
+     *
      * @param statName "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
      * @return The multiplier (e.g., 1.0 for stage 0, 1.5 for stage +1, 0.66 for stage -1)
      */
@@ -374,6 +382,7 @@ public class Pokemon {
             }
         }
     }
+
     public boolean canAttack() {
         if (currentHp <= 0) {
             return false;
@@ -483,7 +492,6 @@ public class Pokemon {
     }
 
 
-
     public void cureStatus() {
         this.status = Status.NONE;
         this.sleepTurns = 0;
@@ -503,7 +511,6 @@ public class Pokemon {
     }
 
     private void checkLevelUp() {
-        int currentLevel = level;
         int expNeeded = getExperienceForNextLevel();
 
         while (currentExperience >= expNeeded) {
@@ -515,9 +522,61 @@ public class Pokemon {
         }
     }
 
-    public void addExperience(int exp) {
+
+    /**
+     * NEW: Checks if the Pokémon meets its evolution criteria and returns the name of the evolution target.
+     *
+     * @return The name of the Pokémon it should evolve into, or null if it cannot evolve.
+     */
+    public String getEvolutionTarget() {
+        PokemonDatabase.EvolutionData evolutionData = PokemonDatabase.getEvolutionData(this.name);
+        if (evolutionData != null && this.level >= evolutionData.level) {
+            return evolutionData.evolvesTo;
+        }
+        return null;
+    }
+// Path: src/main/java/io/github/pokemeetup/pokemon/Pokemon.java
+// Add these new methods to the Pokemon class
+
+    public boolean isHurt() {
+        return this.currentHp < this.getStats().getHp();
+    }
+
+    public boolean needsPpRestore() {
+        if (moves == null) {
+            return false;
+        }
+        for (Move move : moves) {
+            if (move.getPp() < move.getMaxPp()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void restorePpToAllMoves(int amount) {
+        if (moves == null) return;
+        for (Move move : moves) {
+            move.setPp(Math.min(move.getMaxPp(), move.getPp() + amount));
+        }
+    }
+
+    public void restorePpToAllMovesMax() {
+        if (moves == null) return;
+        for (Move move : moves) {
+            move.setPp(move.getMaxPp());
+        }
+    }
+    private transient boolean evolutionTriggered = false;
+
+    public boolean addExperience(int exp) {
+        evolutionTriggered = false; // Reset the flag before adding experience
         currentExperience += exp;
-        checkLevelUp();
+        while (currentExperience >= getExperienceForNextLevel()) {
+            currentExperience -= getExperienceForNextLevel();
+            levelUp();
+        }
+        return evolutionTriggered;
     }
 
     private void levelUp() {
@@ -540,10 +599,57 @@ public class Pokemon {
 
         calculateStats();
         int hpIncrease = stats.getHp() - oldHp;
-        currentHp += hpIncrease; // Also increase current HP
+        currentHp += hpIncrease;
         learnNewMovesAtLevel(level);
+        checkForEvolution();
     }
 
+    private void checkForEvolution() {
+        PokemonDatabase.EvolutionData evolutionData = PokemonDatabase.getEvolutionData(this.name);
+        if (evolutionData != null && this.level >= evolutionData.level) {
+            if (evolutionListener != null) {
+                evolutionTriggered = true;
+                evolutionListener.onEvolutionTriggered(this, evolutionData.evolvesTo);
+            }
+        }
+    }
+
+    public void evolveInto(String newPokemonName) {
+        GameLogger.info(this.name + " is evolving into " + newPokemonName + "!");
+        String oldName = this.name;
+        this.name = newPokemonName;
+
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(newPokemonName);
+        if (template == null) {
+            GameLogger.error("Could not find template for evolution target: " + newPokemonName);
+            this.name = oldName; // Revert if template is missing
+            return;
+        }
+
+        // Update types and base stats from the new template
+        this.primaryType = template.primaryType;
+        this.secondaryType = template.secondaryType;
+        this.speciesBaseHp = template.baseStats.baseHp;
+        this.speciesBaseAttack = template.baseStats.baseAttack;
+        this.speciesBaseDefense = template.baseStats.baseDefense;
+        this.speciesBaseSpAtk = template.baseStats.baseSpAtk;
+        this.speciesBaseSpDef = template.baseStats.baseSpDef;
+        this.speciesBaseSpeed = template.baseStats.baseSpeed;
+
+        // Recalculate stats and maintain HP percentage
+        int oldMaxHp = this.stats.getHp();
+        float hpRatio = (oldMaxHp > 0) ? this.currentHp / oldMaxHp : 1.0f;
+        calculateStats();
+        this.currentHp = this.stats.getHp() * hpRatio;
+
+        // Check for new moves at the current level
+        learnNewMovesAtLevel(this.level);
+
+        // Update sprites
+        loadIcons(TextureManager.getPokemonicon());
+        loadFront(TextureManager.getPokemonfront());
+        loadBack(TextureManager.getPokemonback());
+    }
 
     public int getBaseExperience() {
         switch (name.toUpperCase()) {
@@ -600,11 +706,15 @@ public class Pokemon {
                 Move newMove = PokemonDatabase.getMoveByName(entry.name);
                 if (newMove != null) {
                     Move clonedMove = PokemonDatabase.cloneMove(newMove);
+                    String message = name + " learned " + entry.name + "!";
                     if (moves.size() < 4) {
                         moves.add(clonedMove);
-                        GameLogger.info(name + " learned " + entry.name + "!");
-                        if (GameContext.get().getBattleTable() != null) {
-                            GameContext.get().getBattleTable().displayMessage(name + " learned " + entry.name + "!");
+                        GameLogger.info(message);
+                        if (GameContext.get().getChatSystem() != null) {
+                            GameContext.get().getChatSystem().addSystemMessage(message);
+                        }
+                        if (GameContext.get().getBattleSystem() != null && GameContext.get().getBattleSystem().isInBattle() && GameContext.get().getBattleTable() != null) {
+                            GameContext.get().getBattleTable().queueMessage(message);
                         }
                     } else {
                         if (GameContext.get().getBattleTable() != null) {
@@ -612,9 +722,10 @@ public class Pokemon {
                         } else {
                             moves.remove(0);
                             moves.add(clonedMove);
-                            GameLogger.info(name + " learned " + entry.name + " by replacing an old move!");
-                            if (GameContext.get().getBattleTable() != null) {
-                                GameContext.get().getBattleTable().displayMessage(name + " learned " + entry.name + " by replacing an old move!");
+                            String replaceMessage = name + " learned " + entry.name + " by replacing an old move!";
+                            GameLogger.info(replaceMessage);
+                            if (GameContext.get().getChatSystem() != null) {
+                                GameContext.get().getChatSystem().addSystemMessage(replaceMessage);
                             }
                         }
                     }
@@ -726,6 +837,7 @@ public class Pokemon {
     private boolean calculateShinyStatus() {
         return new Random().nextInt(4096) == 0; // 1/4096 chance in modern games
     }
+
     public String getName() {
         return name;
     }
@@ -794,6 +906,12 @@ public class Pokemon {
         return secondaryType;
     }
 
+    public void setEvolutionListener(EvolutionScreen.EvolutionListener listener) {
+        this.evolutionListener = listener;
+    }
+
+    private EvolutionScreen.EvolutionListener evolutionListener; // NEW
+
     public void setSecondaryType(PokemonType type) {
         this.secondaryType = type;
     }
@@ -810,27 +928,11 @@ public class Pokemon {
         return animations;
     }
 
-    public void setAnimations(PokemonAnimations animations) {
-        this.animations = animations;
-    }
-
-    public int getToxicCounter() {
-        return toxicCounter;
-    }
-
-    public void incrementToxicCounter() {
-        toxicCounter = Math.min(toxicCounter + 1, 15); // Cap at 15
-    }
-
-    public void resetToxicCounter() {
-        toxicCounter = 1;
-    }
-
-
     int calculateStat(int base, int iv, int ev) {
         float natureModifier = 1.0f + (new Random().nextFloat() * 0.2f - 0.1f);
         return (int) (((2 * base + iv + (float) ev / 4) * level / 100f + 5) * natureModifier);
     }
+
     public void calculateStats() {
         stats.setHp(((2 * speciesBaseHp + stats.ivs[0] + stats.evs[0] / 4) * level / 100) + level + 10);
         int baseAttack = calculateStat(speciesBaseAttack, stats.ivs[1], stats.evs[1]);
@@ -864,7 +966,7 @@ public class Pokemon {
         BURNED,
         FROZEN,
         ASLEEP,
-        LEECH_SEED,  // NEW!
+        LEECH_SEED,
         FAINTED
     }
 

@@ -231,6 +231,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                         handleRightClick();
                     }
                 }
+                screenInterface.refreshScreens();
                 updateSlotBackground();
             }
 

@@ -9,10 +9,11 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.system.data.ItemData;
+import io.github.pokemeetup.system.gameplay.inventory.secureinventories.InventoryObserver;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
-public class HotbarSystem {
+public class HotbarSystem implements InventoryObserver {
     private static final int HOTBAR_SIZE = 9;
     private static final float SLOT_SIZE = 40f;
     private static final float VERTICAL_OFFSET = 30f;
@@ -36,7 +37,9 @@ public class HotbarSystem {
         }
         containerTable.add(hotbarTable).center();
         stage.addActor(containerTable);
-
+        if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getInventory() != null) {
+            GameContext.get().getPlayer().getInventory().addObserver(this);
+        }
         updateHotbar();
     }
 
@@ -84,5 +87,15 @@ public class HotbarSystem {
     public void resize(int width, int height) {
         float yPosition = 10f;
         hotbarTable.setPosition(width / 2f - (HOTBAR_SIZE * SLOT_SIZE) / 2f, yPosition);
+    }
+    /**
+     * NEW: This method is called by the Inventory whenever its contents change.
+     * It simply triggers a redraw of the hotbar slots.
+     */
+    @Override
+    public void onInventoryChanged() {
+        if (hotbarTable.getStage() != null) { // Ensure it's safe to update
+            updateHotbar();
+        }
     }
 }

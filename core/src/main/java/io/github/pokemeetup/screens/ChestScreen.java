@@ -36,7 +36,10 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
     private final SpriteBatch batch;
     private final Vector2 chestPosition;
     private final GameScreen gameScreen;
-    private final Stage stage;
+    private final Stage stage; @Override
+    public void refreshScreens() {
+        updateUI();
+    }
     private final Skin skin;
     private final Table inventoryTable;
     private final Table mainTable;

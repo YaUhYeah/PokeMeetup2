@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Interpolation;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.*;
@@ -17,6 +18,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ObjectMap;
 import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -26,6 +28,7 @@ import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonCaptureAnimation;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.pokemon.attacks.Move;
+import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
@@ -52,16 +55,19 @@ public class BattleTable extends Table {
     private boolean playerActionTaken = false;
     private final Queue<BattleMessage> messageQueue = new LinkedList<>();
     private boolean processingMessage = false;
+
+    private static final float POKEBALL_THROW_DURATION = 1.2f;
+    private static final float POKEMON_REVEAL_DURATION = 0.8f;
+    private static final float MESSAGE_DISPLAY_DURATION = 2.0f;
+    private Image playerPokeballImage, enemyPokeballImage;
+    private boolean introAnimationComplete = false;
+
     public static final int STATUS_ICON_WIDTH = 44;
     public static final int STATUS_ICON_HEIGHT = 16;
     private static final float BATTLE_SCREEN_WIDTH = 800f;
     private static final float BATTLE_SCREEN_HEIGHT = 480f;
     private static final float HP_BAR_WIDTH = 100f;
-    private static final float DAMAGE_FLASH_DURATION = 0.1f;
-    private static final float MOVE_EXECUTION_DELAY = 0.7f;
-    private static final float POST_DAMAGE_DELAY = 0.8f;
-    private static final float POST_EFFECT_DELAY = 1.0f;
-    private static final float MULTI_HIT_DELAY = 0.3f;
+
     private static final HashMap<Pokemon.PokemonType, Color> TYPE_COLORS = new HashMap<Pokemon.PokemonType, Color>() {{
         put(Pokemon.PokemonType.FIRE, new Color(1, 0.3f, 0.3f, 1));
         put(Pokemon.PokemonType.WATER, new Color(0.2f, 0.6f, 1, 1));
@@ -88,6 +94,7 @@ public class BattleTable extends Table {
     static {
         initializeTypeEffectiveness();
     }
+
     private TextureRegion platformTexture;
     private Image playerPlatform, enemyPlatform;
     private float stateTimer = 0;
@@ -95,14 +102,21 @@ public class BattleTable extends Table {
     private Label weatherLabel;
     private boolean moveSelectionActive = false;
     private int turnCount = 0;
-    private float criticalHitChance = 0.0625f; // Base 6.25% crit chance
-    private Map<Pokemon, Integer> leechSeedTargets = new HashMap<>();
+    // MODIFICATION: Changed to Map<Pokemon, Pokemon> for better tracking
+    private Map<Pokemon, Pokemon> leechSeedTargets = new HashMap<>();
 
+    // Path: src/main/java/io/github/pokemeetup/screens/otherui/BattleTable.java
+
+    // In the BattleState enum, add AWAITING_ITEM_TARGET
     private enum BattleState {
-        INTRO,
+        BATTLE_INTRO,
+        ENEMY_ENTRANCE,
+        PLAYER_ENTRANCE,
+        INTRO_COMPLETE,
         PLAYER_CHOICE,
         PLAYER_MOVE_SELECT,
-        PLAYER_MOVE_EXECUTE,
+        AWAITING_ITEM_TARGET, // <--- ADD THIS NEW STATE
+        PLAYER_ACTION_EXECUTE, // Let's rename this for clarity
         ENEMY_TURN,
         PLAYER_SWITCHING,
         ENEMY_SWITCHING,
@@ -117,6 +131,9 @@ public class BattleTable extends Table {
         CATCHING,
         MESSAGE_DISPLAY
     }
+
+    private ItemData itemToUse;
+
     private static class BattleMessage {
         String text;
         float duration;
@@ -127,10 +144,12 @@ public class BattleTable extends Table {
             this.duration = duration;
             this.onComplete = onComplete;
         }
-    }    public BattleTable(Stage stage, Skin skin, Pokemon playerPokemon, Pokemon enemyPokemon) {
+    }
+
+    public BattleTable(Stage stage, Skin skin, Pokemon playerPokemon, Pokemon enemyPokemon) {
         super();
         this.stage = stage;
-        this.currentState = BattleState.INTRO;
+        this.currentState = BattleState.BATTLE_INTRO;
         this.skin = skin;
         this.playerPokemon = playerPokemon;
         this.enemyPokemon = enemyPokemon;
@@ -147,13 +166,170 @@ public class BattleTable extends Table {
             initializeUIComponents();
             initializePlatforms();
             initializePokemonSprites();
+            initializePokeballSprites();
             setupHPBars();
             setupWeatherDisplay();
             setupContainer();
-            startBattleAnimation();
+            startEnhancedBattleIntro();
         } catch (Exception e) {
             GameLogger.error("Error initializing battle table: " + e.getMessage());
         }
+    }// In class BattleTable
+
+    private void handlePokemonButton() {
+        if (actionMenu != null) {
+            actionMenu.setVisible(false);
+        }
+        transitionToState(BattleState.PLAYER_PARTY_SCREEN); // Use a dedicated state for switching
+        showPartyScreenForSwitch();
+    }
+
+    private void showPartyScreenForSwitch() {
+        PokemonPartyWindow partyScreen = new PokemonPartyWindow(
+            skin,
+            GameContext.get().getPlayer().getPokemonParty(),
+            true,
+            this::startSwitchPokemonSequence,
+            () -> transitionToState(BattleState.PLAYER_CHOICE),
+            true // <-- FIX: disable active Pokémon for switching
+        );
+        partyScreen.show(stage);
+    }
+    public void handleSwitchPokemon(int partyIndex) {
+        // This now uses the same, correct logic as a voluntary switch.
+        if (currentState != BattleState.PLAYER_CHOICE && currentState != BattleState.FORCED_SWITCH) {
+            GameLogger.error("Switch attempted in invalid state: " + currentState);
+            return;
+        }
+
+        Pokemon newPokemon = GameContext.get().getPlayer().getPokemonParty().getPokemon(partyIndex);
+        if (newPokemon == null || newPokemon == playerPokemon) {
+            queueMessage("Cannot switch to this Pokemon!");
+            return;
+        }
+
+        if (newPokemon.getCurrentHp() <= 0) {
+            queueMessage(newPokemon.getName() + " is unable to battle!");
+            if (currentState == BattleState.FORCED_SWITCH) {
+                showForcedSwitchPartyScreen();
+            }
+            return;
+        }
+
+        isAnimating = true;
+        setBattleInterfaceEnabled(false);
+        transitionToState(BattleState.PLAYER_SWITCHING);
+
+        SequenceAction switchSequence = Actions.sequence();
+
+        switchSequence.addAction(Actions.run(() -> {
+            queueMessage(playerPokemon.getName() + ", come back!");
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_RETURN);
+            playerPokemonImage.addAction(Actions.scaleTo(0.1f, 0.1f, 0.3f));
+        }));
+        switchSequence.addAction(Actions.delay(0.5f));
+
+        switchSequence.addAction(Actions.run(() -> {
+            Pokemon oldPokemon = playerPokemon;
+            // MODIFICATION: Clear Leech Seed when switching
+            leechSeedTargets.remove(oldPokemon);
+            leechSeedTargets.values().removeIf(healer -> healer == oldPokemon);
+
+            playerPokemon = newPokemon;
+            GameContext.get().getPlayer().getPokemonParty().setActivePokemon(partyIndex); // Correctly set active Pokemon
+            updatePlayerPokemonDisplay();
+            playerPokemonImage.setScale(0.1f);
+            playerPokemonImage.getColor().a = 1f;
+
+            if (callback != null) {
+                callback.onTurnEnd(oldPokemon);
+            }
+        }));
+
+        switchSequence.addAction(Actions.run(() -> {
+            queueMessage("Go! " + newPokemon.getName() + "!");
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_SENDOUT);
+            AudioManager.getInstance().playPokemonCry(newPokemon.getName());
+            playerPokemonImage.addAction(Actions.scaleTo(1.0f, 1.0f, 0.3f));
+        }));
+        switchSequence.addAction(Actions.delay(0.8f));
+
+        switchSequence.addAction(Actions.run(this::finishPlayerSwitchAndProceed));
+
+        this.addAction(switchSequence);
+    }
+
+    public void startSwitchPokemonSequence(int partyIndex) {
+        if (currentState != BattleState.PLAYER_CHOICE && currentState != BattleState.FORCED_SWITCH) {
+            GameLogger.error("Switch attempted in invalid state: " + currentState);
+            return;
+        }
+
+        Pokemon newPokemon = GameContext.get().getPlayer().getPokemonParty().getPokemon(partyIndex);
+        if (newPokemon == null || newPokemon == playerPokemon) {
+            queueMessage("Cannot switch to this Pokemon!");
+            return;
+        }
+
+        if (newPokemon.getCurrentHp() <= 0) {
+            queueMessage(newPokemon.getName() + " is unable to battle!");
+            if (currentState == BattleState.FORCED_SWITCH) {
+                showForcedSwitchPartyScreen();
+            }
+            return;
+        }
+
+        isAnimating = true;
+        setBattleInterfaceEnabled(false);
+        transitionToState(BattleState.PLAYER_SWITCHING);
+
+        SequenceAction switchSequence = Actions.sequence();
+
+        switchSequence.addAction(Actions.run(() -> {
+            queueMessage(playerPokemon.getName() + ", come back!");
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_RETURN);
+            playerPokemonImage.addAction(Actions.scaleTo(0.1f, 0.1f, 0.3f));
+        }));
+        switchSequence.addAction(Actions.delay(0.5f));
+
+        switchSequence.addAction(Actions.run(() -> {
+            Pokemon oldPokemon = playerPokemon;
+            playerPokemon = newPokemon;
+            GameContext.get().getPlayer().getPokemonParty().setActivePokemon(partyIndex); // Set the active pokemon in the party
+            updatePlayerPokemonDisplay();
+            playerPokemonImage.setScale(0.1f);
+            playerPokemonImage.getColor().a = 1f;
+
+            if (callback != null) {
+                callback.onTurnEnd(oldPokemon);
+            }
+        }));
+
+        switchSequence.addAction(Actions.run(() -> {
+            queueMessage("Go! " + newPokemon.getName() + "!");
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_SENDOUT);
+            AudioManager.getInstance().playPokemonCry(newPokemon.getName());
+            playerPokemonImage.addAction(Actions.scaleTo(1.0f, 1.0f, 0.3f));
+        }));
+        switchSequence.addAction(Actions.delay(0.8f));
+
+        // MODIFIED: Use a dedicated method to finish the sequence, ensuring state is reset.
+        switchSequence.addAction(Actions.run(this::finishPlayerSwitchAndProceed));
+
+        this.addAction(switchSequence);
+    }
+
+    // NEW: This method cleanly ends the switching state.
+    private void finishPlayerSwitchAndProceed() {
+        isAnimating = false;
+        playerActionTaken = true; // Switching counts as a turn
+
+        // Don't apply end-of-turn effects here, they happen after both players move.
+        // The enemy gets to attack right after the switch.
+
+        if (checkFaintConditions()) return; // Should not happen, but a good safe check
+
+        transitionToState(BattleState.ENEMY_TURN);
     }
 
     private static void initializeTypeEffectiveness() {
@@ -326,33 +502,255 @@ public class BattleTable extends Table {
         typeEffectiveness.get(attackType).putAll(effectiveness);
     }
 
+
+    /**
+     * Creates a ProgressBar style with a fill color based on HP percentage.
+     * @param percentage The current HP percentage (0.0 to 1.0).
+     * @return A new ProgressBarStyle.
+     */
     private static ProgressBar.ProgressBarStyle createHPBarStyle(float percentage) {
         ProgressBar.ProgressBarStyle style = new ProgressBar.ProgressBarStyle();
+
+        // Background
         Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
-        bgPixmap.setColor(0.2f, 0.2f, 0.2f, 0.8f);
+        bgPixmap.setColor(0.2f, 0.2f, 0.2f, 0.8f); // Dark grey background
         bgPixmap.fill();
-        Texture bgTexture = new Texture(bgPixmap);
-        style.background = new TextureRegionDrawable(new TextureRegion(bgTexture));
+        style.background = new TextureRegionDrawable(new TextureRegion(new Texture(bgPixmap)));
         bgPixmap.dispose();
+
+        // Foreground (knob)
         Pixmap fgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         Color barColor;
         if (percentage > 0.5f) {
-            barColor = new Color(0.2f, 0.8f, 0.2f, 1f); // Green
+            barColor = new Color(0.18f, 0.82f, 0.32f, 1f); // Green
         } else if (percentage > 0.2f) {
-            barColor = new Color(0.9f, 0.9f, 0.2f, 1f); // Yellow
+            barColor = new Color(0.98f, 0.82f, 0.2f, 1f); // Yellow
         } else {
-            barColor = new Color(0.8f, 0.2f, 0.2f, 1f); // Red
+            barColor = new Color(0.95f, 0.3f, 0.2f, 1f); // Red
         }
         fgPixmap.setColor(barColor);
         fgPixmap.fill();
-        Texture fgTexture = new Texture(fgPixmap);
-        TextureRegionDrawable knobDrawable = new TextureRegionDrawable(new TextureRegion(fgTexture));
+        TextureRegionDrawable knobDrawable = new TextureRegionDrawable(new TextureRegion(new Texture(fgPixmap)));
+        fgPixmap.dispose();
+
         style.knob = knobDrawable;
         style.knobBefore = knobDrawable;
-        fgPixmap.dispose();
 
         return style;
     }
+
+    private void initializePokeballSprites() {
+        // Get the first frame from capsuleThrow atlas - this is the closed pokeball
+        TextureRegion pokeballRegion = TextureManager.capsuleThrow.findRegion("ball_POKEBALL");
+        if (pokeballRegion != null) {
+            // Split the 256x64 region into 8 frames of 32x64 each
+            TextureRegion firstFrame = new TextureRegion(pokeballRegion, 0, 0, 32, 64);
+
+            playerPokeballImage = new Image(firstFrame);
+            enemyPokeballImage = new Image(firstFrame);
+        } else {
+            // Fallback - create a simple colored circle
+            GameLogger.error("ball_POKEBALL not found in capsuleThrow atlas, using fallback");
+            Pixmap pixmap = new Pixmap(32, 64, Pixmap.Format.RGBA8888);
+            pixmap.setColor(1, 1, 1, 1);
+            pixmap.fillCircle(16, 32, 15);
+            pixmap.setColor(1, 0, 0, 1);
+            pixmap.fillCircle(16, 32, 12);
+            TextureRegion fallbackTexture = new TextureRegion(new Texture(pixmap));
+            pixmap.dispose();
+
+            playerPokeballImage = new Image(fallbackTexture);
+            enemyPokeballImage = new Image(fallbackTexture);
+        }
+
+        playerPokeballImage.setSize(32, 64);
+        enemyPokeballImage.setSize(32, 64);
+        playerPokeballImage.setVisible(false);
+        enemyPokeballImage.setVisible(false);
+    }
+
+    private void startEnhancedBattleIntro() {
+        GameLogger.info("Starting enhanced Fire Red style battle intro");
+        isAnimating = true;
+        currentState = BattleState.BATTLE_INTRO;
+        setBattleInterfaceEnabled(false);
+
+        // Hide Pokemon initially
+        if (playerPokemonImage != null) {
+            playerPokemonImage.setVisible(false);
+        }
+        if (enemyPokemonImage != null) {
+            enemyPokemonImage.setVisible(false);
+        }
+
+        SequenceAction introSequence = Actions.sequence(
+            // Initial battle message
+            Actions.run(() -> {
+                queueMessage("A wild " + enemyPokemon.getName() + " appeared!", MESSAGE_DISPLAY_DURATION);
+            }),
+            Actions.delay(MESSAGE_DISPLAY_DURATION),
+
+            // Enemy Pokemon entrance
+            Actions.run(() -> startEnemyEntrance()),
+            Actions.delay(POKEBALL_THROW_DURATION + POKEMON_REVEAL_DURATION),
+
+            // Player Pokemon entrance
+            Actions.run(() -> startPlayerEntrance()),
+            Actions.delay(POKEBALL_THROW_DURATION + POKEMON_REVEAL_DURATION),
+
+            // Complete intro
+            Actions.run(() -> completeIntro())
+        );
+
+        addAction(introSequence);
+    }
+
+    private void startEnemyEntrance() {
+        GameLogger.info("Starting enemy Pokemon entrance");
+        currentState = BattleState.ENEMY_ENTRANCE;
+
+        // Enemy Pokemon just appears (wild Pokemon don't come from pokeballs)
+        if (enemyPokemonImage != null) {
+            enemyPokemonImage.setVisible(true);
+            enemyPokemonImage.setScale(0.1f);
+            enemyPokemonImage.addAction(Actions.sequence(
+                Actions.scaleTo(1.2f, 1.2f, POKEMON_REVEAL_DURATION * 0.6f, Interpolation.bounceOut),
+                Actions.scaleTo(1.0f, 1.0f, POKEMON_REVEAL_DURATION * 0.4f, Interpolation.sineOut),
+                Actions.run(() -> {
+                    // Play enemy Pokemon cry
+                    AudioManager.getInstance().playPokemonCry(enemyPokemon.getName());
+                })
+            ));
+        }
+    }
+
+    private void startPlayerEntrance() {
+        GameLogger.info("Starting player Pokemon entrance");
+        currentState = BattleState.PLAYER_ENTRANCE;
+
+        queueMessage("Go! " + playerPokemon.getName() + "!", 1.5f);
+        AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_SENDOUT);
+
+        // Calculate pokeball throw trajectory
+        Vector2 throwStart = new Vector2(50, 100); // Bottom left area
+        Vector2 throwTarget = new Vector2(200, 150); // Player Pokemon position
+
+        // Setup pokeball for throw
+        playerPokeballImage.setPosition(throwStart.x, throwStart.y);
+        playerPokeballImage.setVisible(true);
+        playerPokeballImage.setScale(1.0f);
+        addActor(playerPokeballImage);
+
+        // Animate pokeball throw with arc
+        playerPokeballImage.addAction(Actions.sequence(
+            Actions.parallel(
+                // Move in arc
+                createArcMovement(throwStart, throwTarget, POKEBALL_THROW_DURATION)
+            ),
+            Actions.run(() -> {
+                // Pokeball opens and reveals Pokemon
+                playerPokeballImage.setVisible(false);
+                revealPlayerPokemon();
+            })
+        ));
+    }
+
+    private Action createArcMovement(Vector2 start, Vector2 end, float duration) {
+        return new Action() {
+            private float time = 0;
+            private final float arcHeight = 80f;
+
+            @Override
+            public boolean act(float delta) {
+                time += delta;
+                float progress = Math.min(time / duration, 1f);
+
+                float x = MathUtils.lerp(start.x, end.x, progress);
+                float baseY = MathUtils.lerp(start.y, end.y, progress);
+                float y = baseY + arcHeight * MathUtils.sin(MathUtils.PI * progress);
+
+                getActor().setPosition(x, y);
+                return progress >= 1f;
+            }
+        };
+    }
+
+    private void revealPlayerPokemon() {
+        if (playerPokemonImage != null) {
+            playerPokemonImage.setVisible(true);
+            playerPokemonImage.setScale(0.1f);
+            playerPokemonImage.setColor(1, 1, 1, 0.7f); // Slightly transparent initially
+
+            // Create pokeball opening effect
+            createPokeballOpenEffect(playerPokemonImage.getX(), playerPokemonImage.getY());
+
+            playerPokemonImage.addAction(Actions.sequence(
+                Actions.parallel(
+                    Actions.scaleTo(1.2f, 1.2f, POKEMON_REVEAL_DURATION * 0.6f, Interpolation.bounceOut),
+                    Actions.fadeIn(POKEMON_REVEAL_DURATION * 0.3f)
+                ),
+                Actions.scaleTo(1.0f, 1.0f, POKEMON_REVEAL_DURATION * 0.4f, Interpolation.sineOut),
+                Actions.run(() -> {
+                    // Play player Pokemon cry
+                    AudioManager.getInstance().playPokemonCry(playerPokemon.getName());
+                })
+            ));
+        }
+    }
+
+    private void createPokeballOpenEffect(float x, float y) {
+        // Create simple particle effect for pokeball opening
+        for (int i = 0; i < 6; i++) {
+            Actor particle = new Actor() {
+                @Override
+                public void draw(Batch batch, float parentAlpha) {
+                    // Draw a small white circle
+                    batch.setColor(1, 1, 1, getColor().a * parentAlpha);
+                    // Simple particle effect - would be better with actual textures
+                    batch.setColor(Color.WHITE);
+                }
+            };
+
+            particle.setSize(4, 4);
+            particle.setPosition(x, y);
+
+            float angle = i * 60f; // Spread particles in circle
+            float distance = 30f;
+            float targetX = x + MathUtils.cosDeg(angle) * distance;
+            float targetY = y + MathUtils.sinDeg(angle) * distance;
+
+            particle.addAction(Actions.sequence(
+                Actions.parallel(
+                    Actions.moveTo(targetX, targetY, 0.5f, Interpolation.sineOut),
+                    Actions.fadeOut(0.5f)
+                ),
+                Actions.removeActor()
+            ));
+
+            addActor(particle);
+        }
+    }
+
+    private void completeIntro() {
+        GameLogger.info("Battle intro complete - starting player turn");
+        isAnimating = false;
+        introAnimationComplete = true;
+        currentState = BattleState.INTRO_COMPLETE;
+
+        // Remove pokeball sprites
+        if (playerPokeballImage != null) {
+            playerPokeballImage.remove();
+        }
+        if (enemyPokeballImage != null) {
+            enemyPokeballImage.remove();
+        }
+
+        // Transition to player choice
+        transitionToState(BattleState.PLAYER_CHOICE);
+        battleText.setText("What will " + playerPokemon.getName() + " do?");
+        setBattleInterfaceEnabled(true);
+    }
+
     public void queueMessage(String text, float duration, Runnable onComplete) {
         messageQueue.offer(new BattleMessage(text, duration, onComplete));
         if (!processingMessage) {
@@ -394,6 +792,7 @@ public class BattleTable extends Table {
         battleText.clearActions();
         battleText.getColor().a = 1f;
     }
+
     public void showMoveReplacementDialog(final Move newMove) {
         final Window replacementWindow = new Window("Learn New Move", skin);
         replacementWindow.setModal(true);
@@ -485,111 +884,6 @@ public class BattleTable extends Table {
         }
     }
 
-
-    /**
-     * Sets up the main layout of the battle screen, including backgrounds, platforms,
-     * Pokémon sprites, and the info/action boxes. This creates the classic
-     * "player on bottom-left, enemy on top-right" view.
-     */
-    private void setupLayout() {
-        clear(); // Clear any previous actors from the table
-        String bgName = "bg-grass"; // Default
-        TextureRegion background = TextureManager.battlebacks.findRegion(bgName);
-        if (background != null) {
-            setBackground(new TextureRegionDrawable(background));
-        }
-        TextureRegion platformTexture = TextureManager.battlebacks.findRegion("battle_platform");
-        Image playerPlatform = new Image(platformTexture);
-        Image enemyPlatform = new Image(platformTexture);
-        playerPlatform.setScaling(Scaling.fit);
-        enemyPlatform.setScaling(Scaling.fit);
-        Table mainContainer = new Table();
-        mainContainer.setFillParent(true);
-        Stack enemyStack = new Stack();
-        enemyStack.add(enemyPlatform);
-        enemyStack.add(enemyPokemonImage);
-        Stack playerStack = new Stack();
-        playerStack.add(playerPlatform);
-        playerStack.add(playerPokemonImage);
-        Table enemyInfoBox = createInfoBox(enemyPokemon, enemyInfoLabel, enemyHPBar, enemyStatusIcon);
-        Table playerInfoBox = createInfoBox(playerPokemon, playerInfoLabel, playerHPBar, playerStatusIcon);
-        playerInfoBox.row();
-        playerInfoBox.add(expBar).colspan(2).width(HP_BAR_WIDTH).height(6).pad(2, 5, 5, 5).left();
-        mainContainer.add(enemyInfoBox).expand().top().left().pad(20).width(250);
-        mainContainer.add(enemyStack).expand().top().right().pad(20, 0, 0, 50).size(200, 100);
-        mainContainer.row();
-        mainContainer.add(playerStack).expand().bottom().left().pad(0, 50, 80, 0).size(200, 100);
-        mainContainer.add(playerInfoBox).expand().bottom().right().pad(0, 0, 80, 20).width(250);
-
-        addActor(mainContainer);
-        Table messageBox = new Table(skin);
-        messageBox.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("battle_message_box")));
-        battleText.setWrap(true);
-        messageBox.add(battleText).expand().fill().pad(10, 20, 10, 20);
-        Stack bottomUI = new Stack();
-        bottomUI.setFillParent(true);
-        bottomUI.add(messageBox);
-        bottomUI.add(actionMenu); // The action menu will sit on top
-
-        addActor(bottomUI);
-        actionMenu.pack();
-        actionMenu.setPosition(
-            getWidth() - actionMenu.getWidth() - 10,
-            messageBox.getHeight() + 10 // Position it right above the message box
-        );
-    }
-
-    /**
-     * Creates the main action menu with FIGHT, BAG, POKEMON, and RUN buttons.
-     * This menu is shown when it's the player's turn to choose an action.
-     * @return A Table containing the configured action buttons.
-     */
-    private Table createActionMenu() {
-        Table menu = new Table(skin);
-        menu.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("battle_choice_box")));
-        TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle(skin.get("default", TextButton.TextButtonStyle.class));
-        buttonStyle.fontColor = Color.BLACK;
-
-        fightButton = new TextButton("FIGHT", buttonStyle);
-        bagButton = new TextButton("BAG", buttonStyle);
-        pokemonButton = new TextButton("POKEMON", buttonStyle);
-        runButton = new TextButton("RUN", buttonStyle);
-        menu.add(fightButton).width(120).height(50).pad(5);
-        menu.add(bagButton).width(120).height(50).pad(5).row();
-        menu.add(pokemonButton).width(120).height(50).pad(5);
-        menu.add(runButton).width(120).height(50).pad(5);
-        fightButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) handleFightButton(); } });
-        bagButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) handleBagButton(); } });
-        pokemonButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) handlePokemonButton(); } });
-        runButton.addListener(new ClickListener() { @Override public void clicked(InputEvent e, float x, float y) { if (!isAnimating) attemptRun(); } });
-
-        menu.setVisible(false); // Start hidden
-        return menu;
-    }
-
-    /**
-     * Updates all dynamic UI elements to reflect the current state of the Pokémon in battle.
-     * This includes names, levels, HP bars, and status icons.
-     */
-    private void updateUI() {
-        if (playerPokemon == null || enemyPokemon == null) return;
-        playerInfoLabel.setText(String.format("%s Lv.%d", playerPokemon.getName(), playerPokemon.getLevel()));
-        playerHPBar.setRange(0, playerPokemon.getStats().getHp());
-        playerHPBar.setValue(playerPokemon.getCurrentHp());
-        updateHPBarColor(playerHPBar, playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp(), skin);
-        expBar.setRange(0, playerPokemon.getExperienceForNextLevel());
-        expBar.setValue(playerPokemon.getCurrentExperience());
-        updateStatusIcon(playerPokemon, playerStatusIcon);
-        enemyInfoLabel.setText(String.format("%s Lv.%d", enemyPokemon.getName(), enemyPokemon.getLevel()));
-        enemyHPBar.setRange(0, enemyPokemon.getStats().getHp());
-        enemyHPBar.setValue(enemyPokemon.getCurrentHp());
-        updateHPBarColor(enemyHPBar, enemyPokemon.getCurrentHp() / (float) enemyPokemon.getStats().getHp(), skin);
-        updateStatusIcon(enemyPokemon, enemyStatusIcon);
-    }
-
-    /**
-     * Helper method to create a standardized info box for a Pokémon.
-     */
     private Table createInfoBox(Pokemon pokemon, Label nameLabel, ProgressBar hpBar, Image statusIcon) {
         Table infoBox = new Table(skin);
         infoBox.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("battle_info_box")));
@@ -604,11 +898,6 @@ public class BattleTable extends Table {
         return infoBox;
     }
 
-    /**
-     * Sets the visibility and texture of a status icon based on the Pokémon's status.
-     * @param pokemon The Pokémon to check.
-     * @param statusIcon The Image widget to update.
-     */
     private void updateStatusIcon(Pokemon pokemon, Image statusIcon) {
         Pokemon.Status status = pokemon.getStatus();
         if (status != null && status != Pokemon.Status.NONE) {
@@ -623,31 +912,11 @@ public class BattleTable extends Table {
             statusIcon.setVisible(false);
         }
     }
-
-    /**
-     * Tints the progress bar's fill portion (knobBefore) to green, yellow, or red
-     * based on the Pokémon's current HP percentage.
-     * @param bar The ProgressBar to update.
-     * @param percentage The current HP percentage (0.0 to 1.0).
-     * @param skin The skin to use for styling.
-     */
     private static void updateHPBarColor(ProgressBar bar, float percentage, Skin skin) {
-        ProgressBar.ProgressBarStyle style = new ProgressBar.ProgressBarStyle(bar.getStyle());
-        Drawable fill = style.knobBefore;
-
-        if (fill instanceof TextureRegionDrawable) {
-            Color color;
-            if (percentage > 0.5f) {
-                color = new Color(0.18f, 0.82f, 0.32f, 1f); // Green
-            } else if (percentage > 0.2f) {
-                color = new Color(0.98f, 0.82f, 0.2f, 1f); // Yellow
-            } else {
-                color = new Color(0.95f, 0.3f, 0.2f, 1f); // Red
-            }
-            ((TextureRegionDrawable) fill).tint(color);
-        }
-        bar.setStyle(style);
+        // Use the same logic as the initial creation
+        bar.setStyle(createHPBarStyle(percentage));
     }
+
 
     private void setBattleInterfaceEnabled(boolean enabled) {
         if (actionMenu != null) {
@@ -743,45 +1012,43 @@ public class BattleTable extends Table {
     private void handleBagButton() {
         if (actionMenu != null) {
             actionMenu.setVisible(false);
-            actionMenu.setTouchable(Touchable.disabled);
         }
-
-        currentState = BattleState.BAG_SCREEN;
+        transitionToState(BattleState.BAG_SCREEN);
 
         BagScreen bagScreen = new BagScreen(skin,
             GameContext.get().getPlayer().getInventory(),
             (ItemData selectedItem) -> {
-                if (selectedItem.getItemId().toLowerCase().contains("pokeball")) {
+                // This is the listener for when an item is chosen from the bag.
+                String itemId = selectedItem.getItemId().toLowerCase();
+
+                // *** FIX: Added specific logic for Pokéballs ***
+                if (itemId.contains("ball")) {
+                    // If it's a ball, we don't need to select a Pokémon. We use it immediately.
                     handlePokeBallUse(selectedItem);
-                } else if (selectedItem.getItemId().toLowerCase().contains("potion")) {
-                    handlePotionUse(selectedItem);
                 } else {
-                    queueMessage("This item cannot be used in battle!");
-                    currentState = BattleState.PLAYER_CHOICE;
-                    showActionMenu(true);
+                    // For other items (Potions, Elixirs), store the item and open the party screen.
+                    this.itemToUse = selectedItem;
+                    showPartyScreenForItemUse();
                 }
             }
         );
 
         bagScreen.setOnClose(() -> {
-            currentState = BattleState.PLAYER_CHOICE;
-            showActionMenu(true);
+            // If the player closes the bag without choosing, return to the main menu.
+            if (currentState == BattleState.BAG_SCREEN) {
+                transitionToState(BattleState.PLAYER_CHOICE);
+            }
         });
 
         stage.addActor(bagScreen);
-        bagScreen.pack();
-        float w = stage.getWidth();
-        float h = stage.getHeight();
-        bagScreen.setPosition((w - bagScreen.getWidth()) / 2f, (h - bagScreen.getHeight()) / 2f);
-        bagScreen.toFront();
-        bagScreen.setZIndex(stage.getActors().size - 1);
     }
-    private void handlePokeBallUse(ItemData pokeball) {
-        pokeball.setCount(pokeball.getCount() - 1);
-        if (pokeball.getCount() <= 0) {
-            GameContext.get().getPlayer().getInventory().removeItem(pokeball);
-        }
 
+    // Replace the handlePokeBallUse() method to use queueMessage correctly
+    private void handlePokeBallUse(ItemData pokeball) {
+        // Consume the item first
+        GameContext.get().getPlayer().getInventory().removeItem(pokeball.getItemId(), 1);
+
+        // Calculate capture chance
         float hpRatio = enemyPokemon.getCurrentHp() / (float) enemyPokemon.getStats().getHp();
         float captureChance = MathUtils.clamp(1 - hpRatio, 0.1f, 0.9f);
         if (pokeball.getItemId().toLowerCase().contains("great")) {
@@ -790,13 +1057,115 @@ public class BattleTable extends Table {
             captureChance *= 2.0f;
         }
 
-        attemptCapture((WildPokemon) enemyPokemon, captureChance);
+        // Use the queueMessage system to show the text, THEN start the animation.
+        float finalCaptureChance = captureChance;
+        queueMessage("You used a " + formatItemName(pokeball.getItemId()) + "!", 1.5f, () -> {
+            attemptCapture((WildPokemon) enemyPokemon, finalCaptureChance);
+        });
+
+        // We no longer transition state here; the animation callback will do it.
+    }
+
+    // Add this new method to BattleTable to show the party screen specifically for item use
+    private void showPartyScreenForItemUse() {
+        transitionToState(BattleState.AWAITING_ITEM_TARGET);
+
+        PokemonPartyWindow partyScreen = new PokemonPartyWindow(
+            skin,
+            GameContext.get().getPlayer().getPokemonParty(),
+            true, // It's still battle mode
+            (int selectedIndex) -> {
+                // This is the listener for the PokemonPartyWindow.
+                // It runs when a Pokémon is selected as the target.
+                Pokemon targetPokemon = GameContext.get().getPlayer().getPokemonParty().getPokemon(selectedIndex);
+                if (itemToUse != null && targetPokemon != null) {
+                    if (itemToUse.getItemId().toLowerCase().contains("potion")) {
+                        useItemOnPokemon(itemToUse, targetPokemon);
+                    } else if (itemToUse.getItemId().toLowerCase().contains("elixir") || itemToUse.getItemId().toLowerCase().contains("ether")) {
+                        useElixirOnPokemon(itemToUse, targetPokemon);
+                    } else {
+                        // Handle other item types here
+                        queueMessage("This item can't be used right now.");
+                        transitionToState(BattleState.PLAYER_CHOICE);
+                    }
+                }
+                itemToUse = null; // Clear the stored item
+            },
+            () -> {
+                // This runs if the player cancels the party screen.
+                itemToUse = null;
+                transitionToState(BattleState.PLAYER_CHOICE);
+            }
+       ,false );
+        partyScreen.show(stage);
     }
 
     private void handlePotionUse(ItemData potion) {
         showPartyScreenForItem(potion);
     }
 
+    private void handleElixirUse(ItemData elixir) {
+        showPartyScreenForElixir(elixir);
+    }
+
+
+    private void showPartyScreenForElixir(ItemData elixir) {
+        PokemonPartyWindow partyScreen = new PokemonPartyWindow(
+            skin,
+            GameContext.get().getPlayer().getPokemonParty(),
+            false,
+            (selectedIndex) -> {
+                Pokemon selectedPokemon = GameContext.get().getPlayer().getPokemonParty().getPokemon(selectedIndex);
+                if (selectedPokemon != null) {
+                    useElixirOnPokemon(elixir, selectedPokemon);
+                }
+            },
+            () -> {
+                currentState = BattleState.PLAYER_CHOICE;
+                showActionMenu(true);
+            }
+        ,false);
+
+        stage.addActor(partyScreen);
+        partyScreen.show(stage);
+    }
+
+    private void useElixirOnPokemon(ItemData elixir, Pokemon pokemon) {
+        // CHECK 1: Don't use if all PP is full.
+        if (!pokemon.needsPpRestore()) {
+            queueMessage("It won't have any effect!");
+            transitionToState(BattleState.PLAYER_CHOICE); // Go back to the main menu
+            return;
+        }
+
+        String elixirType = elixir.getItemId().toLowerCase();
+        queueMessage("Used an " + formatItemName(elixir.getItemId()) + "!");
+        AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP);
+
+        // Apply effect
+        if (elixirType.contains("max_elixir")) {
+            pokemon.restorePpToAllMovesMax();
+        } else if (elixirType.contains("elixir")) {
+            pokemon.restorePpToAllMoves(10);
+        } else if (elixirType.contains("max_ether")) {
+            // Simplification: Ethers would normally require move selection UI.
+            // For now, they act like Max Elixirs.
+            pokemon.restorePpToAllMovesMax();
+        } else if (elixirType.contains("ether")) {
+            // For now, Ether acts like an Elixir.
+            pokemon.restorePpToAllMoves(10);
+        }
+
+        // Consume item
+        elixir.setCount(elixir.getCount() - 1);
+        if (elixir.getCount() <= 0) {
+            GameContext.get().getPlayer().getInventory().removeItem(elixir);
+        }
+
+        // End the player's turn
+        playerActionTaken = true;
+        transitionToState(BattleState.ENEMY_TURN);
+    }
     private void showPartyScreenForItem(ItemData item) {
         PokemonPartyWindow partyScreen = new PokemonPartyWindow(
             skin,
@@ -812,45 +1181,55 @@ public class BattleTable extends Table {
                 currentState = BattleState.PLAYER_CHOICE;
                 showActionMenu(true);
             }
-        );
+        ,false);
 
         stage.addActor(partyScreen);
         partyScreen.show(stage);
     }
 
     private void useItemOnPokemon(ItemData item, Pokemon pokemon) {
-        if (item.getItemId().toLowerCase().contains("potion")) {
-            int healAmount = 20; // Basic potion
-            if (item.getItemId().toLowerCase().contains("super")) {
-                healAmount = 50;
-            } else if (item.getItemId().toLowerCase().contains("hyper")) {
-                healAmount = 200;
+        String itemId = item.getItemId().toLowerCase();
+
+        // Check if the item is a Potion type
+        if (itemId.contains("potion")) {
+            // CHECK 1: Don't use on a fainted or full-HP Pokémon.
+            if (pokemon.getCurrentHp() <= 0 || !pokemon.isHurt()) {
+                queueMessage("It won't have any effect!");
+                transitionToState(BattleState.PLAYER_CHOICE); // Go back to the main menu
+                return;
             }
 
-            int oldHp = pokemon.getCurrentHp();
-            pokemon.heal(Math.min(healAmount, pokemon.getStats().getHp() - oldHp));
+            // Determine heal amount
+            int healAmount;
+            if (itemId.contains("max")) {
+                healAmount = pokemon.getStats().getHp();
+            } else if (itemId.contains("hyper")) {
+                healAmount = 200;
+            } else if (itemId.contains("super")) {
+                healAmount = 50;
+            } else {
+                healAmount = 20;
+            }
+
+            // Apply effect and update UI
+            queueMessage("Used a " + formatItemName(item.getItemId()) + "!");
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP);
+            pokemon.heal(healAmount);
             updateHPBars();
 
-            queueMessage(pokemon.getName() + " recovered HP!");
-
+            // Consume item
             item.setCount(item.getCount() - 1);
             if (item.getCount() <= 0) {
                 GameContext.get().getPlayer().getInventory().removeItem(item);
             }
 
+            // End the player's turn
             playerActionTaken = true;
             transitionToState(BattleState.ENEMY_TURN);
         }
+        // Other item types would go here...
     }
 
-    private void handlePokemonButton() {
-        if (actionMenu != null) {
-            actionMenu.setVisible(false);
-            actionMenu.setTouchable(Touchable.disabled);
-        }
-        currentState = BattleState.PLAYER_PARTY_SCREEN;
-        showPartyScreen();
-    }
 
     private void showPartyScreen() {
         PokemonPartyWindow partyScreen = new PokemonPartyWindow(
@@ -860,14 +1239,14 @@ public class BattleTable extends Table {
             (selectedIndex) -> {
                 Pokemon selectedPokemon = GameContext.get().getPlayer().getPokemonParty().getPokemon(selectedIndex);
                 if (selectedPokemon != null && selectedPokemon.getCurrentHp() > 0 && selectedPokemon != playerPokemon) {
-                    handleSwitchPokemon(selectedIndex);
+                    startSwitchPokemonSequence(selectedIndex); // MODIFIED: Call the renamed method
                 }
             },
             () -> {
                 currentState = BattleState.PLAYER_CHOICE;
                 showActionMenu(true);
             }
-        );
+       ,true );
 
         stage.addActor(partyScreen);
         partyScreen.show(stage);
@@ -948,6 +1327,11 @@ public class BattleTable extends Table {
     }
 
     private float computeExpectedDamage(Move move, Pokemon attacker, Pokemon defender) {
+        if (move.getName().equalsIgnoreCase("Night-Shade")) {
+            float typeMultiplier = calculateTypeEffectiveness(move, defender);
+            return typeMultiplier > 0 ? attacker.getLevel() : 0;
+        }
+
         int level = attacker.getLevel();
         float attackStat = move.isSpecial() ? attacker.getStats().getSpecialAttack() : attacker.getStats().getAttack();
         float defenseStat = move.isSpecial() ? defender.getStats().getSpecialDefense() : defender.getStats().getDefense();
@@ -957,9 +1341,9 @@ public class BattleTable extends Table {
         float stab = (attacker.getPrimaryType() == move.getType() ||
             attacker.getSecondaryType() == move.getType()) ? 1.5f : 1.0f;
 
-        float typeMultiplier = getTypeEffectiveness(move.getType(), defender.getPrimaryType());
-        if (defender.getSecondaryType() != null) {
-            typeMultiplier *= getTypeEffectiveness(move.getType(), defender.getSecondaryType());
+        float typeMultiplier = calculateTypeEffectiveness(move, defender);
+        if (typeMultiplier == 0) {
+            return 0;
         }
 
         return baseDamage * stab * typeMultiplier;
@@ -989,7 +1373,9 @@ public class BattleTable extends Table {
         enemyStatusIcon.setSize(STATUS_ICON_WIDTH, STATUS_ICON_HEIGHT);
     }
 
+
     private void setupHPBars() {
+        // Use the new method to set the initial style
         playerHPBar = new ProgressBar(0, playerPokemon.getStats().getHp(), 1, false,
             createHPBarStyle(playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp()));
         playerHPBar.setSize(HP_BAR_WIDTH, 8);
@@ -1012,26 +1398,6 @@ public class BattleTable extends Table {
         expBar.setValue(playerPokemon.getCurrentExperience());
     }
 
-    private void startBattleAnimation() {
-        GameLogger.info("Starting battle animation");
-        isAnimating = true;
-        currentState = BattleState.INTRO;
-        setBattleInterfaceEnabled(false);
-
-        SequenceAction introSequence = Actions.sequence(
-            Actions.run(() -> queueMessage("Wild " + enemyPokemon.getName() + " appeared!")),
-            Actions.delay(1.5f),
-            Actions.run(() -> {
-                GameLogger.info("Battle intro complete – player turn begins");
-                isAnimating = false;
-                currentState = BattleState.PLAYER_CHOICE;
-                battleText.setText("What will " + playerPokemon.getName() + " do?");
-                setBattleInterfaceEnabled(true);
-            })
-        );
-        addAction(introSequence);
-    }
-
     public void updateHPBars() {
         float playerHPPercent = playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp();
         animateHPBar(playerHPBar, playerPokemon.getCurrentHp(), playerHPPercent);
@@ -1043,7 +1409,7 @@ public class BattleTable extends Table {
     private void animateHPBar(ProgressBar bar, float targetValue, float percentage) {
         bar.clearActions();
         bar.addAction(Actions.sequence(
-            Actions.run(() -> updateHPBarColor(bar, percentage,skin)),
+            Actions.run(() -> updateHPBarColor(bar, percentage, skin)),
             Actions.delay(0.1f),
             Actions.run(() -> {
                 float currentValue = bar.getValue();
@@ -1067,7 +1433,6 @@ public class BattleTable extends Table {
         enemyInfoLabel.setText(enemyInfo);
     }
 
-
     @Override
     public void act(float delta) {
         super.act(delta);
@@ -1076,8 +1441,11 @@ public class BattleTable extends Table {
         stateTimer += delta;
 
         switch (currentState) {
-            case INTRO:
+            case BATTLE_INTRO:
+            case ENEMY_ENTRANCE:
+            case PLAYER_ENTRANCE:
                 break;
+            case INTRO_COMPLETE:
             case PLAYER_CHOICE:
                 if (!actionMenu.isVisible()) {
                     showActionMenu(true);
@@ -1086,7 +1454,7 @@ public class BattleTable extends Table {
                 break;
             case PLAYER_MOVE_SELECT:
                 break;
-            case PLAYER_MOVE_EXECUTE:
+            case PLAYER_ACTION_EXECUTE:
                 break;
             case ENEMY_TURN:
                 if (stateTimer > 0.5f) {
@@ -1117,24 +1485,38 @@ public class BattleTable extends Table {
         if (callback != null) {
             callback.onStatusChange(enemyPokemon, Pokemon.Status.FAINTED);
         }
+
         enemyPokemonImage.addAction(Actions.sequence(
             Actions.parallel(
                 Actions.fadeOut(1.0f), Actions.moveBy(0, -20, 1.0f)
             ),
             Actions.run(() -> {
                 int expGained = calculateExperienceGain((WildPokemon) enemyPokemon);
-                playerPokemon.addExperience(expGained);
+
+                // Award experience and check if an evolution was triggered
+                boolean isEvolving = playerPokemon.addExperience(expGained);
+
                 queueMessage(playerPokemon.getName() + " gained " + expGained + " EXP!");
                 updateExpBar();
-                queueMessage("", 1.5f, () -> finishBattle(BattleOutcome.WIN));
+
+                // If no evolution was triggered, end the battle after a delay.
+                // If an evolution WAS triggered, the EvolutionScreen is now responsible for ending the battle.
+                if (!isEvolving) {
+                    addAction(Actions.sequence(
+                        Actions.delay(2.0f), // Delay to let EXP message show
+                        Actions.run(() -> finishBattle(BattleOutcome.WIN))
+                    ));
+                }
             })
         ));
     }
-
     private void handlePlayerFaint() {
         playerPokemon.setStatus(Pokemon.Status.FAINTED);
         queueMessage(playerPokemon.getName() + " fainted!");
         GameLogger.info(playerPokemon.getName() + " fainted.");
+        // MODIFICATION: Clear Leech Seed on faint
+        leechSeedTargets.remove(playerPokemon);
+        leechSeedTargets.values().removeIf(healer -> healer == playerPokemon);
 
         if (callback != null) {
             callback.onStatusChange(playerPokemon, Pokemon.Status.FAINTED);
@@ -1145,7 +1527,8 @@ public class BattleTable extends Table {
             ),
             Actions.run(() -> {
                 if (hasAvailablePokemon()) {
-                    transitionToState(BattleState.FORCED_SWITCH); showForcedSwitchPartyScreen();
+                    transitionToState(BattleState.FORCED_SWITCH);
+                    showForcedSwitchPartyScreen();
                 } else {
                     finishBattle(BattleOutcome.LOSS);
                 }
@@ -1153,9 +1536,7 @@ public class BattleTable extends Table {
         ));
     }
 
-
-
-    private void finishBattle(BattleOutcome outcome) {
+    public void finishBattle(BattleOutcome outcome) {
         isAnimating = true;
         SequenceAction endSequence = Actions.sequence(
             Actions.delay(1.15f),
@@ -1167,6 +1548,7 @@ public class BattleTable extends Table {
         );
         addAction(endSequence);
     }
+
     @Override
     public void draw(Batch batch, float parentAlpha) {
         super.draw(batch, parentAlpha);
@@ -1204,6 +1586,20 @@ public class BattleTable extends Table {
         queueMessage(attacker.getName() + " used Struggle!");
         finishMoveExecution(false);
     }
+    private String formatItemName(String itemId) {
+        String[] words = itemId.replace("_", " ").split(" ");
+        StringBuilder formatted = new StringBuilder();
+        for (String word : words) {
+            if (word.length() > 0) {
+                formatted.append(Character.toUpperCase(word.charAt(0)));
+                if (word.length() > 1) {
+                    formatted.append(word.substring(1).toLowerCase());
+                }
+                formatted.append(" ");
+            }
+        }
+        return formatted.toString().trim();
+    }
 
     private float getTypeEffectiveness(Pokemon.PokemonType attackType, Pokemon.PokemonType defendType) {
         if (attackType == null || defendType == null) {
@@ -1216,6 +1612,75 @@ public class BattleTable extends Table {
     }
     private void executeMove(Move move, Pokemon attacker, Pokemon defender, boolean isPlayerMove) {
         if (isAnimating) return;
+
+        // --- FIX: Force apply hardcoded effects for special moves ---
+        if (move.getName().equalsIgnoreCase("Poison-Sting")) {
+            Move.MoveEffect psEffect = new Move.MoveEffect();
+            psEffect.setStatusEffect(Pokemon.Status.POISONED);
+            psEffect.setChance(0.3f); // 30% chance
+            move.setEffect(psEffect);
+        }
+        if (move.getName().equalsIgnoreCase("Leech-Seed")) {
+            Move.MoveEffect lsEffect = new Move.MoveEffect();
+            lsEffect.setStatusEffect(Pokemon.Status.LEECH_SEED);
+            lsEffect.setChance(1.0f); // Accuracy check is separate
+            move.setEffect(lsEffect);
+        }
+        if (move.getName().equalsIgnoreCase("Teleport")) {
+            queueMessage(attacker.getName() + " used Teleport!");
+            SequenceAction teleportSequence = Actions.sequence(
+                Actions.delay(1.0f),
+                Actions.run(() -> {
+                    if (!isPlayerMove) { // Wild Pokemon fled
+                        queueMessage(attacker.getName() + " fled!");
+                    } else { // Player fled
+                        queueMessage("Got away safely!");
+                    }
+                }),
+                Actions.delay(1.5f),
+                Actions.run(() -> {
+                    if (callback != null) {
+                        callback.onBattleEnd(BattleOutcome.ESCAPE);
+                    }
+                })
+            );
+            this.addAction(teleportSequence);
+            isAnimating = true;
+            return; // End execution for this move
+        }
+
+        if (move.getName().equalsIgnoreCase("Ember")) {
+            Move.MoveEffect emberEffect = new Move.MoveEffect();
+            emberEffect.setStatusEffect(Pokemon.Status.BURNED);
+            emberEffect.setChance(0.1f); // 10% chance
+            move.setEffect(emberEffect);
+        }
+        if (move.getName().equalsIgnoreCase("Poison Powder") || move.getName().equalsIgnoreCase("Poison-Powder")) {
+            Move.MoveEffect ppEffect = new Move.MoveEffect();
+            ppEffect.setStatusEffect(Pokemon.Status.POISONED);
+            ppEffect.setChance(1.0f); // Accuracy check handles the hit chance
+            move.setEffect(ppEffect);
+        }
+        if (move.getName().equalsIgnoreCase("Thunder-Wave")) {
+            Move.MoveEffect twEffect = new Move.MoveEffect();
+            twEffect.setStatusEffect(Pokemon.Status.PARALYZED);
+            twEffect.setChance(1.0f); // Accuracy check handles the hit chance
+            move.setEffect(twEffect);
+        }
+
+        if (bidingPokemon.containsKey(attacker)) {
+            queueMessage(attacker.getName() + " is storing energy!");
+            finishMoveExecution(isPlayerMove); // End turn without attacking
+            return;
+        }
+
+        if (move.getName().equalsIgnoreCase("Bide")) {
+            bidingPokemon.put(attacker, new BideState());
+            queueMessage(attacker.getName() + " is storing energy!");
+            finishMoveExecution(isPlayerMove); // End turn
+            return;
+        }
+
         isAnimating = true;
         setBattleInterfaceEnabled(false);
         if (isPlayerMove) playerActionTaken = true;
@@ -1228,41 +1693,50 @@ public class BattleTable extends Table {
         }
 
         SequenceAction moveSequence = Actions.sequence();
-        final float[] damageHolder = {0f}; // Use an array to make it effectively final for the lambda
-
-        moveSequence.addAction(Actions.run(() -> queueMessage(attacker.getName() + " used " + move.getName() + "!")));
-        moveSequence.addAction(Actions.delay(1.0f));
+        final float[] damageHolder = {0f};
 
         moveSequence.addAction(Actions.run(() -> {
-            if (MathUtils.random() * 100 >= move.getAccuracy()) {
-                queueMessage("The attack missed!", 1.0f, () -> finishMoveExecution(isPlayerMove));
-                moveSequence.getActions().clear();
-            }
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.MOVE_SELECT);
+            queueMessage(attacker.getName() + " used " + move.getName() + "!");
         }));
+        moveSequence.addAction(Actions.delay(1.2f));
 
         moveSequence.addAction(Actions.run(() -> {
-            damageHolder[0] = calculateDamage(move, attacker, defender);
-            if (damageHolder[0] > 0) {
-                applyDamage(defender, damageHolder[0]);
+            if (move.getAccuracy() > 0 && MathUtils.random() * 100 >= move.getAccuracy()) {
+                queueMessage("The attack missed!", 1.5f, () -> finishMoveExecution(isPlayerMove));
+                moveSequence.getActions().clear();
+                return;
+            }
+
+            // BEGIN: NECESSARY CHANGE
+            if (move.getPower() > 0) {
+                // This is a damaging move
                 float effectiveness = calculateTypeEffectiveness(move, defender);
                 String effectivenessMessage = getEffectivenessMessage(effectiveness);
                 if (!effectivenessMessage.isEmpty()) {
-                    queueMessage(effectivenessMessage);
+                    queueMessage(effectivenessMessage, 1.0f);
+                }
+                playEffectivenessSound(effectiveness);
+
+                if (effectiveness > 0f) {
+                    damageHolder[0] = calculateDamage(move, attacker, defender);
+                    applyDamage(defender, damageHolder[0]);
                 }
             }
+            // Apply secondary effects for both damaging and status moves
+            applyMoveEffect(move.getEffect(), attacker, defender, damageHolder[0]);
+            // END: NECESSARY CHANGE
         }));
-        moveSequence.addAction(Actions.delay(1.0f));
+        moveSequence.addAction(Actions.delay(1.2f));
 
         moveSequence.addAction(Actions.run(() -> {
             if (checkFaintConditions()) {
                 moveSequence.getActions().clear();
+                return;
             }
         }));
 
-        moveSequence.addAction(Actions.run(() -> {
-            applyMoveEffect(move.getEffect(), attacker, defender, damageHolder[0]);
-        }));
-        moveSequence.addAction(Actions.delay(1.0f));
+        moveSequence.addAction(Actions.delay(0.8f));
 
         moveSequence.addAction(Actions.run(() -> finishMoveExecution(isPlayerMove)));
 
@@ -1270,19 +1744,61 @@ public class BattleTable extends Table {
     }
 
 
+
+    private void playEffectivenessSound(float effectiveness) {
+        if (effectiveness >= 2.0f) {
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.SUPER_EFFECTIVE);
+        } else if (effectiveness > 0f && effectiveness < 1.0f) {
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.NOT_EFFECTIVE);
+        } else {
+            // Normal effectiveness - play damage sound
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
+        }
+    }
+
+
+    /**
+     * Applies the secondary effect of a move, such as status conditions, stat changes, or health drain.
+     * This method is called after a move successfully hits.
+     *
+     * @param effect The effect to apply.
+     * @param attacker The Pokémon using the move.
+     * @param target The Pokémon being hit.
+     * @param damageDealt The damage that was dealt by the primary effect of the move.
+     */
     private void applyMoveEffect(Move.MoveEffect effect, Pokemon attacker, Pokemon target, float damageDealt) {
         if (effect == null) return;
+
+        // Check the chance of the effect happening
+        if (MathUtils.random() >= effect.getChance()) {
+            GameLogger.info("Effect " + (effect.getStatusEffect() != null ? effect.getStatusEffect().name() : "stat/other") + " did not trigger due to chance.");
+            return;
+        }
+
         Pokemon.Status statusToApply = effect.getStatusEffect();
-        if (statusToApply != null && statusToApply != Pokemon.Status.NONE) {
+        // Handle volatile status (Leech Seed) separately from primary statuses.
+        if (statusToApply == Pokemon.Status.LEECH_SEED) {
+            if (target.getPrimaryType() == Pokemon.PokemonType.GRASS || (target.getSecondaryType() != null && target.getSecondaryType() == Pokemon.PokemonType.GRASS)) {
+                queueMessage("It doesn't affect " + target.getName() + "...");
+            } else if (leechSeedTargets.containsKey(target)) {
+                queueMessage(target.getName() + " is already seeded!");
+            } else {
+                leechSeedTargets.put(target, attacker);
+                queueMessage(target.getName() + " was seeded!");
+            }
+        } else if (statusToApply != null && statusToApply != Pokemon.Status.NONE) {
+            // Handle primary statuses (Poison, Burn, etc.)
             Pokemon.Status previousStatus = target.getStatus();
             target.setStatus(statusToApply);
 
             if (target.getStatus() != previousStatus) {
                 queueMessage(target.getName() + " became " + statusToApply.name().toLowerCase() + "!");
-
                 switch (statusToApply) {
-                    case PARALYZED: case BURNED: case FROZEN: case POISONED: case BADLY_POISONED:
-                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
+                    case PARALYZED:
+                    case BURNED:
+                    case FROZEN:
+                    case POISONED:
+                    case BADLY_POISONED:
                         break;
                     case ASLEEP:
                         break;
@@ -1298,22 +1814,33 @@ public class BattleTable extends Table {
                 queueMessage("But it failed!");
             }
         }
+        // BEGIN: NECESSARY CHANGE
         Map<String, Integer> statChanges = effect.getStatModifiers();
         if (statChanges != null && !statChanges.isEmpty()) {
-            Pokemon effectTarget = target;
+            // Determine who the effect targets: the user or the opponent
+            Pokemon effectTarget = "SELF".equalsIgnoreCase(effect.getEffectType()) ? attacker : target;
+
             for (Map.Entry<String, Integer> entry : statChanges.entrySet()) {
                 String statName = entry.getKey();
                 int change = entry.getValue();
+
+                // Attempt to modify the stat and check if it was successful
                 if (effectTarget.modifyStatStage(statName, change)) {
-                    queueMessage(effectTarget.getName() + "'s " + formatStatName(statName) + (change > 0 ? " rose!" : " fell!"));
-                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.CURSOR_MOVE);
+                    // It worked, so show the appropriate message.
+                    String message = effectTarget.getName() + "'s " + formatStatName(statName) + (change > 0 ? " rose!" : " fell!");
+                    queueMessage(message);
+                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.CURSOR_MOVE); // A fitting sound for stat changes
                 } else {
-                    queueMessage(effectTarget.getName() + "'s " + formatStatName(statName) + " won't go " + (change > 0 ? "higher!" : "lower!"));
+                    // It failed, so the stat must be maxed out.
+                    String message = effectTarget.getName() + "'s " + formatStatName(statName) + " won't go any " + (change > 0 ? "higher!" : "lower!");
+                    queueMessage(message);
                 }
             }
         }
+        // END: NECESSARY CHANGE
+
         if (effect.getEffectType() != null && effect.getEffectType().equalsIgnoreCase("DRAIN")) {
-            int healAmount = Math.max(1, (int)(damageDealt * 0.5f)); // Heal 50% of damage, at least 1 HP
+            int healAmount = Math.max(1, (int) (damageDealt * 0.5f)); // Heal 50% of damage, at least 1 HP
             float oldHp = attacker.getCurrentHp();
             attacker.restoreHealth(healAmount); // Use restoreHealth to avoid side effects
             float newHp = attacker.getCurrentHp();
@@ -1328,34 +1855,71 @@ public class BattleTable extends Table {
 
     private String formatStatName(String statKey) {
         switch (statKey.toLowerCase()) {
-            case "attack": return "Attack";
-            case "defense": return "Defense";
-            case "spatk": return "Special Attack";
-            case "spdef": return "Special Defense";
-            case "speed": return "Speed";
-            case "accuracy": return "Accuracy";
-            case "evasion": return "Evasion";
-            default: return statKey;
+            case "attack":
+                return "Attack";
+            case "defense":
+                return "Defense";
+            case "spatk":
+                return "Special Attack";
+            case "spdef":
+                return "Special Defense";
+            case "speed":
+                return "Speed";
+            case "accuracy":
+                return "Accuracy";
+            case "evasion":
+                return "Evasion";
+            default:
+                return statKey;
         }
     }
 
+
     private void finishMoveExecution(boolean isPlayerMove) {
+        // Handle Bide state after a move is executed.
+        Pokemon attacker = isPlayerMove ? playerPokemon : enemyPokemon;
+        Pokemon defender = isPlayerMove ? enemyPokemon : playerPokemon;
+
+        // Check if the current attacker just finished its biding period.
+        BideState bideState = bidingPokemon.get(attacker);
+        if (bideState != null) {
+            bideState.turnsLeft--;
+            if (bideState.turnsLeft <= 0) {
+                // Unleash Bide
+                queueMessage(attacker.getName() + " unleashed energy!");
+                float damageToDeal = bideState.damageTaken * 2;
+                if (damageToDeal > 0) {
+                    // We add a small delay so the message shows before the damage animation
+                    addAction(Actions.sequence(
+                        Actions.delay(1.5f),
+                        Actions.run(() -> applyDamage(defender, damageToDeal))
+                    ));
+                }
+                bidingPokemon.remove(attacker);
+            }
+        }
+
         isAnimating = false;
 
         if (checkFaintConditions()) {
+            // If a faint occurred, the faint handler will proceed the battle state.
             return;
         }
 
         if (!isPlayerMove) {
+            // MODIFICATION: Replaced individual calls with the new central method
             applyEndOfTurnEffectsForTurn();
             if (checkFaintConditions()) {
+                // A faint occurred from end-of-turn effects.
                 return;
             }
         }
 
+        // If it was the player's move, it's now the enemy's turn.
         if (isPlayerMove) {
             transitionToState(BattleState.ENEMY_TURN);
         } else {
+            // If it was the enemy's move, the round is over. It's the player's choice again.
             if (callback != null) {
                 callback.onTurnEnd(playerPokemon);
             }
@@ -1364,74 +1928,13 @@ public class BattleTable extends Table {
         }
     }
 
+
     private void handleFightButton() {
         if (currentState != BattleState.PLAYER_CHOICE) return;
         transitionToState(BattleState.PLAYER_MOVE_SELECT);
         showMoveSelection();
     }
 
-    public void handleSwitchPokemon(int partyIndex) {
-        if (currentState != BattleState.PLAYER_CHOICE && currentState != BattleState.FORCED_SWITCH) {
-            GameLogger.error("Switch attempted in invalid state: " + currentState);
-            return;
-        }
-
-        Pokemon newPokemon = GameContext.get().getPlayer().getPokemonParty().getPokemon(partyIndex);
-        if (newPokemon == null || newPokemon == playerPokemon) {
-            queueMessage("Cannot switch to this Pokemon!");
-            return;
-        }
-
-        if (newPokemon.getCurrentHp() <= 0) {
-            queueMessage(newPokemon.getName() + " is unable to battle!");
-            if (currentState == BattleState.FORCED_SWITCH) {
-                showForcedSwitchPartyScreen();
-            }
-            return;
-        }
-
-        isAnimating = true;
-        setBattleInterfaceEnabled(false);
-        transitionToState(BattleState.PLAYER_SWITCHING);
-
-        SequenceAction switchSequence = Actions.sequence();
-
-        switchSequence.addAction(Actions.run(() -> {
-            queueMessage(playerPokemon.getName() + ", come back!");
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_RETURN);
-            playerPokemonImage.addAction(Actions.scaleTo(0.1f, 0.1f, 0.3f));
-        }));
-        switchSequence.addAction(Actions.delay(0.5f));
-
-        switchSequence.addAction(Actions.run(() -> {
-            Pokemon oldPokemon = playerPokemon;
-            playerPokemon = newPokemon;
-            updatePlayerPokemonDisplay();
-            playerPokemonImage.setScale(0.1f);
-            playerPokemonImage.getColor().a = 1f;
-
-            if (callback != null) {
-                callback.onTurnEnd(oldPokemon);
-            }
-        }));
-
-        switchSequence.addAction(Actions.run(() -> {
-            queueMessage("Go! " + newPokemon.getName() + "!");
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.POKEMON_SENDOUT);
-            playerPokemonImage.addAction(Actions.scaleTo(1.0f, 1.0f, 0.3f));
-        }));
-        switchSequence.addAction(Actions.delay(0.8f));
-
-        switchSequence.addAction(Actions.run(() -> {
-            isAnimating = false;
-            playerActionTaken = true;
-            applyEndOfTurnEffectsForTurn();
-            if (checkFaintConditions()) return;
-            transitionToState(BattleState.ENEMY_TURN);
-        }));
-
-        this.addAction(switchSequence);
-    }
 
     private boolean checkFaintConditions() {
         if (enemyPokemon.getCurrentHp() <= 0) {
@@ -1446,6 +1949,10 @@ public class BattleTable extends Table {
     }
 
     private float calculateDamage(Move move, Pokemon attacker, Pokemon defender) {
+        if (move.getName().equalsIgnoreCase("Night-Shade")) {
+            return attacker.getLevel();
+        }
+
         if (move.getPower() <= 0) return 0;
 
         int level = attacker.getLevel();
@@ -1462,10 +1969,18 @@ public class BattleTable extends Table {
         if (isCritical) {
             queueMessage("A critical hit!");
             baseDamage *= 1.5f;
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.CRITICAL_HIT);
         }
         float randomModifier = MathUtils.random(0.85f, 1.0f);
 
         return baseDamage * stab * typeMultiplier * randomModifier;
+    }
+
+    private Map<Pokemon, BideState> bidingPokemon = new HashMap<>();
+
+    private static class BideState {
+        int turnsLeft = 2; // Bide stores energy for 2 full turns
+        float damageTaken = 0;
     }
 
     private float calculateTypeEffectiveness(Move move, Pokemon defender) {
@@ -1480,13 +1995,11 @@ public class BattleTable extends Table {
 
     private String getEffectivenessMessage(float multiplier) {
         if (multiplier >= 2.0f) {
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.SUPER_EFFECTIVE);
             return "It's super effective!";
         } else if (multiplier > 0f && multiplier < 1.0f) {
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.NOT_EFFECTIVE);
             return "It's not very effective...";
         } else if (multiplier == 0f) {
-            return "It doesn't affect " + enemyPokemon.getName() + "...";
+            return "It had no effect...";
         }
         return "";
     }
@@ -1501,7 +2014,7 @@ public class BattleTable extends Table {
         }
         playerHPBar.setRange(0, playerPokemon.getStats().getHp());
         playerHPBar.setValue(playerPokemon.getCurrentHp());
-        updateHPBarColor(playerHPBar, playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp(),skin);
+        updateHPBarColor(playerHPBar, playerPokemon.getCurrentHp() / (float) playerPokemon.getStats().getHp(), skin);
         updateInfoLabels();
         expBar.setRange(0, playerPokemon.getExperienceForNextLevel());
         expBar.setValue(playerPokemon.getCurrentExperience());
@@ -1534,12 +2047,20 @@ public class BattleTable extends Table {
         updateActionMenuPosition();
     }
 
+
     public void applyDamage(Pokemon target, float damage) {
         Image targetSprite = (target == playerPokemon) ? playerPokemonImage : enemyPokemonImage;
         targetSprite.addAction(Actions.sequence(
             Actions.color(Color.RED, 0.1f),
             Actions.color(Color.WHITE, 0.1f)
         ));
+
+        // ADDED: Bide damage accumulation
+        if (bidingPokemon.containsKey(target)) {
+            BideState bideState = bidingPokemon.get(target);
+            bideState.damageTaken += damage;
+            GameLogger.info(target.getName() + " is biding, accumulated " + bideState.damageTaken + " damage.");
+        }
 
         float oldHP = target.getCurrentHp();
         float newHP = Math.max(0, oldHP - damage);
@@ -1548,56 +2069,68 @@ public class BattleTable extends Table {
         animateHPChange(targetBar, oldHP, newHP, target.getStats().getHp());
     }
 
+// ... (rest of the class up to applyEndOfTurnEffectsForTurn) ...
+
+    /**
+     * Applies all end-of-turn effects like poison damage and Leech Seed drain
+     * for both Pokémon at the conclusion of a full battle round.
+     */
+    private void applyEndOfTurnEffectsForTurn() {
+        if (playerPokemon.getCurrentHp() > 0) {
+            playerPokemon.applyEndOfTurnEffects();
+            if (leechSeedTargets.containsKey(playerPokemon)) {
+                Pokemon healer = leechSeedTargets.get(playerPokemon);
+                if (healer != null && healer.getCurrentHp() > 0) {
+                    queueMessage(playerPokemon.getName() + "'s health was sapped by Leech Seed!");
+                    int damage = Math.max(1, playerPokemon.getStats().getHp() / 8);
+                    applyDamage(playerPokemon, damage);
+                    healer.heal(damage);
+                    updateHPBars();
+                }
+            }
+        }
+        if (checkFaintConditions()) return;
+        if (enemyPokemon.getCurrentHp() > 0) {
+            enemyPokemon.applyEndOfTurnEffects();
+            if (leechSeedTargets.containsKey(enemyPokemon)) {
+                Pokemon healer = leechSeedTargets.get(enemyPokemon);
+                if (healer != null && healer.getCurrentHp() > 0) {
+                    queueMessage(enemyPokemon.getName() + "'s health was sapped by Leech Seed!");
+                    int damage = Math.max(1, enemyPokemon.getStats().getHp() / 8);
+                    applyDamage(enemyPokemon, damage);
+                    healer.heal(damage);
+                    updateHPBars();
+                    GameLogger.info(healer.getName() + " healed " + damage + " from " + enemyPokemon.getName() + " via Leech Seed.");
+                }
+            }
+        }
+        checkFaintConditions();
+    }
+
+
+    // A small change inside animateHPChange is also needed to use the new method
     private void animateHPChange(ProgressBar bar, float fromValue, float toValue, float maxValue) {
         float duration = 0.5f;
+
+        // The target percentage for the color
+        float targetPercentage = toValue / maxValue;
+
         bar.addAction(new Action() {
             float time = 0;
+
             @Override
             public boolean act(float delta) {
                 time += delta;
                 float progress = Math.min(1f, time / duration);
                 float currentValue = MathUtils.lerp(fromValue, toValue, progress);
                 bar.setValue(currentValue);
-                updateHPBarColor(bar, currentValue / maxValue,skin);
+                // Update the color continuously during the animation
+                updateHPBarColor(bar, currentValue / maxValue, skin);
                 return progress >= 1f;
             }
         });
     }
 
-
-    private void applyEndOfTurnEffectsForTurn() {
-        Pokemon.Status oldPlayerStatus = playerPokemon.getStatus();
-        Pokemon.Status oldEnemyStatus = enemyPokemon.getStatus();
-
-        playerPokemon.applyEndOfTurnEffects();
-        enemyPokemon.applyEndOfTurnEffects();
-        if (leechSeedTargets.containsKey(playerPokemon)) {
-            int damage = playerPokemon.getStats().getHp() / 8;
-            playerPokemon.setCurrentHp(Math.max(0, playerPokemon.getCurrentHp() - damage));
-            enemyPokemon.heal(damage);
-            queueMessage(playerPokemon.getName() + "'s health is sapped by Leech Seed!");
-            updateHPBars();
-        }
-
-        if (leechSeedTargets.containsKey(enemyPokemon)) {
-            int damage = enemyPokemon.getStats().getHp() / 8;
-            enemyPokemon.setCurrentHp(Math.max(0, enemyPokemon.getCurrentHp() - damage));
-            playerPokemon.heal(damage);
-            queueMessage(enemyPokemon.getName() + "'s health is sapped by Leech Seed!");
-            updateHPBars();
-        }
-
-        if (oldPlayerStatus != playerPokemon.getStatus() && callback != null) {
-            callback.onStatusChange(playerPokemon, playerPokemon.getStatus());
-        }
-
-        if (oldEnemyStatus != enemyPokemon.getStatus() && callback != null) {
-            callback.onStatusChange(enemyPokemon, enemyPokemon.getStatus());
-        }
-
-        updateHPBars();
-        updateInfoLabels();
-    }
 
     private void showForcedSwitchPartyScreen() {
         PokemonPartyWindow partyScreen = new PokemonPartyWindow(
@@ -1611,7 +2144,7 @@ public class BattleTable extends Table {
                 }
             },
             null
-        );
+       ,true );
         stage.addActor(partyScreen);
         partyScreen.show(stage);
     }
@@ -1640,7 +2173,7 @@ public class BattleTable extends Table {
             case PLAYER_MOVE_SELECT:
                 setBattleInterfaceEnabled(false);
                 break;
-            case PLAYER_MOVE_EXECUTE:
+            case PLAYER_ACTION_EXECUTE:
             case ENEMY_TURN:
             case PLAYER_SWITCHING:
             case BATTLE_OVER_VICTORY:
@@ -1730,10 +2263,7 @@ public class BattleTable extends Table {
             public void clicked(InputEvent event, float x, float y) {
                 moveSelectionActive = false;
                 moveSelectionTable.remove();
-                currentState = BattleState.PLAYER_CHOICE;
-                actionMenu.setVisible(true);
-                actionMenu.setTouchable(Touchable.enabled);
-                actionMenu.toFront();
+                transitionToState(BattleState.PLAYER_CHOICE);
             }
         });
         moveSelectionTable.add(cancelButton).colspan(2).width(150).height(40).padTop(10);
@@ -1779,6 +2309,7 @@ public class BattleTable extends Table {
         setBattleInterfaceEnabled(false);
         queueMessage("Throwing Pokéball...");
 
+        AudioManager.getInstance().playSound(AudioManager.SoundEffect.THROW_BALL);
         Vector2 playerCenter = playerPokemonImage.localToStageCoordinates(new Vector2(
             playerPokemonImage.getWidth() / 2, playerPokemonImage.getHeight() / 2));
         Vector2 enemyCenter = enemyPokemonImage.localToStageCoordinates(new Vector2(
@@ -1816,6 +2347,17 @@ public class BattleTable extends Table {
     public enum BattleOutcome {
         WIN, LOSS, ESCAPE
     }
+
+    public interface BattleCallback {
+        void onBattleEnd(BattleOutcome outcome);
+
+        void onTurnEnd(Pokemon activePokemon);
+
+        void onStatusChange(Pokemon pokemon, Pokemon.Status newStatus);
+
+        void onMoveUsed(Pokemon user, Move move, Pokemon target);
+    }
+
     public void setCallback(BattleCallback callback) {
         this.callback = callback;
     }
@@ -1834,7 +2376,7 @@ public class BattleTable extends Table {
         int b = defeatedPokemon.getBaseExperience();
         int L = defeatedPokemon.getLevel();
 
-        float levelRatio = Math.max(0.5f, Math.min(1.5f, (float)L / playerPokemon.getLevel()));
+        float levelRatio = Math.max(0.5f, Math.min(1.5f, (float) L / playerPokemon.getLevel()));
 
         int expGained = Math.round((a * t * b * L * levelRatio) / 7);
         GameLogger.info(String.format("Experience gained: %d (Base: %d, Level: %d)",
@@ -1845,12 +2387,5 @@ public class BattleTable extends Table {
 
     public Pokemon getPlayerPokemon() {
         return playerPokemon;
-    }
-
-    public interface BattleCallback {
-        void onBattleEnd(BattleOutcome outcome);
-        void onTurnEnd(Pokemon activePokemon);
-        void onStatusChange(Pokemon pokemon, Pokemon.Status newStatus);
-        void onMoveUsed(Pokemon user, Move move, Pokemon target);
     }
 }

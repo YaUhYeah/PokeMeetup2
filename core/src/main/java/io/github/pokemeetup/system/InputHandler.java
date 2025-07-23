@@ -6,12 +6,10 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.scenes.scene2d.Stage;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
-import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.screens.otherui.BuildModeUI;
 import io.github.pokemeetup.screens.otherui.PokemonPartyWindow;
@@ -50,9 +48,9 @@ public class InputHandler extends InputAdapter {
     private final ChestInteractionHandler chestHandler;
     private final InputManager inputManager;
     private boolean upPressed, downPressed, leftPressed, rightPressed;
-    private boolean isChopping = false;    // true while a chop action is underway
-    private boolean isPunching = false;    // true if punching (when no axe)
-    private boolean isBreaking = false;    // for block breaking
+    private boolean isChopping = false;
+    private boolean isPunching = false;
+    private boolean isBreaking = false;
     private boolean chopComplete = false;
 
     private float chopProgress = 0f;
@@ -239,12 +237,12 @@ public class InputHandler extends InputAdapter {
         }
         if (currentState == InputManager.UIState.NORMAL && keycode >= Input.Keys.NUM_1 && keycode <= Input.Keys.NUM_9) {
             int slot = keycode - Input.Keys.NUM_1;
-            GameContext.get().getPlayer().getHotbarSystem().setSelectedSlot(slot);
+            GameContext.get().getHotbarSystem().setSelectedSlot(slot);
             return true;
         }
 
         if (keycode == Input.Keys.O && !isChopping && !isPunching) {
-            ItemData selectedItem = GameContext.get().getPlayer().getHotbarSystem().getSelectedItem();
+            ItemData selectedItem = GameContext.get().getHotbarSystem().getSelectedItem();
             if (selectedItem != null) dropItem(selectedItem);
             return true;
         }

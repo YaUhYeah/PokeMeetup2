@@ -26,7 +26,7 @@ public class ServerPlayer {
     private final Object dataLock = new Object();
     private PlayerData playerData;
     private WorldObject choppingObject;
-    private PlaceableBlock breakingBlock; // This field was added in the previous step
+    private PlaceableBlock breakingBlock;
 
     public ServerPlayer(String username, PlayerData playerData) {
         List<PokemonData> partyPokemon1;

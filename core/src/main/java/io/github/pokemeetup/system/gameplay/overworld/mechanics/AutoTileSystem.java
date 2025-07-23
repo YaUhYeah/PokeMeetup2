@@ -12,84 +12,40 @@ import java.util.List;
 public class AutoTileSystem {
 
     /**
-     * We do a 4-bit adjacency mask:
-     *   bit 1 => Up
-     *   bit 2 => Right
-     *   bit 4 => Down
-     *   bit 8 => Left
-     * Then pass that mask to TextureManager.getAutoTileRegion("sand_shore", mask, animFrame)
-     * which returns a 32×32 region scaled from the correct 16×16 piece.
+     * --- OPTIMIZATION: This method is now called only when a chunk is loaded.
+     * It computes a byte for each tile encoding all necessary shoreline information.
+     * Lower 4 bits: 4-way edge mask for main tile.
+     * Upper 4 bits: Flags for each of the 4 possible inner corners.
      */
-    public void applyShorelineAutotiling(Chunk chunk, int animFrame, World world) {
+    public void applyShorelineAutotiling(Chunk chunk, World world) {
         final int size = Chunk.CHUNK_SIZE;
-        boolean[][] shoreMap = new boolean[size][size];
+        byte[][] shorelineData = new byte[size][size];
+
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
                 int worldX = chunk.getChunkX() * size + x;
                 int worldY = chunk.getChunkY() * size + y;
-                if (world.getTileTypeAt(worldX, worldY) != TileType.WATER) { // Any land tile
-                    if (hasWaterNeighbor(world, worldX, worldY)) {
-                        shoreMap[x][y] = true;
-                    }
+
+                if (world.getTileTypeAt(worldX, worldY) != TileType.WATER && hasWaterNeighbor(world, worldX, worldY)) {
+                    byte mask = 0;
+                    // Edge mask (lower 4 bits)
+                    mask |= computeEdgeMask(world, worldX, worldY);
+
+                    // Inner corner mask (upper 4 bits)
+                    if (isInnerCornerTopLeft(world, worldX, worldY)) mask |= 0x10;
+                    if (isInnerCornerTopRight(world, worldX, worldY)) mask |= 0x20;
+                    if (isInnerCornerBottomLeft(world, worldX, worldY)) mask |= 0x40;
+                    if (isInnerCornerBottomRight(world, worldX, worldY)) mask |= 0x80;
+
+                    shorelineData[x][y] = mask;
+                } else {
+                    shorelineData[x][y] = 0;
                 }
             }
         }
-        TextureRegion[][] overlay = chunk.getAutotileRegions();
-        if (overlay == null) {
-            overlay = new TextureRegion[size][size];
-            chunk.setAutotileRegions(overlay);
-        }
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
-                if (!shoreMap[x][y]) {
-                    overlay[x][y] = null;
-                    continue;
-                }
-                int worldX = chunk.getChunkX() * size + x;
-                int worldY = chunk.getChunkY() * size + y;
-                int mask = computeEdgeMask(world, worldX, worldY);
-                TextureRegion base32 = TextureManager.getAutoTileRegion("sand_shore", mask, animFrame);
-                if (base32 == null) {
-                    System.err.println("AutoTileSystem.applyShorelineAutotiling: base32 is null for mask " + mask + " at (" + x + "," + y + ")");
-                    overlay[x][y] = null;
-                    continue;
-                }
-                CompositeRegion comp = new CompositeRegion(base32);
-                overlay[x][y] = comp;
-            }
-        }
-        TextureRegion cornerSheet = TextureManager.getSubTile("sand_shore", animFrame, 2, 0);
-        if (cornerSheet != null) {
-            TextureRegion miniTL = new TextureRegion(cornerSheet, 0, 0, 16, 16);
-            TextureRegion miniTR = new TextureRegion(cornerSheet, 16, 0, 16, 16);
-            TextureRegion miniBL = new TextureRegion(cornerSheet, 0, 16, 16, 16);
-            TextureRegion miniBR = new TextureRegion(cornerSheet, 16, 16, 16, 16);
-            for (int x = 0; x < size; x++) {
-                for (int y = 0; y < size; y++) {
-                    if (!shoreMap[x][y]) continue;
-                    TextureRegion reg = overlay[x][y];
-                    if (!(reg instanceof CompositeRegion)) continue;
-                    CompositeRegion comp = (CompositeRegion) reg;
-                    int worldX = chunk.getChunkX() * size + x;
-                    int worldY = chunk.getChunkY() * size + y;
-                    if (isInnerCornerTopLeft(world, worldX, worldY)) {
-                        comp.addMiniOverlay(miniTL, 0, 16);
-                    }
-                    if (isInnerCornerTopRight(world, worldX, worldY)) {
-                        comp.addMiniOverlay(miniTR, 16, 16);
-                    }
-                    if (isInnerCornerBottomLeft(world, worldX, worldY)) {
-                        comp.addMiniOverlay(miniBL, 0, 0);
-                    }
-                    if (isInnerCornerBottomRight(world, worldX, worldY)) {
-                        comp.addMiniOverlay(miniBR, 16, 0);
-                    }
-                }
-            }
-        }
+        chunk.setShorelineData(shorelineData);
     }
 
-    /** 4-bit mask => bit 1=Up, bit2=Right, bit4=Down, bit8=Left */
     private int computeEdgeMask(World world, int worldX, int worldY) {
         int mask = 0;
         if (isWater(world, worldX, worldY + 1)) mask |= 1;  // up

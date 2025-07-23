@@ -22,7 +22,7 @@ public class OtherPlayer implements Positionable {
     public boolean wasOnWater() {
         return wasOnWater;
     }
-    private float animationSpeedMultiplier = 0.75f; // [NEW] Same as Player
+    private float animationSpeedMultiplier = 0.75f;
     private float movementProgress;
     private float animationTime = 0f;
     private int prevTileX, prevTileY;
@@ -60,8 +60,6 @@ public class OtherPlayer implements Positionable {
     private final Vector2 targetPosition = new Vector2();
     private boolean wantsToRun;
     private Vector2 position;
-    private float interpolationProgress; // From 0 to 1.
-    private float stateTime; // Used both for movement and action animations.
     private String direction;
     private BitmapFont font;
     private int ping;
@@ -73,49 +71,40 @@ public class OtherPlayer implements Positionable {
         this.targetPosition.set(x, y);
         this.inventory = new Inventory();
         this.direction = "down";
-        this.movementProgress = 0f;
+        this.movementProgress = 1f; // Start as "finished"
         this.animationTime = 0f;
         this.isMoving = new AtomicBoolean(false);
         this.wantsToRun = false;
-        this.stateTime = 0f;
-        this.interpolationProgress = 0f;
         this.animations = new PlayerAnimations();
         GameLogger.info("Created OtherPlayer: " + this.username + " at (" + x + ", " + y + ")");
         prevTileX = pixelToTileX(position.x);
         prevTileY = pixelToTileY(position.y);
     }
+
     public void updateFromNetwork(NetworkProtocol.PlayerUpdate update) {
-        synchronized (this) {
+        synchronized (positionLock) {
             if (update == null) return;
-            this.targetPosition.set(update.x, update.y);
+
+            if (!targetPosition.epsilonEquals(update.x, update.y, 0.1f)) {
+                this.startPosition.set(this.position); // Start lerp from current position
+                this.targetPosition.set(update.x, update.y);
+                this.movementProgress = 0f; // Reset interpolation progress
+            }
+
             this.direction = update.direction;
             this.isMoving.set(update.isMoving);
             this.wantsToRun = update.wantsToRun;
+
             if (update.characterType != null && !update.characterType.equalsIgnoreCase(animations.getCharacterType())) {
                 animations.dispose();
                 this.animations = new PlayerAnimations(update.characterType);
             }
-            if (update.isMoving && movementProgress >= 1.0f) {
-                startPosition.set(position);
-                movementProgress = 0f;
-            }
         }
     }
 
-
-    /**
-     * The smoothstep function to ease the interpolation.
-     */
     private float smoothstep(float x) {
         x = MathUtils.clamp(x, 0f, 1f);
         return x * x * (3 - 2 * x);
-    }
-    private float tileToPixelX(int tileX) {
-        return tileX * World.TILE_SIZE + (World.TILE_SIZE / 2f);
-    }
-
-    private float tileToPixelY(int tileY) {
-        return tileY * World.TILE_SIZE;
     }
 
     private int pixelToTileX(float pixelX) {
@@ -125,41 +114,34 @@ public class OtherPlayer implements Positionable {
     private int pixelToTileY(float pixelY) {
         return (int) Math.floor(pixelY / World.TILE_SIZE);
     }
+
+    // [FIX] The update logic is now cleaner and focuses only on interpolation.
     public void update(float deltaTime) {
         synchronized (positionLock) {
+            // Determine move duration based on running state
             float moveDuration = wantsToRun
                 ? PlayerAnimations.SLOW_RUN_ANIMATION_DURATION
                 : PlayerAnimations.SLOW_WALK_ANIMATION_DURATION;
-            if (!position.epsilonEquals(targetPosition, 0.1f)) {
+
+            // Only interpolate if progress is not complete
+            if (movementProgress < 1.0f) {
                 movementProgress = Math.min(1f, movementProgress + deltaTime / moveDuration);
                 float smoothProgress = smoothstep(movementProgress);
                 position.x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);
                 position.y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothProgress);
-            }
-            if (movementProgress >= 1f) {
-                position.set(targetPosition); // Snap to final position
-                startPosition.set(position);
-                movementProgress = 0f;
-                if (isMoving.get()) {
-                    int nextTileX = pixelToTileX(targetPosition.x);
-                    int nextTileY = pixelToTileY(targetPosition.y);
 
-                    switch (direction.toLowerCase()) {
-                        case "up":    nextTileY++; break;
-                        case "down":  nextTileY--; break;
-                        case "left":  nextTileX--; break;
-                        case "right": nextTileX++; break;
-                    }
-                    if (GameContext.get().getWorld().isPassable(nextTileX, nextTileY)) {
-                        targetPosition.set(tileToPixelX(nextTileX), tileToPixelY(nextTileY));
-                    }
+                if (movementProgress >= 1.0f) {
+                    position.set(targetPosition); // Snap to final position
                 }
             }
+
+            // Update animation time only when the server says we are moving
             if (isMoving.get()) {
                 animationTime += deltaTime * animationSpeedMultiplier;
             } else {
                 animationTime = 0f; // Reset when not moving
             }
+
             int currentTileX = pixelToTileX(position.x);
             int currentTileY = pixelToTileY(position.y);
             if (currentTileX != prevTileX || currentTileY != prevTileY) {
@@ -180,18 +162,15 @@ public class OtherPlayer implements Positionable {
         }
     }
 
-    /**
-     * Render the OtherPlayer.
-     * Now the method checks if an action is active (chopping or punching) and uses the appropriate frame.
-     */
+
     public void render(SpriteBatch batch) {
         TextureRegion currentFrame;
         synchronized (positionLock) {
             if (animations.isChopping()) {
-                currentFrame = animations.getCurrentFrame(direction, false, false, stateTime);
+                currentFrame = animations.getCurrentFrame(direction, false, false, animationTime);
             }
             else if (animations.isPunching()) {
-                currentFrame = animations.getCurrentFrame(direction, false, false, stateTime);
+                currentFrame = animations.getCurrentFrame(direction, false, false, animationTime);
             }
             else if (isMoving.get()) {
                 currentFrame = animations.getCurrentFrame(direction, true, isWantsToRun(), animationTime);
@@ -206,7 +185,7 @@ public class OtherPlayer implements Positionable {
             float regionW = currentFrame.getRegionWidth();
             float regionH = currentFrame.getRegionHeight();
             float drawX = position.x - (regionW / 2f);
-            float drawY = position.y; // bottom-center anchoring
+            float drawY = position.y;
             batch.draw(currentFrame, drawX, drawY, regionW, regionH);
             renderUsername(batch, drawX, regionW, drawY, regionH);
         }
@@ -236,10 +215,6 @@ public class OtherPlayer implements Positionable {
         }
     }
 
-    /**
-     * Called when an action message is received from the network.
-     * These calls trigger the appropriate animations.
-     */
     public void updateAction(NetworkProtocol.PlayerAction action) {
         switch (action.actionType) {
             case CHOP_START:
@@ -247,14 +222,14 @@ public class OtherPlayer implements Positionable {
                 break;
             case CHOP_STOP:
                 animations.stopChopping();
-                stateTime = 0f;
+                animationTime = 0f;
                 break;
             case PUNCH_START:
                 animations.startPunching();
                 break;
             case PUNCH_STOP:
                 animations.stopPunching();
-                stateTime = 0f;
+                animationTime = 0f;
                 break;
             default:
                 GameLogger.error("Unhandled action type: " + action.actionType);
@@ -269,9 +244,10 @@ public class OtherPlayer implements Positionable {
 
     public void setPosition(Vector2 position) {
         synchronized (positionLock) {
-            this.position = position;
+            this.position.set(position);
             this.startPosition.set(position);
             this.targetPosition.set(position);
+            this.movementProgress = 1.0f; // Mark as finished at this new position
         }
     }
 
@@ -295,7 +271,7 @@ public class OtherPlayer implements Positionable {
 
     @Override
     public void setCharacterType(String characterType) {
-
+        // This is handled in updateFromNetwork
     }
 
     public boolean isWantsToRun() {

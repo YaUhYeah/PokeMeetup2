@@ -1,5 +1,6 @@
 package io.github.pokemeetup.system.gameplay.overworld;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.blocks.PlaceableBlock;
@@ -12,7 +13,25 @@ import java.util.*;
 
 public class Chunk {
     public static final int CHUNK_SIZE = 16;
+    // In Chunk.java
+    private boolean lightMapDirty = true;
+    private long lastLightUpdate = 0;
 
+    public boolean isLightMapDirty() {
+        return lightMapDirty;
+    }
+
+    public void setLightMapDirty(boolean dirty) {
+        this.lightMapDirty = dirty;
+    }
+
+    public long getLastLightUpdate() {
+        return lastLightUpdate;
+    }
+
+    public void setLastLightUpdate(long timestamp) {
+        this.lastLightUpdate = timestamp;
+    }
     private final int chunkX;
     private final int chunkY;
     public boolean isDirty = false;
@@ -23,10 +42,16 @@ public class Chunk {
     private int[][] tileData;
     private List<WorldObject> worldObjects = new ArrayList<>();
 
+    // NEW: Added to store elevation level for each tile in the chunk
+    private int[][] elevationData;
+
+    private BiomeType[][] finalBiomeTypes;
+
     public Chunk() {
         this.chunkX = 0;
         this.chunkY = 0;
         this.finalBiomeTypes = new BiomeType[CHUNK_SIZE][CHUNK_SIZE];
+        this.elevationData = new int[CHUNK_SIZE][CHUNK_SIZE]; // NEW: Initialize with default elevation
     }
 
     public Chunk(int chunkX, int chunkY, Biome biome, long worldSeed) {
@@ -35,15 +60,25 @@ public class Chunk {
         this.chunkY = chunkY;
         this.biome = biome;
         this.tileData = new int[CHUNK_SIZE][CHUNK_SIZE];
+        this.elevationData = new int[CHUNK_SIZE][CHUNK_SIZE]; // NEW: Initialize with default elevation
     }
 
-    public TextureRegion[][] getAutotileRegions() {
-        return autotileRegions;
+    // NEW: Getter for elevation data array
+    public int[][] getElevationData() {
+        return elevationData;
     }
 
+    // NEW: Setter for elevation data array
+    public void setElevationData(int[][] elevationData) {
+        this.elevationData = elevationData;
+    }
 
-    public void setAutotileRegions(TextureRegion[][] regions) {
-        this.autotileRegions = regions;
+    // NEW: Safely get the elevation of a specific tile within the chunk
+    public int getElevation(int localX, int localY) {
+        if (elevationData == null || localX < 0 || localX >= CHUNK_SIZE || localY < 0 || localY >= CHUNK_SIZE) {
+            return 0; // Default elevation
+        }
+        return elevationData[localX][localY];
     }
 
 
@@ -53,20 +88,12 @@ public class Chunk {
             isDirty = true;
         }
     }
-    private BiomeType[][] finalBiomeTypes;
 
     public void removeBlock(Vector2 position) {
         blocks.remove(position);
         isDirty = true;
     }
 
-    public TextureRegion[][] getSeatileRegions() {
-        return seatileRegions;
-    }
-
-    public void setSeatileRegions(TextureRegion[][] seatileRegions) {
-        this.seatileRegions = seatileRegions;
-    }
 
     public List<WorldObject> getWorldObjects() {
         return worldObjects;
@@ -144,13 +171,28 @@ public class Chunk {
         return blockDataList;
     }
 
-
-
     public boolean isPassable(int localX, int localY) {
         localX = (localX + CHUNK_SIZE) % CHUNK_SIZE;
         localY = (localY + CHUNK_SIZE) % CHUNK_SIZE;
         int tType = tileData[localX][localY];
         return TileType.isPassableTile(tType);
+    }
+
+    private transient byte[][] shorelineData;
+    private transient Color[][] lightMap; public byte[][] getShorelineData() {
+        return shorelineData;
+    }
+
+    public void setShorelineData(byte[][] shorelineData) {
+        this.shorelineData = shorelineData;
+    }
+
+    public Color[][] getLightMap() {
+        return lightMap;
+    }
+
+    public void setLightMap(Color[][] lightMap) {
+        this.lightMap = lightMap;
     }
 
     public BiomeType[][] getFinalBiomeTypes() {

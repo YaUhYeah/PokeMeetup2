@@ -6,7 +6,6 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.Player;
-import io.github.pokemeetup.system.battle.BattleInitiationHandler;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
@@ -31,7 +30,6 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
 
     @Override
     public void execute(float delta) {
-        // [FIX] Execute logic only when not already moving to a tile.
         if (pokemon.isMoving()) {
             return;
         }
@@ -52,7 +50,7 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
             if (GameContext.get().getGameScreen() != null && !GameContext.get().getBattleSystem().isInBattle()) {
                 GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
                 Gdx.app.postRunnable(() -> {
-                    ((BattleInitiationHandler) GameContext.get().getGameScreen()).forceBattleInitiation(pokemon);
+                    GameContext.get().getGameScreen().forceBattleInitiation(pokemon);
                 });
                 ai.setCooldown(getName(), 15f); // Long cooldown after initiating battle.
             }
@@ -126,7 +124,7 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
             player.getX(), player.getY());
 
         if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE)) {
-            return distance <= APPROACH_RANGE; // Always try to approach if aggressive and in range
+            return distance <= APPROACH_RANGE;
         }
 
         return distance <= APPROACH_RANGE && distance > OPTIMAL_DISTANCE && !ai.isOnCooldown(getName()) && MathUtils.random() < (ai.getApproachFactor() * 0.25f);

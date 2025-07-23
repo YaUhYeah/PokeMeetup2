@@ -125,75 +125,65 @@ public class InputManager {
             gameScreen.setChestScreen(new ChestScreen(gameScreen.getSkin(), null, null, gameScreen));
         }
         gameScreen.getChestScreen().show();
-    }
-
-    public void updateInputProcessors() {
+    }    public void updateInputProcessors() {
         inputMultiplexer.clear();
 
-        if (currentState == UIState.CHAT && GameContext.get().getChatSystem() != null) {
-            inputMultiplexer.addProcessor(GameContext.get().getChatSystem().getStage());
-            Gdx.input.setInputProcessor(inputMultiplexer);
-            return; // When chat is active, it gets exclusive input priority.
-        }
-        if (GameContext.get().getUiStage() != null) {
-            inputMultiplexer.addProcessor(GameContext.get().getUiStage());
-        }
+        // The order of adding processors to the multiplexer matters.
+        // The first one added gets the first chance to handle an event.
+        // We add the most specific/modal UI first.
+
         switch (currentState) {
-            case STARTER_SELECTION:
-                break;
-
             case INVENTORY:
-                if (GameContext.get().getInventoryScreen() != null) {
-                    inputMultiplexer.addProcessor(
-                        GameContext.get().getInventoryScreen().getStage()
-                    );
+                if (gameScreen.getInventoryScreen() != null && gameScreen.getInventoryScreen().getStage() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getInventoryScreen().getStage());
                 }
                 break;
-
             case CRAFTING:
-                if (GameContext.get().getCraftingScreen() != null &&
-                    GameContext.get().getCraftingScreen().getStage() != null) {
-                    inputMultiplexer.addProcessor(
-                        GameContext.get().getCraftingScreen().getStage()
-                    );
+                if (gameScreen.getCraftingScreen() != null && gameScreen.getCraftingScreen().getStage() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getCraftingScreen().getStage());
                 }
                 break;
-
-            case MENU:
-                if (GameContext.get().getGameMenu() != null &&
-                    GameContext.get().getGameMenu().getStage() != null) {
-                    inputMultiplexer.addProcessor(
-                        GameContext.get().getGameMenu().getStage()
-                    );
-                }
-                break;
-
             case CHEST_SCREEN:
-                if (gameScreen.getChestScreen() != null &&
-                    gameScreen.getChestScreen().getStage() != null) {
-                    inputMultiplexer.addProcessor(
-                        gameScreen.getChestScreen().getStage()
-                    );
+                if (gameScreen.getChestScreen() != null && gameScreen.getChestScreen().getStage() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getChestScreen().getStage());
                 }
                 break;
-
             case BATTLE:
                 if (gameScreen.getBattleStage() != null) {
                     inputMultiplexer.addProcessor(gameScreen.getBattleStage());
                 }
                 break;
-
             case NORMAL:
             case BUILD_MODE:
+                // UI stage should have priority over game input to catch HUD clicks
+                if (gameScreen.getUiStage() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getUiStage());
+                }
+                if (gameScreen.getInputHandler() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getInputHandler());
+                }
+                break;
+            case CHAT:
+            case MENU:
+            case STARTER_SELECTION:
+                // These UI states are all handled by actors on the main uiStage
+                if (gameScreen.getUiStage() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getUiStage());
+                }
+                break;
+            default:
+                // Fallback for any other state
+                if (gameScreen.getUiStage() != null) {
+                    inputMultiplexer.addProcessor(gameScreen.getUiStage());
+                }
                 break;
         }
-        if (gameScreen.getInputHandler() != null) {
-            inputMultiplexer.addProcessor(gameScreen.getInputHandler());
-        }
+
+        // Global processor should always be present to catch global keys.
+        // It is added last, so it's checked after more specific processors.
         inputMultiplexer.addProcessor(globalInputProcessor);
         Gdx.input.setInputProcessor(inputMultiplexer);
     }
-
 
 
     public enum UIState {

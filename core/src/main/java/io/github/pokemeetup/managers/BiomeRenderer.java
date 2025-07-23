@@ -4,39 +4,58 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
-import io.github.pokemeetup.system.gameplay.overworld.mechanics.AutoTileSystem;
 import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.utils.textures.TileType;
 
 /**
- * Renders chunk tiles, including:
- *  - Animated ocean tiles (8 frames)
- *  - Day/night & torch lighting
- *  - Animated “sand_shore” overlay (with inner corners)
+ * Optimized BiomeRenderer with batched rendering and reduced draw calls
  */
 public class BiomeRenderer {
 
-    private static final float TEXTURE_BLEED_FIX = 0.001f;
-    private static final float OCEAN_FRAME_DELAY = 1.5f;
+
+    private static final float OCEAN_FRAME_DELAY = 0.2f;
     private static float oceanFrameTimer = 0f;
-    private static int oceanFrameIndex = 0; // 0..7
-    private static final float SHORE_FRAME_DELAY = 1.5f;
+    private static int oceanFrameIndex = 0;
+    private static final float SHORE_FRAME_DELAY = 0.2f;
     private static float shoreFrameTimer = 0f;
-    private static int shoreFrameIndex = 0; // 0..7
+    private static int shoreFrameIndex = 0;
+
+    // Cache for frequently used textures
+    private static TextureRegion[] oceanFrames = new TextureRegion[8];
+    private static boolean texturesCached = false;
+
+    // Batch state tracking
+    private Color lastColor = new Color(Color.WHITE);
+    private TextureRegion lastTexture = null;
+
+    static {
+        cacheTextures();
+    }
+
+    private static void cacheTextures() {
+        if (!texturesCached) {
+            // Pre-cache ocean animation frames
+            for (int i = 0; i < 8; i++) {
+                oceanFrames[i] = TextureManager.getOceanCenterFrame(i);
+            }
+            texturesCached = true;
+        }
+    }
 
     /**
-     * Update both ocean and shore frames each frame (0..7).
+     * Update animations - should be called ONCE per frame, not per chunk
      */
-    public static void updateAnimations() {
+    public void updateAnimations() {
         float delta = Gdx.graphics.getDeltaTime();
+
         oceanFrameTimer += delta;
         if (oceanFrameTimer >= OCEAN_FRAME_DELAY) {
             oceanFrameIndex = (oceanFrameIndex + 1) % 8;
             oceanFrameTimer -= OCEAN_FRAME_DELAY;
         }
+
         shoreFrameTimer += delta;
         if (shoreFrameTimer >= SHORE_FRAME_DELAY) {
             shoreFrameIndex = (shoreFrameIndex + 1) % 8;
@@ -45,82 +64,108 @@ public class BiomeRenderer {
     }
 
     /**
-     * Render the given chunk’s tiles:
-     *  1) Re‐apply shoreline autotiling with shoreFrameIndex (0..7) to animate
-     *  2) Draw each tile (animated water if tile=water)
-     *  3) Draw any overlay sub‐tile from chunk.getAutotileRegions(),
-     *     including composite mini‐overlays for “inner corners.”
+     * Optimized chunk rendering with batching
      */
     public void renderChunk(SpriteBatch batch, Chunk chunk, World world) {
+        if (chunk == null) return;
+
         final int size = Chunk.CHUNK_SIZE;
         int chunkX = chunk.getChunkX();
         int chunkY = chunk.getChunkY();
-        AutoTileSystem autoTileSystem = new AutoTileSystem();
-        autoTileSystem.applyShorelineAutotiling(chunk, shoreFrameIndex, world);
-        updateAnimations();
-        TextureRegion[][] overlay = chunk.getAutotileRegions();
-        if (overlay == null) {
-            overlay = new TextureRegion[size][size];
-            chunk.setAutotileRegions(overlay);
-        }
+
+        Color[][] lightMap = chunk.getLightMap();
+        byte[][] shorelineData = chunk.getShorelineData();
+
+        // Pre-calculate base position
+        float baseX = chunkX * size * World.TILE_SIZE;
+        float baseY = chunkY * size * World.TILE_SIZE;
+
+        // Get current batch color for restoration
+        Color batchColor = batch.getColor();
+
+        // Render all tiles in the chunk
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
-                float px = (chunkX * size + x) * World.TILE_SIZE;
-                float py = (chunkY * size + y) * World.TILE_SIZE;
-                Color tileColor = determineLightingColor(world, chunkX, chunkY, x, y);
-                batch.setColor(tileColor);
+                float px = baseX + (x * World.TILE_SIZE);
+                float py = baseY + (y * World.TILE_SIZE);
+
+                // Apply lighting if available
+                if (lightMap != null && lightMap[x] != null && lightMap[x][y] != null) {
+                    Color tileColor = lightMap[x][y];
+                    if (!tileColor.equals(lastColor)) {
+                        batch.setColor(tileColor);
+                        lastColor.set(tileColor);
+                    }
+                } else if (!batchColor.equals(lastColor)) {
+                    batch.setColor(batchColor);
+                    lastColor.set(batchColor);
+                }
+
+                // Render base tile
                 int tileType = chunk.getTileType(x, y);
+                TextureRegion tileTexture;
+
                 if (tileType == TileType.WATER) {
-                    TextureRegion waterAnim = TextureManager.getOceanCenterFrame(oceanFrameIndex);
-                    if (waterAnim != null) {
-                        batch.draw(waterAnim, px, py, World.TILE_SIZE, World.TILE_SIZE);
-                    }
+                    tileTexture = oceanFrames[oceanFrameIndex];
                 } else {
-                    TextureRegion baseTex = TextureManager.getTileTexture(tileType);
-                    if (baseTex != null) {
-                        float u  = baseTex.getU()  + TEXTURE_BLEED_FIX;
-                        float v2 = baseTex.getV2() - TEXTURE_BLEED_FIX;
-                        float u2 = baseTex.getU2() - TEXTURE_BLEED_FIX;
-                        float v  = baseTex.getV()  + TEXTURE_BLEED_FIX;
-
-                        batch.draw(baseTex.getTexture(),
-                            px, py,
-                            World.TILE_SIZE, World.TILE_SIZE,
-                            u, v2, u2, v);
-                    }
+                    tileTexture = TextureManager.getTileTexture(tileType);
                 }
 
-                TextureRegion shoreOverlay = overlay[x][y];
-                if (shoreOverlay instanceof AutoTileSystem.CompositeRegion) {
-                    AutoTileSystem.CompositeRegion comp = (AutoTileSystem.CompositeRegion) shoreOverlay;
-                    batch.draw(comp.getBase32(), px, py, 32,32);
-                    for (AutoTileSystem.MiniOverlay mo : comp.getOverlays()) {
-                        batch.draw(mo.region16, px+mo.offsetX, py+mo.offsetY, 16,16);
-                    }
-                }
-                else if (shoreOverlay != null) {
-                    batch.draw(shoreOverlay, px, py, 32,32);
+                if (tileTexture != null) {
+                    batch.draw(tileTexture, px, py, World.TILE_SIZE, World.TILE_SIZE);
                 }
 
-
+                // Render shorelines if needed
+                if (shorelineData != null && shorelineData[x] != null && shorelineData[x][y] != 0) {
+                    renderShoreline(batch, shorelineData[x][y], px, py);
+                }
             }
+        }
+
+        // Restore original color
+        if (!batchColor.equals(lastColor)) {
+            batch.setColor(batchColor);
+            lastColor.set(batchColor);
         }
     }
 
     /**
-     * Combine day/night color + optional torch glow
+     * Optimized shoreline rendering
      */
-    private Color determineLightingColor(World world, int chunkX, int chunkY, int lx, int ly) {
-        Color base = world.getCurrentWorldColor().cpy();
-        int gx = chunkX * Chunk.CHUNK_SIZE + lx;
-        int gy = chunkY * Chunk.CHUNK_SIZE + ly;
-        Float light = world.getLightLevelAtTile(new Vector2(gx, gy));
-        if (light != null && light > 0f) {
-            Color torch = new Color(1f, 0.8f, 0.6f, 1f);
-            base.lerp(torch, light);
+    private void renderShoreline(SpriteBatch batch, byte data, float px, float py) {
+        int edgeMask = data & 0x0F;
+
+        // Draw base shoreline
+        TextureRegion baseShore = TextureManager.getAutoTileRegion("sand_shore", edgeMask, shoreFrameIndex);
+        if (baseShore != null) {
+            batch.draw(baseShore, px, py, 32, 32);
         }
-        return base;
-    }public enum Direction {
+
+        // Draw inner corners if needed
+        if ((data & 0x10) != 0) drawInnerCorner(batch, 0, px, py); // TL
+        if ((data & 0x20) != 0) drawInnerCorner(batch, 1, px, py); // TR
+        if ((data & 0x40) != 0) drawInnerCorner(batch, 2, px, py); // BL
+        if ((data & 0x80) != 0) drawInnerCorner(batch, 3, px, py); // BR
+    }
+
+    /**
+     * Optimized inner corner drawing
+     */
+    private void drawInnerCorner(SpriteBatch batch, int corner, float px, float py) {
+        TextureRegion cornerSheet = TextureManager.getSubTile("sand_shore", shoreFrameIndex, 2, 0);
+        if (cornerSheet == null) return;
+
+        // Pre-calculated corner positions and sizes
+        int sx = (corner == 1 || corner == 3) ? 16 : 0;
+        int sy = (corner == 0 || corner == 1) ? 0 : 16;
+        float dx = (corner == 1 || corner == 3) ? 16 : 0;
+        float dy = (corner == 0 || corner == 1) ? 16 : 0;
+
+        TextureRegion mini = new TextureRegion(cornerSheet, sx, sy, 16, 16);
+        batch.draw(mini, px + dx, py + dy, 16, 16);
+    }
+
+    public enum Direction {
         NORTH, SOUTH, EAST, WEST
     }
 }

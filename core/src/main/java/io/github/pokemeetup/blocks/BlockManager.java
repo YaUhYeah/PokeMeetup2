@@ -3,6 +3,7 @@ package io.github.pokemeetup.blocks;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
@@ -12,6 +13,8 @@ import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.BlockTextureManager;
+
+import java.util.Map;
 
 public class BlockManager {
     private boolean initialized = false;
@@ -27,7 +30,6 @@ public class BlockManager {
         Vector2 blockPos = new Vector2(worldX, worldY);
         return chunk.getBlock(blockPos);
     }
-
 
 
     public boolean placeBlock(PlaceableBlock.BlockType type, int tileX, int tileY) {
@@ -85,55 +87,96 @@ public class BlockManager {
         return block != null && block.getType().hasCollision;
     }
 
-    public void render(SpriteBatch batch, double worldTimeInMinutes) {
-        if (GameContext.get() == null) {
-            return;
-        }
-        for (Chunk chunk : GameContext.get().getWorld().getChunks().values()) {
-            for (PlaceableBlock block : chunk.getBlocks().values()) {
-                TextureRegion currentFrame = BlockTextureManager.getBlockFrame(
-                    block, (float) worldTimeInMinutes
-                );
+    public void render(SpriteBatch batch, double worldTimeInMinutes, Rectangle viewBounds) {
+        World world = GameContext.get().getWorld();
+        if (world == null) return;
 
-                if (currentFrame != null) {
-                    float tileX = block.getPosition().x * World.TILE_SIZE;
-                    float tileY = block.getPosition().y * World.TILE_SIZE;
-                    float blockWidth = currentFrame.getRegionWidth();
-                    float blockHeight = currentFrame.getRegionHeight();
-                    float offsetX = (World.TILE_SIZE - blockWidth) / 2;
-                    float offsetY = 0;
+        // Use the reusable Rectangle object
+        float buffer = World.TILE_SIZE;
+        tempCullBounds.set(
+            viewBounds.x - buffer,
+            viewBounds.y - buffer,
+            viewBounds.width + buffer * 2,
+            viewBounds.height + buffer * 2
+        );
 
-                    Color originalColor = batch.getColor().cpy();
-                    Vector2 tilePos = block.getPosition();
-                    Float lightLevel = GameContext.get().getWorld().getLightLevelAtTile(tilePos);
-                    if (lightLevel != null && lightLevel > 0) {
-                        Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
-                        Color baseColor = GameContext.get().getWorld().getCurrentWorldColor().cpy();
-                        baseColor.lerp(lightColor, lightLevel * 0.7f);
-                        batch.setColor(baseColor);
-                    } else {
-                        batch.setColor(GameContext.get().getWorld().getCurrentWorldColor());
-                    }
-                    if (block.isFlipped()) {
-                        batch.draw(currentFrame,
-                            tileX + offsetX + blockWidth, // X position (offset + width for flip)
-                            tileY + offsetY,              // Y position
-                            -blockWidth,                  // Negative width for horizontal flip
-                            blockHeight                   // Normal height
-                        );
-                    } else {
-                        batch.draw(currentFrame,
-                            tileX + offsetX,
-                            tileY + offsetY,
-                            blockWidth,
-                            blockHeight
-                        );
-                    }
-                    batch.setColor(originalColor);
-                }
+        int minChunkX = (int) Math.floor(tempCullBounds.x / (World.CHUNK_SIZE * World.TILE_SIZE));
+        int maxChunkX = (int) Math.floor((tempCullBounds.x + tempCullBounds.width) / (World.CHUNK_SIZE * World.TILE_SIZE));
+        int minChunkY = (int) Math.floor(tempCullBounds.y / (World.CHUNK_SIZE * World.TILE_SIZE));
+        int maxChunkY = (int) Math.floor((tempCullBounds.y + tempCullBounds.height) / (World.CHUNK_SIZE * World.TILE_SIZE));
+
+        Color worldColor = world.getCurrentWorldColor();
+
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cy = minChunkY; cy <= maxChunkY; cy++) {
+                // Use the reusable Vector2 object
+                tempChunkPos.set(cx, cy);
+                Chunk chunk = world.getChunks().get(tempChunkPos);
+                if (chunk == null || chunk.getBlocks().isEmpty()) continue;
+
+                renderChunkBlocks(batch, chunk, tempCullBounds, worldTimeInMinutes, worldColor, world);
             }
         }
     }
 
+    private final Rectangle tempCullBounds = new Rectangle();
+    private final Vector2 tempChunkPos = new Vector2();
+
+    private void renderChunkBlocks(SpriteBatch batch, Chunk chunk, Rectangle cullBounds,
+                                   double worldTimeInMinutes, Color worldColor, World world) {
+
+        // Batch state optimization
+        Color originalColor = batch.getColor();
+
+        for (PlaceableBlock block : chunk.getBlocks().values()) {
+            float tileX = block.getPosition().x * World.TILE_SIZE;
+            float tileY = block.getPosition().y * World.TILE_SIZE;
+
+            // Fine-grained culling
+            if (!isBlockVisible(tileX, tileY, cullBounds)) continue;
+
+            TextureRegion currentFrame = BlockTextureManager.getBlockFrame(block, (float) worldTimeInMinutes);
+            if (currentFrame == null) continue;
+
+            float blockWidth = currentFrame.getRegionWidth();
+            float blockHeight = currentFrame.getRegionHeight();
+            float offsetX = (World.TILE_SIZE - blockWidth) / 2;
+
+            // Calculate color once
+            Color blockColor = worldColor;
+            Float lightLevel = world.getLightLevelAtTile(block.getPosition());
+            if (lightLevel != null && lightLevel > 0) {
+                // Reuse color object instead of creating new ones
+                blockColor = tempColor.set(worldColor);
+                blockColor.lerp(LIGHT_COLOR, lightLevel * 0.7f);
+            }
+
+            batch.setColor(blockColor);
+
+            // Draw block
+            if (block.isFlipped()) {
+                batch.draw(currentFrame,
+                    tileX + offsetX + blockWidth, tileY,
+                    -blockWidth, blockHeight);
+            } else {
+                batch.draw(currentFrame,
+                    tileX + offsetX, tileY,
+                    blockWidth, blockHeight);
+            }
+        }
+
+        batch.setColor(originalColor);
+    }
+
+    private boolean isBlockVisible(float tileX, float tileY, Rectangle bounds) {
+        return !(tileX > bounds.x + bounds.width ||
+            tileX + World.TILE_SIZE < bounds.x ||
+            tileY > bounds.y + bounds.height ||
+            tileY + World.TILE_SIZE < bounds.y);
+    }
+
+    // Add these as class fields
+    private static final Color LIGHT_COLOR = new Color(1f, 0.8f, 0.6f, 1f);
+    private final Color tempColor = new Color();
 
 }

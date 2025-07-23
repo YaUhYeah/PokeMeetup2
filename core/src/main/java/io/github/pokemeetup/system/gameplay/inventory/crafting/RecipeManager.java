@@ -61,6 +61,20 @@ public class RecipeManager {
             },
             true
         ));
+
+        Map<String, Integer> chestIngredients = new HashMap<>();
+        chestIngredients.put(ItemManager.ItemIDs.WOODEN_PLANKS, 8);
+        addRecipe(new CraftingRecipe(
+            "chest_recipe",
+            chestIngredients,
+            new ItemData(ItemManager.ItemIDs.CHEST, 1, UUID.randomUUID()),
+            new String[][]{
+                {"P", "P", "P"},
+                {"P", null, "P"},
+                {"P", "P", "P"}
+            },
+            true // This is a shaped recipe
+        ));
     }
 
     public void addRecipe(CraftingRecipe recipe) {

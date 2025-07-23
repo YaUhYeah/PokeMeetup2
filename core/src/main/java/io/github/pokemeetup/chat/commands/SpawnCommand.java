@@ -26,6 +26,7 @@ public class SpawnCommand implements Command {
     @Override
     public boolean isMultiplayerOnly() { return false; }
 
+    // --- FIX: Logic to handle teleportation without blocking the main thread.
     @Override
     public void execute(String args, GameClient gameClient, ChatSystem chatSystem) {
         try {
@@ -44,18 +45,23 @@ public class SpawnCommand implements Command {
             int tileY = currentWorld.getWorldData().getConfig().getTileSpawnY();
             float pixelX = tileX * World.TILE_SIZE;
             float pixelY = tileY * World.TILE_SIZE;
-            player.getPosition().set(pixelX, pixelY);
-            player.setTileX(tileX);
-            player.setTileY(tileY);
+
+            // Update player position directly and robustly.
             player.setX(pixelX);
             player.setY(pixelY);
-            player.setMoving(false);
             player.setRenderPosition(new Vector2(pixelX, pixelY));
+            player.setMoving(false);
+
+            // Let the world's update loop handle asynchronous chunk loading.
+            // REMOVED: currentWorld.clearChunks();
+            // REMOVED: currentWorld.loadChunksAroundPlayer();
 
             chatSystem.addSystemMessage("Teleported to spawn point! (" + tileX + ", " + tileY + ")");
             GameLogger.info("Player teleported to spawn: " + pixelX + ", " + pixelY);
-            currentWorld.clearChunks();
-            currentWorld.loadChunksAroundPlayer();
+
+            // Invalidate the render cache to ensure new entities are drawn correctly.
+            currentWorld.markYSortDirty();
+
             if (GameContext.get().isMultiplayer()) {
                 gameClient.sendPlayerUpdate();
                 gameClient.savePlayerState(player.getPlayerData());

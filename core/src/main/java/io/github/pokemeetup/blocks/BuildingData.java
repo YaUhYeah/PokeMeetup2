@@ -12,13 +12,6 @@ public class BuildingData {
     private final BuildingTemplate template;
     private TextureRegion previewTexture;
 
-    public void setPreviewTexture(TextureRegion texture) {
-        this.previewTexture = texture;
-    }
-
-    public TextureRegion getPreviewTexture() {
-        return previewTexture;
-    }
     public BuildingData(String id, String name, BuildingTemplate template) {
         this.id = id;
         this.name = name;

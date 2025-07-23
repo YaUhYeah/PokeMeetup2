@@ -37,19 +37,23 @@ public class UnifiedWorldGenerator {
     });
 
     public static Chunk generateChunk(int chunkX, int chunkY, long worldSeed, BiomeManager biomeManager) {
-        float centerWorldX = (chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-        float centerWorldY = (chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-
-        BiomeTransitionResult centerBTR = GameContext.get().getBiomeManager().getBiomeAt(centerWorldX, centerWorldY);
-        Biome primary = centerBTR.getPrimaryBiome();
-        if (primary == null) primary = GameContext.get().getBiomeManager().getBiome(BiomeType.PLAINS);
-
+        // 1. Determine the dominant biome first.
+        Biome primary = findDominantBiomeInChunk(chunkX, chunkY, biomeManager);
         Chunk chunk = new Chunk(chunkX, chunkY, primary, worldSeed);
-        fillChunkTiles(chunk, worldSeed, GameContext.get().getBiomeManager());
+
+        // 2. Fill the chunk with its base tiles according to the biome.
+        fillChunkTiles(chunk, worldSeed, biomeManager);
+
+        // 3. Apply all terrain modifications, like mountains and elevation.
+        // This process might change the base tiles.
+        applyMountainsIfNeeded(chunk, chunk.getTileData(), worldSeed, primary);
+
+        // 4. CRITICAL FIX: Spawn world objects ONLY AFTER the terrain is final.
+        List<WorldObject> objects = spawnWorldObjects(chunk, chunk.getTileData(), worldSeed);
+        chunk.setWorldObjects(objects);
 
         return chunk;
     }
-
     private static List<WorldObject> spawnWorldObjects(Chunk chunk, int[][] tiles, long worldSeed) {
         return EnhancedWorldObjectSpawner.spawnWorldObjects(chunk, tiles, worldSeed);
     }
@@ -66,76 +70,17 @@ public class UnifiedWorldGenerator {
      */
     public static Chunk generateChunkForServer(int chunkX, int chunkY, long worldSeed, BiomeManager biomeManager) {
         try {
-            float centerWorldX = (chunkX * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-            float centerWorldY = (chunkY * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
-            centerWorldX = (float) (Math.floor(centerWorldX / 10.0f) * 10.0f);
-            centerWorldY = (float) (Math.floor(centerWorldY / 10.0f) * 10.0f);
-
-            BiomeTransitionResult centerBTR = biomeManager.getBiomeAt(centerWorldX, centerWorldY);
-            Biome primary = centerBTR.getPrimaryBiome();
+            Biome primary = findDominantBiomeInChunk(chunkX, chunkY, biomeManager);
             if (primary == null) {
                 GameLogger.error("Null primary biome at (" + chunkX + "," + chunkY + "), defaulting to PLAINS");
                 primary = biomeManager.getBiome(BiomeType.PLAINS);
             }
             Chunk chunk = new Chunk(chunkX, chunkY, primary, worldSeed);
 
-            final int size = Chunk.CHUNK_SIZE;
-            final int MARGIN = 2;
-            final int sampleW = size + 2 * MARGIN;
-            final int sampleH = size + 2 * MARGIN;
-            int[][] sampleTiles = new int[sampleW][sampleH];
-            long chunkSpecificSeed = worldSeed + (((long)chunkX << 32) | ((long)chunkY & 0xFFFFFFFFL));
-            Random chunkRng = new Random(chunkSpecificSeed);
-            for (int sx = 0; sx < sampleW; sx++) {
-                for (int sy = 0; sy < sampleH; sy++) {
-                    int worldTileX = (chunkX * size) + (sx - MARGIN);
-                    int worldTileY = (chunkY * size) + (sy - MARGIN);
-                    float worldX = worldTileX * World.TILE_SIZE;
-                    float worldY = worldTileY * World.TILE_SIZE;
-                    worldX = (float) (Math.floor(worldX / 10.0f) * 10.0f);
-                    worldY = (float) (Math.floor(worldY / 10.0f) * 10.0f);
-                    float[] warped = biomeManager.domainWarp(worldX, worldY);
-                    BiomeManager.Island isl = biomeManager.findClosestIsland(warped[0], warped[1]);
-                    if (isl == null) {
-                        sampleTiles[sx][sy] = TileType.WATER;
-                        continue;
-                    }
-                    float dx = warped[0] - isl.centerX;
-                    float dy = warped[1] - isl.centerY;
-                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                    float angle = MathUtils.atan2(dy, dx);
-                    float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
-                    distort = Math.max(0, distort);
-                    float newExpandFactor = 1.3f;
-                    float reducedFactor = 0.1f;
-                    float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
-                    float beachBand = effectiveRadius * 0.1f;
-                    float innerThreshold = effectiveRadius;
-                    float outerThreshold = effectiveRadius + beachBand;
+            fillChunkTiles(chunk, worldSeed, biomeManager);
 
-                    if (dist < innerThreshold) {
-                        BiomeTransitionResult landTrans = biomeManager.landBiomeVoronoi(warped[0], warped[1]);
-                        sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(landTrans, worldX, worldY, worldSeed);
-                    } else if (dist < outerThreshold) {
-                        BiomeTransitionResult beachTrans = new BiomeTransitionResult(
-                            biomeManager.getBiome(BiomeType.BEACH),
-                            null,
-                            1f
-                        );
-                        sampleTiles[sx][sy] = TileDataPicker.pickBeachTile(beachTrans, worldX, worldY, worldSeed);
-                    } else {
-                        sampleTiles[sx][sy] = TileType.WATER;
-                    }
-                }
-            }
-            removeInlandOceanPockets(sampleTiles);
-            int[][] tiles = new int[size][size];
-            for (int lx = 0; lx < size; lx++) {
-                System.arraycopy(sampleTiles[lx + MARGIN], MARGIN, tiles[lx], 0, size);
-            }
-            chunk.setTileData(tiles);
-            applyMountainsIfNeeded(chunk, tiles, chunkSpecificSeed);
-            List<WorldObject> objects = spawnWorldObjects(chunk, tiles, chunkSpecificSeed);
+            applyMountainsIfNeeded(chunk, chunk.getTileData(), worldSeed, primary);
+            List<WorldObject> objects = spawnWorldObjects(chunk, chunk.getTileData(), worldSeed);
             GameLogger.info("Generated chunk (" + chunkX + "," + chunkY + ") with " +
                 objects.size() + " objects, biome: " + primary.getType());
             chunk.setWorldObjects(objects);
@@ -159,89 +104,62 @@ public class UnifiedWorldGenerator {
             return fallbackChunk;
         }
     }
-
-
-    /**
-     * Fills the chunk's tile data with a large island ring, ensuring beach outside
-     * the island boundary, then ocean beyond, plus smoothing any random pockets.
-     */
     private static void fillChunkTiles(Chunk chunk, long worldSeed, BiomeManager biomeManager) {
         final int size = Chunk.CHUNK_SIZE;
         final int chunkX = chunk.getChunkX();
         final int chunkY = chunk.getChunkY();
         int[][] tiles = new int[size][size];
-        final int MARGIN = 2;
-        final int sampleW = size + 2 * MARGIN;
-        final int sampleH = size + 2 * MARGIN;
-        int[][] sampleTiles = new int[sampleW][sampleH];
-        for (int sx = 0; sx < sampleW; sx++) {
-            for (int sy = 0; sy < sampleH; sy++) {
-                int worldTileX = (chunkX * size) + (sx - MARGIN);
-                int worldTileY = (chunkY * size) + (sy - MARGIN);
 
-                float worldX = worldTileX * World.TILE_SIZE;
-                float worldY = worldTileY * World.TILE_SIZE;
-                float[] warped = GameContext.get().getBiomeManager().domainWarp(worldX, worldY);
-                BiomeManager.Island isl = GameContext.get().getBiomeManager().findClosestIsland(warped[0], warped[1]);
-                if (isl == null) {
-                    sampleTiles[sx][sy] = TileType.WATER;
-                    continue;
-                }
-                float dx = warped[0] - isl.centerX;
-                float dy = warped[1] - isl.centerY;
-                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        // --- OPTIMIZATION START ---
+        // Pre-calculate the biome for the entire chunk and its border to avoid redundant calculations.
+        BiomeTransitionResult[][] biomeMatrix = biomeManager.computeBiomeMatrixForChunk(chunkX, chunkY);
+        // --- OPTIMIZATION END ---
 
-                float angle = MathUtils.atan2(dy, dx);
-                float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
-                distort = Math.max(0, distort);
+        for (int lx = 0; lx < size; lx++) {
+            for (int ly = 0; ly < size; ly++) {
+                // Get the pre-calculated biome result for this tile.
+                BiomeTransitionResult btr = biomeMatrix[lx][ly];
 
-                float newExpandFactor = 1.3f;
-                float reducedFactor = 0.1f;
-                float effectiveRadius = isl.radius * newExpandFactor
-                    + (isl.radius * newExpandFactor * reducedFactor * distort);
-
-                float beachBand = effectiveRadius * 0.1f;
-                float innerThreshold = effectiveRadius - (beachBand * 0.5f);
-                float outerThreshold = effectiveRadius + (beachBand * 0.5f);
-
-                if (dist < innerThreshold) {
-                    BiomeTransitionResult landTrans = GameContext.get().getBiomeManager().landBiomeVoronoi(warped[0], warped[1]);
-                    sampleTiles[sx][sy] = TileDataPicker.pickTileFromBiomeOrBlend(
-                        landTrans, worldX, worldY, worldSeed
-                    );
-                } else if (dist > outerThreshold) {
-                    sampleTiles[sx][sy] = TileType.WATER;
+                // Determine the tile type based on the pre-calculated biome information.
+                Biome primaryBiome = btr.getPrimaryBiome();
+                if (primaryBiome.getType() == BiomeType.OCEAN) {
+                    tiles[lx][ly] = TileType.WATER;
+                } else if (primaryBiome.getType() == BiomeType.BEACH) {
+                    float worldX = (chunkX * size + lx) * World.TILE_SIZE;
+                    float worldY = (chunkY * size + ly) * World.TILE_SIZE;
+                    tiles[lx][ly] = TileDataPicker.pickBeachTile(btr, worldX, worldY, worldSeed);
                 } else {
-                    float t = (dist - innerThreshold) / (outerThreshold - innerThreshold);
-                    BiomeTransitionResult beachTrans = new BiomeTransitionResult(
-                        GameContext.get().getBiomeManager().getBiome(BiomeType.BEACH),
-                        GameContext.get().getBiomeManager().getBiome(BiomeType.OCEAN),
-                        t
-                    );
-                    sampleTiles[sx][sy] = TileDataPicker.pickBeachTile(beachTrans, worldX, worldY, worldSeed);
+                    float worldX = (chunkX * size + lx) * World.TILE_SIZE;
+                    float worldY = (chunkY * size + ly) * World.TILE_SIZE;
+                    tiles[lx][ly] = TileDataPicker.pickTileFromBiomeOrBlend(btr, worldX, worldY, worldSeed);
                 }
             }
         }
-        removeInlandOceanPockets(sampleTiles);
-        for (int lx = 0; lx < size; lx++) {
-            System.arraycopy(sampleTiles[lx + MARGIN], MARGIN, tiles[lx], 0, size);
-        }
+
+        // After setting base tiles, perform cleanup and apply autotiling for shorelines.
+        removeInlandOceanPockets(tiles);
         chunk.setTileData(tiles);
         try {
-            new AutoTileSystem().applyShorelineAutotiling(chunk, 0, GameContext.get().getWorld());
+            new AutoTileSystem().applyShorelineAutotiling(chunk,  GameContext.get().getWorld());
         } catch (Exception e) {
             GameLogger.error("Error during autotiling: " + e.getMessage());
         }
-        applyMountainsIfNeeded(chunk, tiles, worldSeed);
+
+        // Mark the chunk as "dirty" to ensure it gets saved.
         chunk.setDirty(true);
-        List<WorldObject> objects = spawnWorldObjects(chunk, tiles, worldSeed);
-        GameLogger.info("spawnWorldObjects produced " + objects.size() + " objects for chunk (" +
-            chunk.getChunkX() + "," + chunk.getChunkY() + ").");
-        chunk.setWorldObjects(objects);
-        Biome chunkBiome = findDominantBiomeInChunk(chunk, biomeManager);
+
+        // This is where object spawning was incorrectly located. It has been moved to the main
+        // generateChunk method to execute AFTER all terrain modifications (like mountains) are complete.
+        // List<WorldObject> objects = spawnWorldObjects(chunk, tiles, worldSeed); // <- REMOVED FROM HERE
+        // chunk.setWorldObjects(objects); // <- REMOVED FROM HERE
+
+        Biome chunkBiome = findDominantBiomeInChunk(chunkX, chunkY, biomeManager);
+
+        // The mountain logic is now correctly called from the main generation method *after* this one.
+        // applyMountainsIfNeeded(chunk, tiles, worldSeed,chunkBiome);
+
         chunk.setBiome(chunkBiome);
     }
-
 
     /**
      * BFS pass to remove "inland ocean pockets" from sampleTiles. If water is connected
@@ -295,52 +213,59 @@ public class UnifiedWorldGenerator {
         }
     }
 
-    /**
-     * If the chunk's main biome calls for mountains, we generate them and apply
-     * them to the chunk's tile array.
-     */
-    private static void applyMountainsIfNeeded(Chunk chunk, int[][] tiles, long worldSeed) {
-        BiomeType mainBiome = chunk.getBiome().getType();
+    // MODIFIED: Pass the biome to this method to check conditions.
+    private static void applyMountainsIfNeeded(Chunk chunk, int[][] tiles, long worldSeed, Biome biome) {
+        if (biome == null) return;
+        BiomeType mainBiome = biome.getType();
+
+        // MODIFIED: Explicitly prevent mountains on BEACH biomes.
         if (mainBiome == BiomeType.OCEAN || mainBiome == BiomeType.BEACH) {
+            // Ensure no elevation data exists for these biomes.
+            chunk.setElevationData(new int[CHUNK_SIZE][CHUNK_SIZE]); // An array of zeroes.
             return;
         }
+
         long chunkSeed = generateChunkSeed(worldSeed, chunk.getChunkX(), chunk.getChunkY());
         Random rng = new Random(chunkSeed);
 
         int maxLayers = ElevationLogic.determineLayersForBiome(rng, mainBiome);
         if (maxLayers <= 0) {
+            chunk.setElevationData(new int[CHUNK_SIZE][CHUNK_SIZE]); // Set zero elevation if no mountains.
             return;
         }
+
         int[][] elevationBands = new int[CHUNK_SIZE][CHUNK_SIZE];
         for (int lx = 0; lx < CHUNK_SIZE; lx++) {
             for (int ly = 0; ly < CHUNK_SIZE; ly++) {
+                // MODIFIED: Also prevent mountains from forming on any stray beach sand tiles.
                 if (tiles[lx][ly] == TileType.WATER || tiles[lx][ly] == TileType.BEACH_SAND) {
                     elevationBands[lx][ly] = 0;
                 }
             }
         }
-        ElevationLogic.generateMountainShape(
-            maxLayers, rng, elevationBands, chunk.getChunkX(), chunk.getChunkY(), worldSeed
-        );
+
+        ElevationLogic.generateMountainShape(maxLayers, rng, elevationBands, chunk.getChunkX(), chunk.getChunkY(), worldSeed);
         ElevationLogic.smoothElevationBands(elevationBands, rng);
         ElevationLogic.applyMountainTiles(tiles, elevationBands);
         ElevationLogic.autotileCliffs(elevationBands, tiles);
-        ElevationLogic.addStairsBetweenLayers(elevationBands, tiles);
+        ElevationLogic.addStairsBetweenLayers(elevationBands, tiles, rng); // Pass Random for stair placement
         ElevationLogic.finalizeStairAccess(tiles, elevationBands);
         ElevationLogic.maybeAddCaveEntrance(elevationBands, tiles, rng);
 
+        // NEW: Store the generated elevation data directly in the chunk.
+        chunk.setElevationData(elevationBands);
     }
 
     /**
      * Figure out which biome is "dominant" in this chunk by counting tile frequencies.
      */
-    private static Biome findDominantBiomeInChunk(Chunk chunk, BiomeManager biomeManager) {
+    private static Biome findDominantBiomeInChunk(int chunkX, int chunkY, BiomeManager biomeManager) {
         Map<Biome, Integer> freq = new HashMap<>();
-        int[][] tileData = chunk.getTileData();
+
         for (int lx = 0; lx < CHUNK_SIZE; lx++) {
             for (int ly = 0; ly < CHUNK_SIZE; ly++) {
-                float worldX = (chunk.getChunkX() * CHUNK_SIZE + lx) * World.TILE_SIZE;
-                float worldY = (chunk.getChunkY() * CHUNK_SIZE + ly) * World.TILE_SIZE;
+                float worldX = (chunkX * CHUNK_SIZE + lx) * World.TILE_SIZE;
+                float worldY = (chunkY * CHUNK_SIZE + ly) * World.TILE_SIZE;
                 BiomeTransitionResult btr = biomeManager.getBiomeAt(worldX, worldY);
                 Biome tileBiome = btr.getPrimaryBiome();
                 freq.merge(tileBiome, 1, Integer::sum);
@@ -356,7 +281,12 @@ public class UnifiedWorldGenerator {
             }
         }
         if (best == null) {
-            best = biomeManager.getBiome(BiomeType.PLAINS);
+            float centerWorldX = (chunkX * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+            float centerWorldY = (chunkY * CHUNK_SIZE + CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
+            best = biomeManager.getBiomeAt(centerWorldX, centerWorldY).getPrimaryBiome();
+            if (best == null) {
+                best = biomeManager.getBiome(BiomeType.PLAINS);
+            }
         }
         return best;
     }
@@ -865,22 +795,56 @@ public class UnifiedWorldGenerator {
             return original;
         }
 
-        public static void addStairsBetweenLayers(int[][] bands, int[][] tiles) {
+        /**
+         * NEW: Rewritten stair generation logic.
+         * Places stairs only on south-facing cliff edges to create clear upward paths.
+         * Removes the possibility of "side stairs".
+         */
+        public static void addStairsBetweenLayers(int[][] bands, int[][] tiles, Random rand) {
             int size = bands.length;
-            for (int from = 0; from < 2; from++) {
-                int to = from + 1;
-                if (!layerExists(bands, to)) continue;
-                int stairsPlaced = 0;
-                int required = (from == 0) ? 4 : 2;
-                if (tryPlaceStairsSide(bands, tiles, from, to, "north")) stairsPlaced++;
-                if (tryPlaceStairsSide(bands, tiles, from, to, "south")) stairsPlaced++;
-                if (tryPlaceStairsSide(bands, tiles, from, to, "east")) stairsPlaced++;
-                if (tryPlaceStairsSide(bands, tiles, from, to, "west")) stairsPlaced++;
-                while (stairsPlaced < required) {
-                    if (tryPlaceStairsRandom(bands, tiles, from, to)) stairsPlaced++;
-                    else break;
+            // Iterate from the bottom layer up to the second-to-top layer
+            for (int currentLayer = 0; currentLayer < 2; currentLayer++) {
+                int upperLayer = currentLayer + 1;
+
+                // Only proceed if the target upper layer actually exists in the chunk
+                if (!layerExists(bands, upperLayer)) continue;
+
+                List<Point> candidates = new ArrayList<>();
+                // Find all valid south-facing cliff edges between the current and upper layer
+                for (int x = 1; x < size - 1; x++) {
+                    for (int y = 1; y < size - 1; y++) {
+                        // A candidate is a tile on the current layer with a tile of the next layer directly north (up)
+                        if (bands[x][y] == currentLayer && bands[x][y + 1] == upperLayer) {
+                            // Ensure the ground is clear for access
+                            if (isGroundTile(tiles[x][y]) && isGroundTile(tiles[x][y-1])) {
+                                candidates.add(new Point(x, y));
+                            }
+                        }
+                    }
+                }
+
+                // If we found valid spots, place one or two sets of stairs randomly
+                if (!candidates.isEmpty()) {
+                    int stairsToPlace = 1; // Can be adjusted, e.g., rand.nextInt(2) + 1 for 1-2 stairs
+                    for(int i = 0; i < stairsToPlace && !candidates.isEmpty(); i++) {
+                        Point stairPos = candidates.remove(rand.nextInt(candidates.size()));
+                        tiles[stairPos.x][stairPos.y + 1] = TileType.STAIRS; // Place stairs on the upper tile
+                        GameLogger.info("Placed stairs at " + stairPos.x + ", " + (stairPos.y + 1) + " leading to layer " + upperLayer);
+
+                        // Prevent placing stairs right next to this one
+                        candidates.removeIf(p -> Math.abs(p.x - stairPos.x) <= 2 && Math.abs(p.y - stairPos.y) <= 2);
+                    }
                 }
             }
+        }
+
+        // NEW: Helper to check if a tile is a valid ground type for stair placement.
+        private static boolean isGroundTile(int tileType) {
+            return tileType == TileType.GRASS ||
+                tileType == TileType.MOUNTAIN_TILE_CENTER ||
+                tileType == TileType.SAND ||
+                tileType == TileType.SNOW ||
+                tileType == TileType.SNOWY_GRASS;
         }
 
         public static void finalizeStairAccess(int[][] tiles, int[][] bands) {
@@ -946,49 +910,6 @@ public class UnifiedWorldGenerator {
                 && tile != TileType.RUINS_GRASS && tile != TileType.RUINS_GRASS_0 && tile != TileType.RUINS_TALL_GRASS
                 && tile != TileType.RUINS_BRICKS;
         }
-
-        private static boolean tryPlaceStairsSide(int[][] bands, int[][] tiles, int from, int to, String side) {
-            int size = bands.length;
-            int startX, endX, startY, endY;
-            switch (side) {
-                case "north":
-                    startX = 1;
-                    endX = size - 1;
-                    startY = size - 2;
-                    endY = size - 1;
-                    break;
-                case "south":
-                    startX = 1;
-                    endX = size - 1;
-                    startY = 1;
-                    endY = 2;
-                    break;
-                case "east":
-                    startX = size - 2;
-                    endX = size - 1;
-                    startY = 1;
-                    endY = size - 1;
-                    break;
-                case "west":
-                    startX = 1;
-                    endX = 2;
-                    startY = 1;
-                    endY = size - 1;
-                    break;
-                default:
-                    return false;
-            }
-            for (int x = startX; x < endX; x++) {
-                for (int y = startY; y < endY; y++) {
-                    if (canPlaceStairsHere(x, y, bands, tiles, from, to)) {
-                        tiles[x][y] = TileType.STAIRS;
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
         private static boolean tryPlaceStairsRandom(int[][] bands, int[][] tiles, int from, int to) {
             int size = bands.length;
             for (int x = 1; x < size - 1; x++) {

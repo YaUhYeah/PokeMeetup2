@@ -61,8 +61,31 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static io.github.pokemeetup.system.gameplay.overworld.World.INITIAL_LOAD_RADIUS;
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
-public class GameScreen implements Screen, PickupActionHandler, BattleInitiationHandler {
+public class GameScreen implements Screen, PickupActionHandler, BattleInitiationHandler, EvolutionScreen.EvolutionListener {
     public static final boolean DEBUG_MODE = false;
+
+    private void setupLoadingUI() {
+        loadingTable = new Table();
+        loadingTable.setFillParent(true);
+        loadingTable.center();
+
+        loadingStatusLabel = new Label("Generating World...", skin);
+        loadingStatusLabel.setFontScale(1.5f);
+        loadingTable.add(loadingStatusLabel).padBottom(20).row();
+
+        loadingProgressBar = new ProgressBar(0f, 1f, 0.01f, false, skin);
+        loadingTable.add(loadingProgressBar).width(300).height(25).row();
+
+        GameContext.get().getUiStage().addActor(loadingTable);
+    }
+
+    private enum GameState {LOADING, PLAYING}
+
+    private GameState currentState = GameState.LOADING;
+    private WorldLoader worldLoader;
+    private ProgressBar loadingProgressBar;
+    private Label loadingStatusLabel;
+    private Table loadingTable;
     private static final float TARGET_VIEWPORT_WIDTH_TILES = 24f;
     private static final float UPDATE_INTERVAL = 0.1f;
     private static final float CAMERA_LERP = 5.0f;
@@ -101,7 +124,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private Rectangle menuButton;
     private ShapeRenderer shapeRenderer;
     private Skin skin;
-    private Skin uiSkin;
     private Stage stage;
     private FitViewport cameraViewport;
     private boolean transitioning = false;
@@ -126,8 +148,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private boolean isHoldingDirection = false;
     private boolean isRunPressed = false;
     private AndroidMovementController movementController;
-    private Runnable pendingStarterInit = null;
-    private volatile boolean awaitingStarterSelection = false;
     private BattleSystemHandler battleSystem;
     private boolean commandsEnabled = false;
     private InputManager inputManager;
@@ -148,6 +168,11 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         this.battleSystem = new BattleSystemHandler();
         GameContext.get().setBattleSystem(this.battleSystem);
         try {
+            HotbarSystem hotbar = new HotbarSystem(GameContext.get().getUiStage(), skin);
+            GameContext.get().setHotbarSystem(hotbar);
+            if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getInventory() != null) {
+                GameContext.get().getPlayer().getInventory().addObserver(hotbar);
+            }
             initializeBasicResources();
 
             initializeWorldAndPlayer(CreatureCaptureGame.MULTIPLAYER_WORLD_NAME);
@@ -176,13 +201,24 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameContext.get().setGameClient(gameClient);
         this.isMultiplayer = GameContext.get().isMultiplayer();
         GameContext.get().setUiStage(new Stage(new ScreenViewport()));
-
         this.battleSystem = new BattleSystemHandler();
         GameContext.get().setBattleSystem(this.battleSystem);
         try {
             initializeBasicResources();
+            HotbarSystem hotbar = new HotbarSystem(GameContext.get().getUiStage(), skin);
+            GameContext.get().setHotbarSystem(hotbar);
+            if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getInventory() != null) {
+                // Register the one and only hotbar as an observer for inventory changes.
+                GameContext.get().getPlayer().getInventory().addObserver(hotbar);
+            }
 
             initializeWorldAndPlayer(worldName);
+            this.worldLoader = new WorldLoader(GameContext.get().getWorld(), GameContext.get().getBiomeManager(), GameContext.get().getWorld().getWorldData().getConfig().getSeed());
+
+            // Setup the loading UI
+            setupLoadingUI();
+
+            worldLoader.startInitialLoad(GameContext.get().getPlayer(), World.INITIAL_LOAD_RADIUS);
             this.inputManager = new InputManager(this);
             Player player = GameContext.get().getPlayer();
             if (player != null && player.getPokemonParty().getSize() == 0) {
@@ -198,8 +234,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
-    private static final float AUTO_SAVE_INTERVAL_SECONDS = 300f; // 5 minutes
+    private static final float AUTO_SAVE_INTERVAL_SECONDS = 300f;
     private float autoSaveTimer = 0f;
+
     public void updatePartyDisplay() {
         if (partyDisplay != null) {
             partyDisplay.remove();
@@ -285,9 +322,13 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         inputManager.setUIState(InputManager.UIState.CHEST_SCREEN);
     }
 
+    // In GameScreen.java
     public void closeChestScreen() {
         if (chestScreen != null) {
             chestScreen.hide();
+            // --- ADD THESE TWO LINES ---
+            chestScreen.dispose();
+            chestScreen = null;
         }
         inputManager.setUIState(InputManager.UIState.NORMAL);
     }
@@ -320,7 +361,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
                     GameContext.get().getPlayer().getPokemonParty().getSize() == 0 &&
                     starterTable == null) {
                     GameLogger.info("New player detected – initiating starter selection");
-                    awaitingStarterSelection = true;
                     starterSelectionInProgress.set(true);
                     initializationComplete.set(false);
                     Gdx.app.postRunnable(() -> {
@@ -371,31 +411,29 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             uiStage = new Stage(new ScreenViewport(), new SpriteBatch());
             GameContext.get().setUiStage(uiStage);
         }
-        HotbarSystem hotbar = GameContext.get().getHotbarSystem();
-        if (hotbar == null || hotbar.getHotbarTable().getStage() == null) {
-            GameLogger.info("Re-initializing HotbarSystem.");
-            hotbar = new HotbarSystem(uiStage, skin);
-            GameContext.get().setHotbarSystem(hotbar);
-        } else if (hotbar.getHotbarTable().getStage() != uiStage) {
-            hotbar.getHotbarTable().remove();
-            uiStage.addActor(hotbar.getHotbarTable().getParent());
+
+        // The hotbar is now guaranteed to exist, we just ensure its parent is visible.
+        if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
+            GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(true);
         }
+
         if (GameContext.get().getChatSystem() != null && GameContext.get().getChatSystem().getStage() != null) {
-            GameContext.get().getChatSystem().remove(); // Remove from old stage if it exists
+            GameContext.get().getChatSystem().remove();
         }
         initializeChatSystem();
-        if(GameContext.get().getChatSystem().getStage() != uiStage) {
+        if (GameContext.get().getChatSystem().getStage() != uiStage) {
             uiStage.addActor(GameContext.get().getChatSystem());
         }
         if (GameContext.get().getGameMenu() != null) {
             GameContext.get().getGameMenu().dispose();
         }
         GameContext.get().setGameMenu(new GameMenu(game, skin, inputManager));
+
         if (GameContext.get().getBuildModeUI() != null) {
             GameContext.get().getBuildModeUI().remove();
         }
         initializeBuildMode();
-        if(GameContext.get().getBuildModeUI().getStage() != uiStage) {
+        if (GameContext.get().getBuildModeUI().getStage() != uiStage) {
             uiStage.addActor(GameContext.get().getBuildModeUI());
         }
         GameContext.get().getBuildModeUI().setVisible(false);
@@ -419,7 +457,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         inputManager.updateInputProcessors();
         GameLogger.info("GameScreen show() completed successfully.");
     }
-
 
     private void handleNewPlayer() {
         if (starterTable != null) {
@@ -466,6 +503,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             inputBlocked = false;
             inputManager.setUIState(InputManager.UIState.NORMAL);
             inputManager.updateInputProcessors();
+            starter.setEvolutionListener(this);
             if (GameContext.get().getUiStage() != null) {
                 GameContext.get().getUiStage().setKeyboardFocus(null);
                 GameContext.get().getUiStage().unfocusAll();
@@ -475,35 +513,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         } catch (Exception e) {
             GameLogger.error("Failed to process starter selection: " + e.getMessage() + e);
         }
-    }
-
-    private void createStarterSelectionTable() {
-        if (starterTable != null) {
-            starterTable.remove();
-            starterTable = null;
-        }
-        starterTable = new StarterSelectionTable(skin);
-        starterTable.setSelectionListener(new StarterSelectionTable.SelectionListener() {
-            @Override
-            public void onStarterSelected(Pokemon starter) {
-                handleStarterSelection(starter);
-            }
-
-            @Override
-            public void onSelectionStart() {
-                inputBlocked = true;
-            }
-        });
-        starterTable.setFillParent(true);
-        Stage uiStage = GameContext.get().getUiStage();
-        if (uiStage != null) {
-            uiStage.addActor(starterTable);
-            starterTable.toFront();
-        }
-        inputManager.setUIState(InputManager.UIState.STARTER_SELECTION);
-        inputManager.updateInputProcessors();
-
-        GameLogger.info("StarterSelectionTable created and added to UI stage.");
     }
 
     private void registerAllCommands() {
@@ -561,7 +570,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             cameraViewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
             this.skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
             GameContext.get().setSkin(this.skin);
-            this.uiSkin = this.skin;
             this.font = new BitmapFont(Gdx.files.internal("Skins/default.fnt"));
             GameContext.get().setUiStage(new Stage(new ScreenViewport(), uiBatch));
             this.pokemonPartyStage = new Stage(new ScreenViewport());
@@ -1257,6 +1265,38 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
     }
 
+    @Override
+    public void onEvolutionTriggered(Pokemon evolvingPokemon, String newPokemonName) {
+        // This method is called from the Pokemon class when an evolution should start.
+        Gdx.app.postRunnable(() -> {
+            // Block player input during the evolution sequence
+            inputManager.setUIState(InputManager.UIState.CHAT); // Use CHAT state as a generic "input blocked" state
+
+            EvolutionScreen evolutionScreen = new EvolutionScreen(
+                evolvingPokemon,
+                newPokemonName,
+                skin,
+                () -> {
+                    // This code runs AFTER the evolution animation is complete
+                    evolvingPokemon.evolveInto(newPokemonName);
+                    updatePartyDisplay(); // Refresh the UI with the new Pokémon
+                    GameContext.get().getPlayer().updatePlayerData(); // Save the new state
+
+                    // Unblock player input
+                    inputManager.setUIState(InputManager.UIState.NORMAL);
+
+                    // If the evolution happened in a battle, properly end the battle now.
+                    if (GameContext.get().getBattleSystem().isInBattle()) {
+                        GameContext.get().getBattleTable().finishBattle(BattleTable.BattleOutcome.WIN);
+                    }
+                }
+            );
+            GameContext.get().getUiStage().addActor(evolutionScreen);
+            evolutionScreen.startAnimation();
+        });
+    }
+
+
     private void cleanup() {
         if (isDisposing) return;
         isDisposing = true;
@@ -1337,6 +1377,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameLogger.error("Teleport to spawn failed: " + e.getMessage());
         }
     }
+
     private void handleBattleDefeat() {
         Player player = GameContext.get().getPlayer();
         World world = GameContext.get().getWorld();
@@ -1372,6 +1413,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
         teleportPlayerToSpawn(player, world);
     }
+
     private int calculateExperienceGain(WildPokemon wildPokemon) {
         return wildPokemon.getBaseExperience() * wildPokemon.getLevel() / 7;
     }
@@ -1415,8 +1457,10 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
     private void updateCamera() {
         if (GameContext.get().getPlayer() != null) {
-            float targetX = GameContext.get().getPlayer().getX() + Player.FRAME_WIDTH / 2f;
-            float targetY = GameContext.get().getPlayer().getY() + Player.FRAME_HEIGHT / 2f;
+            Vector2 renderPos = GameContext.get().getPlayer().getRenderPosition();
+            float targetX = renderPos.x + Player.FRAME_WIDTH / 2f;
+            float targetY = renderPos.y + Player.FRAME_HEIGHT / 2f;
+
             float lerp = CAMERA_LERP * Gdx.graphics.getDeltaTime();
             camera.position.x += (targetX - camera.position.x) * lerp;
             camera.position.y += (targetY - camera.position.y) * lerp;
@@ -1439,7 +1483,8 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         if (GameContext.get().getGameClient() != null && GameContext.get().getGameClient().isConnected()) {
             GameContext.get().getGameClient().tick();
             GameContext.get().getGameClient().update(delta);
-        } if (!isMultiplayer) {
+        }
+        if (!isMultiplayer) {
             autoSaveTimer += delta;
             if (autoSaveTimer >= AUTO_SAVE_INTERVAL_SECONDS) {
                 autoSaveTimer = 0f;
@@ -1466,209 +1511,234 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameContext.get().getUiStage().draw();
             return;
         }
-        if (!initialChunksLoadedOnce) {
-            renderLoadingOverlay();
-        }
 
-        if (GameContext.get().getWorld() == null) {
-            return;
-        }
-        if (GameContext.get().getPlayer() != null) {
-            if (!GameContext.get().getWorld().areInitialChunksLoaded()) {
-                long elapsed = System.currentTimeMillis() - GameContext.get().getWorld().getInitialChunkRequestTime();
-                if (elapsed > 5000) {
-                    int playerTileX = GameContext.get().getPlayer().getTileX();
-                    int playerTileY = GameContext.get().getPlayer().getTileY();
-                    int playerChunkX = Math.floorDiv(playerTileX, World.CHUNK_SIZE);
-                    int playerChunkY = Math.floorDiv(playerTileY, World.CHUNK_SIZE);
+        if (currentState == GameState.LOADING) {
+            // --- LOADING STATE ---
+            loadingProgressBar.setValue(worldLoader.getProgress());
+
+            if (worldLoader.isLoadComplete()) {
+                // Loading finished, integrate chunks and switch to PLAYING state
+                List<Chunk> loadedChunks = worldLoader.getLoadedChunks();
+                World world = GameContext.get().getWorld();
+                for (Chunk chunk : loadedChunks) {
+                    if (chunk != null) {
+                        world.getChunks().put(new Vector2(chunk.getChunkX(), chunk.getChunkY()), chunk);
+                    }
+                }
+                GameLogger.info("Initial world load complete. Integrated " + loadedChunks.size() + " chunks.");
+
+                // Finalize setup
+                if (GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
+                    handleNewPlayer();
                 } else {
-                    GameContext.get().getWorld().requestInitialChunks();
-                    renderLoadingScreen();
-                    return;
+                    completeInitialization();
                 }
-            }
-        }
-        Gdx.gl.glClearColor(0, 0, 0, 1);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
-            Gdx.gl.glClearColor(0.1f, 0.1f, 0.2f, 1);
-            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-            GameContext.get().getUiStage().act(delta);
-            GameContext.get().getUiStage().draw();
+                loadingTable.remove(); // Remove the loading UI
+                currentState = GameState.PLAYING;
 
-            debugTimer += delta;
-            if (debugTimer >= 1.0f) {
-                debugTimer = 0;
-            }
-            return;
-        }
-        GameContext.get().getBatch().begin();
-        GameContext.get().getBatch().setProjectionMatrix(camera.combined);
-
-        if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
-            Rectangle viewBounds = new Rectangle(
-                camera.position.x - (camera.viewportWidth * camera.zoom) / 2,
-                camera.position.y - (camera.viewportHeight * camera.zoom) / 2,
-                camera.viewportWidth * camera.zoom,
-                camera.viewportHeight * camera.zoom
-            );
-            GameContext.get().getBatch().setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-
-            GameContext.get().getWorld().render(GameContext.get().getBatch(), viewBounds, GameContext.get().getPlayer(), this);
-
-
-        }
-        if (SHOW_DEBUG_INFO) {
-            renderDebugInfo();
-
-        }
-        if (inputManager.getCurrentState() == InputManager.UIState.CRAFTING) {
-            if (GameContext.get().getCraftingScreen() != null) {
-                GameContext.get().getBatch().end();
-
-                GameContext.get().getCraftingScreen().render(delta);
-
-                GameContext.get().getBatch().begin();
-            }
-        }
-
-
-        GameContext.get().getBatch().end();
-
-        if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE && GameContext.get().getBuildModeUI() != null) {
-            GameContext.get().getBuildModeUI().renderPlacementPreview(GameContext.get().getBatch(), camera);
-        }
-        if (GameContext.get().getWorld() != null && !initializedworld) {
-            if (GameContext.get().getWorld().areAllChunksLoaded()) {
-                initializedworld = true;
-                GameLogger.info("All chunks successfully loaded");
-            }
-        }
-
-        if (isHoldingDirection && currentDpadDirection != null) {
-            movementTimer += delta;
-            if (movementTimer >= MOVEMENT_REPEAT_DELAY) {
-                GameContext.get().getPlayer().move(currentDpadDirection);
-                movementTimer = 0f;
-            }
-            GameContext.get().getPlayer().setRunning(isRunPressed);
-        }
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-
-        if (GameContext.get().getUiStage() != null) {
-            GameContext.get().getUiStage().getViewport().apply();
-            GameContext.get().getUiStage().act(delta);
-            GameContext.get().getUiStage().draw();
-        }
-
-
-        if (Gdx.input.isKeyPressed(Input.Keys.TAB)) {
-            renderPlayerListOverlay();
-        }
-        if (inBattle) {
-            if (battleStage != null && !isDisposing) {
-                battleStage.act(delta);
-                if (battleTable != null && battleTable.hasParent()) {
-                    battleStage.draw();
-                }
-            }
-        }
-
-
-        if (inputManager.getCurrentState() == InputManager.UIState.MENU) {
-            if (GameContext.get().getGameMenu() != null) {
-                GameContext.get().getGameMenu().render();
-            }
-        }
-        if (inputManager.getCurrentState() == InputManager.UIState.INVENTORY) {
-            if (GameContext.get().getInventoryScreen() != null) {
-                Gdx.gl.glEnable(GL20.GL_BLEND);
-                Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-                shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-                shapeRenderer.setColor(0, 0, 0, 0.7f);
-                shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-                shapeRenderer.end();
-                GameContext.get().getInventoryScreen().render(delta);
-
-                Gdx.gl.glDisable(GL20.GL_BLEND);
-            }
-        }
-
-
-        if (chestScreen != null && chestScreen.isVisible()) {
-            chestScreen.render(delta);
-        }
-        if (Gdx.app.getType() == Application.ApplicationType.Android && controlsInitialized) {
-            ensureAndroidControlsInitialized();
-            renderAndroidControls();
-        }
-
-        Gdx.gl.glDisable(GL20.GL_BLEND);
-        if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
-            float deltaTime = Gdx.graphics.getDeltaTime();
-            if (!inBattle && !transitioning) {
-                updateCamera();
-            }
-
-            if (isMultiplayer) {
-                updateOtherPlayers(delta);
-                if (GameContext.get().getWorld() != null) {
-                    GameContext.get().getWorld().update(delta, new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()),
-                        Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), this);
-                }
             } else {
-                GameContext.get().getPlayer().validateResources();
-                float viewportWidthPixels = camera.viewportWidth * camera.zoom;
-                float viewportHeightPixels = camera.viewportHeight * camera.zoom;
-                GameContext.get().getWorld().update(delta,
-                    new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()),
-                    viewportWidthPixels,
-                    viewportHeightPixels, this
-                );
+                // Still loading, just draw the UI stage
+                GameContext.get().getUiStage().act(delta);
+                GameContext.get().getUiStage().draw();
+            }
+        } else {
+            if (GameContext.get().getWorld() == null) {
+                return;
             }
 
-            handleInput();
-            if (inputHandler != null) {
-                inputHandler.update(delta);
-            }
-            if (GameContext.get().getPlayer() != null) {
-                GameContext.get().getPlayer().update(delta);
-            }
-
-            updateTimer += delta;
-
-            if (isMultiplayer && updateTimer >= UPDATE_INTERVAL) {
-                updateTimer = 0;
-                NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
-                update.username = GameContext.get().getPlayer().getUsername();
-                update.x = GameContext.get().getPlayer().getX();
-                update.y = GameContext.get().getPlayer().getY();
-                update.characterType = GameContext.get().getPlayer().getCharacterType();
-
-                update.direction = GameContext.get().getPlayer().getDirection();
-                update.isMoving = GameContext.get().getPlayer().isMoving();
-                update.wantsToRun = GameContext.get().getPlayer().isRunning();
-                update.inventoryItems = GameContext.get().getPlayer().getInventory().getAllItems().toArray(new ItemData[0]);
-                update.timestamp = System.currentTimeMillis();
-                if (GameContext.get().getGameClient() == null) {
-                    return;
+            if (GameContext.get().getPlayer() != null && !initialChunksLoadedOnce) {
+                // [FIX] This whole block now correctly ensures the initial load happens ONCE
+                if (GameContext.get().getWorld().areAllChunksLoaded()) {
+                    GameLogger.info("Initial chunks are loaded. Finalizing setup.");
+                    GameContext.get().getWorld().setInitialLoadComplete(true);
+                    initialChunksLoadedOnce = true;
+                } else {
+                    long elapsed = System.currentTimeMillis() - GameContext.get().getWorld().getInitialChunkRequestTime();
+                    if (elapsed > 10000) { // Timeout after 10 seconds
+                        GameLogger.error("Initial chunk load timed out. Forcing continuation.");
+                        GameContext.get().getWorld().setInitialLoadComplete(true);
+                        initialChunksLoadedOnce = true;
+                    } else {
+                        GameContext.get().getWorld().requestInitialChunks(); // This will now only be called for a short time
+                        renderLoadingScreen();
+                        return; // Don't render the rest of the game
+                    }
                 }
-                GameContext.get().getGameClient().sendPlayerUpdate();
-                if (GameContext.get().getGameClient() != null) {
-                    Map<String, NetworkProtocol.PlayerUpdate> updates = GameContext.get().getGameClient().getPlayerUpdates();
-                    if (!updates.isEmpty()) {
-                        synchronized (GameContext.get().getGameClient().getOtherPlayers()) {
-                            for (NetworkProtocol.PlayerUpdate playerUpdate : updates.values()) {
-                                if (!playerUpdate.username.equals(GameContext.get().getPlayer().getUsername())) {
-                                    OtherPlayer op = GameContext.get().getGameClient().getOtherPlayers().get(playerUpdate.username);
-                                    if (op == null) {
-                                        op = new OtherPlayer(playerUpdate.username, playerUpdate.x, playerUpdate.y);
-                                        GameContext.get().getGameClient().getOtherPlayers().put(playerUpdate.username, op);
-                                        GameLogger.info("Created new player: " + playerUpdate.username);
+            }
+
+            if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
+                Gdx.gl.glClearColor(0.1f, 0.1f, 0.2f, 1);
+                Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+                GameContext.get().getUiStage().act(delta);
+                GameContext.get().getUiStage().draw();
+
+                debugTimer += delta;
+                if (debugTimer >= 1.0f) {
+                    debugTimer = 0;
+                }
+                return;
+            }
+            GameContext.get().getBatch().begin();
+            GameContext.get().getBatch().setProjectionMatrix(camera.combined);
+
+            if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
+                Rectangle viewBounds = new Rectangle(
+                    camera.position.x - (camera.viewportWidth * camera.zoom) / 2,
+                    camera.position.y - (camera.viewportHeight * camera.zoom) / 2,
+                    camera.viewportWidth * camera.zoom,
+                    camera.viewportHeight * camera.zoom
+                );
+                GameContext.get().getBatch().setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+                GameContext.get().getWorld().render(GameContext.get().getBatch(), viewBounds, GameContext.get().getPlayer(), this);
+
+
+            }
+            if (SHOW_DEBUG_INFO) {
+                renderDebugInfo();
+
+            }
+            if (inputManager.getCurrentState() == InputManager.UIState.CRAFTING) {
+                if (GameContext.get().getCraftingScreen() != null) {
+                    GameContext.get().getBatch().end();
+
+                    GameContext.get().getCraftingScreen().render(delta);
+
+                    GameContext.get().getBatch().begin();
+                }
+            }
+
+
+            GameContext.get().getBatch().end();
+
+            if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE && GameContext.get().getBuildModeUI() != null) {
+                GameContext.get().getBuildModeUI().renderPlacementPreview(GameContext.get().getBatch(), camera);
+            }
+            if (GameContext.get().getWorld() != null && !initializedworld) {
+                if (GameContext.get().getWorld().areAllChunksLoaded()) {
+                    initializedworld = true;
+                    GameLogger.info("All chunks successfully loaded");
+                }
+            }
+
+            if (isHoldingDirection && currentDpadDirection != null) {
+                movementTimer += delta;
+                if (movementTimer >= MOVEMENT_REPEAT_DELAY) {
+                    GameContext.get().getPlayer().move(currentDpadDirection);
+                    movementTimer = 0f;
+                }
+                GameContext.get().getPlayer().setRunning(isRunPressed);
+            }
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
+            if (GameContext.get().getUiStage() != null) {
+                GameContext.get().getUiStage().getViewport().apply();
+                GameContext.get().getUiStage().act(delta);
+                GameContext.get().getUiStage().draw();
+            }
+
+            if (Gdx.input.isKeyPressed(Input.Keys.TAB)) {
+                renderPlayerListOverlay();
+            }
+            if (inputManager.getCurrentState() == InputManager.UIState.INVENTORY) {
+                if (GameContext.get().getInventoryScreen() != null) {
+                    Gdx.gl.glEnable(GL20.GL_BLEND);
+                    Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+                    shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+                    shapeRenderer.setColor(0, 0, 0, 0.7f);
+                    shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+                    shapeRenderer.end();
+                    GameContext.get().getInventoryScreen().render(delta);
+
+                    Gdx.gl.glDisable(GL20.GL_BLEND);
+                }
+            }
+
+            if (inBattle) {
+                if (battleStage != null && !isDisposing) {
+                    battleStage.act(delta);
+                    if (battleTable != null && battleTable.hasParent()) {
+                        battleStage.draw();
+                    }
+                }
+            }
+
+            if (chestScreen != null && chestScreen.isVisible()) {
+                chestScreen.render(delta);
+            }
+            if (Gdx.app.getType() == Application.ApplicationType.Android && controlsInitialized) {
+                ensureAndroidControlsInitialized();
+                renderAndroidControls();
+            }
+
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+            if (GameContext.get().getWorld() != null && GameContext.get().getPlayer() != null) {
+                float deltaTime = Gdx.graphics.getDeltaTime();
+                if (!inBattle && !transitioning) {
+                    updateCamera();
+                }
+
+                if (isMultiplayer) {
+                    updateOtherPlayers(delta);
+                    if (GameContext.get().getWorld() != null) {
+                        GameContext.get().getWorld().update(delta, new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()),
+                            Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), this);
+                    }
+                } else {
+                    GameContext.get().getPlayer().validateResources();
+                    float viewportWidthPixels = camera.viewportWidth * camera.zoom;
+                    float viewportHeightPixels = camera.viewportHeight * camera.zoom;
+                    GameContext.get().getWorld().update(delta,
+                        new Vector2(GameContext.get().getPlayer().getTileX(), GameContext.get().getPlayer().getTileY()),
+                        viewportWidthPixels,
+                        viewportHeightPixels, this
+                    );
+                }
+
+                handleInput();
+                if (inputHandler != null) {
+                    inputHandler.update(delta);
+                }
+                if (GameContext.get().getPlayer() != null) {
+                    GameContext.get().getPlayer().update(delta);
+                }
+
+                updateTimer += delta;
+
+                if (isMultiplayer && updateTimer >= UPDATE_INTERVAL) {
+                    updateTimer = 0;
+                    NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
+                    update.username = GameContext.get().getPlayer().getUsername();
+                    update.x = GameContext.get().getPlayer().getX();
+                    update.y = GameContext.get().getPlayer().getY();
+                    update.characterType = GameContext.get().getPlayer().getCharacterType();
+
+                    update.direction = GameContext.get().getPlayer().getDirection();
+                    update.isMoving = GameContext.get().getPlayer().isMoving();
+                    update.wantsToRun = GameContext.get().getPlayer().isRunning();
+                    update.inventoryItems = GameContext.get().getPlayer().getInventory().getAllItems().toArray(new ItemData[0]);
+                    update.timestamp = System.currentTimeMillis();
+                    if (GameContext.get().getGameClient() == null) {
+                        return;
+                    }
+                    GameContext.get().getGameClient().sendPlayerUpdate();
+                    if (GameContext.get().getGameClient() != null) {
+                        Map<String, NetworkProtocol.PlayerUpdate> updates = GameContext.get().getGameClient().getPlayerUpdates();
+                        if (!updates.isEmpty()) {
+                            synchronized (GameContext.get().getGameClient().getOtherPlayers()) {
+                                for (NetworkProtocol.PlayerUpdate playerUpdate : updates.values()) {
+                                    if (!playerUpdate.username.equals(GameContext.get().getPlayer().getUsername())) {
+                                        OtherPlayer op = GameContext.get().getGameClient().getOtherPlayers().get(playerUpdate.username);
+                                        if (op == null) {
+                                            op = new OtherPlayer(playerUpdate.username, playerUpdate.x, playerUpdate.y);
+                                            GameContext.get().getGameClient().getOtherPlayers().put(playerUpdate.username, op);
+                                            GameLogger.info("Created new player: " + playerUpdate.username);
+                                        }
+                                        op.updateFromNetwork(playerUpdate);
                                     }
-                                    op.updateFromNetwork(playerUpdate);
                                 }
                             }
                         }
@@ -1677,6 +1747,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             }
         }
     }
+
     private void renderLoadingOverlay() {
         GameContext.get().getBatch().begin();
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -1729,12 +1800,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         overlayStage.dispose();
     }
 
-    private void renderHotbar(float delta) {
-        if (GameContext.get().getPlayer() != null &&
-            GameContext.get().getPlayer().getHotbarSystem() != null) {
-            GameContext.get().getPlayer().getHotbarSystem().updateHotbar();
-        }
-    }
 
     private String formatPlayedTime(long millis) {
         long seconds = millis / 1000;
@@ -1806,6 +1871,10 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private void handleInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.F3)) {
             SHOW_DEBUG_INFO = !SHOW_DEBUG_INFO;
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F4)) {
+            GameContext.get().getWorld().debugGrassAtPlayerPosition(GameContext.get().getPlayer());
         }
         if (GameContext.get().getChatSystem() != null && GameContext.get().getChatSystem().isActive()) {
             return;
@@ -2040,7 +2109,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     public void dispose() {
         if (isDisposing) return;
         isDisposing = true;
-
+        if (worldLoader != null) {
+            worldLoader.shutdown();
+        }
         GameLogger.info("Disposing GameScreen...");
         if (shapeRenderer != null) {
             shapeRenderer.dispose();
@@ -2125,6 +2196,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         TextButton.TextButtonStyle style = new TextButton.TextButtonStyle();
         style.up = drawable;
         style.down = drawable.tint(Color.DARK_GRAY);
+        style.over = drawable.tint(Color.LIGHT_GRAY);
         style.font = skin.getFont("default-font");
         style.fontColor = Color.WHITE;
 

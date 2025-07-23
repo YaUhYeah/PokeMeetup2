@@ -17,7 +17,7 @@ public class PlayerAnimations {
     public static final float SLOW_WALK_ANIMATION_DURATION = BASE_MOVE_TIME * 1.4f;
     public static final float SLOW_RUN_ANIMATION_DURATION = (BASE_MOVE_TIME / RUN_SPEED_MULTIPLIER) * 2f;
     public static final float WALK_FRAME_DURATION = 0.12f;
-    public static final float RUN_FRAME_DURATION  = 0.08f;
+    public static final float RUN_FRAME_DURATION = 0.08f;
 
 
     private final String characterType;
@@ -38,6 +38,7 @@ public class PlayerAnimations {
     private boolean isChopping = false;
     private float punchAnimationTime = 0f;
     private float chopAnimationTime = 0f;
+
     public PlayerAnimations(String characterType) {
         this.characterType = characterType != null ? characterType.toLowerCase() : "boy";
         loadAnimations(this.characterType);
@@ -46,7 +47,6 @@ public class PlayerAnimations {
     public PlayerAnimations() {
         this("boy");
     }
-
 
 
     public void startPunching() {
@@ -116,6 +116,7 @@ public class PlayerAnimations {
         Animation<TextureRegion> currentAnimation = getAnimation(direction, isRunning);
         return currentAnimation.getKeyFrame(time, true);
     }
+
     public boolean isChopping() {
         return isChopping;
     }

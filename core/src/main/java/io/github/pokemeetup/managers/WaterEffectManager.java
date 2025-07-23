@@ -46,24 +46,19 @@ public class WaterEffectManager {
     }
 
     public void render(SpriteBatch batch) {
-        Color originalColor = batch.getColor().cpy();
-
         for (Ripple ripple : activeRipples) {
-            float alpha = 1f - (ripple.stateTime / RIPPLE_DURATION);
-            batch.setColor(1, 1, 1, alpha * 0.5f);
 
-            float scale = 1f + ((RIPPLE_MAX_SCALE - 1f) * (ripple.stateTime / RIPPLE_DURATION));
-            float width = rippleTexture.getRegionWidth() * scale;
-            float height = rippleTexture.getRegionHeight() * scale;
+            float width = rippleTexture.getRegionWidth();
+            float height = rippleTexture.getRegionHeight();
 
             batch.draw(rippleTexture,
-                ripple.x - width/2,
-                ripple.y - height/2,
+                ripple.x - width / 2,
+                ripple.y - height / 2,
                 width, height);
         }
 
-        batch.setColor(originalColor);
     }
+
 
     private static class Ripple {
         float x, y;

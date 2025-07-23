@@ -1,29 +1,26 @@
+// Path: src/main/java/io/github/pokemeetup/screens/otherui/PokemonPartyWindow.java
 package io.github.pokemeetup.screens.otherui;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
-import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
+import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
 import com.badlogic.gdx.utils.Scaling;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonParty;
 import io.github.pokemeetup.pokemon.attacks.Move;
-import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static com.badlogic.gdx.scenes.scene2d.actions.Actions.hide;
 
 public class PokemonPartyWindow extends Window {
     private final PokemonParty party;
@@ -32,45 +29,152 @@ public class PokemonPartyWindow extends Window {
     private final Runnable cancelCallback;
 
     private Table contentTable;
-    private int currentPokemonIndex = -1; // Index of the Pokemon currently in battle
-    private ArrayList<PokemonSlot> pokemonSlots = new ArrayList<>();
+    private int currentPokemonIndex = -1;
+    private final ArrayList<PokemonSlot> pokemonSlots = new ArrayList<>();
     private int selectedIndex = -1;
     private PokemonSlot selectedSlot = null;
     private ScrollPane scrollPane;
+    private boolean selectionMade = false;
+
+    public interface PartySelectionListener {
+        void onPokemonSelected(int partyIndex);
+    }
 
     public PokemonPartyWindow(
         Skin skin,
         PokemonParty party,
         boolean battleMode,
         PartySelectionListener selectionListener,
-        Runnable cancelCallback) {
+        Runnable cancelCallback,
+        boolean disableActivePokemon) { // <-- NEW PARAMETER
 
-        super("", skin);
+        super(battleMode ? "Choose a Pokémon" : "Pokémon Party", skin);
         this.party = party;
         this.battleMode = battleMode;
         this.selectionListener = selectionListener;
         this.cancelCallback = cancelCallback;
+        this.disableActivePokemon = disableActivePokemon;
         setModal(true);
         setMovable(false);
+        padTop(40f);
+
         if (battleMode && GameContext.get().getBattleTable() != null) {
-            Pokemon activePokemon = GameContext.get().getBattleTable().getPlayerPokemon(); // Assuming BattleTable has getPlayerPokemon()
+            Pokemon activePokemon = GameContext.get().getBattleTable().getPlayerPokemon();
             if (activePokemon != null) {
-                List<Pokemon> partyList = party.getParty();
-                for (int i = 0; i < partyList.size(); i++) {
-                    if (partyList.get(i) == activePokemon) {
-                        currentPokemonIndex = i;
-                        break;
-                    }
-                }
+                currentPokemonIndex = party.getParty().indexOf(activePokemon);
             }
         }
         initialize();
     }
 
-    /**
-     * Tints the progress bar's background to a neutral grey and the fill portion
-     * (knobBefore) to green/yellow/red based on HP percentage.
-     */
+    private void initialize() {
+        Table rootTable = new Table();
+        rootTable.setFillParent(true);
+        contentTable = new Table();
+        contentTable.pad(10);
+        scrollPane = new ScrollPane(contentTable, getSkin());
+        scrollPane.setFadeScrollBars(false);
+        scrollPane.setScrollingDisabled(false, false);
+        rootTable.add(scrollPane).expand().fill().row();
+
+        if (cancelCallback != null) {
+            TextButton cancelButton = new TextButton("Cancel", getSkin());
+            cancelButton.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    cancelCallback.run();
+                    closeWindow();
+                }
+            });
+            rootTable.add(cancelButton).expandX().center().padTop(8);
+        }
+
+        add(rootTable).expand().fill();
+        getColor().a = 0;
+        rebuildSlots();
+    }
+
+    public void show(Stage stage) {
+        pack();
+        float maxW = stage.getWidth() * 0.70f;
+        float maxH = stage.getHeight() * 0.75f;
+        if (getWidth() > maxW) setWidth(maxW);
+        if (getHeight() > maxH) setHeight(maxH);
+        setPosition(
+            (stage.getWidth() - getWidth()) / 2f,
+            (stage.getHeight() - getHeight()) / 2f
+        );
+        layout();
+        stage.addActor(this);
+        addAction(Actions.sequence(
+            Actions.fadeIn(0.2f),
+            Actions.run(() -> AudioManager.getInstance().playSound(AudioManager.SoundEffect.MENU_SELECT))
+        ));
+    }
+    private final boolean disableActivePokemon;
+
+    private void closeWindow() {
+        addAction(Actions.sequence(Actions.fadeOut(0.2f), Actions.removeActor()));
+    }
+
+    private void rebuildSlots() {
+        contentTable.clear();
+        pokemonSlots.clear();
+        List<Pokemon> partyList = party.getParty();
+
+        for (int i = 0; i < partyList.size(); i++) {
+            final Pokemon pokemon = partyList.get(i);
+            final int slotIndex = i;
+            final PokemonSlot slot = new PokemonSlot(this, pokemon, getSkin(), battleMode, slotIndex, i == currentPokemonIndex);
+            pokemonSlots.add(slot);
+
+            slot.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    if (selectionMade) return; // Prevent double-clicks
+
+                    if (!battleMode) {
+                        // Handle re-ordering party members from the main menu
+                        handleSlotClick(slotIndex, slot);
+                    } else {
+                        // Handle selecting a Pokémon for an action in battle
+                        if (selectionListener != null) {
+                            selectionMade = true;
+                            // The listener in BattleTable will perform validation (e.g., fainted check)
+                            selectionListener.onPokemonSelected(slotIndex);
+                            closeWindow();
+                        }
+                    }
+                }
+            });
+
+            contentTable.add(slot).expandX().fillX().pad(5).row();
+        }
+    }
+
+    private void handleSlotClick(int slotIndex, PokemonSlot slot) {
+        if (selectedSlot == null) {
+            selectedSlot = slot;
+            selectedIndex = slotIndex;
+            slot.setSelected(true);
+        } else {
+            if (selectedSlot == slot) {
+                slot.setSelected(false);
+                selectedSlot = null;
+                selectedIndex = -1;
+                return;
+            }
+            party.swapPositions(selectedIndex, slotIndex);
+            selectedSlot.setSelected(false);
+            selectedSlot = null;
+            selectedIndex = -1;
+            rebuildSlots();
+            if (GameContext.get().getGameScreen() != null) {
+                GameContext.get().getGameScreen().updatePartyDisplay();
+            }
+        }
+    }
+
     private static void updateHPBarColor(ProgressBar bar, float percentage, Skin skin) {
         ProgressBar.ProgressBarStyle baseStyle = skin.get("default-horizontal", ProgressBar.ProgressBarStyle.class);
         ProgressBar.ProgressBarStyle newStyle = new ProgressBar.ProgressBarStyle(baseStyle);
@@ -95,141 +199,7 @@ public class PokemonPartyWindow extends Window {
         bar.setStyle(newStyle);
     }
 
-    /**
-     * Resizes/positions the window to about 70% of the screen width and 50% height, then centers it.
-     */
-    public void show(Stage stage) {
-        pack();
-        float maxW = stage.getWidth() * 0.70f;
-        float maxH = stage.getHeight() * 0.50f;
-        if (getWidth() > maxW) setWidth(maxW);
-        if (getHeight() > maxH) setHeight(maxH);
-        setPosition(
-            (stage.getWidth() - getWidth()) / 2f,
-            (stage.getHeight() - getHeight()) / 2f
-        );
-
-        layout();
-        addAction(Actions.fadeIn(0.3f));
-    }
-
-    public void updateSlots() {
-        rebuildSlots();
-    }
-
-    private void initialize() {
-        Table rootTable = new Table();
-        rootTable.setFillParent(true);
-        contentTable = new Table();
-        contentTable.pad(10);
-        scrollPane = new ScrollPane(contentTable, getSkin());
-        scrollPane.setFadeScrollBars(false);
-        scrollPane.setScrollingDisabled(false, false);
-        rootTable.add(scrollPane).expand().fill().row();
-        if (cancelCallback != null) {
-            TextButton cancelButton = new TextButton("Cancel", getSkin());
-            cancelButton.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    cancelCallback.run();
-                    addAction(Actions.sequence(hide(), Actions.removeActor()));
-                }
-            });
-            rootTable.add(cancelButton).expandX().center().padTop(8);
-        }
-
-        add(rootTable).expand().fill();
-
-        getColor().a = 0;
-        addAction(Actions.sequence(
-            Actions.fadeIn(0.3f),
-            Actions.run(() -> AudioManager.getInstance().playSound(AudioManager.SoundEffect.MENU_SELECT))
-        ));
-
-        rebuildSlots();
-    }
-
-    private void rebuildSlots() {
-        contentTable.clearChildren();
-
-        Label title = new Label(battleMode ? "Choose Pokémon" : "Pokémon Party", getSkin());
-        title.setFontScale(1.2f);
-        contentTable.add(title).expandX().center().pad(10).row();
-
-        pokemonSlots.clear();
-        List<Pokemon> partyList = party.getParty();
-        for (int i = 0; i < partyList.size(); i++) {
-            Pokemon pokemon = partyList.get(i);
-            final int slotIndex = i;
-            PokemonSlot slot = new PokemonSlot(this, pokemon, getSkin(), battleMode, slotIndex, i == currentPokemonIndex); // NEW: pass active status
-            pokemonSlots.add(slot);
-            slot.addListener(new ClickListener() {
-                @Override
-                public void clicked(InputEvent event, float x, float y) {
-                    if (selectionMade) return;
-
-                    if (battleMode) {
-                        if (pokemon.getCurrentHp() <= 0) {
-                            return;
-                        }
-                        if (slotIndex == currentPokemonIndex) {
-                            return;
-                        }
-
-                        selectionMade = true;
-                        selectionListener.onPokemonSelected(slotIndex); // MODIFIED
-
-                        PokemonPartyWindow.this.addAction(Actions.sequence(
-                            Actions.fadeOut(0.3f),
-                            Actions.run(PokemonPartyWindow.this::remove)
-                        ));
-                    } else {
-                        handleSlotClick(slotIndex, slot);
-                    }
-                }
-            });
-
-            contentTable.add(slot).expandX().fillX().pad(5).row();
-        }
-    }
-
-    private boolean selectionMade = false;
-
-
-    /**
-     * Swapping logic for non-battle mode.
-     */
-    private void handleSlotClick(int slotIndex, PokemonSlot slot) {
-        if (selectedSlot == null) {
-            selectedSlot = slot;
-            selectedIndex = slotIndex;
-            slot.setSelected(true);
-        } else {
-            if (selectedSlot == slot) {
-                slot.setSelected(false);
-                selectedSlot = null;
-                selectedIndex = -1;
-                return;
-            }
-            party.swapPositions(selectedIndex, slotIndex);
-            selectedSlot.setSelected(false);
-            selectedSlot = null;
-            selectedIndex = -1;
-            rebuildSlots();
-            GameContext.get().getGameScreen().updatePartyDisplay();
-        }
-    }
-
-
-    public interface PartySelectionListener {
-        void onPokemonSelected(int partyIndex); // MODIFIED
-    }
-
-    /**
-     * Represents a single row (slot) in the party list.
-     */
     private static class PokemonSlot extends Table {
-        private final PokemonPartyWindow parentWindow;  // reference to the entire window
         private final Pokemon pokemon;
         private final Image icon;
         private final TextureRegion[] frames;
@@ -238,19 +208,10 @@ public class PokemonPartyWindow extends Window {
         private boolean isHovered = false;
         private boolean isSelected = false;
 
-        private final boolean isActiveInBattle; // NEW field
-        public PokemonSlot(PokemonPartyWindow parentWindow,
-                           Pokemon pokemon,
-                           Skin skin,
-                           boolean battleMode,
-                           int slotIndex,
-                           boolean isActive) { // NEW parameter
-
+        public PokemonSlot(PokemonPartyWindow parentWindow, Pokemon pokemon, Skin skin, boolean battleMode, int slotIndex, boolean isActive) {
             super(skin);
-            this.parentWindow = parentWindow;  // store reference
             this.pokemon = pokemon;
 
-            this.isActiveInBattle = isActive; // Store active status
             TextureRegion fullIcon = pokemon.getIconSprite();
             if (fullIcon == null) {
                 fullIcon = new TextureRegion(TextureManager.getWhitePixel());
@@ -284,12 +245,24 @@ public class PokemonPartyWindow extends Window {
                 .padRight(10);
             add(infoTable).expand().fill().row();
 
-            if (battleMode && (pokemon.getCurrentHp() <= 0 || isActiveInBattle)) {
-                setColor(getColor().mul(0.6f));
-                setTouchable(Touchable.disabled); // Make untappable
+
+            if (battleMode) {
+                boolean shouldBeDisabled = pokemon.getCurrentHp() <= 0;
+                // Only disable the active Pokémon if the window was told to.
+                if (parentWindow.disableActivePokemon && isActive) {
+                    shouldBeDisabled = true;
+                }
+
+                if (shouldBeDisabled) {
+                    setColor(getColor().mul(0.6f));
+                    setTouchable(Touchable.disabled);
+                } else {
+                    setTouchable(Touchable.enabled);
+                }
             } else {
-                setTouchable(Touchable.enabled); // Ensure tappable otherwise
+                setTouchable(Touchable.enabled);
             }
+
             addListener(new InputListener() {
                 @Override
                 public void enter(InputEvent event, float x, float y, int pointer, Actor fromActor) {
@@ -325,8 +298,8 @@ public class PokemonPartyWindow extends Window {
                 addAction(Actions.scaleTo(1.08f, 1.08f, 0.2f));
                 setBackground(new TextureRegionDrawable(TextureManager.getUi().findRegion("slot_selected")));
             } else {
-                addAction(Actions.scaleTo(1f, 1f, 0.2f));
                 setBackground(new TextureRegionDrawable(TextureManager.getUi().findRegion("slot_normal")));
+                addAction(Actions.scaleTo(1f, 1f, 0.2f));
             }
         }
 
@@ -354,7 +327,6 @@ public class PokemonPartyWindow extends Window {
                 if (tooltipY < 0) {
                     tooltipY = stageY + 15;
                 }
-
                 tooltip.setPosition(tooltipX, tooltipY);
             }
         }
@@ -367,10 +339,6 @@ public class PokemonPartyWindow extends Window {
         }
     }
 
-    /**
-     * Tooltip window for a Pokémon.
-     * It is made non-interactive so it does not capture input.
-     */
     private static class PokemonTooltip extends Window {
         public PokemonTooltip(Pokemon pokemon, Skin skin) {
             super("", skin);
@@ -410,12 +378,6 @@ public class PokemonPartyWindow extends Window {
             pack();
             getColor().a = 0;
             addAction(Actions.fadeIn(0.2f));
-        }
-
-        @Override
-        public void act(float delta) {
-            super.act(delta);
-            toFront();
         }
 
         private static Drawable createTooltipBackground() {

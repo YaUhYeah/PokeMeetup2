@@ -489,7 +489,11 @@ public class PokemonData {
             moveData.isSpecial = move.isSpecial();
             moveData.description = move.getDescription();
             moveData.canFlinch = move.canFlinch();
-
+            // BEGIN: NECESSARY CHANGE
+            if (move.getEffect() != null) {
+                moveData.effect = MoveEffectData.fromMoveEffect(move.getEffect());
+            }
+            // END: NECESSARY CHANGE
 
             return moveData;
         }

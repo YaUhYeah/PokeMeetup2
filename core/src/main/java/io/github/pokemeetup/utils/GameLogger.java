@@ -12,7 +12,7 @@ public class GameLogger {
     private static PrintWriter fileWriter;
 
     static {
-        isInfoEnabled =true;// Boolean.getBoolean("game.log.info");  // default is false
+        isInfoEnabled =true;
         isErrorEnabled = !Boolean.getBoolean("game.log.error.disabled");
         try {
             fileWriter = new PrintWriter(new FileWriter("game.log", true));

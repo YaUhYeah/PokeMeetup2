@@ -1,19 +1,16 @@
 package io.github.pokemeetup.screens.otherui;
 
-import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.CreatureCaptureGame;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.client.GameClientSingleton;
-import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.InputManager;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.WorldManager;
@@ -21,14 +18,13 @@ import io.github.pokemeetup.system.keybinds.ControllerBindsDialog;
 import io.github.pokemeetup.system.keybinds.KeyBindsDialog;
 import io.github.pokemeetup.utils.GameLogger;
 
-public class GameMenu extends Actor {
+public class GameMenu extends Group {
     private static final float BUTTON_WIDTH = 200f;
     private static final float BUTTON_HEIGHT = 50f;
     private static final float MENU_PADDING = 20f;
 
     private final CreatureCaptureGame game;
     private final InputManager inputManager;
-    private Stage stage;
     private Skin skin;
     private Window menuWindow;
     private Table menuTable;
@@ -40,15 +36,14 @@ public class GameMenu extends Actor {
     private CheckBox soundEnabled;
     private volatile boolean disposalRequested = false;
     private volatile boolean isDisposing = false;
+    private TextButton controllerBindsButton;
 
     public GameMenu(CreatureCaptureGame game, Skin skin, InputManager inputManager) {
         this.game = game;
         this.skin = skin;
         this.inputManager = inputManager;
-        this.stage = new Stage(new ScreenViewport());
         createMenu();
-        menuWindow.setVisible(false);
-        hide();
+        // The group is not added to a stage yet, so it is invisible by default.
     }
 
     private void handleExit() {
@@ -61,7 +56,6 @@ public class GameMenu extends Actor {
     }
 
     public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
         if (menuWindow != null) {
             menuWindow.pack(); // Recalculate size if needed
             menuWindow.setPosition(
@@ -78,24 +72,10 @@ public class GameMenu extends Actor {
         }
     }
 
-    private TextButton controllerBindsButton;
-
-
-    /**
-     * Transitions to the title screen (or ModeSelectionScreen) after disposing of UI resources.
-     *
-     * @param loadingDialog  the dialog that was displayed during shutdown
-     * @param isSinglePlayer if true, the game will reinitialize the world locally;
-     *                       if false (multiplayer) it will simply switch to the title screen.
-     */
     private void safeDisposeAndTransition(Dialog loadingDialog, boolean isSinglePlayer) {
         try {
             isDisposing = true;
             if (menuWindow != null) menuWindow.setVisible(false);
-            if (stage != null) {
-                stage.clear();
-                stage.dispose();
-            }
             if (loadingDialog != null) {
                 loadingDialog.hide();
             }
@@ -119,7 +99,7 @@ public class GameMenu extends Actor {
                 if ((Boolean) object) {
                     final Dialog loadingDialog = new Dialog("", skin);
                     loadingDialog.text("Saving and exiting...");
-                    loadingDialog.show(stage);
+                    loadingDialog.show(getStage());
                     new Thread(() -> {
                         try {
                             GameClient client = GameContext.get().getGameClient();
@@ -146,25 +126,12 @@ public class GameMenu extends Actor {
         confirmDialog.text("Are you sure you want to exit to title?\nYour progress will be saved on the server.");
         confirmDialog.button("Yes", true);
         confirmDialog.button("No", false);
-        confirmDialog.show(stage);
+        confirmDialog.show(getStage());
     }
 
     private void createMenu() {
         menuWindow = new Window("Menu", skin);
         menuWindow.setMovable(false);
-        menuWindow.addListener(new InputListener() {
-            @Override
-            public boolean keyDown(InputEvent event, int keycode) {
-                GameLogger.info("GameMenu keyDown: keycode=" + keycode);
-                return false; // Allow event propagation
-            }
-
-            @Override
-            public boolean keyUp(InputEvent event, int keycode) {
-                GameLogger.info("GameMenu keyUp: keycode=" + keycode);
-                return false;
-            }
-        });
 
         menuTable = new Table();
         menuTable.defaults().pad(10).width(BUTTON_WIDTH).height(BUTTON_HEIGHT);
@@ -191,7 +158,7 @@ public class GameMenu extends Actor {
         pokemonButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                showPartyScreen(false);
+                showPartyScreen();
             }
         });
         exitButton.addListener(new ClickListener() {
@@ -222,26 +189,25 @@ public class GameMenu extends Actor {
             (Gdx.graphics.getHeight() - menuWindow.getHeight()) / 2);
         createOptionsMenu();
 
-        stage.addActor(menuWindow);
+        addActor(menuWindow);
     }
 
-
-    private void showPartyScreen(boolean battleMode) {
+    private void showPartyScreen() {
         menuWindow.setVisible(false);
-        if (GameContext.get().getGameScreen().getBattleSkin() != null) {
+        if (getStage() != null && GameContext.get().getGameScreen() != null && GameContext.get().getGameScreen().getBattleSkin() != null) {
             PokemonPartyWindow partyScreen = new PokemonPartyWindow(
                 GameContext.get().getGameScreen().getBattleSkin(),
                 GameContext.get().getPlayer().getPokemonParty(),
-                battleMode,
+                false,
                 (selectedPokemon) -> {
                     menuWindow.setVisible(true);
                 },
                 () -> {
                     menuWindow.setVisible(true);
                 }
-            );
-            stage.addActor(partyScreen);
-            partyScreen.show(stage);
+          ,false  );
+            getStage().addActor(partyScreen);
+            partyScreen.show(getStage());
         }
     }
 
@@ -250,7 +216,7 @@ public class GameMenu extends Actor {
         disposalRequested = true;
         final Dialog loadingDialog = new Dialog("", skin);
         loadingDialog.text("Saving game...");
-        loadingDialog.show(stage);
+        loadingDialog.show(getStage());
         new Thread(() -> {
             try {
                 Gdx.app.postRunnable(() -> safeDisposeAndTransition(loadingDialog, true));
@@ -269,33 +235,32 @@ public class GameMenu extends Actor {
             Dialog errorDialog = new Dialog("Error", skin);
             errorDialog.text(message);
             errorDialog.button("OK");
-            errorDialog.show(stage);
+            errorDialog.show(getStage());
         } catch (Exception e) {
             GameLogger.error("Failed to show error dialog: " + e.getMessage());
         }
     }
 
-    public Stage getStage() {
-        if (isDisposing || stage == null) {
-            return null;
-        }
-        return stage;
-    }
-
     public void show() {
         if (isVisible) return;
         isVisible = true;
-        menuWindow.setVisible(true);
-        stage.setKeyboardFocus(menuWindow);
+        setVisible(true);
+        if (GameContext.get().getUiStage() != null) {
+            GameContext.get().getUiStage().addActor(this);
+            GameContext.get().getUiStage().setKeyboardFocus(menuWindow);
+        }
         inputManager.setUIState(InputManager.UIState.MENU);
     }
 
     public void hide() {
         if (!isVisible) return;
         isVisible = false;
-        menuWindow.setVisible(false);
-        stage.unfocus(menuWindow); // Remove focus
-        inputManager.setUIState(InputManager.UIState.NORMAL); // Update UI state
+        setVisible(false);
+        if (getStage() != null) {
+            getStage().unfocus(menuWindow);
+        }
+        this.remove(); // Remove from stage
+        inputManager.setUIState(InputManager.UIState.NORMAL);
     }
 
     public boolean isVisible() {
@@ -328,9 +293,10 @@ public class GameMenu extends Actor {
         };
         dialog.text("Game saved successfully!");
         dialog.button("OK");
-        dialog.show(stage);
+        dialog.show(getStage());
     }
 
+    // ADDED THIS METHOD TO FIX THE COMPILER ERROR
     private void showSaveErrorDialog(String errorMessage) {
         GameLogger.info("Save error: " + errorMessage);
         Dialog dialog = new Dialog("Error", skin) {
@@ -340,7 +306,7 @@ public class GameMenu extends Actor {
         };
         dialog.text("Failed to save game: " + errorMessage);
         dialog.button("OK");
-        dialog.show(stage);
+        dialog.show(getStage());
     }
 
     private void showNotImplementedMessage() {
@@ -351,7 +317,7 @@ public class GameMenu extends Actor {
         };
         dialog.text("This feature is not yet implemented.");
         dialog.button("OK");
-        dialog.show(stage);
+        dialog.show(getStage());
     }
 
 
@@ -379,7 +345,7 @@ public class GameMenu extends Actor {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 KeyBindsDialog dialog = new KeyBindsDialog(skin);
-                dialog.show(stage);
+                dialog.show(getStage());
             }
         });
 
@@ -388,7 +354,7 @@ public class GameMenu extends Actor {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 ControllerBindsDialog dialog = new ControllerBindsDialog(skin);
-                dialog.show(stage);
+                dialog.show(getStage());
             }
         });
         optionsTable.add(keyBindsButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(20).row();
@@ -419,12 +385,9 @@ public class GameMenu extends Actor {
 
         optionsWindow.add(optionsTable);
         optionsWindow.pack();
-        optionsWindow.setPosition((Gdx.graphics.getWidth() - optionsWindow.getWidth()) / 2,
-            (Gdx.graphics.getHeight() - optionsWindow.getHeight()) / 2);
         optionsWindow.setVisible(false);
-        stage.addActor(optionsWindow);
+        addActor(optionsWindow);
 
-        // **FIX**: Added listeners for real-time audio changes
         setupAudioListeners();
     }
 
@@ -461,29 +424,6 @@ public class GameMenu extends Actor {
         });
     }
 
-    private void setupSaveButton(Table optionsTable) {
-        TextButton saveButton = new TextButton("Save", skin);
-        saveButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                saveAudioSettings();
-                hideOptions();
-            }
-        });
-        optionsTable.add(saveButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(10).row();
-    }
-
-    private void setupCancelButton(Table optionsTable) {
-        TextButton cancelButton = new TextButton("Cancel", skin);
-        cancelButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                hideOptions();
-            }
-        });
-        optionsTable.add(cancelButton).width(BUTTON_WIDTH).height(BUTTON_HEIGHT).padTop(10).row();
-    }
-
     private void saveAudioSettings() {
         // Apply settings to AudioManager
         float musicVol = musicSlider.getValue();
@@ -511,12 +451,16 @@ public class GameMenu extends Actor {
         };
         dialog.text("Settings have been saved.");
         dialog.button("OK");
-        dialog.show(stage);
+        dialog.show(getStage());
     }
 
     private void showOptions() {
         menuWindow.setVisible(false);
         optionsWindow.setVisible(true);
+        if (getStage() != null) {
+            optionsWindow.setPosition((getStage().getWidth() - optionsWindow.getWidth()) / 2,
+                (getStage().getHeight() - optionsWindow.getHeight()) / 2);
+        }
         musicSlider.setValue(AudioManager.getInstance().getMusicVolume());
         soundSlider.setValue(AudioManager.getInstance().getSoundVolume());
         musicEnabled.setChecked(AudioManager.getInstance().isMusicEnabled());
@@ -528,40 +472,11 @@ public class GameMenu extends Actor {
         menuWindow.setVisible(true);
     }
 
-    public void render() {
-        if (!isDisposing && isVisible && stage != null) {
-            try {
-                stage.act();
-                stage.draw();
-            } catch (Exception e) {
-                GameLogger.error("Error rendering menu: " + e.getMessage());
-            }
-        }
-    }
-
     public void dispose() {
         if (isDisposing) {
             return;
         }
-
+        // Resources are managed by the stage this group is on.
         isDisposing = true;
-        if (stage != null) {
-            Gdx.app.postRunnable(() -> {
-                try {
-                    if (stage != null) {
-                        stage.clear();
-                        stage.dispose();
-                        stage = null;
-                    }
-                    skin = null;
-                    menuWindow = null;
-                    optionsWindow = null;
-                    menuTable = null;
-                    GameLogger.info("GameMenu disposed successfully");
-                } catch (Exception e) {
-                    GameLogger.error("Error disposing GameMenu: " + e.getMessage());
-                }
-            });
-        }
     }
 }

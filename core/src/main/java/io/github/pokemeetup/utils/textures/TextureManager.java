@@ -19,7 +19,7 @@ import static io.github.pokemeetup.utils.textures.TileType.*;
 public class TextureManager {
     public static final int TYPE_ICON_WIDTH = 64;
     public static final int TYPE_ICON_HEIGHT = 38;
-    public static final int STATUS_ICON_WIDTH = 44;
+    public static final int STATUS_ICON_WIDTH = 32;
     public static final int STATUS_ICON_HEIGHT = 16;
     public static final Map<Integer, TextureRegion> tileTextures = new HashMap<>();
     private static final Map<Pokemon.Status, TextureRegion> statusIcons = new HashMap<>();
@@ -411,30 +411,21 @@ public class TextureManager {
         TextureRegion[][] statusFrames = statusSheet.split(STATUS_ICON_WIDTH, STATUS_ICON_HEIGHT);
         if (statusFrames.length > 0) {
             TextureRegion[] framesInFirstRow = statusFrames[0];
-            for (Pokemon.Status status : Pokemon.Status.values()) {
-                if (status == Pokemon.Status.NONE) continue;
-                int index = status.ordinal() - 1;
-
-                if (index >= 0 && index < framesInFirstRow.length) {
-                    statusIcons.put(status, framesInFirstRow[index]);
-                } else {
-                    GameLogger.error("Missing status icon for: " + status.name() + " at index " + index);
-                }
+            // The image indicates the atlas order is: 0:PSN, 1:PAR, 2:BRN, 3:FRZ, 4:SLP, 5:TOX.
+            // We map the Pokemon.Status enum to the correct index in the atlas.
+            if (framesInFirstRow.length >= 6) {
+                statusIcons.put(Pokemon.Status.POISONED, framesInFirstRow[0]);
+                statusIcons.put(Pokemon.Status.PARALYZED, framesInFirstRow[1]);
+                statusIcons.put(Pokemon.Status.BURNED, framesInFirstRow[2]);
+                statusIcons.put(Pokemon.Status.FROZEN, framesInFirstRow[3]);
+                statusIcons.put(Pokemon.Status.ASLEEP, framesInFirstRow[4]);
+                statusIcons.put(Pokemon.Status.BADLY_POISONED, framesInFirstRow[5]);
+            } else {
+                GameLogger.error("Status icon sheet is missing icons. Expected at least 6.");
             }
         }
         boolean hasAllIcons = true;
-        for (Pokemon.PokemonType type : Pokemon.PokemonType.values()) {
-            if (!typeIcons.containsKey(type)) {
-                hasAllIcons = false;
-                break;
-            }
-        }
-        for (Pokemon.Status status : Pokemon.Status.values()) {
-            if (status != Pokemon.Status.NONE && !statusIcons.containsKey(status)) {
-                hasAllIcons = false;
-                break;
-            }
-        }
+
         if (!hasAllIcons) {
             GameLogger.info("Missing icons detected, using fallback system");
             usingFallbackSystem = true;
@@ -745,5 +736,3 @@ public class TextureManager {
         }
     }
 }
-
-

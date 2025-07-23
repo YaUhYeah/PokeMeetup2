@@ -15,9 +15,7 @@ import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.PokemonSpawnManager;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 import static io.github.pokemeetup.system.gameplay.PokemonAnimations.IDLE_BOUNCE_DURATION;
 
@@ -128,6 +126,11 @@ public class WildPokemon extends Pokemon implements Positionable {
         initializeBoundingBox();
     }
 
+    @Override
+    public Vector2 getPosition() {
+        return new Vector2(x, y);
+    }
+
     private void initializePokemonData(String name, int level) {
         PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
         if (template != null) {
@@ -206,9 +209,6 @@ public class WildPokemon extends Pokemon implements Positionable {
         }
     }
 
-    public PokemonNetworkSyncComponent getNetworkSync() {
-        return networkSync;
-    }
 
     public void update(float delta, World world) {
         if (world == null) return;

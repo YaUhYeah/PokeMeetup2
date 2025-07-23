@@ -14,9 +14,9 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 import io.github.pokemeetup.utils.textures.TileType;
 
 public class WaterEffectsRenderer {
+
     private static final float FRAME_DURATION = 0.15f;
-    private static final float SCALE_FACTOR = 1.5f;
-    private static final float SOUND_INTERVAL = 0.4f; // Time between splash sounds
+    private static final float SOUND_INTERVAL = 0.4f;
 
     private Animation<TextureRegion> movingAnimation;
     private TextureRegion standingTexture;
@@ -65,17 +65,6 @@ public class WaterEffectsRenderer {
         stateTime += deltaTime;
     }
 
-    /**
-     * Renders water effects for any Positionable entity that is “on water.”
-     * The effect is drawn at the center–bottom of the tile in which the entity is located.
-     *
-     * IMPORTANT: Since your entities’ x–value is stored as the tile center,
-     * we subtract half a tile width before converting to a tile index.
-     *
-     * @param batch  The SpriteBatch to draw on.
-     * @param entity The Positionable entity (local or remote).
-     * @param world  The World (used to look up tile information).
-     */
     public void render(SpriteBatch batch, Positionable entity, World world) {
         if (!initialized || batch == null || entity == null || world == null) {
             return;
@@ -86,8 +75,7 @@ public class WaterEffectsRenderer {
             if (onWater) {
                 if (!entity.wasOnWater()) {
                     playWaterSound();
-                }
-                else if (entity.isMoving() && entity.getWaterSoundTimer() <= 0) {
+                } else if (entity.isMoving() && entity.getWaterSoundTimer() <= 0) {
                     if (!(entity instanceof io.github.pokemeetup.pokemon.WildPokemon)) {
                         playWaterSound();
                         entity.setWaterSoundTimer(SOUND_INTERVAL);
@@ -100,25 +88,34 @@ public class WaterEffectsRenderer {
                 return;
             }
 
-            float effectWidth = World.TILE_SIZE * SCALE_FACTOR;
-            float effectHeight = World.TILE_SIZE * 0.75f;
+            // [FIX] Calculate width and height based on the tile size and texture's aspect ratio.
+            // This removes the hardcoded scaling and distortion.
+            float effectWidth = World.TILE_SIZE;
+
             int tileX = MathUtils.floor((entity.getX() - World.TILE_SIZE / 2f) / World.TILE_SIZE);
             int tileY = MathUtils.floor(entity.getY() / World.TILE_SIZE);
             float tileCenterX = tileX * World.TILE_SIZE + World.TILE_SIZE / 2f;
             float tileBottomY = tileY * World.TILE_SIZE;
+
             float effectX = tileCenterX - (effectWidth / 2f);
             float effectY = tileBottomY;
+
             TextureRegion currentFrame = entity.isMoving() ?
                 movingAnimation.getKeyFrame(stateTime, true) :
                 standingTexture;
+
             if (currentFrame != null) {
-                batch.draw(currentFrame, effectX, effectY, effectWidth, effectHeight);
+                // Calculate height based on the frame's aspect ratio to prevent distortion.
+                if (currentFrame.getRegionWidth() > 0) {
+                    float aspectRatio = (float) currentFrame.getRegionHeight() / (float) currentFrame.getRegionWidth();
+                    float effectHeight = effectWidth * aspectRatio;
+                    batch.draw(currentFrame, effectX, effectY, effectWidth, effectHeight);
+                }
             }
         } catch (Exception e) {
             GameLogger.error("Error rendering water effects: " + e.getMessage());
         }
     }
-
     private void playWaterSound() {
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.PUDDLE);
     }

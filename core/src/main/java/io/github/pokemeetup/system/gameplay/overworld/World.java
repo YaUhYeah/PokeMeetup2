@@ -15,6 +15,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.JsonWriter;
+import com.badlogic.gdx.utils.Pool;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.blocks.BlockManager;
 import io.github.pokemeetup.blocks.PlaceableBlock;
@@ -55,7 +56,6 @@ public class World {
     private static final int MAX_CHUNK_LOAD_RADIUS = 10;
     private static final int MAX_LOADED_CHUNKS = 150;
     private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000;
-    private static final int MAX_CHUNKS_INTEGRATED_PER_FRAME = 16;
     private static final int MAX_CHUNK_RETRY = 3;
     public static int DEFAULT_X_POSITION = 0;
     public static int DEFAULT_Y_POSITION = 0;
@@ -89,11 +89,8 @@ public class World {
     private BiomeTransitionResult currentBiomeTransition;
     private Map<Vector2, Float> lightLevelMap = new HashMap<>();
     private boolean isDisposed = false;
-    private WaterEffectManager waterEffectManager;
     private WaterEffectsRenderer waterEffects;
     private ItemEntityManager itemEntityManager;
-    private List<Map.Entry<Vector2, Chunk>> cachedSortedChunks = null;
-    private int cachedChunkCount = 0;
     private float lightLevelUpdateTimer = 0f;
     private float manageChunksTimer = 0f;
     private long initialChunkRequestTime;
@@ -133,7 +130,6 @@ public class World {
         }
         footstepEffectManager = new FootstepEffectManager();
         this.itemEntityManager = new ItemEntityManager();
-        this.waterEffectManager = new WaterEffectManager();
         waterEffects = new WaterEffectsRenderer();
     }
 
@@ -180,20 +176,32 @@ public class World {
             GameLogger.error("Failed to initialize singleplayer world: " + e.getMessage());
             throw new RuntimeException("World initialization failed", e);
         }
-        this.waterEffectManager = new WaterEffectManager();
 
         waterEffects = new WaterEffectsRenderer();
     }
 
+    // Add to World.java class fields
+    private List<Map.Entry<Vector2, Chunk>> cachedSortedChunks = null;
+    private int cachedChunkCount = 0;
+    private final List<RenderableEntity> ySortQueue = new ArrayList<>(512);
+    private final Pool<RenderableEntity> renderableEntityPool = new Pool<RenderableEntity>() {
+        @Override
+        protected RenderableEntity newObject() {
+            return new RenderableEntity();
+        }
+    };
+    private final Comparator<RenderableEntity> ySortComparator = (o1, o2) -> {
+        int yCompare = Float.compare(o2.y, o1.y);
+        if (yCompare != 0) return yCompare;
+        return Integer.compare(o1.type.layerIndex, o2.type.layerIndex);
+    };
 
+    // Add this new enum and inner class inside your World.java
     private enum RenderableType {
-        TREE_BASE(0),
-        WORLD_OBJECT(1),
-        PLAYER(2),
-        OTHER_PLAYER(2),
-        WILD_POKEMON(2),
-        TALL_GRASS_TOP(3),
-        TREE_TOP(4);
+        PLAYER(2), OTHER_PLAYER(2), WILD_POKEMON(2),
+        TREE_BASE(0), TREE_TOP(4),
+        TALL_GRASS_BACKGROUND(1), TALL_GRASS_FOREGROUND(3),
+        WORLD_OBJECT(1);
 
         final int layerIndex;
 
@@ -202,57 +210,23 @@ public class World {
         }
     }
 
-    private static class RenderableEntity implements Comparable<RenderableEntity> {
-        final Object entity;
-        final float y;
-        final RenderableType type;
+    private static class RenderableEntity implements Pool.Poolable {
+        Object entity;
+        float y;
+        RenderableType type;
 
-        RenderableEntity(Object entity, float y, RenderableType type) {
+        public RenderableEntity init(Object entity, float y, RenderableType type) {
             this.entity = entity;
             this.y = y;
             this.type = type;
+            return this;
         }
 
         @Override
-        public int compareTo(RenderableEntity other) {
-            int yCompare = Float.compare(other.y, this.y);
-            if (yCompare != 0) {
-                return yCompare;
-            }
-
-            return Integer.compare(this.type.layerIndex, other.type.layerIndex);
-        }
-    }
-
-    private void renderTallGrassLowerHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
-        for (WorldObject obj : tallGrassObjects) {
-            TextureRegion region = obj.getTexture();
-            if (region == null) continue;
-            int regionWidth = region.getRegionWidth();
-            int regionHeight = region.getRegionHeight();
-            int srcX = region.getRegionX();
-            int srcY = region.getRegionY() + regionHeight / 2;
-            int srcHeight = regionHeight / 2;
-            float destX = obj.getPixelX();
-            float destY = obj.getPixelY();
-            batch.draw(region.getTexture(), destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f,
-                srcX, srcY, regionWidth, srcHeight, false, false);
-        }
-    }
-
-    private void renderTallGrassUpperHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
-        for (WorldObject obj : tallGrassObjects) {
-            TextureRegion region = obj.getTexture();
-            if (region == null) continue;
-            int regionWidth = region.getRegionWidth();
-            int regionHeight = region.getRegionHeight();
-            int srcX = region.getRegionX();
-            int srcY = region.getRegionY();
-            int srcHeight = regionHeight / 2;
-            float destX = obj.getPixelX();
-            float destY = obj.getPixelY() + World.TILE_SIZE / 2f;
-            batch.draw(region.getTexture(), destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f,
-                srcX, srcY, regionWidth, srcHeight, false, false);
+        public void reset() {
+            this.entity = null;
+            this.y = 0;
+            this.type = null;
         }
     }
 
@@ -408,7 +382,7 @@ public class World {
                 chunkData.biomeTransitionFactor
             );
             storeBiomeTransition(chunkPos, transition);
-            new AutoTileSystem().applyShorelineAutotiling(chunk, 0, this);
+            new AutoTileSystem().applyShorelineAutotiling(chunk, this);
 
             chunk.setDirty(true);
             GameLogger.info("Client processed chunk " + chunkPos + " with " + newObjects.size() + " objects.");
@@ -427,6 +401,7 @@ public class World {
             GameLogger.error("Attempted to store invalid biome transition for chunk: " + chunkPos);
         }
     }
+
     private void processBlockData(Chunk chunk, BlockSaveData.BlockData bd) {
         PlaceableBlock.BlockType blockType = PlaceableBlock.BlockType.fromId(bd.type);
         if (blockType != null) {
@@ -1146,7 +1121,6 @@ public class World {
         }
     }
 
-
     private void updateWorldColor() {
         float hourOfDay = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
         Color targetColor = DayNightCycle.getWorldColor(hourOfDay);
@@ -1159,11 +1133,11 @@ public class World {
             colorTransitionProgress = 1.0f;
         }
 
-
         if (!targetColor.equals(currentWorldColor) && colorTransitionProgress >= 1.0f) {
             previousWorldColor.set(currentWorldColor);
             colorTransitionProgress = 0.0f;
         }
+
         if (colorTransitionProgress < 1.0f) {
             colorTransitionProgress = Math.min(1.0f, colorTransitionProgress + Gdx.graphics.getDeltaTime() * COLOR_TRANSITION_SPEED);
             currentWorldColor.r = previousWorldColor.r + (targetColor.r - previousWorldColor.r) * colorTransitionProgress;
@@ -1172,6 +1146,54 @@ public class World {
             currentWorldColor.a = 1f;
         } else if (!currentWorldColor.equals(targetColor)) {
             currentWorldColor.set(targetColor);
+        }
+
+        // Only update light maps for visible chunks
+        OrthographicCamera camera = GameContext.get().getGameScreen().getCamera();
+        if (camera != null) {
+            Rectangle viewBounds = new Rectangle(
+                camera.position.x - camera.viewportWidth * camera.zoom / 2,
+                camera.position.y - camera.viewportHeight * camera.zoom / 2,
+                camera.viewportWidth * camera.zoom,
+                camera.viewportHeight * camera.zoom
+            );
+
+            // Expand bounds slightly to ensure smooth transitions
+            Rectangle expandedBounds = new Rectangle(
+                viewBounds.x - TILE_SIZE * 2,
+                viewBounds.y - TILE_SIZE * 2,
+                viewBounds.width + TILE_SIZE * 4,
+                viewBounds.height + TILE_SIZE * 4
+            );
+
+            // Only update visible chunks
+            for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
+                if (isChunkVisible(entry.getKey(), expandedBounds)) {
+                    Chunk chunk = entry.getValue();
+                    // Only update if the chunk needs it
+                    if (chunk.isLightMapDirty() ||
+                        System.currentTimeMillis() - chunk.getLastLightUpdate() > 5000) {
+                        updateChunkLightMap(chunk);
+                    }
+                }
+            }
+        } else {
+            // Fallback if camera is not available - only update nearby chunks
+            if (GameContext.get().getPlayer() != null) {
+                int playerChunkX = GameContext.get().getPlayer().getTileX() / CHUNK_SIZE;
+                int playerChunkY = GameContext.get().getPlayer().getTileY() / CHUNK_SIZE;
+
+                for (int dx = -2; dx <= 2; dx++) {
+                    for (int dy = -2; dy <= 2; dy++) {
+                        Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
+                        Chunk chunk = chunks.get(chunkPos);
+                        if (chunk != null && (chunk.isLightMapDirty() ||
+                            System.currentTimeMillis() - chunk.getLastLightUpdate() > 5000)) {
+                            updateChunkLightMap(chunk);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1187,9 +1209,29 @@ public class World {
         }
     }
 
+
     public void loadChunkAsync(final Vector2 chunkPos) {
-        loadChunkAsyncWithRetry(chunkPos, 0);
+        if (isDisposed || (chunkLoadExecutor != null && chunkLoadExecutor.isShutdown())) {
+            return;
+        }
+        if (loadingChunks.containsKey(chunkPos)) return;
+        loadingChunks.put(chunkPos, CompletableFuture.completedFuture(null));
+
+        // Submit the heavy generation task to the background executor
+        CompletableFuture.supplyAsync(() -> {
+                return loadOrGenerateChunk(chunkPos);
+            }, chunkLoadExecutor)
+            .thenAccept(chunk -> {
+                // Once complete, add the result to a queue for the main thread to process
+                Gdx.app.postRunnable(() -> {
+                    if (chunk != null) {
+                        integrationQueue.add(new AbstractMap.SimpleEntry<>(chunkPos, chunk));
+                    }
+                    loadingChunks.remove(chunkPos);
+                });
+            });
     }
+
 
     private void loadChunkAsyncWithRetry(final Vector2 chunkPos, int retryCount) {
         if (isDisposed || (chunkLoadExecutor != null && chunkLoadExecutor.isShutdown())) {
@@ -1240,6 +1282,7 @@ public class World {
             loadingChunks.remove(chunkPos);
         }
     }
+
     public Chunk getChunkAtPosition(float x, float y) {
         int chunkX = Math.floorDiv((int) x, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv((int) y, Chunk.CHUNK_SIZE);
@@ -1260,29 +1303,33 @@ public class World {
         return chunk;
     }
 
-    public boolean areInitialChunksLoaded() {
-        int playerTileX = GameContext.get().getPlayer().getTileX();
-        int playerTileY = GameContext.get().getPlayer().getTileY();
-        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
-        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
-        Vector2 currentChunk = new Vector2(playerChunkX, playerChunkY);
-        return chunks.containsKey(currentChunk);
-    }
-
 
     public void update(float delta, Vector2 playerPosition, float viewportWidth, float viewportHeight, GameScreen gameScreen) {
-        if (isDisposed) {
-            return;
-        }
+        if (isDisposed) return;
+
+        // --- OPTIMIZATION: Integrate loaded chunks from background thread ---
         int integratedThisFrame = 0;
-        while (!integrationQueue.isEmpty() && integratedThisFrame < MAX_CHUNKS_INTEGRATED_PER_FRAME) {
+        final int MAX_CHUNKS_TO_INTEGRATE_PER_FRAME = 2; // Lowered for smoother integration
+        while (!integrationQueue.isEmpty() && integratedThisFrame < MAX_CHUNKS_TO_INTEGRATE_PER_FRAME) {
             Map.Entry<Vector2, Chunk> entry = integrationQueue.poll();
             if (entry != null && entry.getValue() != null) {
                 chunks.put(entry.getKey(), entry.getValue());
+                // --- OPTIMIZATION: Pre-calculate render data here! ---
+                autotileChunkAndNeighbors(entry.getKey());
+                updateChunkLightMap(entry.getValue());
             }
             integratedThisFrame++;
         }
 
+        if (initialChunksComplete) {
+            manageChunksTimer += delta;
+            if (manageChunksTimer >= 0.2f) {
+                int currentChunkX = GameContext.get().getPlayer().getTileX() / CHUNK_SIZE;
+                int currentChunkY = GameContext.get().getPlayer().getTileY() / CHUNK_SIZE;
+                manageChunks(currentChunkX, currentChunkY);
+                manageChunksTimer = 0f;
+            }
+        }
         validateChunkState();
         itemEntityManager.update(delta);
 
@@ -1322,23 +1369,119 @@ public class World {
             manageChunksTimer = 0f;
         }
 
-        waterEffectManager.update(delta);
-        int playerTileX = (int) playerPosition.x;
-        int playerTileY = (int) playerPosition.y;
-        Chunk currentChunk = getChunkAtPosition(playerTileX, playerTileY);
-        if (currentChunk != null) {
-            int localX = Math.floorMod(playerTileX, CHUNK_SIZE);
-            int localY = Math.floorMod(playerTileY, CHUNK_SIZE);
-            if (TileType.isWaterPuddle(currentChunk.getTileType(localX, localY))) {
-                if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().isMoving()) {
-                    waterEffectManager.createRipple(
-                        playerTileX * TILE_SIZE + (float) Player.FRAME_WIDTH / 2,
-                        playerTileY * TILE_SIZE + (float) Player.FRAME_HEIGHT / 2
-                    );
+        updateGameSystems(delta, playerPosition);
+    }
+
+    // --- NEW: Method to handle autotiling a chunk and its neighbors ---
+    private void autotileChunkAndNeighbors(Vector2 chunkPos) {
+        AutoTileSystem autoTileSystem = new AutoTileSystem();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                Vector2 pos = new Vector2(chunkPos.x + dx, chunkPos.y + dy);
+                Chunk chunkToTile = chunks.get(pos);
+                if (chunkToTile != null) {
+                    autoTileSystem.applyShorelineAutotiling(chunkToTile, this);
                 }
             }
         }
-        updateGameSystems(delta, playerPosition);
+    }
+
+    private boolean ySortDirty = true;
+    private List<RenderableEntity> cachedSortedEntities = new ArrayList<>();
+
+    public void updateChunkLightMap(Chunk chunk) {
+        if (chunk == null) return;
+
+        // Skip if recently updated and not dirty
+        if (!chunk.isLightMapDirty() &&
+            System.currentTimeMillis() - chunk.getLastLightUpdate() < 5000) {
+            return;
+        }
+
+        Color[][] lightMap = chunk.getLightMap();
+        if (lightMap == null) {
+            lightMap = new Color[Chunk.CHUNK_SIZE][Chunk.CHUNK_SIZE];
+            chunk.setLightMap(lightMap);
+        }
+
+        Color baseColor = getCurrentWorldColor();
+        boolean hasLightSources = false;
+
+        // Quick check if chunk has any light sources
+        for (PlaceableBlock block : chunk.getBlocks().values()) {
+            if ("furnace".equalsIgnoreCase(block.getId())) {
+                hasLightSources = true;
+                break;
+            }
+        }
+
+        // If no light sources and it's not night, use simple color
+        float hour = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
+        boolean isNight = DayNightCycle.getTimePeriod(hour) == DayNightCycle.TimePeriod.NIGHT;
+
+        if (!hasLightSources || !isNight) {
+            // Fast path - uniform color for the whole chunk
+            for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
+                for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
+                    if (lightMap[x][y] == null) {
+                        lightMap[x][y] = new Color();
+                    }
+                    lightMap[x][y].set(baseColor);
+                }
+            }
+        } else {
+            // Slow path - calculate light levels
+            // First, reset to base color
+            for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
+                for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
+                    if (lightMap[x][y] == null) {
+                        lightMap[x][y] = new Color();
+                    }
+                    lightMap[x][y].set(baseColor);
+                }
+            }
+
+            // Then apply light sources
+            for (PlaceableBlock block : chunk.getBlocks().values()) {
+                if ("furnace".equalsIgnoreCase(block.getId())) {
+                    Vector2 pos = block.getPosition();
+                    int centerX = ((int) pos.x) % Chunk.CHUNK_SIZE;
+                    int centerY = ((int) pos.y) % Chunk.CHUNK_SIZE;
+
+                    // Apply light in a radius
+                    int radius = 7;
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        for (int dy = -radius; dy <= radius; dy++) {
+                            int lx = centerX + dx;
+                            int ly = centerY + dy;
+
+                            if (lx >= 0 && lx < Chunk.CHUNK_SIZE &&
+                                ly >= 0 && ly < Chunk.CHUNK_SIZE) {
+                                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                                if (dist <= radius) {
+                                    float intensity = 1.0f - (dist / radius);
+                                    Color torchColor = new Color(1f, 0.9f, 0.7f, 1f);
+                                    lightMap[lx][ly].lerp(torchColor, intensity * 0.8f);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Mark as updated
+        chunk.setLightMapDirty(false);
+        chunk.setLastLightUpdate(System.currentTimeMillis());
+    }
+
+
+    public void markChunkLightDirty(int chunkX, int chunkY) {
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
+        Chunk chunk = chunks.get(chunkPos);
+        if (chunk != null) {
+            chunk.setLightMapDirty(true);
+        }
     }
 
     public boolean isPlayerChunkLoaded() {
@@ -1375,6 +1518,7 @@ public class World {
         PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(
             cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
         ));
+
         for (int dx = -loadRadius; dx <= loadRadius; dx++) {
             for (int dy = -loadRadius; dy <= loadRadius; dy++) {
                 chunkQueue.add(new Vector2(playerChunkX + dx, playerChunkY + dy));
@@ -1429,9 +1573,8 @@ public class World {
 
             sortedChunks.sort(Comparator.comparingDouble(entry -> entry.getKey().y));
             renderTerrainLayer(batch, sortedChunks, expandedBounds);
-
             if (blockManager != null) {
-                blockManager.render(batch, worldData.getWorldTimeInMinutes());
+                blockManager.render(batch, worldData.getWorldTimeInMinutes(), expandedBounds);
             }
             renderLowObjects(batch, expandedBounds);
 
@@ -1448,10 +1591,6 @@ public class World {
                 weatherAudioSystem.renderLightningEffect(batch, viewBounds.width, viewBounds.height);
             }
 
-            if (currentWorldColor != null) {
-                batch.setColor(currentWorldColor);
-            }
-            waterEffectManager.render(batch);
         } finally {
             batch.setColor(originalColor);
         }
@@ -1460,7 +1599,7 @@ public class World {
     public void render(SpriteBatch batch, Rectangle viewBounds, Player player, GameScreen gameScreen) {
         if (isDisposed) return;
         if (chunks.isEmpty()) {
-            renderLoadingOverlay(batch); // Keep your loading screen logic
+            renderLoadingOverlay(batch);
             return;
         }
 
@@ -1473,13 +1612,22 @@ public class World {
             }
             Rectangle expandedBounds = getExpandedViewBounds(viewBounds);
             List<Map.Entry<Vector2, Chunk>> sortedChunks = getSortedChunks();
+
+            biomeRenderer.updateAnimations();
+            // Pass 1: Render base terrain and blocks
             renderTerrainLayer(batch, sortedChunks, expandedBounds);
             if (blockManager != null) {
-                blockManager.render(batch, worldData.getWorldTimeInMinutes());
+                blockManager.render(batch, worldData.getWorldTimeInMinutes(), expandedBounds);
             }
+
+            // Pass 2: Render simple, non-sorted effects
             itemEntityManager.render(batch);
             footstepEffectManager.render(batch);
-            renderSortedEntities(batch, player, expandedBounds);
+
+            // Pass 3: Render all y-sorted entities correctly
+            renderYSortedEntities(batch, player, expandedBounds, sortedChunks);
+
+            // Pass 4: Render weather effects on top of everything
             if (weatherSystem != null && gameScreen != null) {
                 weatherSystem.render(batch, gameScreen.getCamera());
             }
@@ -1487,82 +1635,8 @@ public class World {
                 weatherAudioSystem.renderLightningEffect(batch, viewBounds.width, viewBounds.height);
             }
             renderWorldBorderWithBatch(batch, gameScreen.getCamera());
-
         } finally {
             batch.setColor(originalColor);
-        }
-    }
-
-    private void renderSortedEntities(SpriteBatch batch, Player player, Rectangle expandedBounds) {
-        List<RenderableEntity> renderQueue = new ArrayList<>();
-        renderQueue.add(new RenderableEntity(player, player.getY(), RenderableType.PLAYER));
-
-        if (GameContext.get().isMultiplayer()) {
-            if (GameContext.get() != null) {
-                for (OtherPlayer other : GameContext.get().getGameClient().getOtherPlayers().values()) {
-                    if (expandedBounds.contains(other.getX(), other.getY())) {
-                        renderQueue.add(new RenderableEntity(other, other.getY(), RenderableType.OTHER_PLAYER));
-                    }
-                }
-            }
-        }
-
-        for (WildPokemon pokemon : pokemonSpawnManager.getAllWildPokemon()) {
-            if (expandedBounds.contains(pokemon.getX(), pokemon.getY())) {
-                renderQueue.add(new RenderableEntity(pokemon, pokemon.getY(), RenderableType.WILD_POKEMON));
-            }
-        }
-
-        for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
-            if (isChunkVisible(entry.getKey(), expandedBounds)) {
-                for (WorldObject obj : objectManager.getObjectsForChunk(entry.getKey())) {
-                    if (isTreeObject(obj)) {
-                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.TREE_BASE));
-                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.TREE_TOP));
-                    } else if (isTallGrassType(obj.getType())) {
-                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
-                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.TALL_GRASS_TOP));
-                    } else {
-                        renderQueue.add(new RenderableEntity(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
-                    }
-                }
-            }
-        }
-        Collections.sort(renderQueue);
-        for (RenderableEntity item : renderQueue) {
-            switch (item.type) {
-                case PLAYER:
-                    ((Player) item.entity).render(batch);
-                    if (waterEffects != null) waterEffects.render(batch, (Player) item.entity, this);
-                    break;
-                case OTHER_PLAYER:
-                    ((OtherPlayer) item.entity).render(batch);
-                    if (waterEffectsRendererForOthers != null)
-                        waterEffectsRendererForOthers.render(batch, (OtherPlayer) item.entity, this);
-                    break;
-                case WILD_POKEMON:
-                    ((WildPokemon) item.entity).render(batch);
-                    if (waterEffectsRendererForOthers != null)
-                        waterEffectsRendererForOthers.render(batch, (WildPokemon) item.entity, this);
-                    break;
-                case TREE_BASE:
-                    objectManager.renderTreeBase(batch, (WorldObject) item.entity, this);
-                    break;
-                case WORLD_OBJECT:
-                    WorldObject obj = (WorldObject) item.entity;
-                    if (isTallGrassType(obj.getType())) {
-                        renderTallGrassUpperHalf(batch, Collections.singletonList(obj));
-                    } else {
-                        objectManager.renderObject(batch, obj, this);
-                    }
-                    break;
-                case TREE_TOP:
-                    objectManager.renderTreeTop(batch, (WorldObject) item.entity, this);
-                    break;
-                case TALL_GRASS_TOP:
-                    renderTallGrassLowerHalf(batch, Collections.singletonList((WorldObject) item.entity));
-                    break;
-            }
         }
     }
 
@@ -1578,23 +1652,37 @@ public class World {
             type == WorldObject.ObjectType.HAUNTED_TALL_GRASS;
     }
 
+    /**
+     * [REPLACEMENT] Optimized method to only update light levels for visible chunks.
+     */
     public void updateLightLevels() {
         lightLevelMap.clear();
         float hour = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
         if (DayNightCycle.getTimePeriod(hour) != DayNightCycle.TimePeriod.NIGHT) return;
-        int playerTileX = GameContext.get().getPlayer().getTileX();
-        int playerTileY = GameContext.get().getPlayer().getTileY();
-        int playerChunkX = Math.floorDiv(playerTileX, Chunk.CHUNK_SIZE);
-        int playerChunkY = Math.floorDiv(playerTileY, Chunk.CHUNK_SIZE);
-        int updateRadius = 5;  // Only update chunks within 5 chunks from the player.
 
+        // Get the camera's current view to determine which chunks are visible
+        OrthographicCamera camera = GameContext.get().getGameScreen().getCamera();
+        Rectangle viewBounds = new Rectangle(
+            camera.position.x - camera.viewportWidth * camera.zoom / 2,
+            camera.position.y - camera.viewportHeight * camera.zoom / 2,
+            camera.viewportWidth * camera.zoom,
+            camera.viewportHeight * camera.zoom
+        );
+        Rectangle expandedBounds = getExpandedViewBounds(viewBounds);
+
+        // Iterate ONLY through the currently loaded chunks
         for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
             Vector2 chunkPos = entry.getKey();
-            if (Math.abs(chunkPos.x - playerChunkX) > updateRadius || Math.abs(chunkPos.y - playerChunkY) > updateRadius)
+
+            // --- THE CORE OPTIMIZATION ---
+            // If the chunk is not visible on screen, skip its lighting calculation entirely.
+            if (!isChunkVisible(chunkPos, expandedBounds)) {
                 continue;
+            }
+
             Chunk chunk = entry.getValue();
             for (PlaceableBlock block : chunk.getBlocks().values()) {
-                if (block.getId().equalsIgnoreCase("furnace")) {
+                if ("furnace".equalsIgnoreCase(block.getId())) { // Check for furnace ID
                     Vector2 pos = block.getPosition();
                     int radius = 7;
                     float maxLevel = 1.0f;
@@ -1687,14 +1775,16 @@ public class World {
         }
     }
 
+
     private List<Map.Entry<Vector2, Chunk>> getSortedChunks() {
-        int currentCount = chunks.size();
-        if (cachedSortedChunks != null && currentCount == cachedChunkCount) {
+        int currentChunkCount = chunks.size();
+        if (cachedSortedChunks != null && cachedChunkCount == currentChunkCount) {
             return cachedSortedChunks;
         }
         cachedSortedChunks = new ArrayList<>(chunks.entrySet());
-        cachedSortedChunks.sort(Comparator.comparingDouble(entry -> entry.getKey().y));
-        cachedChunkCount = currentCount;
+        // Sort chunks from top to bottom (descending Y)
+        cachedSortedChunks.sort((a, b) -> Float.compare(b.getKey().y, a.getKey().y));
+        cachedChunkCount = currentChunkCount;
         return cachedSortedChunks;
     }
 
@@ -1713,6 +1803,7 @@ public class World {
         float buffer = TILE_SIZE * 2;
         return new Rectangle(viewBounds.x - buffer, viewBounds.y - buffer, viewBounds.width + (buffer * 2), viewBounds.height + (buffer * 2));
     }
+
 
     private void renderLowObjects(SpriteBatch batch, Rectangle expandedBounds) {
         for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
@@ -1885,41 +1976,80 @@ public class World {
     }
 
     public boolean isPassable(int tileX, int tileY) {
-        if (!isWithinWorldBounds(tileX, tileY)) {
-            GameLogger.info("Tile (" + tileX + "," + tileY + ") is outside world bounds.");
+        if (!isWithinWorldBounds(tileX, tileY) || !isPositionLoaded(tileX, tileY)) {
             return false;
         }
-        if (!isPositionLoaded(tileX, tileY)) {
-            return false;
-        }
+
         try {
+            Player player = GameContext.get().getPlayer();
+            if (player == null) return false;
 
-            int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
-            int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
-            Vector2 chunkPos = new Vector2(chunkX, chunkY);
-            Chunk chunk = chunks.get(chunkPos);
-            if (chunk == null) return false;
-            int localX = Math.floorMod(tileX, Chunk.CHUNK_SIZE);
-            int localY = Math.floorMod(tileY, Chunk.CHUNK_SIZE);
+            int currentElevation = getElevationAt(player.getTileX(), player.getTileY());
+            int targetElevation = getElevationAt(tileX, tileY);
+            int targetTileType = getTileTypeAt(tileX, tileY);
 
-
-            String currentDirection = GameContext.get().getPlayer() != null ? GameContext.get().getPlayer().getDirection() : "down";
-            if (!chunk.isPassable(localX, localY)) {
-                handleCollision(currentDirection);
+            // 1. Check for inherently impassable tiles (water, solid mountain walls, etc.)
+            if (!TileType.isPassableTile(targetTileType)) {
+                handleCollision(player.getDirection());
                 return false;
             }
+
+            // 2. Check for collision with placed blocks
             if (blockManager != null && blockManager.hasCollisionAt(tileX, tileY)) {
+                handleCollision(player.getDirection());
                 return false;
             }
-            Rectangle movementBounds = new Rectangle(tileX * TILE_SIZE,  // Now using actual pixel position
-                tileY * TILE_SIZE, TILE_SIZE * 0.5f,    // Half tile collision size
+
+            // 3. Mountain Layering and Stair Logic
+            if (TileType.isMountainTile(targetTileType) || TileType.isMountainTile(getTileTypeAt(player.getTileX(), player.getTileY()))) {
+                if (targetTileType == TileType.STAIRS) {
+                    // Allow moving onto stairs if it's a one-level change
+                    return Math.abs(currentElevation - targetElevation) == 1;
+                } else if (getTileTypeAt(player.getTileX(), player.getTileY()) == TileType.STAIRS) {
+                    // Allow moving off stairs if it's a one-level change
+                    return Math.abs(currentElevation - targetElevation) == 1;
+                } else {
+                    // For all other mountain tiles, must be on the same level to move
+                    if (targetElevation != currentElevation) {
+                        return false;
+                    }
+                }
+            }
+
+            // 4. Generic object collision check (trees, rocks, etc.)
+            Rectangle movementBounds = new Rectangle(
+                tileX * TILE_SIZE,
+                tileY * TILE_SIZE,
+                TILE_SIZE * 0.5f,
                 TILE_SIZE * 0.5f);
-            return !checkObjectCollision(movementBounds, currentDirection) && !checkPokemonCollision(tileX, tileY, currentDirection);
+            if (checkObjectCollision(movementBounds, player.getDirection())) {
+                return false;
+            }
+
+            // 5. Pokémon collision check
+            if (checkPokemonCollision(tileX, tileY, player.getDirection())) {
+                return false;
+            }
+
+            return true;
 
         } catch (Exception e) {
-            GameLogger.error("Error checking passability: " + e.getMessage());
+            GameLogger.error("Error in isPassable: " + e.getMessage());
             return false;
         }
+    }
+
+    public int getElevationAt(int tileX, int tileY) {
+        if (!isPositionLoaded(tileX, tileY)) {
+            return -1; // Indicate not loaded or out of bounds
+        }
+        Chunk chunk = getChunkAtPosition(tileX * TILE_SIZE, tileY * TILE_SIZE);
+        if (chunk != null) {
+            int localX = Math.floorMod(tileX, CHUNK_SIZE);
+            int localY = Math.floorMod(tileY, CHUNK_SIZE);
+            return chunk.getElevation(localX, localY);
+        }
+        return 0; // Default to 0 if chunk is somehow null
     }
 
     private void renderWorldBorderWithBatch(SpriteBatch batch, OrthographicCamera camera) {
@@ -1937,7 +2067,277 @@ public class World {
         batch.setColor(originalColor);
     }
 
+    private void renderTallGrassLowerHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
+        for (WorldObject obj : tallGrassObjects) {
+            TextureRegion region = obj.getTexture();
+            if (region == null) continue;
 
+            int regionWidth = region.getRegionWidth();
+            int regionHeight = region.getRegionHeight();
+
+            // Create a new TextureRegion for the bottom half.
+            // The source Y is relative to the original region's top-left corner.
+            TextureRegion bottomHalf = new TextureRegion(region, 0, regionHeight / 2, regionWidth, regionHeight / 2);
+
+            float destX = obj.getPixelX();
+            float destY = obj.getPixelY(); // Draw at the bottom of the tile.
+
+            batch.draw(bottomHalf, destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f);
+        }
+    }
+
+    private void renderTallGrassUpperHalf(SpriteBatch batch, List<WorldObject> tallGrassObjects) {
+        for (WorldObject obj : tallGrassObjects) {
+            TextureRegion region = obj.getTexture();
+            if (region == null) continue;
+
+            int regionWidth = region.getRegionWidth();
+            int regionHeight = region.getRegionHeight();
+
+            // Create a new TextureRegion for the top half.
+            TextureRegion topHalf = new TextureRegion(region, 0, 0, regionWidth, regionHeight / 2);
+
+            float destX = obj.getPixelX();
+            float destY = obj.getPixelY() + World.TILE_SIZE / 2f; // Draw on the top half of the tile.
+
+            batch.draw(topHalf, destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f);
+        }
+    }
+
+    // Add these fields to World class:
+    private int lastPlayerTileX = Integer.MIN_VALUE;
+    private int lastPlayerTileY = Integer.MIN_VALUE;
+    private Set<WorldObject> lastVisibleObjects = new HashSet<>();
+
+    private void renderEntityFromCache(SpriteBatch batch, RenderableEntity item) {
+        // Same as renderEntity but for cached items
+        renderEntity(batch, item);
+    }
+
+    public void markYSortDirty() {
+        ySortDirty = true;
+    }
+
+    private void renderEntity(SpriteBatch batch, RenderableEntity item) {
+        switch (item.type) {
+            case PLAYER:
+                ((Player) item.entity).render(batch);
+                if (waterEffects != null) waterEffects.render(batch, (Player) item.entity, this);
+                break;
+            case OTHER_PLAYER:
+                ((OtherPlayer) item.entity).render(batch);
+                if (waterEffectsRendererForOthers != null)
+                    waterEffectsRendererForOthers.render(batch, (OtherPlayer) item.entity, this);
+                break;
+            case WILD_POKEMON:
+                ((WildPokemon) item.entity).render(batch);
+                if (waterEffectsRendererForOthers != null)
+                    waterEffectsRendererForOthers.render(batch, (WildPokemon) item.entity, this);
+                break;
+            case TREE_BASE:
+                objectManager.renderTreeBase(batch, (WorldObject) item.entity, this);
+                break;
+            case TREE_TOP:
+                objectManager.renderTreeTop(batch, (WorldObject) item.entity, this);
+                break;
+            case WORLD_OBJECT:
+                objectManager.renderObject(batch, (WorldObject) item.entity, this);
+                break;
+            case TALL_GRASS_BACKGROUND:
+                renderTallGrassBackground(batch, (WorldObject) item.entity);
+                break;
+            case TALL_GRASS_FOREGROUND:
+                renderTallGrassForeground(batch, (WorldObject) item.entity);
+                break;
+        }
+    }
+
+    private void renderYSortedEntities(SpriteBatch batch, Player player, Rectangle expandedBounds, List<Map.Entry<Vector2, Chunk>> sortedChunks) {
+        // Check if we need to recalculate (player moved or objects changed)
+        int currentPlayerTileX = player.getTileX();
+        int currentPlayerTileY = player.getTileY();
+
+        boolean playerMoved = (currentPlayerTileX != lastPlayerTileX || currentPlayerTileY != lastPlayerTileY);
+
+        if (!ySortDirty && !playerMoved && cachedSortedEntities.size() > 0) {
+            // Use cached sorted list
+            for (RenderableEntity item : cachedSortedEntities) {
+                renderEntityFromCache(batch, item);
+            }
+            return;
+        }
+
+        // Clear and rebuild
+        lastPlayerTileX = currentPlayerTileX;
+        lastPlayerTileY = currentPlayerTileY;
+
+        // Clear the pool
+        for (RenderableEntity entity : ySortQueue) {
+            renderableEntityPool.free(entity);
+        }
+        ySortQueue.clear();
+
+        // 1. Collect all entities that need to be y-sorted into a single list
+        if (player != null) {
+            ySortQueue.add(renderableEntityPool.obtain().init(player, player.getRenderPosition().y, RenderableType.PLAYER));
+        }
+
+        if (GameContext.get().isMultiplayer()) {
+            for (OtherPlayer other : GameContext.get().getGameClient().getOtherPlayers().values()) {
+                if (expandedBounds.contains(other.getX(), other.getY())) {
+                    ySortQueue.add(renderableEntityPool.obtain().init(other, other.getY(), RenderableType.OTHER_PLAYER));
+                }
+            }
+        }
+
+        for (WildPokemon pokemon : pokemonSpawnManager.getAllWildPokemon()) {
+            if (expandedBounds.contains(pokemon.getX(), pokemon.getY())) {
+                ySortQueue.add(renderableEntityPool.obtain().init(pokemon, pokemon.getY(), RenderableType.WILD_POKEMON));
+            }
+        }
+
+        // Collect visible world objects
+        Set<WorldObject> currentVisibleObjects = new HashSet<>();
+
+        // Only process visible chunks
+        for (Map.Entry<Vector2, Chunk> entry : sortedChunks) {
+            if (!isChunkVisible(entry.getKey(), expandedBounds)) continue;
+
+            List<WorldObject> chunkObjects = objectManager.getObjectsForChunk(entry.getKey());
+            for (WorldObject obj : chunkObjects) {
+                // Skip if object is outside expanded bounds
+                if (!expandedBounds.contains(obj.getPixelX(), obj.getPixelY())) continue;
+
+                currentVisibleObjects.add(obj);
+
+                if (isTallGrassType(obj.getType())) {
+                    if (player != null && obj.getTileX() == player.getTileX() && obj.getTileY() == player.getTileY()) {
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.TALL_GRASS_BACKGROUND));
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, player.getRenderPosition().y - 1, RenderableType.TALL_GRASS_FOREGROUND));
+                    } else {
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
+                    }
+                } else if (obj.getType().renderLayer == WorldObject.ObjectType.RenderLayer.LAYERED) {
+                    ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.TREE_BASE));
+                    ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.TREE_TOP));
+                } else if (obj.getType().renderLayer == WorldObject.ObjectType.RenderLayer.BELOW_PLAYER) {
+                    ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
+                }
+            }
+        }
+
+        // Check if visible objects changed
+        if (!currentVisibleObjects.equals(lastVisibleObjects)) {
+            ySortDirty = true;
+            lastVisibleObjects = currentVisibleObjects;
+        }
+
+        // 2. Sort the list
+        ySortQueue.sort(ySortComparator);
+
+        // Cache the sorted entities
+        cachedSortedEntities.clear();
+        for (RenderableEntity entity : ySortQueue) {
+            // Create a copy for cache (don't use pool objects in cache)
+            RenderableEntity cached = new RenderableEntity();
+            cached.entity = entity.entity;
+            cached.y = entity.y;
+            cached.type = entity.type;
+            cachedSortedEntities.add(cached);
+        }
+        ySortDirty = false;
+
+        // 3. Render all entities from the sorted list
+        for (RenderableEntity item : ySortQueue) {
+            renderEntity(batch, item);
+        }
+    }
+
+    private boolean initialChunksComplete = false;
+
+    public void setInitialLoadComplete(boolean complete) {
+        this.initialChunksComplete = complete;
+    }
+
+    /**
+     * Renders the TOP half of the grass sprite. This is the part that appears
+     * BEHIND the player when they are standing on the tile.
+     */
+    private void renderTallGrassBackground(SpriteBatch batch, WorldObject grass) {
+        TextureRegion region = grass.getTexture();
+        if (region == null) return;
+
+        int regionWidth = region.getRegionWidth();
+        int regionHeight = region.getRegionHeight();
+
+        // Create a new TextureRegion for the top half.
+        TextureRegion topHalf = new TextureRegion(region, 0, 0, regionWidth, regionHeight / 2);
+
+        float destX = grass.getPixelX();
+        float destY = grass.getPixelY() + TILE_SIZE / 2f; // Draw on the top half of the tile.
+
+        batch.draw(topHalf, destX, destY, TILE_SIZE, TILE_SIZE / 2f);
+    }
+
+    /**
+     * Renders the BOTTOM half of the grass sprite. This is the part that appears
+     * IN FRONT OF the player's feet.
+     */
+    private void renderTallGrassForeground(SpriteBatch batch, WorldObject grass) {
+        TextureRegion region = grass.getTexture();
+        if (region == null) return;
+
+        int regionWidth = region.getRegionWidth();
+        int regionHeight = region.getRegionHeight();
+
+        // Create a new TextureRegion for the bottom half.
+        TextureRegion bottomHalf = new TextureRegion(region, 0, regionHeight / 2, regionWidth, regionHeight / 2);
+
+        float destX = grass.getPixelX();
+        float destY = grass.getPixelY(); // Draw at the bottom of the tile.
+
+        batch.draw(bottomHalf, destX, destY, TILE_SIZE, TILE_SIZE / 2f);
+    }
+
+    public void debugGrassAtPlayerPosition(Player player) {
+        int playerTileX = player.getTileX();
+        int playerTileY = player.getTileY();
+
+        GameLogger.info("=== GRASS DEBUG ===");
+        GameLogger.info("Player at tile: (" + playerTileX + ", " + playerTileY + ")");
+        GameLogger.info("Player pixel pos: (" + player.getX() + ", " + player.getY() + ")");
+
+        // Check all grass objects
+        int grassCount = 0;
+        int grassAtPlayerTile = 0;
+
+        for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
+            List<WorldObject> objects = objectManager.getObjectsForChunk(entry.getKey());
+            for (WorldObject obj : objects) {
+                if (isTallGrassType(obj.getType())) {
+                    grassCount++;
+                    if (obj.getTileX() == playerTileX && obj.getTileY() == playerTileY) {
+                        grassAtPlayerTile++;
+                        GameLogger.info("Found grass at player tile! Grass tile: (" +
+                            obj.getTileX() + ", " + obj.getTileY() + "), " +
+                            "Pixel: (" + obj.getPixelX() + ", " + obj.getPixelY() + ")");
+                    }
+                }
+            }
+        }
+
+        GameLogger.info("Total grass objects: " + grassCount);
+        GameLogger.info("Grass at player tile: " + grassAtPlayerTile);
+
+        // Also check if grass textures are valid
+        for (WorldObject grass : getTallGrassObjects()) {
+            if (grass.getTexture() == null) {
+                GameLogger.error("Grass object has null texture!");
+            }
+        }
+    }
+
+    // Call this in render method when F4 is pressed (add to handleInput()):
     public GameClient getGameClient() {
         if (GameContext.get().getGameClient() == null) {
             throw new IllegalStateException("GameClient is null - World not properly initialized");

@@ -24,7 +24,20 @@ public class PokemonDatabase {
             initialize();
         }
         return pokemonTemplates.get(name.toLowerCase());
-    }
+    }   public static class EvolutionData {
+        public final String evolvesTo;
+        public final int level;
+
+        public EvolutionData(String evolvesTo, int level) {
+            this.evolvesTo = evolvesTo;
+            this.level = level;
+        }
+    }     public static EvolutionData getEvolutionData(String name) {
+        if (!isInitialized) {
+            initialize();
+        }
+        return pokemonEvolutions.get(name.toLowerCase());
+    }    private static final Map<String, EvolutionData> pokemonEvolutions = new HashMap<>(); // NEW: Store evolution
 
 
     public static void initialize() {
@@ -37,12 +50,13 @@ public class PokemonDatabase {
             try {
                 String movesJson = delegate.readString(MOVE_DATA_FILE);
                 GameLogger.info("Loaded moves.json content (length: " + movesJson.length() + ")");
-                allMoves.putAll(MoveLoader.loadMovesFromJson(movesJson));
+                Map<String, Move> loadedMoves = MoveLoader.loadMovesFromJson(movesJson);
+                loadedMoves.forEach((key, value) -> allMoves.put(key.toLowerCase(), value));
                 GameLogger.info("Successfully loaded " + allMoves.size() + " moves");
                 int count = 0;
                 for (Map.Entry<String, Move> entry : allMoves.entrySet()) {
                     if (count++ < 3) {
-                        GameLogger.info("Loaded move: " + entry.getKey() + " (" +
+                        GameLogger.info("Loaded move: " + entry.getValue().getName() + " (key: " + entry.getKey() + ", Type: " +
                             entry.getValue().getType() + ", Power: " +
                             entry.getValue().getPower() + ")");
                     }
@@ -82,7 +96,12 @@ public class PokemonDatabase {
                             primaryType,
                             secondaryType,
                             moves
-                        );
+                        ); if (pokemonValue.has("evolution")) {
+                            JsonValue evolutionValue = pokemonValue.get("evolution");
+                            String evolvesTo = evolutionValue.getString("evolvesTo");
+                            int level = evolutionValue.getInt("level");
+                            pokemonEvolutions.put(name.toLowerCase(), new EvolutionData(evolvesTo, level));
+                        }
                         pokemonStats.put(name, stats);
                         PokemonTemplate template = new PokemonTemplate();
                         template.name = name;
@@ -166,41 +185,10 @@ public class PokemonDatabase {
         return null;
     }
 
-    public static Pokemon createPokemon(String name, int level) {
-        if (!isInitialized) {
-            initialize();
-        }
-        PokemonTemplate template = pokemonTemplates.get(name);
-        if (template == null) {
-            GameLogger.error("Pokemon template not found: " + name);
-            return null;
-        }
-        try {
-            Pokemon.Builder builder = new Pokemon.Builder(name, level)
-                .withType(template.primaryType, template.secondaryType);
-            int hp = calculateStat(template.baseStats.baseHp, level, true);
-            int attack = calculateStat(template.baseStats.baseAttack, level, false);
-            int defense = calculateStat(template.baseStats.baseDefense, level, false);
-            int spAtk = calculateStat(template.baseStats.baseSpAtk, level, false);
-            int spDef = calculateStat(template.baseStats.baseSpDef, level, false);
-            int speed = calculateStat(template.baseStats.baseSpeed, level, false);
-            builder.withStats(hp, attack, defense, spAtk, spDef, speed);
-            List<Move> startingMoves = getMovesForLevel(template.moves, level);
-            builder.withMoves(startingMoves);
-            return builder.build();
-        } catch (Exception e) {
-            GameLogger.error("Error creating Pokemon: " + e.getMessage());
-            return null;
-        }
-    }
 
     public static List<Move> getMovesForLevel(List<MoveEntry> moveEntries, int level) {
         List<Move> moves = new ArrayList<>();
         try {
-            Map<String, Move> moveMap = new HashMap<>();
-            for (Map.Entry<String, Move> entry : allMoves.entrySet()) {
-                moveMap.put(entry.getKey().toLowerCase(), entry.getValue());
-            }
             List<MoveEntry> learnedMoves = new ArrayList<>();
             for (MoveEntry entry : moveEntries) {
                 if (entry.level <= level) {
@@ -211,18 +199,16 @@ public class PokemonDatabase {
             int movesToAdd = Math.min(learnedMoves.size(), 4);
             for (int i = learnedMoves.size() - movesToAdd; i < learnedMoves.size(); i++) {
                 MoveEntry moveEntry = learnedMoves.get(i);
-                String moveName = moveEntry.name.toLowerCase();
-                Move move = moveMap.get(moveName);
+                Move move = getMoveByName(moveEntry.name);
                 if (move != null) {
                     moves.add(cloneMove(move));
                     GameLogger.info("Added move: " + moveEntry.name + " (Level " + moveEntry.level + ")");
                 } else {
                     GameLogger.error("Move not found: " + moveEntry.name);
-                    GameLogger.error("Available moves: " + String.join(", ", moveMap.keySet()));
                 }
             }
         } catch (Exception e) {
-            GameLogger.error("Error loading moves: " + e.getMessage());
+            GameLogger.error("Error loading moves for level: " + e.getMessage());
             e.printStackTrace();
         }
         return moves;
@@ -256,7 +242,8 @@ public class PokemonDatabase {
     }
 
     public static Move getMoveByName(String moveName) {
-        return allMoves.get(moveName);
+        if (moveName == null) return null;
+        return allMoves.get(moveName.toLowerCase());
     }
 
     private static int calculateStat(int base, int level, boolean isHp) {

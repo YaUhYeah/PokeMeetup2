@@ -10,6 +10,8 @@ import io.github.pokemeetup.system.gameplay.inventory.crafting.CraftingSystem;
 public interface InventoryScreenInterface {
     Inventory getInventory();
     Player getPlayer();
+    void refreshScreens(); // <-- ADD THIS METHOD
+
     void updateHeldItemDisplay();
     Item getHeldItemObject();  // Add this method
     ItemData getHeldItem();

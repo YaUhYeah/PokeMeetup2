@@ -15,23 +15,22 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class WorldData {
-
+    private final Map<UUID, WildPokemon> wildPokemonMap = new ConcurrentHashMap<>();
+    private Map<Vector2, List<WorldObject>> chunkObjects = new ConcurrentHashMap<>();
+    private Map<Vector2, Chunk> chunks = new ConcurrentHashMap<>();
+    private Map<String, PlayerData> players = new ConcurrentHashMap<>();
+    private Set<UUID> playerUUIDs = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Object timeLock = new Object();
     private final Object saveLock = new Object();
-    private final Map<UUID, WildPokemon> wildPokemonMap = new ConcurrentHashMap<>();
-    private final Map<Vector2, List<WorldObject>> chunkObjects;
     private double worldTimeInMinutes = 480.0;
     private long playedTime = 0L;
     private float dayLength = 10.0f;
     private PokemonData pokemonData;
     private String name;
-    private Set<UUID> playerUUIDs;
     private long lastPlayed;
     private WorldConfig config;
     private boolean isDirty;
     private BlockSaveData blockData;
-    private Map<Vector2, Chunk> chunks;
-    private HashMap<String, PlayerData> players;
     private String username;
     private Map<Vector2, List<WorldObject>> dynamicObjects;
     private boolean commandsAllowed;

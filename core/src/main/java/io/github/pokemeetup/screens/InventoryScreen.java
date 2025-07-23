@@ -38,7 +38,10 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
     private static int SLOT_SIZE = 40;
 
     private final Skin skin;
-    private final Stage stage;
+    private final Stage stage; @Override
+    public void refreshScreens() {
+
+    }
     private final SpriteBatch batch;
     private final ShapeRenderer shapeRenderer;
     private final Player player;

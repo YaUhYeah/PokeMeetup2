@@ -30,7 +30,6 @@ public class AndroidLoginScreen extends LoginScreen {
     private static final float PADDING_LARGE = 24f;
     static final float INPUT_FIELD_HEIGHT = 56f;
     private static final float SERVER_ICON_SIZE = 40f;
-    private static final float SERVER_ENTRY_MIN_HEIGHT = 64f;
     private float currentFontScale;
     private float screenDensity;
     private boolean isSmallScreen;

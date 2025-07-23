@@ -36,9 +36,22 @@ import static io.github.pokemeetup.system.gameplay.overworld.World.INTERACTION_R
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class Player implements Positionable {
-    public static final int FRAME_WIDTH = 32;    @Override
+    public static final int FRAME_WIDTH = 32;
+
+    @Override
     public boolean wasOnWater() {
         return wasOnWater;
+    }
+
+    private int elevationLevel = 0;
+
+    public int getElevationLevel() {
+        return elevationLevel;
+    }
+
+    // NEW: Setter for the player's current elevation level.
+    public void setElevationLevel(int elevationLevel) {
+        this.elevationLevel = elevationLevel;
     }
 
     @Override
@@ -62,6 +75,7 @@ public class Player implements Positionable {
             this.waterSoundTimer -= delta;
         }
     }
+
     private float animationSpeedMultiplier = 0.75f;
     private boolean inputHeld = false;
     private boolean wasOnWater = false;
@@ -69,6 +83,11 @@ public class Player implements Positionable {
     public static final int FRAME_HEIGHT = 48;
     private static final float COLLISION_BOX_WIDTH_RATIO = 0.6f;
     private static final float COLLISION_BOX_HEIGHT_RATIO = 0.4f;
+
+    public Vector2 getRenderPosition() {
+        return renderPosition;
+    }
+
     private static final float COLLISION_BUFFER = 4f;
     private static final long VALIDATION_INTERVAL = 1000;
     private static final float PICKUP_RANGE = 48f;
@@ -116,6 +135,7 @@ public class Player implements Positionable {
     private Stage stage;
     private float bufferedTime = 0f;
     private float animationTime = 0f;
+
     public Player(int startTileX, int startTileY, World world) {
         this(startTileX, startTileY, world, "Player");
         this.playerData = new PlayerData("Player");
@@ -172,6 +192,7 @@ public class Player implements Positionable {
         this.lastPosition = new Vector2(x, y);
         Gdx.app.postRunnable(this::initializeGLResources);
     }
+
     public String getCharacterType() {
         return (playerData != null && playerData.getCharacterType() != null) ? playerData.getCharacterType() : "boy";
     }
@@ -184,20 +205,6 @@ public class Player implements Positionable {
             animations.dispose();
         }
         animations = new PlayerAnimations(getCharacterType());
-    }
-
-    public HotbarSystem getHotbarSystem() {
-        if (GameContext.get().getHotbarSystem() == null) {
-            Stage stage = GameContext.get().getUiStage();
-            if (stage == null) {
-                GameLogger.error("UI Stage is null in getHotbarSystem()!");
-                return null;
-            }
-            Skin hotbarSkin = GameContext.get().getSkin() != null ? GameContext.get().getSkin() : skin;
-            GameContext.get().setHotbarSystem(new HotbarSystem(stage, hotbarSkin));
-            GameLogger.info("HotbarSystem successfully initialized synchronously.");
-        }
-        return GameContext.get().getHotbarSystem();
     }
 
 
@@ -450,6 +457,7 @@ public class Player implements Positionable {
     public void setSkin(Skin skin) {
         this.skin = skin;
     }
+
     public void update(float deltaTime) {
         if (!resourcesInitialized || disposed || animations == null || animations.isDisposed()) {
             initializeResources();
@@ -465,8 +473,7 @@ public class Player implements Positionable {
             if (animations.isChopping() || animations.isPunching()) {
                 stateTime += deltaTime;
                 currentFrame = animations.getCurrentFrame(direction, true, isRunning, stateTime);
-            }
-            else if (isMoving) {
+            } else if (isMoving) {
                 float currentDuration = isRunning ? runStepDuration : walkStepDuration;
                 movementProgress = Math.min(1.0f, movementProgress + (deltaTime / currentDuration));
 
@@ -482,8 +489,7 @@ public class Player implements Positionable {
                         move(direction);
                     }
                 }
-            }
-            else {
+            } else {
                 stateTime = 0f;
                 animationTime = 0f;
                 currentFrame = animations.getStandingFrame(direction);
@@ -516,7 +522,12 @@ public class Player implements Positionable {
         isMoving = false;
         movementProgress = 0f;
         stateTime = 0f; // Reset timer for the next move.
-
+        if (world != null) {
+            int newElevation = world.getElevationAt(this.tileX, this.tileY);
+            if (newElevation != -1) { // -1 might indicate an unloaded chunk or error
+                this.setElevationLevel(newElevation);
+            }
+        }
         int tileType = GameContext.get().getWorld().getTileTypeAt(getTileX(), getTileY());
         if (tileType == TileType.SAND || tileType == TileType.SNOW ||
             tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND ||
@@ -607,6 +618,7 @@ public class Player implements Positionable {
             bufferedTime = 0f;
         }
     }
+
     public void render(SpriteBatch batch) {
         synchronized (resourceLock) {
             if (!initialized || disposed || animations == null || animations.isDisposed() || currentFrame == null) {
@@ -655,7 +667,6 @@ public class Player implements Positionable {
     public void setTileY(int tileY) {
         this.tileY = tileY;
     }
-
 
 
     public boolean canPickupItem(float itemX, float itemY) {

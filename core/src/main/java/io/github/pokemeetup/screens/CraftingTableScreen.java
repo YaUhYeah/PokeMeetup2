@@ -36,7 +36,10 @@ import java.util.List;
 
 public class CraftingTableScreen implements Screen, InventoryScreenInterface, InventoryObserver, CraftingSystem.CraftingSystemObserver {
     public static final int SLOT_SIZE = 32;
-    private static final int GRID_SIZE = 3;
+    private static final int GRID_SIZE = 3; @Override
+    public void refreshScreens() {
+
+    }
     private final Stage stage;
     private final Player player;
     private final World world;
