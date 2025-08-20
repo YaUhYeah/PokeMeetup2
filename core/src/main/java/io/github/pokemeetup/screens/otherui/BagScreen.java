@@ -104,9 +104,6 @@ public class BagScreen extends Window {
         }
 
         this.baseFontScale = isCompactMode ? 0.8f : 1.0f;
-
-        // CRITICAL: Calculate the actual available width for content
-        // Account for: window padding (left+right) + content wrapper padding (left+right) + scrollbar
         float windowPaddingTotal = contentPadding * 2; // Window's pad()
         float contentWrapperPaddingTotal = contentPadding * 2; // ContentWrapper's pad()
         float scrollBarWidth = 20f; // Approximate scrollbar width

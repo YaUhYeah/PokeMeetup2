@@ -275,6 +275,11 @@ public class GameServer {
         }
     }
 
+    /**
+     * Handles an item drop request from a client.
+     * The server now creates an authoritative ItemEntity with a server-generated UUID
+     * and broadcasts this new, authoritative entity information to all clients.
+     */
     private void handleItemDrop(Connection connection, NetworkProtocol.ItemDrop drop) {
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(drop.username)) {
@@ -287,17 +292,71 @@ public class GameServer {
             return;
         }
 
-        float distance = Vector2.dst(
-            player.getPosition().x, player.getPosition().y,
-            drop.x, drop.y
-        );
-
-        if (distance > TILE_SIZE * 2) {
+        // Validate that the drop location is reasonably close to the player.
+        float distance = Vector2.dst(player.getPosition().x, player.getPosition().y, drop.x, drop.y);
+        if (distance > TILE_SIZE * 3) { // Using a slightly larger tolerance
             GameLogger.error("Item drop position too far from player");
             return;
         }
-        networkServer.sendToAllTCP(drop);
+
+        // 1. Server creates the authoritative ItemEntity. This now returns the created entity.
+        ItemEntity serverEntity = ServerGameContext.get().getItemEntityManager()
+            .spawnItemEntity(drop.itemData, drop.x, drop.y);
+
+        if (serverEntity == null) {
+            GameLogger.error("Server failed to create ItemEntity for drop.");
+            return;
+        }
+
+        GameLogger.info("Server created ItemEntity " + serverEntity.getEntityId() + " for user " + username);
+
+        // 2. Create a new, authoritative drop message with the server's entity ID.
+        NetworkProtocol.ItemDrop authoritativeDrop = new NetworkProtocol.ItemDrop();
+        authoritativeDrop.itemData = drop.itemData;
+        authoritativeDrop.x = serverEntity.getPosition().x;
+        authoritativeDrop.y = serverEntity.getPosition().y;
+        authoritativeDrop.username = drop.username;
+        authoritativeDrop.entityId = serverEntity.getEntityId();
+        authoritativeDrop.timestamp = System.currentTimeMillis();
+
+        // 3. Broadcast the authoritative message to ALL clients so they create the same entity.
+        networkServer.sendToAllTCP(authoritativeDrop);
     }
+
+
+    /**
+     * Handles an item pickup request from a client.
+     * The server now validates the pickup, removes the item from its authoritative list,
+     * and broadcasts the removal command to ALL clients, preventing duplication.
+     */
+    private void handleItemPickup(Connection connection, NetworkProtocol.ItemPickup pickup) {
+        if (pickup == null || pickup.entityId == null) {
+            GameLogger.error("Received invalid ItemPickup message.");
+            return;
+        }
+        String senderUsername = connectedPlayers.get(connection.getID());
+        if (senderUsername == null || !senderUsername.equals(pickup.username)) {
+            GameLogger.error("Item pickup username mismatch: expected " + senderUsername + " but got " + pickup.username);
+            return;
+        }
+
+        // 1. Atomically attempt to remove the item from the server's manager.
+        // This now returns the removed entity, or null if it was already gone.
+        ItemEntity removedEntity = ServerGameContext.get().getItemEntityManager().removeItemEntity(pickup.entityId);
+
+        // 2. Check if the item actually existed and was removed.
+        if (removedEntity == null) {
+            // This is not an error; it prevents a race condition where two players pick up the same item.
+            GameLogger.info("Item entity " + pickup.entityId + " already picked up or despawned.");
+            return;
+        }
+
+        // 3. If removal was successful, notify ALL clients to remove the item.
+        // This serves as both a confirmation for the picker and a despawn command for everyone else.
+        GameLogger.info("Item " + pickup.entityId + " picked up by " + pickup.username + ". Broadcasting removal to all clients.");
+        networkServer.sendToAllTCP(pickup);
+    }
+
 
     private void serverDestroyBlock(PlaceableBlock block) {
         if (block == null) return;
@@ -974,25 +1033,6 @@ public class GameServer {
         networkServer.sendToAllTCP(list);
     }
 
-    private void handleItemPickup(Connection connection, NetworkProtocol.ItemPickup pickup) {
-        if (pickup == null || pickup.entityId == null) {
-            GameLogger.error("Received invalid ItemPickup message.");
-            return;
-        }
-        String sender = connectedPlayers.get(connection.getID());
-        if (sender == null || !sender.equals(pickup.username)) {
-            GameLogger.error("Item pickup username mismatch: expected " + sender + " but got " + pickup.username);
-            return;
-        }
-        ItemEntity itemEntity = ServerGameContext.get().getItemEntityManager().getItemEntity(pickup.entityId);
-        if (itemEntity == null) {
-            GameLogger.error("Item entity not found for pickup: " + pickup.entityId);
-            return;
-        }
-        ServerGameContext.get().getItemEntityManager().removeItemEntity(pickup.entityId);
-        GameLogger.info("Item " + pickup.entityId + " picked up by " + pickup.username);
-        networkServer.sendToAllExceptTCP(connection.getID(), pickup);
-    }
 
     private void handleChestUpdate(Connection connection, NetworkProtocol.ChestUpdate update) {
         String username = connectedPlayers.get(connection.getID());
@@ -1103,10 +1143,11 @@ public class GameServer {
         networkServer.sendToAllTCP(message);
     }
 
-    private void sendRegistrationResponse(Connection connection, boolean success, String message) {
+    private void sendRegistrationResponse(Connection connection, boolean success, String message, String username) {
         NetworkProtocol.RegisterResponse response = new NetworkProtocol.RegisterResponse();
         response.success = success;
         response.message = message;
+        response.username = username;
         networkServer.sendToTCP(connection.getID(), response);
     }
 
@@ -1122,31 +1163,33 @@ public class GameServer {
             GameLogger.info("Processing registration request for username: " + request.username);
             if (request.username == null || request.username.isEmpty() ||
                 request.password == null || request.password.isEmpty()) {
-                sendRegistrationResponse(connection, false, "Username and password are required.");
+                // MODIFICATION: Pass null for username as it's not relevant on failure here
+                sendRegistrationResponse(connection, false, "Username and password are required.", null);
                 return;
             }
             if (!isValidUsername(request.username)) {
                 sendRegistrationResponse(connection, false,
-                    "Username must be 3-20 characters long and contain only letters, numbers, and underscores.");
+                    "Username must be 3-20 characters long and contain only letters, numbers, and underscores.", null);
                 return;
             }
             if (databaseManager.checkUsernameExists(request.username)) {
-                sendRegistrationResponse(connection, false, "Username already exists.");
+                sendRegistrationResponse(connection, false, "Username already exists.", null);
                 return;
             }
             boolean success = databaseManager.registerPlayer(request.username, request.password);
 
             if (success) {
                 GameLogger.info("Successfully registered new player: " + request.username);
-                sendRegistrationResponse(connection, true, "Registration successful!");
+                // MODIFICATION: Pass the username back on success
+                sendRegistrationResponse(connection, true, "Registration successful!", request.username);
             } else {
                 GameLogger.error("Failed to register player: " + request.username);
-                sendRegistrationResponse(connection, false, "Registration failed. Please try again.");
+                sendRegistrationResponse(connection, false, "Registration failed. Please try again.", null);
             }
 
         } catch (Exception e) {
             GameLogger.error("Error during registration: " + e.getMessage());
-            sendRegistrationResponse(connection, false, "An error occurred during registration.");
+            sendRegistrationResponse(connection, false, "An error occurred during registration.", null);
         }
     }
 

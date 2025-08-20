@@ -252,6 +252,17 @@ public class GameMenu extends Group {
         inputManager.setUIState(InputManager.UIState.MENU);
     }
 
+    public void hideSilently() {
+        if (!isVisible) return;
+        isVisible = false;
+        setVisible(false);
+        if (getStage() != null) {
+            getStage().unfocus(menuWindow);
+        }
+        // Remove from stage; show() re-adds when needed
+        this.remove();
+        // IMPORTANT: no state changes here
+    }
     public void hide() {
         if (!isVisible) return;
         isVisible = false;
@@ -260,7 +271,9 @@ public class GameMenu extends Group {
             getStage().unfocus(menuWindow);
         }
         this.remove(); // Remove from stage
-        inputManager.setUIState(InputManager.UIState.NORMAL);
+
+        // MODIFICATION: Use the new method to ensure we return to BATTLE if that was the previous state.
+        inputManager.returnToPreviousState();
     }
 
     public boolean isVisible() {

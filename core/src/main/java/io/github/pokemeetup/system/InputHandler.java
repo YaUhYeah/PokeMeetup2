@@ -8,6 +8,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.blocks.PlaceableBlock;
+import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.screens.GameScreen;
@@ -30,6 +31,10 @@ import java.util.List;
 import java.util.UUID;
 
 public class InputHandler extends InputAdapter {
+    private static final float INPUT_REPEAT_INITIAL_DELAY = 0.15f; // Initial delay before repeat
+    private static final float INPUT_REPEAT_INTERVAL = 0.05f; // Interval between repeats
+    private float inputRepeatTimer = 0f;
+    private boolean initialInputProcessed = false;
     private static final float SWING_INTERVAL = 0.5f;
     private static final int DURABILITY_LOSS_PER_SWING = 1;
     private static final float TREE_CHOP_WITH_AXE_TIME = 2.0f;
@@ -280,27 +285,29 @@ public class InputHandler extends InputAdapter {
             return true;
         }
 
+
         if (!isChopping && !isPunching) {
             if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_UP)) {
-                moveUp(true);
+                upPressed = true;
                 GameContext.get().getPlayer().setInputHeld(true);
                 return true;
             }
             if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_DOWN)) {
-                moveDown(true);
+                downPressed = true;
                 GameContext.get().getPlayer().setInputHeld(true);
                 return true;
             }
             if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_LEFT)) {
-                moveLeft(true);
+                leftPressed = true;
                 GameContext.get().getPlayer().setInputHeld(true);
                 return true;
             }
             if (keycode == KeyBinds.getBinding(KeyBinds.MOVE_RIGHT)) {
-                moveRight(true);
+                rightPressed = true;
                 GameContext.get().getPlayer().setInputHeld(true);
                 return true;
             }
+
         }
 
         if (keycode == KeyBinds.getBinding(KeyBinds.SPRINT)) {
@@ -854,20 +861,23 @@ public class InputHandler extends InputAdapter {
         AudioManager.getInstance().playSound(hasAxe ? AudioManager.SoundEffect.BLOCK_BREAK_WOOD : AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
     }
 
-    /************************************************************************
-     *  Update method called each frame
-     ************************************************************************/
     public void update(float deltaTime) {
-
+        // Keep existing chopping/breaking logic
         if (isChoppingOrBreaking) {
             updateBreakingProgress(deltaTime);
         }
+
+        // Simplified movement handling
         if (!isChopping && !isPunching &&
             (inputManager.getCurrentState() == InputManager.UIState.NORMAL ||
                 inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE)) {
 
             Player player = GameContext.get().getPlayer();
+            if (player == null) return;
+
+            // Direct input processing - no buffering delays
             if (!player.isMoving()) {
+                // Priority order prevents diagonals
                 if (upPressed) {
                     player.move("up");
                 } else if (downPressed) {
@@ -878,19 +888,46 @@ public class InputHandler extends InputAdapter {
                     player.move("right");
                 }
             } else {
-                if (upPressed) {
+                // Buffer next direction while moving
+                String currentDir = player.getDirection();
+                if (upPressed && !currentDir.equals("up")) {
                     player.setBufferedDirection("up");
-                } else if (downPressed) {
+                } else if (downPressed && !currentDir.equals("down")) {
                     player.setBufferedDirection("down");
-                } else if (leftPressed) {
+                } else if (leftPressed && !currentDir.equals("left")) {
                     player.setBufferedDirection("left");
-                } else if (rightPressed) {
+                } else if (rightPressed && !currentDir.equals("right")) {
                     player.setBufferedDirection("right");
                 }
             }
         }
     }
 
+    private void processMovementInput(Player player) {
+        if (!player.isMoving()) {
+            // Priority order for diagonal prevention
+            if (upPressed) {
+                player.move("up");
+            } else if (downPressed) {
+                player.move("down");
+            } else if (leftPressed) {
+                player.move("left");
+            } else if (rightPressed) {
+                player.move("right");
+            }
+        } else {
+            // Buffer the input for smooth chaining
+            if (upPressed && !player.getDirection().equals("up")) {
+                player.setBufferedDirection("up");
+            } else if (downPressed && !player.getDirection().equals("down")) {
+                player.setBufferedDirection("down");
+            } else if (leftPressed && !player.getDirection().equals("left")) {
+                player.setBufferedDirection("left");
+            } else if (rightPressed && !player.getDirection().equals("right")) {
+                player.setBufferedDirection("right");
+            }
+        }
+    }
 
 
     /************************************************************************

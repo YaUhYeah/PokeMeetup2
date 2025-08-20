@@ -8,6 +8,10 @@ import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class PlayerAnimations {
+
+
+    public static final float WALK_FRAME_DURATION = 0.10f;   // 4 frames over 0.24s
+    public static final float RUN_FRAME_DURATION = 0.06f;   // 4 frames over 0.14s
     public static final float PUNCH_ANIMATION_DURATION = 1.1f;
     public static final float PUNCH_FRAME_DURATION = PUNCH_ANIMATION_DURATION / 4f;
     public static final float CHOP_ANIMATION_DURATION = 1.2f;
@@ -16,8 +20,6 @@ public class PlayerAnimations {
     public static final float RUN_SPEED_MULTIPLIER = 2.5f;
     public static final float SLOW_WALK_ANIMATION_DURATION = BASE_MOVE_TIME * 1.4f;
     public static final float SLOW_RUN_ANIMATION_DURATION = (BASE_MOVE_TIME / RUN_SPEED_MULTIPLIER) * 2f;
-    public static final float WALK_FRAME_DURATION = 0.12f;
-    public static final float RUN_FRAME_DURATION = 0.08f;
 
 
     private final String characterType;
@@ -87,15 +89,13 @@ public class PlayerAnimations {
         GameLogger.info("Chopping animation stopped");
     }
 
-
-    /**
-     * [MODIFIED] Returns the current frame based on state. This is the central logic for both local and remote players.
-     * The `time` parameter is a continuously increasing timer that dictates the animation frame.
-     */
+    // 3. SIMPLIFY getCurrentFrame method:
     public TextureRegion getCurrentFrame(String direction, boolean isMoving, boolean isRunning, float time) {
         if (!isInitialized || isDisposed) {
             loadAnimations(characterType);
         }
+
+        // Handle special animations first
         if (isChopping) {
             int dirIndex = getDirectionIndex(direction);
             if (chopAnimations != null && dirIndex >= 0 && dirIndex < chopAnimations.length) {
@@ -103,6 +103,7 @@ public class PlayerAnimations {
                 return chopAnimations[dirIndex].getKeyFrame(chopAnimationTime, true);
             }
         }
+
         if (isPunching) {
             int dirIndex = getDirectionIndex(direction);
             if (punchAnimations != null && dirIndex >= 0 && dirIndex < punchAnimations.length) {
@@ -110,10 +111,16 @@ public class PlayerAnimations {
                 return punchAnimations[dirIndex].getKeyFrame(punchAnimationTime, true);
             }
         }
+
+        // Normal movement
         if (!isMoving) {
             return getStandingFrame(direction);
         }
+
         Animation<TextureRegion> currentAnimation = getAnimation(direction, isRunning);
+        currentAnimation.setPlayMode(Animation.PlayMode.LOOP);
+
+        // Use the time value directly - it's already synced with movement
         return currentAnimation.getKeyFrame(time, true);
     }
 

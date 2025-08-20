@@ -48,8 +48,11 @@ public class DayNightCycle {
         if (hourOfDay >= DAY_START && hourOfDay < DUSK_START) {
             return new Color(DAY_COLOR);
         }
+        // This is the DUSK period
         float progress = (hourOfDay - DUSK_START);
-        return result.set(DAY_COLOR).lerp(NIGHT_COLOR, progress);
+        // FIX: The original code was lerping from DAY_COLOR. It should lerp from DUSK_COLOR for a smoother sunset.
+        // This will make the transition from Day -> Dusk -> Night much more natural.
+        return result.set(DUSK_COLOR).lerp(NIGHT_COLOR, progress);
     }
 
     private static float clamp(float value, float min, float max) {

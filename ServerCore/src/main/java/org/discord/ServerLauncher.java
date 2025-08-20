@@ -115,6 +115,7 @@ public class ServerLauncher {
     }
 
     private static Server startH2Server() throws Exception {
+        // This path is now consistent with the unified data directory.
         Server h2Server = Server.createTcpServer(
             "-tcpPort", "9101",
             "-tcpAllowOthers",
@@ -127,7 +128,6 @@ public class ServerLauncher {
         }
         return h2Server;
     }
-
     private static ServerConnectionConfig loadServerConfig() throws IOException {
         Path configDir = SERVER_ROOT.resolve("config");
         Path configFile = configDir.resolve("server.json");

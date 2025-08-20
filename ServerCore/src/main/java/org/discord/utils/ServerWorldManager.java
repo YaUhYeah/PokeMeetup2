@@ -302,7 +302,7 @@ public class ServerWorldManager {
     }
 
     private Path getChunkFilePath(String worldName, int chunkX, int chunkY) {
-        return Paths.get("server", "data", "worlds", worldName, "chunks",
+        return Paths.get("data", "worlds", worldName, "chunks",
             "chunk_" + chunkX + "_" + chunkY + ".json");
     }
 

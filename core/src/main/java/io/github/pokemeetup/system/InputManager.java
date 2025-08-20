@@ -1,32 +1,44 @@
 package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.InputMultiplexer;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.screens.ChestScreen;
 import io.github.pokemeetup.screens.CraftingTableScreen;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.screens.InventoryScreen;
-import io.github.pokemeetup.screens.otherui.BuildModeUI;
 import io.github.pokemeetup.screens.otherui.GameMenu;
-import io.github.pokemeetup.utils.GameLogger;
 
 public class InputManager {
     private final GlobalInputProcessor globalInputProcessor;
     private final GameScreen gameScreen;
     private final InputMultiplexer inputMultiplexer;
     private UIState currentState;
+    private UIState previousState;
+
     public InputManager(GameScreen gameScreen) {
         this.gameScreen = gameScreen;
         this.inputMultiplexer = new InputMultiplexer();
         this.currentState = UIState.NORMAL;
+        this.previousState = UIState.NORMAL;
         this.globalInputProcessor = new GlobalInputProcessor(this);
         updateInputProcessors();
     }
 
+    public void returnToPreviousState() {
+        if (previousState != null && previousState != UIState.MENU) {
+            setUIState(previousState);
+        } else {
+            setUIState(UIState.NORMAL); // Fallback to normal state
+        }
+    }
+
     public void setUIState(UIState newState) {
         if (currentState != newState) {
+            // Store the current state if we are opening the menu
+            if (newState == UIState.MENU) {
+                this.previousState = this.currentState;
+            }
             currentState = newState;
             handleUIStateChange();
             updateInputProcessors();
@@ -72,7 +84,6 @@ public class InputManager {
             gameScreen.getInputHandler().resetMovementFlags();
         }
     }
-
     public void hideAllUI() {
         if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
             GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(false);
@@ -84,7 +95,8 @@ public class InputManager {
             gameScreen.getInventoryScreen().hide();
         }
         if (gameScreen.getGameMenu() != null) {
-            gameScreen.getGameMenu().hide();
+            // was: gameScreen.getGameMenu().hide();
+            gameScreen.getGameMenu().hideSilently();  // <-- no state bounce
         }
         if (gameScreen.getCraftingScreen() != null) {
             gameScreen.getCraftingScreen().hide();
@@ -125,7 +137,9 @@ public class InputManager {
             gameScreen.setChestScreen(new ChestScreen(gameScreen.getSkin(), null, null, gameScreen));
         }
         gameScreen.getChestScreen().show();
-    }    public void updateInputProcessors() {
+    }
+
+    public void updateInputProcessors() {
         inputMultiplexer.clear();
 
         // The order of adding processors to the multiplexer matters.

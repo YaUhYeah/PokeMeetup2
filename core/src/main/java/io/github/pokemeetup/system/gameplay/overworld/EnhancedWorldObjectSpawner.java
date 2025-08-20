@@ -217,6 +217,8 @@ public class EnhancedWorldObjectSpawner {
                                           List<WorldObject> existingObjects,
                                           Biome biome,
                                           boolean[][] treeGrid) {
+
+        if (chunk.getElevation(localX, localY) > 0) return false;
         int tileType = chunk.getTileType(localX, localY);
         if (!biome.getAllowedTileTypes().contains(tileType)) return false;
         if (!chunk.isPassable(localX, localY)) return false;
@@ -263,6 +265,7 @@ public class EnhancedWorldObjectSpawner {
                                             List<WorldObject> existingObjects,
                                             Biome biome,
                                             Random rng) {
+        if (chunk.getElevation(localX, localY) > 0) return false;
         int tileType = chunk.getTileType(localX, localY);
         if (!biome.getAllowedTileTypes().contains(tileType)) return false;
         if (!chunk.isPassable(localX, localY)) return false;
@@ -329,7 +332,7 @@ public class EnhancedWorldObjectSpawner {
     /**
      * Determines if the given object type is a tree.
      */
-    private static boolean isTreeType(WorldObject.ObjectType type) {
+    static boolean isTreeType(WorldObject.ObjectType type) {
         return type == WorldObject.ObjectType.TREE_0 ||
             type == WorldObject.ObjectType.TREE_1 ||
             type == WorldObject.ObjectType.SNOW_TREE ||

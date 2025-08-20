@@ -47,6 +47,7 @@
         public static final float MAX_WIDTH = 500f;
         private static final String DEFAULT_SERVER_ICON = "ui/default-server-icon.png";
         private static final int MIN_HEIGHT = 600;
+        private static final long CONNECTION_TIMEOUT_MS = 10000; // 10 seconds
         private static final float CONNECTION_TIMEOUT = 10f;
         private static final int MAX_CONNECTION_ATTEMPTS = 3;
         private static final float VIRTUAL_WIDTH = 800;
@@ -123,19 +124,9 @@
         public void show() {
             GameContext.get().setMultiplayer(true);
         }
-
         @Override
         public void render(float delta) {
-            if (isConnecting) {
-                connectionTimer += delta;
-                connectionProgress.setValue(connectionTimer / CONNECTION_TIMEOUT);
-
-                if (connectionTimer >= CONNECTION_TIMEOUT) {
-                    handleConnectionTimeout();
-                    return;
-                }
-            }
-
+            // MODIFICATION: Removed the connectionTimer logic. The progress bar is now just an indicator.
             Gdx.gl.glClearColor(0.1f, 0.1f, 0.1f, 1);
             Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
@@ -144,6 +135,13 @@
             if (GameContext.get().getGameClient() != null) {
                 GameContext.get().getGameClient().tick();
             }
+        }
+        private void clearCredentials() {
+            prefs.remove("rememberMe");
+            prefs.remove("username");
+            prefs.remove("password");
+            prefs.flush(); // IMPORTANT: Immediately commit the changes.
+            GameLogger.info("Cleared saved credentials.");
         }
 
         @Override
@@ -658,6 +656,7 @@
             dialog.button("Cancel", false);
             dialog.show(stage);
         }
+
         void attemptLogin() {
             final String username = usernameField.getText().trim();
             final String password = passwordField.getText().trim();
@@ -673,32 +672,37 @@
 
             setUIEnabled(false);
             statusLabel.setText("Connecting to server...");
+            feedbackLabel.setText(""); // Clear previous errors
             connectionProgress.setVisible(true);
-            connectionProgress.setValue(0f);
+
+            // GameClient will be created here and will handle the entire connection + login flow.
             final GameClient client = new GameClient(selectedServer);
             GameContext.get().setGameClient(client);
-            isConnecting = true;  // mark that we are mid-connection
-            connectionTimer = 0;  // reset the local timer
+
             client.connectIfNeeded(
-                () -> {
+                () -> { // On Connection Success
                     Gdx.app.postRunnable(() -> {
-                        statusLabel.setText("Connected. Logging in...");
+                        statusLabel.setText("Authenticating...");
                         client.sendLoginRequest(
                             username,
                             password,
-                            (NetworkProtocol.LoginResponse lr) -> {
+                            (NetworkProtocol.LoginResponse lr) -> { // On Login Response
                                 isConnecting = false;
                                 connectionProgress.setVisible(false);
 
                                 if (lr.success) {
+                                    // MODIFICATION: Handle credential saving/clearing here
                                     if (rememberMeBox.isChecked()) {
                                         saveCredentials(username, password);
+                                    } else {
+                                        clearCredentials();
                                     }
                                     setUIEnabled(true);
                                     proceedToGame(lr);
                                 } else {
                                     setUIEnabled(true);
                                     showError("Login failed: " + lr.message);
+                                    client.dispose(); // Clean up failed connection
                                 }
                             },
                             (String error) -> {
@@ -706,20 +710,23 @@
                                 connectionProgress.setVisible(false);
                                 setUIEnabled(true);
                                 showError("Login request error: " + error);
+                                client.dispose();
                             }
                         );
                     });
                 },
-                (String errorMsg) -> {
+                (String errorMsg) -> { // On Connection Failure
                     Gdx.app.postRunnable(() -> {
                         isConnecting = false;
                         connectionProgress.setVisible(false);
                         setUIEnabled(true);
                         showError("Connection failed: " + errorMsg);
+                        client.dispose();
                     });
-                }
-            , REGISTRATION_CONNECT_TIMEOUT_MS);
+                }, CONNECTION_TIMEOUT_MS);
         }
+
+
 
         private void proceedToGame(NetworkProtocol.LoginResponse response) {
             try {
@@ -751,56 +758,61 @@
                 showError("Please select a server");
                 return;
             }
+
             isConnecting = true;
-            connectionTimer = 0;
             setUIEnabled(false);
-            statusLabel.setText("Creating account...");
-            statusLabel.setColor(Color.WHITE);
+            statusLabel.setText("Connecting for registration...");
             feedbackLabel.setText("");
             connectionProgress.setVisible(true);
-            connectionProgress.setValue(0);
+
+            // Use a temporary client for registration to keep logic clean
             final GameClient client = new GameClient(selectedServer);
-            GameContext.get().setGameClient(client);
+            // MODIFICATION: Suppress the disconnect screen if registration fails to connect
+            client.setSuppressDisconnectHandling(true);
+
             client.connectIfNeeded(
-                () -> {
+                () -> { // On Connection Success
                     Gdx.app.postRunnable(() -> {
+                        statusLabel.setText("Registering account...");
                         client.sendRegisterRequest(
                             username,
                             password,
-                            (NetworkProtocol.RegisterResponse response) -> {
+                            (NetworkProtocol.RegisterResponse response) -> { // On Registration Response
                                 Gdx.app.postRunnable(() -> {
                                     isConnecting = false;
                                     connectionProgress.setVisible(false);
-
+                                    setUIEnabled(true);
                                     if (response.success) {
                                         showSuccessDialog(response.username);
                                     } else {
-                                        setUIEnabled(true);
                                         showError(response.message != null ? response.message : "Registration failed");
                                     }
+                                    client.dispose(); // Dispose the temporary client
                                 });
                             },
-                            (String errorMsg) -> {
+                            (String errorMsg) -> { // On Registration Send Error
                                 Gdx.app.postRunnable(() -> {
                                     isConnecting = false;
                                     connectionProgress.setVisible(false);
                                     setUIEnabled(true);
                                     showError("Registration failed: " + errorMsg);
+                                    client.dispose();
                                 });
                             }
                         );
                     });
                 },
-                (String errorMsg) -> {
+                (String errorMsg) -> { // On Connection Failure
                     Gdx.app.postRunnable(() -> {
                         isConnecting = false;
                         connectionProgress.setVisible(false);
                         setUIEnabled(true);
                         showError("Connection error: " + errorMsg);
+                        client.dispose();
                     });
-                }
-            , REGISTRATION_CONNECT_TIMEOUT_MS);
+                }, CONNECTION_TIMEOUT_MS);
         }
+
         private static final long REGISTRATION_CONNECT_TIMEOUT_MS = 10000; // 10 seconds
 
         private void showSuccessDialog(String createdUsername) {

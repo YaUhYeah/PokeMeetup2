@@ -1,6 +1,5 @@
 package io.github.pokemeetup.chat.commands;
 
-import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.chat.Command;
 import io.github.pokemeetup.context.GameContext;
@@ -26,49 +25,28 @@ public class SpawnCommand implements Command {
     @Override
     public boolean isMultiplayerOnly() { return false; }
 
-    // --- FIX: Logic to handle teleportation without blocking the main thread.
     @Override
     public void execute(String args, GameClient gameClient, ChatSystem chatSystem) {
         try {
-            GameLogger.info("Executing spawn command...");
             Player player = GameContext.get().getPlayer();
-            if (player == null) {
-                chatSystem.addSystemMessage("Error: Player not found.");
-                return;
-            }
             World currentWorld = GameContext.get().getWorld();
-            if (currentWorld == null) {
-                chatSystem.addSystemMessage("Error: World not found.");
+            if (player == null || currentWorld == null) {
+                chatSystem.addSystemMessage("Error: Cannot execute spawn command. Player or World not found.");
                 return;
             }
+
             int tileX = currentWorld.getWorldData().getConfig().getTileSpawnX();
             int tileY = currentWorld.getWorldData().getConfig().getTileSpawnY();
-            float pixelX = tileX * World.TILE_SIZE;
-            float pixelY = tileY * World.TILE_SIZE;
 
-            // Update player position directly and robustly.
-            player.setX(pixelX);
-            player.setY(pixelY);
-            player.setRenderPosition(new Vector2(pixelX, pixelY));
-            player.setMoving(false);
+            // ✅ **REFACTOR:** Centralized teleport logic is now handled by the Player object.
+            player.teleportTo(tileX, tileY);
 
-            // Let the world's update loop handle asynchronous chunk loading.
-            // REMOVED: currentWorld.clearChunks();
-            // REMOVED: currentWorld.loadChunksAroundPlayer();
+            chatSystem.addSystemMessage("Teleported to spawn point (" + tileX + ", " + tileY + ")");
+            GameLogger.info("Player teleported to spawn via command.");
 
-            chatSystem.addSystemMessage("Teleported to spawn point! (" + tileX + ", " + tileY + ")");
-            GameLogger.info("Player teleported to spawn: " + pixelX + ", " + pixelY);
-
-            // Invalidate the render cache to ensure new entities are drawn correctly.
-            currentWorld.markYSortDirty();
-
-            if (GameContext.get().isMultiplayer()) {
-                gameClient.sendPlayerUpdate();
-                gameClient.savePlayerState(player.getPlayerData());
-            }
         } catch (Exception e) {
             GameLogger.error("Spawn command failed: " + e.getMessage());
-            chatSystem.addSystemMessage("Error executing spawn command: " + e.getMessage());
+            chatSystem.addSystemMessage("Error executing spawn command.");
         }
     }
 }

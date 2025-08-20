@@ -1,8 +1,8 @@
 package io.github.pokemeetup.managers;
 
+import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.audio.AudioManager;
@@ -88,12 +88,14 @@ public class WaterEffectsRenderer {
                 return;
             }
 
-            // [FIX] Calculate width and height based on the tile size and texture's aspect ratio.
-            // This removes the hardcoded scaling and distortion.
+            // Calculate width and height based on the tile size and texture's aspect ratio.
             float effectWidth = World.TILE_SIZE;
 
-            int tileX = MathUtils.floor((entity.getX() - World.TILE_SIZE / 2f) / World.TILE_SIZE);
+            // [FIX] The tile calculation for a center-origin entity is a simple division.
+            // The previous calculation was incorrect and caused the effect to trigger on adjacent tiles.
+            int tileX = MathUtils.floor(entity.getX() / World.TILE_SIZE);
             int tileY = MathUtils.floor(entity.getY() / World.TILE_SIZE);
+
             float tileCenterX = tileX * World.TILE_SIZE + World.TILE_SIZE / 2f;
             float tileBottomY = tileY * World.TILE_SIZE;
 
@@ -122,16 +124,19 @@ public class WaterEffectsRenderer {
 
     /**
      * Checks whether the given entity is currently on a water tile.
-     * We subtract half a tile width from the x–coordinate so that if the entity’s x is at the center,
-     * the computed tile index reflects the tile the entity is actually standing on.
+     * The entity's X coordinate is at its horizontal center, and Y is at its feet.
      *
      * @param entity The Positionable entity.
      * @param world  The current World.
      * @return true if the underlying tile is a water tile.
      */
     private boolean isEntityOnWater(Positionable entity, World world) {
-        int tileX = MathUtils.floor((entity.getX() - World.TILE_SIZE / 2f) / World.TILE_SIZE);
+        // [FIX] The tile calculation for a center-origin entity is a simple division.
+        // The previous calculation was incorrect and caused the check to be off by a tile
+        // when the player was on the left half of a tile space.
+        int tileX = MathUtils.floor(entity.getX() / World.TILE_SIZE);
         int tileY = MathUtils.floor(entity.getY() / World.TILE_SIZE);
+
         int chunkX = Math.floorDiv(tileX, World.CHUNK_SIZE);
         int chunkY = Math.floorDiv(tileY, World.CHUNK_SIZE);
         Vector2 chunkPos = new Vector2(chunkX, chunkY);

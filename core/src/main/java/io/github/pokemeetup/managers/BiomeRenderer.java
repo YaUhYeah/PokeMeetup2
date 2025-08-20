@@ -69,6 +69,7 @@ public class BiomeRenderer {
     public void renderChunk(SpriteBatch batch, Chunk chunk, World world) {
         if (chunk == null) return;
 
+        lastColor.set(batch.getColor());
         final int size = Chunk.CHUNK_SIZE;
         int chunkX = chunk.getChunkX();
         int chunkY = chunk.getChunkY();

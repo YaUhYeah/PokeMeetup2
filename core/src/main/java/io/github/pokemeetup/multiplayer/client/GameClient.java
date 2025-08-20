@@ -45,6 +45,7 @@ import java.util.function.Consumer;
 
 
 public class GameClient {
+    private boolean suppressDisconnectHandling = false;
     private static final long RECONNECT_DELAY = 3000;
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
     private static final int MAX_CONCURRENT_CHUNK_REQUESTS = 4;
@@ -241,9 +242,9 @@ public class GameClient {
         updateOtherPlayers(deltaTime);
         updateAccumulator += deltaTime;
 
-        if (updateAccumulator >= UPDATE_INTERVAL) {
+        if (updateAccumulator >= UPDATE_INTERVAL && !isSinglePlayer) {
             updateAccumulator = 0;
-            if (!isSinglePlayer && GameContext.get().getPlayer() != null && isAuthenticated() && isInitialized) {
+            if (GameContext.get().getPlayer() != null && isAuthenticated() && isInitialized) {
                 sendPlayerUpdate();
             }
             processChunkQueue();
@@ -820,7 +821,7 @@ public class GameClient {
      * Recalculate the sliding window of chunks based on the player's current chunk position.
      * Enqueue any missing chunks.
      */
-    private void requestChunksAroundPlayer() {
+    public void requestChunksAroundPlayer() {
         if (!isAuthenticated.get() || !isConnected() || isSinglePlayer) {
             return;
         }
@@ -850,7 +851,7 @@ public class GameClient {
     private void unloadFarChunks(Vector2 playerChunkPos) {
         World world = GameContext.get().getWorld();
         if (world == null) return;
-        int unloadThreshold = 5; // increase this threshold to keep more chunks loaded
+        int unloadThreshold = 10; // increase this threshold to keep more chunks loaded
         List<Vector2> keysToRemove = new ArrayList<>();
         for (Vector2 key : world.getChunks().keySet()) {
             if (Math.abs(key.x - playerChunkPos.x) > unloadThreshold || Math.abs(key.y - playerChunkPos.y) > unloadThreshold) {
@@ -1730,7 +1731,7 @@ public class GameClient {
 
     public boolean isConnected() {
         return connectionState == ConnectionState.CONNECTED || connectionState == ConnectionState.AUTHENTICATED;
-    }private boolean suppressDisconnectHandling = false;
+    }
 
     public void setSuppressDisconnectHandling(boolean suppress) {
         this.suppressDisconnectHandling = suppress;
@@ -1763,6 +1764,7 @@ public class GameClient {
                     if (loginResponseListener != null) {
                         loginResponseListener.accept(response);
                     }
+                    this.setInitialized(true);
                 });
             } catch (Exception e) {
                 GameLogger.error("Initial world setup failed: " + e.getMessage());

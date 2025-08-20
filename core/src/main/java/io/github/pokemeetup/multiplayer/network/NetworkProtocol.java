@@ -268,6 +268,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public ItemData itemData;
         public float x;
         public float y;
+        public UUID entityId;
         public String username;
         public long timestamp;
     }

@@ -2,41 +2,43 @@ package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.g2d.*;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.audio.AudioManager;
-import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.FootstepEffect;
+import io.github.pokemeetup.multiplayer.client.GameClient;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonParty;
 import io.github.pokemeetup.screens.otherui.HotbarSystem;
+import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.PlayerAnimations;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
-import io.github.pokemeetup.system.gameplay.inventory.Item;
-import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
-import io.github.pokemeetup.system.gameplay.inventory.ItemManager;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TileType;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.Objects;
 
 import static io.github.pokemeetup.system.gameplay.overworld.World.INTERACTION_RANGE;
 import static io.github.pokemeetup.system.gameplay.overworld.World.TILE_SIZE;
 
 public class Player implements Positionable {
     public static final int FRAME_WIDTH = 32;
+    private static final float BUFFER_WINDOW = 0.08f;
 
     @Override
     public boolean wasOnWater() {
@@ -45,14 +47,46 @@ public class Player implements Positionable {
 
     private int elevationLevel = 0;
 
-    public int getElevationLevel() {
-        return elevationLevel;
-    }
-
-    // NEW: Setter for the player's current elevation level.
     public void setElevationLevel(int elevationLevel) {
         this.elevationLevel = elevationLevel;
     }
+
+    /**
+     * ✅ **REFACTOR:** Centralized teleport method.
+     * This method updates the player's position and tells the World and GameClient
+     * to handle the complex state-clearing and reloading logic.
+     *
+     * @param tileX The destination tile X coordinate.
+     * @param tileY The destination tile Y coordinate.
+     */
+    public void teleportTo(int tileX, int tileY) {
+        // Stop any current movement
+        setMoving(false);
+
+        // Convert tile coordinates to pixel coordinates
+        float pixelX = tileX * World.TILE_SIZE;
+        float pixelY = tileY * World.TILE_SIZE;
+
+        // Update all position representations
+        setX(pixelX);
+        setY(pixelY);
+        setRenderPosition(new Vector2(pixelX, pixelY));
+
+        // Notify the world to handle the teleport logic (clearing chunks, etc.)
+        if (this.world != null) {
+            this.world.handleTeleport(this);
+        }
+
+        // If multiplayer, immediately notify the server of the new position
+        if (GameContext.get().isMultiplayer()) {
+            GameClient client = GameContext.get().getGameClient();
+            if (client != null) {
+                client.sendPlayerUpdate();
+                client.savePlayerState(getPlayerData());
+            }
+        }
+    }
+
 
     @Override
     public void setWasOnWater(boolean onWater) {
@@ -76,7 +110,6 @@ public class Player implements Positionable {
         }
     }
 
-    private float animationSpeedMultiplier = 0.75f;
     private boolean inputHeld = false;
     private boolean wasOnWater = false;
     private float waterSoundTimer = 0f;
@@ -91,19 +124,16 @@ public class Player implements Positionable {
     private static final float COLLISION_BUFFER = 4f;
     private static final long VALIDATION_INTERVAL = 1000;
     private static final float PICKUP_RANGE = 48f;
-    private static final float BUFFER_WINDOW = 0.15f;
     private final Object movementLock = new Object();
     private final Object resourceLock = new Object();
     private final Object fontLock = new Object();
     private final Object inventoryLock = new Object();
     private final GlyphLayout layout = new GlyphLayout();
     public volatile boolean initialized = false;
-    private float walkStepDuration = PlayerAnimations.SLOW_WALK_ANIMATION_DURATION;
-    private float runStepDuration = PlayerAnimations.SLOW_RUN_ANIMATION_DURATION;
     private PlayerAnimations animations;
     private String username;
     private World world;
-    private String bufferedDirection = null;
+    private String queuedDirection = null;
     private Vector2 position = new Vector2();
     private Rectangle collisionBox;
     private Rectangle nextPositionBox;
@@ -119,7 +149,6 @@ public class Player implements Positionable {
     private boolean buildMode = false;
     private TextureRegion currentFrame;
     private Inventory inventory = new Inventory();
-    private float stateTime = 0f;
     private float x = 0f;
     private float y = 0f;
     private int tileX, tileY;
@@ -246,7 +275,7 @@ public class Player implements Positionable {
 
     public void setBufferedDirection(String direction) {
         synchronized (movementLock) {
-            bufferedDirection = direction;
+            queuedDirection = direction;
             bufferedTime = 0f;
         }
     }
@@ -355,9 +384,6 @@ public class Player implements Positionable {
 
     public void setMoving(boolean moving) {
         isMoving = moving;
-        if (!moving) {
-            stateTime = 0f;
-        }
     }
 
     public boolean isRunning() {
@@ -454,6 +480,11 @@ public class Player implements Positionable {
         return skin;
     }
 
+    private boolean isVisuallyMoving = false;
+    private float visualMovementTimer = 0f;
+    private static final float TOTAL_WALK_ANIMATION_TIME = PlayerAnimations.WALK_FRAME_DURATION * 4; // 0.48s
+    private static final float TOTAL_RUN_ANIMATION_TIME = PlayerAnimations.RUN_FRAME_DURATION * 4;   // 0.32s
+
     public void setSkin(Skin skin) {
         this.skin = skin;
     }
@@ -462,53 +493,161 @@ public class Player implements Positionable {
         if (!resourcesInitialized || disposed || animations == null || animations.isDisposed()) {
             initializeResources();
         }
-        synchronized (movementLock) {
-            if (bufferedDirection != null) {
-                bufferedTime += deltaTime;
-                if (bufferedTime > BUFFER_WINDOW) {
-                    bufferedDirection = null;
-                    bufferedTime = 0f;
-                }
-            }
-            if (animations.isChopping() || animations.isPunching()) {
-                stateTime += deltaTime;
-                currentFrame = animations.getCurrentFrame(direction, true, isRunning, stateTime);
-            } else if (isMoving) {
-                float currentDuration = isRunning ? runStepDuration : walkStepDuration;
-                movementProgress = Math.min(1.0f, movementProgress + (deltaTime / currentDuration));
 
-                updatePosition(movementProgress); // This uses lerp to smooth movement
-                animationTime += deltaTime * animationSpeedMultiplier;
+        synchronized (movementLock) {
+            if (isMoving) {
+                // Simple progress calculation (KEEP SAME FOR SMOOTH MOVEMENT)
+                float moveDuration = isRunning ? SMOOTH_RUN_DURATION : SMOOTH_WALK_DURATION;
+                movementProgress += deltaTime / moveDuration;
 
                 if (movementProgress >= 1.0f) {
-                    completeMovement(); // Finalize position
-                    if (bufferedDirection != null) {
-                        move(bufferedDirection);
-                        bufferedDirection = null;
-                    } else if (isInputHeld()) {
+                    // Complete the movement
+                    completeMovement();
+
+                    // Reset animation cycle for next tile
+                    animationCycleTime = 0f;
+
+                    // Check for queued input
+                    if (queuedDirection != null) {
+                        String nextDir = queuedDirection;
+                        queuedDirection = null;
+                        move(nextDir);
+                    } else if (inputHeld) {
+                        // Continue in same direction if key held
                         move(direction);
                     }
+                } else {
+                    // Simple smooth interpolation (KEEP SAME)
+                    float smoothed = smoothStep(movementProgress);
+                    x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothed);
+                    y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothed);
+                    position.set(x, y);
+
+                    // Smooth render position (KEEP SAME)
+                    float lagFactor = 15f * deltaTime;
+                    renderPosition.x = MathUtils.lerp(renderPosition.x, x, lagFactor);
+                    renderPosition.y = MathUtils.lerp(renderPosition.y, y, lagFactor);
                 }
+
+                // ANIMATION SYNC: Calculate total animation duration for one full cycle
+                float frameCount = 4f; // 4 frames in walk/run animations
+                float frameDuration = isRunning ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
+                float fullCycleDuration = frameCount * frameDuration;
+
+                // Map movement progress to animation cycle (one full cycle per tile)
+                // But use the speed multiplier you liked for the actual playback
+                float animSpeed = isRunning ? 0.7f : 0.6f;
+                animationCycleTime += deltaTime * animSpeed;
+
+                // Calculate the actual animation time that ensures one full cycle
+                float targetAnimTime = movementProgress * fullCycleDuration;
+
+                // Blend between free-running animation and synced animation
+                // This keeps the feel you like while ensuring cycle completion
+                animationTime = MathUtils.lerp(animationCycleTime, targetAnimTime, 0.3f);
+
+                updateCollisionBoxes();
             } else {
-                stateTime = 0f;
-                animationTime = 0f;
-                currentFrame = animations.getStandingFrame(direction);
+                // Not moving - let animation settle
+                if (animationTime > 0) {
+                    animationTime = Math.max(0, animationTime - deltaTime * 2f);
+                }
+                renderPosition.set(x, y);
+                animationCycleTime = 0f;
             }
-            currentFrame = animations.getCurrentFrame(direction, isMoving, isRunning, animationTime);
-            ItemEntity nearbyItem = world.getItemEntityManager().getClosestPickableItem(x, y, PICKUP_RANGE);
+
+            // Get current frame
+            currentFrame = animations.getCurrentFrame(
+                direction,
+                isMoving,
+                isRunning,
+                animationTime
+            );
+
+
+            // Item pickup logic (keep existing)
+            ItemEntity nearbyItem = world.getItemEntityManager()
+                .getClosestPickableItem(x, y, PICKUP_RANGE);
             if (nearbyItem != null) {
                 if (inventory.addItem(nearbyItem.getItemData())) {
                     world.getItemEntityManager().removeItemEntity(nearbyItem.getEntityId());
                     AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
-                }
-                if (GameContext.get().isMultiplayer()) {
-                    NetworkProtocol.ItemPickup pickup = new NetworkProtocol.ItemPickup();
-                    pickup.entityId = nearbyItem.getEntityId();
-                    pickup.username = this.getUsername();
-                    pickup.timestamp = System.currentTimeMillis();
-                    GameContext.get().getGameClient().sendItemPickup(pickup);
+                    if (GameContext.get().isMultiplayer()) {
+                        NetworkProtocol.ItemPickup pickup = new NetworkProtocol.ItemPickup();
+                        pickup.entityId = nearbyItem.getEntityId();
+                        pickup.username = this.getUsername();
+                        pickup.timestamp = System.currentTimeMillis();
+                        GameContext.get().getGameClient().sendItemPickup(pickup);
+                    }
                 }
             }
+        }
+    }
+
+    private float animationCycleTime = 0f;
+    private static final float MOVEMENT_START_DELAY = 0.02f;  // Tiny delay before movement starts
+    private static final float MOVEMENT_END_HOLD = 0.03f;     // Hold at end position briefly
+    private float movementStartTimer = 0f;
+    private float movementEndTimer = 0f;
+    private boolean movementStarted = false;
+    private boolean movementEnding = false;
+    private static final float SMOOTH_WALK_DURATION = 0.24f;  // Was 0.22f
+    private static final float SMOOTH_RUN_DURATION = 0.14f;   // Was 0.11f
+    private static final float ACCELERATION_CURVE = 2.5f;
+
+    // [NEW] Enhanced position update with better smoothing
+    private void updatePositionSmoothEnhanced(float progress, float deltaTime) {
+        // Use an improved easing function for AAA feel
+        float easedProgress = smoothStepEnhanced(progress);
+
+        // Add subtle overshoot for more dynamic movement
+        if (progress > 0.8f && progress < 1.0f) {
+            float overshoot = (progress - 0.8f) * 5f; // 0 to 1 in the last 20%
+            easedProgress += (float) (Math.sin(overshoot * Math.PI) * 0.02f); // Subtle bounce
+        }
+
+        x = MathUtils.lerp(startPosition.x, targetPosition.x, easedProgress);
+        y = MathUtils.lerp(startPosition.y, targetPosition.y, easedProgress);
+        position.set(x, y);
+
+        // [NEW] Smooth render position with appropriate lag for polish
+        float renderSmoothFactor = 20f; // Higher = tighter following, lower = more lag
+        renderPosition.x = MathUtils.lerp(renderPosition.x, x, deltaTime * renderSmoothFactor);
+        renderPosition.y = MathUtils.lerp(renderPosition.y, y, deltaTime * renderSmoothFactor);
+
+        updateCollisionBoxes();
+    }
+
+    // [NEW] Enhanced easing function for more natural movement
+    private float smoothStepEnhanced(float t) {
+        t = MathUtils.clamp(t, 0f, 1f);
+
+        // Custom curve that starts slow, speeds up, then slows down
+        // This creates a more natural acceleration/deceleration
+        if (t < 0.5f) {
+            // Acceleration phase - ease in
+            float accelerated = t * 2f;
+            return (float) (0.5f * Math.pow(accelerated, ACCELERATION_CURVE));
+        } else {
+            // Deceleration phase - ease out
+            float decelerated = (t - 0.5f) * 2f;
+            return (float) (0.5f + 0.5f * (1f - Math.pow(1f - decelerated, ACCELERATION_CURVE)));
+        }
+    }
+
+    // Replace the existing easeInOutQuad with this smoother version
+    private float easeInOutQuad(float t) {
+        // Smoother acceleration and deceleration
+        if (t < 0.3f) {
+            // Slower start for more weight
+            return 3.33f * t * t;
+        } else if (t > 0.7f) {
+            // Slower end for smooth landing
+            float endT = (t - 0.7f) / 0.3f;
+            return 0.7f + 0.3f * (1f - (1f - endT) * (1f - endT));
+        } else {
+            // Linear middle section
+            return 0.3f + (t - 0.3f);
         }
     }
 
@@ -518,33 +657,37 @@ public class Player implements Positionable {
         tileX = targetTileX;
         tileY = targetTileY;
         position.set(x, y);
-        renderPosition.set(x, y);
+        renderPosition.set(x, y);  // Snap render position
         isMoving = false;
         movementProgress = 0f;
-        stateTime = 0f; // Reset timer for the next move.
+
+        // Handle elevation
         if (world != null) {
             int newElevation = world.getElevationAt(this.tileX, this.tileY);
-            if (newElevation != -1) { // -1 might indicate an unloaded chunk or error
+            if (newElevation != -1) {
                 this.setElevationLevel(newElevation);
             }
         }
+
+        // Create footstep effect
         int tileType = GameContext.get().getWorld().getTileTypeAt(getTileX(), getTileY());
         if (tileType == TileType.SAND || tileType == TileType.SNOW ||
             tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND ||
             tileType == TileType.SNOW_2 || tileType == TileType.SNOW_3 ||
-            tileType == TileType.SNOW_TALL_GRASS || tileType == TileType.BEACH_GRASS || tileType == TileType.BEACH_SAND || tileType == TileType.BEACH_SHELL || tileType == TileType.BEACH_GRASS_2 || tileType == TileType.SNOWY_GRASS || tileType == TileType.BEACH_STARFISH) {
+            tileType == TileType.SNOW_TALL_GRASS || tileType == TileType.BEACH_GRASS ||
+            tileType == TileType.BEACH_SAND || tileType == TileType.BEACH_SHELL ||
+            tileType == TileType.BEACH_GRASS_2 || tileType == TileType.SNOWY_GRASS ||
+            tileType == TileType.BEACH_STARFISH) {
             GameContext.get().getWorld().getFootstepEffectManager()
                 .addEffect(new FootstepEffect(new Vector2(x, y), direction, 1.0f));
         }
     }
 
-    private void updatePosition(float progress) {
-        float smoothProgress = smoothstep(progress);
-        x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);
-        y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothProgress);
-        position.set(x, y);
-        renderPosition.set(x, y);
-        updateCollisionBoxes();
+    // 7. REPLACE smoothstep with simpler version:
+    private float smoothStep(float t) {
+        t = MathUtils.clamp(t, 0f, 1f);
+        // Simple smooth cubic curve
+        return t * t * (3f - 2f * t);
     }
 
     private void updateCollisionBoxes() {
@@ -554,21 +697,28 @@ public class Player implements Positionable {
 
     private float smoothstep(float x) {
         x = MathUtils.clamp(x, 0f, 1f);
-        return x * x * (3 - 2 * x);
+        // More aggressive curve for snappier movement
+        return x * x * x * (x * (x * 6 - 15) + 10);
     }
 
     public void move(String newDirection) {
         synchronized (movementLock) {
+            // Queue direction if already moving
             if (isMoving) {
-                bufferedDirection = newDirection;
-                bufferedTime = 0f;
+                if (!newDirection.equals(direction)) {
+                    queuedDirection = newDirection;
+                }
                 return;
             }
+
             direction = newDirection;
+
             if (world == null) {
                 GameLogger.error("Cannot move - world is null! Player: " + getUsername());
                 return;
             }
+
+            // Calculate target tile
             int newTileX = getTileX();
             int newTileY = getTileY();
             switch (newDirection) {
@@ -587,22 +737,45 @@ public class Player implements Positionable {
                 default:
                     return;
             }
+
+            // Check boundaries and passability
             if (!world.isWithinWorldBounds(newTileX, newTileY)) {
                 GameLogger.info("Player cannot move outside the world border: (" + newTileX + "," + newTileY + ")");
                 return;
             }
+
             if (world.isPassable(newTileX, newTileY)) {
                 targetTileX = newTileX;
                 targetTileY = newTileY;
                 targetPosition.set(tileToPixelX(newTileX), tileToPixelY(newTileY));
                 startPosition.set(x, y);
+
+                // Start movement
                 isMoving = true;
                 movementProgress = 0f;
-                bufferedDirection = null;
-                bufferedTime = 0f;
+
+                // IMPORTANT: Don't fully reset animation if continuing in same direction
+                // This prevents jarring animation restarts
+                if (!inputHeld || animationTime <= 0) {
+                    animationTime = 0f;
+                    animationCycleTime = 0f;
+                } else {
+                    // Continue from current animation position for smooth chaining
+                    // But ensure it will complete within this tile
+                    float frameCount = 4f;
+                    float frameDuration = isRunning ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
+                    float fullCycleDuration = frameCount * frameDuration;
+
+                    // Wrap animation time to start of cycle if needed
+                    animationTime = animationTime % fullCycleDuration;
+                    animationCycleTime = animationTime;
+                }
+
+                queuedDirection = null;
             }
         }
     }
+
 
     public boolean isInputHeld() {
         return inputHeld;
@@ -614,7 +787,7 @@ public class Player implements Positionable {
 
     public void clearBufferedDirection() {
         synchronized (movementLock) {
-            bufferedDirection = null;
+            queuedDirection = null;
             bufferedTime = 0f;
         }
     }

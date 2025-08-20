@@ -31,6 +31,7 @@ shadowJar {
   destinationDirectory = file("${buildDir}/libs")
   duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
+  from "${project(':core').projectDir}/assets"
   manifest {
     attributes(
       'Main-Class': 'org.discord.ServerLauncher',
@@ -44,7 +45,31 @@ shadowJar {
 
   // Exclude unnecessary files
   exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
-  exclude 'assets/**'
+
+  // GOOD: Exclude specific client-side asset types, but keep data files like .json
   exclude '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.mp3', '**/*.wav', '**/*.ogg', '**/*.ttf'
+
+  // BAD: Avoid broad exclusions like this, as it removes essential biome data
+  // exclude 'assets/**'
 }
 
+
+task checkCoreResources {
+  doLast {
+    println "--- Diagnostic: Checking :core project's resource directories ---"
+    try {
+      project(':core').sourceSets.main.resources.srcDirs.each { dir ->
+        println "Gradle sees resource directory: ${dir.absolutePath}"
+        if (new File(dir, "Data/biomes.json").exists()) {
+          println "SUCCESS: Found 'Data/biomes.json' inside this directory."
+        } else {
+          println "FAILURE: Did NOT find 'Data/biomes.json' inside this directory."
+        }
+      }
+    } catch (Exception e) {
+      println "ERROR: Could not access :core project resources. Is the project named ':core' in settings.gradle?"
+      e.printStackTrace()
+    }
+    println "--- End Diagnostic ---"
+  }
+}

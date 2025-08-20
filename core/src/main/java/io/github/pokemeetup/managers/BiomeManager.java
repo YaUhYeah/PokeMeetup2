@@ -1,12 +1,12 @@
+// Fixed BiomeManager.java - Stable version with proper world loading
+
 package io.github.pokemeetup.managers;
 
 import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.google.gson.*;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.World;
-import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.utils.GameLogger;
@@ -20,52 +20,51 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Enhanced BiomeManager for large, expansive biomes with smooth transitions.
- * <p>
- * Key improvements:
- * - Larger biome scales for more expansive regions
- * - Biome clustering to group similar biomes together
- * - Multi-scale noise for better variety
- * - Reduced Voronoi site count for larger regions
- * - Smoother transitions between biomes
+ * Fixed BiomeManager with stable world generation and proper island boundaries.
+ * Removed problematic optimizations that caused loading issues.
  */
 public class BiomeManager {
-    // Use an LRU cache instead
-    private final Map<Long, Island> islandCache = new LinkedHashMap<Long, Island>(5000, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<Long, Island> eldest) {
-            return size() > 5000;
-        }
-    };
-    private static final int GRID_SIZE = 1000; // Grid cell size for spatial indexing
 
-    private static final float TEMPERATURE_SCALE = 0.00015f; // Was 0.0008f - now 5x larger
-    private static final float MOISTURE_SCALE = 0.00018f;    // Was 0.0008f - now 4.5x larger
-    private static final float ALTITUDE_SCALE = 0.0002f;     // Was 0.001f - now 5x larger
-    private static final float TEMPERATURE_SCALE_DETAIL = 0.001f;  // Fine detail
-    private static final float MOISTURE_SCALE_DETAIL = 0.0012f;    // Fine detail
-    private static final float FREQ_WARP_1 = 0.0002f; // Was 0.0003f
-    private static final float AMP_WARP_1 = 4f;       // Was 5f
-    private final List<BiomeManager.Island> sortedIslandSites = new ArrayList<>();
-    private static final float FREQ_WARP_2 = 0.0005f; // Was 0.0006f
-    private static final float AMP_WARP_2 = 1.5f;     // Was 2f
-    private static final int ISLAND_COUNT = 100;
-    private static final float ISLAND_MIN_RADIUS = 3000f;
-    private static final float ISLAND_MAX_RADIUS = 8000f;
+    // Large biome scales
+    private static final float TEMPERATURE_SCALE = 0.00008f;
+    private static final float MOISTURE_SCALE = 0.00009f;
+    private static final float ALTITUDE_SCALE = 0.0001f;
+    private static final float TEMPERATURE_SCALE_DETAIL = 0.0004f;
+    private static final float MOISTURE_SCALE_DETAIL = 0.00045f;
+
+    // Domain warping
+    private static final float FREQ_WARP_1 = 0.00015f;
+    private static final float AMP_WARP_1 = 3f;
+    private static final float FREQ_WARP_2 = 0.0003f;
+    private static final float AMP_WARP_2 = 1.2f;
+
+    // Island parameters
+    private static final int ISLAND_COUNT = 70;
+    private static final float ISLAND_MIN_RADIUS = 4000f;
+    private static final float ISLAND_MAX_RADIUS = 10000f;
     private static final float WORLD_RADIUS = 50000f;
-    private static final int NUM_BIOME_SITES = 120; // Was 400 - now 3x larger regions
-    private static final float BIOME_CLUSTER_RADIUS = 8000f;
-    private static final float TRANSITION_DISTANCE = 2000f;
+
+    // Biome parameters for large regions
+    private static final int NUM_BIOME_SITES = 60;
+    private static final float BIOME_CLUSTER_RADIUS = 10000f;
+
+    // Beach parameters
+    private static final float MIN_BEACH_WIDTH = 1000f;
+    private static final float BEACH_WIDTH_FACTOR = 0.12f;
+
     private final Map<Vector2, BiomeTransitionResult[][]> chunkBiomeCache = new ConcurrentHashMap<>();
     private final long temperatureSeed;
     private final long moistureSeed;
     private final long altitudeSeed;
     private final long detailSeed;
     private final long clusterSeed;
+    private final long warpSeed;
+
     private final List<BiomeSite> biomeSites = new ArrayList<>();
     private final List<BiomeCluster> biomeClusters = new ArrayList<>();
     private final List<Island> islandSites = new ArrayList<>();
-    private final long warpSeed;
+    private final List<Island> sortedIslandSites = new ArrayList<>();
+
     private final Map<BiomeType, Biome> biomes;
     private long baseSeed;
 
@@ -80,48 +79,43 @@ public class BiomeManager {
 
         this.biomes = new HashMap<>();
 
+        // Initialize in correct order
         loadBiomesFromJson();
-        generateBiomeClusters(baseSeed);     // NEW: Generate biome clusters first
-
-        generateBiomeSites(baseSeed);        // Then create sites within clusters
+        generateBiomeClusters(baseSeed);
+        generateBiomeSites(baseSeed);
         generateRandomIslands(baseSeed);
 
-        // --- FIX: Pre-sort the list ONCE after generation ---
+        // Sort islands for faster lookup
         sortedIslandSites.addAll(this.islandSites);
         sortedIslandSites.sort(Comparator.comparingLong(a -> a.seed));
+
+        GameLogger.info("BiomeManager initialized successfully with " + islandSites.size() + " islands");
     }
 
     /**
-     * Generate biome clusters to ensure similar biomes group together
+     * Generate biome clusters for coherent regions
      */
     private void generateBiomeClusters(long seed) {
         biomeClusters.clear();
         Random rng = new Random(seed ^ 0xCAFEBABEL);
-        BiomeClusterType[] clusterTypes = {
-            BiomeClusterType.HOT_DRY,      // Desert regions
-            BiomeClusterType.HOT_WET,      // Rainforest regions
-            BiomeClusterType.COLD_DRY,     // Tundra/mountain regions
-            BiomeClusterType.COLD_WET,     // Snow regions
-            BiomeClusterType.TEMPERATE,    // Forest/plains regions
-            BiomeClusterType.MYSTICAL      // Cherry/haunted regions
-        };
-        int clusterCount = 15 + rng.nextInt(11);
+
+        BiomeClusterType[] clusterTypes = BiomeClusterType.values();
+        int clusterCount = 10 + rng.nextInt(6);
 
         for (int i = 0; i < clusterCount; i++) {
-            float x = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS * 0.8f;
-            float y = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS * 0.8f;
+            float x = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS * 0.7f;
+            float y = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS * 0.7f;
             BiomeClusterType type = clusterTypes[rng.nextInt(clusterTypes.length)];
             float radius = BIOME_CLUSTER_RADIUS * (0.8f + rng.nextFloat() * 0.4f);
 
-            BiomeCluster cluster = new BiomeCluster(x, y, radius, type);
-            biomeClusters.add(cluster);
+            biomeClusters.add(new BiomeCluster(x, y, radius, type));
         }
 
-        GameLogger.info("BiomeManager => created " + biomeClusters.size() + " biome clusters.");
+        GameLogger.info("Created " + biomeClusters.size() + " biome clusters");
     }
 
     /**
-     * Enhanced biome site generation that respects clusters
+     * Generate biome sites with cluster influence
      */
     private void generateBiomeSites(long seed) {
         biomeSites.clear();
@@ -130,29 +124,31 @@ public class BiomeManager {
         for (int i = 0; i < NUM_BIOME_SITES; i++) {
             float x = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
             float y = (rng.nextFloat() - 0.5f) * 2f * WORLD_RADIUS;
+
             BiomeCluster nearestCluster = findNearestCluster(x, y);
             double tOff = 0.0;
             double mOff = 0.0;
 
             if (nearestCluster != null) {
                 float distToCluster = Vector2.dst(x, y, nearestCluster.x, nearestCluster.y);
-                float influence = 1.0f - Math.min(1.0f, distToCluster / (nearestCluster.radius * 2));
+                float influence = 1.0f - Math.min(1.0f, distToCluster / (nearestCluster.radius * 2f));
+
                 switch (nearestCluster.type) {
                     case HOT_DRY:
-                        tOff = 0.3 * influence;   // Higher temperature
-                        mOff = -0.3 * influence;  // Lower moisture
+                        tOff = 0.3 * influence;
+                        mOff = -0.3 * influence;
                         break;
                     case HOT_WET:
-                        tOff = 0.25 * influence;  // Higher temperature
-                        mOff = 0.3 * influence;   // Higher moisture
+                        tOff = 0.25 * influence;
+                        mOff = 0.3 * influence;
                         break;
                     case COLD_DRY:
-                        tOff = -0.3 * influence;  // Lower temperature
-                        mOff = -0.2 * influence;  // Lower moisture
+                        tOff = -0.3 * influence;
+                        mOff = -0.2 * influence;
                         break;
                     case COLD_WET:
-                        tOff = -0.25 * influence; // Lower temperature
-                        mOff = 0.2 * influence;   // Higher moisture
+                        tOff = -0.25 * influence;
+                        mOff = 0.2 * influence;
                         break;
                     case TEMPERATE:
                         tOff = (rng.nextFloat() - 0.5) * 0.1 * influence;
@@ -169,34 +165,175 @@ public class BiomeManager {
             }
 
             long detail = rng.nextLong();
-            BiomeSite site = new BiomeSite(x, y, tOff, mOff, detail);
-            biomeSites.add(site);
+            biomeSites.add(new BiomeSite(x, y, tOff, mOff, detail));
         }
 
-        GameLogger.info("BiomeManager => created " + biomeSites.size() + " Voronoi sites with cluster influence.");
+        GameLogger.info("Created " + biomeSites.size() + " biome sites");
     }
 
-    private BiomeCluster findNearestCluster(float x, float y) {
-        BiomeCluster nearest = null;
-        float minDist = Float.MAX_VALUE;
+    /**
+     * Generate islands with proper separation
+     */
+    private void generateRandomIslands(long seed) {
+        islandSites.clear();
+        Random rng = new Random(seed ^ 0xBEEF9876L);
+        float regionSize = WORLD_RADIUS * 0.75f;
 
-        for (BiomeCluster cluster : biomeClusters) {
-            float dist = Vector2.dst(x, y, cluster.x, cluster.y);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = cluster;
+        for (int i = 0; i < ISLAND_COUNT; i++) {
+            float cx = -regionSize + rng.nextFloat() * (2 * regionSize);
+            float cy = -regionSize + rng.nextFloat() * (2 * regionSize);
+            float r = ISLAND_MIN_RADIUS + rng.nextFloat() * (ISLAND_MAX_RADIUS - ISLAND_MIN_RADIUS);
+            long islandSeed = rng.nextLong();
+            Island isl = new Island(cx, cy, r, islandSeed);
+            islandSites.add(isl);
+        }
+
+        // Add central island
+        Island centerIsland = new Island(0, 0, ISLAND_MAX_RADIUS, baseSeed);
+        islandSites.add(centerIsland);
+
+        GameLogger.info("Created " + islandSites.size() + " islands including central island");
+    }
+
+    /**
+     * Main biome determination with strict island boundaries
+     */
+    public BiomeTransitionResult getBiomeFromAlreadyWarped(float wx, float wy) {
+        Island isl = findClosestIsland(wx, wy);
+        if (isl == null) {
+            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
+        }
+
+        float dx = wx - isl.centerX;
+        float dy = wy - isl.centerY;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+
+        // Apply organic distortion
+        float angle = MathUtils.atan2(dy, dx);
+        float distort = (float)OpenSimplex2.noise2(isl.seed,
+            MathUtils.cos(angle) * 2, MathUtils.sin(angle) * 2);
+        distort = Math.max(0f, distort) * 0.15f;
+
+        float expandFactor = 1.2f;
+        float effectiveRadius = isl.radius * expandFactor + (isl.radius * expandFactor * distort);
+
+        // Calculate beach boundaries
+        float beachWidth = Math.max(MIN_BEACH_WIDTH, effectiveRadius * BEACH_WIDTH_FACTOR);
+        float landRadius = effectiveRadius - beachWidth;
+
+        if (dist < landRadius) {
+            // Interior land
+            return landBiomeVoronoi(wx, wy);
+        } else if (dist < effectiveRadius) {
+            // Beach zone
+            return new BiomeTransitionResult(getBiome(BiomeType.BEACH), null, 1f);
+        } else {
+            // Ocean
+            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
+        }
+    }
+
+    /**
+     * Find closest island
+     */
+    public Island findClosestIsland(float wx, float wy) {
+        // Find closest island directly without caching to ensure continuous data.
+        Island best = null;
+        float bestDistSq = Float.MAX_VALUE;
+
+        // Check center island first
+        if (!sortedIslandSites.isEmpty()) {
+            Island centerIsland = sortedIslandSites.get(sortedIslandSites.size() - 1);
+            float dx = wx - centerIsland.centerX;
+            float dy = wy - centerIsland.centerY;
+            float distSq = dx * dx + dy * dy;
+
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                best = centerIsland;
             }
         }
 
-        return nearest;
+        // Check other islands
+        for (int i = 0; i < sortedIslandSites.size() - 1; i++) {
+            Island isl = sortedIslandSites.get(i);
+            float dx = wx - isl.centerX;
+            float dy = wy - isl.centerY;
+            float distSq = dx * dx + dy * dy;
+
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                best = isl;
+
+                // Early exit if clearly inside
+                if (distSq < isl.radius * isl.radius * 0.25f) {
+                    break;
+                }
+            }
+        }
+
+        return best;
     }
 
+    /**
+     * Voronoi biome determination for land
+     */
+    public BiomeTransitionResult landBiomeVoronoi(float wx, float wy) {
+        List<SiteDistance> nearestSites = findNearestSites(wx, wy);
+
+        if (nearestSites.isEmpty()) {
+            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
+        }
+
+        if (nearestSites.size() == 1) {
+            Biome b = classifySiteToBiome(nearestSites.get(0).site, wx, wy);
+            return new BiomeTransitionResult(b, null, 1f);
+        }
+
+        Biome primary = classifySiteToBiome(nearestSites.get(0).site, wx, wy);
+        Biome secondary = classifySiteToBiome(nearestSites.get(1).site, wx, wy);
+
+        float d1 = nearestSites.get(0).distance;
+        float d2 = nearestSites.get(1).distance;
+        float raw = d2 / (d1 + d2);
+        float t = smoothStep(smoothStep(raw));
+
+        // Prevent incompatible transitions
+        if ((primary.getType() == BiomeType.SNOW && secondary.getType() == BiomeType.DESERT) ||
+            (primary.getType() == BiomeType.DESERT && secondary.getType() == BiomeType.SNOW)) {
+            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
+        }
+
+        return new BiomeTransitionResult(primary, secondary, t);
+    }
+
+    /**
+     * Find nearest biome sites
+     */
+    private List<SiteDistance> findNearestSites(float wx, float wy) {
+        List<SiteDistance> distances = new ArrayList<>();
+
+        for (BiomeSite site : biomeSites) {
+            float dx = wx - site.x;
+            float dy = wy - site.y;
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+            distances.add(new SiteDistance(site, dist));
+        }
+
+        distances.sort(Comparator.comparingDouble(sd -> sd.distance));
+        return distances.subList(0, Math.min(3, distances.size()));
+    }
+
+    /**
+     * Classify site to biome type
+     */
     private Biome classifySiteToBiome(BiomeSite site, float wx, float wy) {
         double baseTemp = NoiseCache.getNoise(temperatureSeed, wx, wy, TEMPERATURE_SCALE);
         double detailTemp = NoiseCache.getNoise(temperatureSeed + 1, wx, wy, TEMPERATURE_SCALE_DETAIL) * 0.1;
         double baseMoist = NoiseCache.getNoise(moistureSeed, wx, wy, MOISTURE_SCALE);
         double detailMoist = NoiseCache.getNoise(moistureSeed + 1, wx, wy, MOISTURE_SCALE_DETAIL) * 0.1;
         double baseAltitude = NoiseCache.getNoise(altitudeSeed, wx, wy, ALTITUDE_SCALE);
+
         double temp = baseTemp + detailTemp + site.tempOffset;
         double moist = baseMoist + detailMoist + site.moistOffset;
         double localVar = OpenSimplex2.noise2(detailSeed ^ site.siteDetail, wx * 0.0001, wy * 0.0001) * 0.02;
@@ -210,62 +347,71 @@ public class BiomeManager {
     }
 
     /**
-     * Enhanced Voronoi with smoother transitions
+     * Compute biome matrix for chunk
      */
-    public BiomeTransitionResult landBiomeVoronoi(float wx, float wy) {
-        List<SiteDistance> nearestSites = findNearestSites(wx, wy, 4);
+    public BiomeTransitionResult[][] computeBiomeMatrixForChunk(int chunkX, int chunkY) {
+        Vector2 key = new Vector2(chunkX, chunkY);
 
-        if (nearestSites.isEmpty()) {
-            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
-        }
-
-        if (nearestSites.size() == 1) {
-            Biome b = classifySiteToBiome(nearestSites.get(0).site, wx, wy);
-            return new BiomeTransitionResult(b, null, 1f);
-        }
-        float totalWeight = 0;
-        for (SiteDistance sd : nearestSites) {
-            sd.weight = 1f / (1f + sd.distance / TRANSITION_DISTANCE);
-            totalWeight += sd.weight;
-        }
-        for (SiteDistance sd : nearestSites) {
-            sd.weight /= totalWeight;
-        }
-        Biome primary = classifySiteToBiome(nearestSites.get(0).site, wx, wy);
-        Biome secondary = classifySiteToBiome(nearestSites.get(1).site, wx, wy);
-        float d1 = nearestSites.get(0).distance;
-        float d2 = nearestSites.get(1).distance;
-        float raw = d2 / (d1 + d2);
-        float t = smoothStep(smoothStep(raw));
-        if ((primary.getType() == BiomeType.SNOW && secondary.getType() == BiomeType.DESERT) ||
-            (primary.getType() == BiomeType.DESERT && secondary.getType() == BiomeType.SNOW)) {
-            return new BiomeTransitionResult(getBiome(BiomeType.PLAINS), null, 1f);
+        // Check cache
+        BiomeTransitionResult[][] cached = chunkBiomeCache.get(key);
+        if (cached != null) {
+            return cached;
         }
 
-        return new BiomeTransitionResult(primary, secondary, t);
+        int size = Chunk.CHUNK_SIZE;
+        int outW = size + 1;
+        int outH = size + 1;
+        BiomeTransitionResult[][] matrix = new BiomeTransitionResult[outW][outH];
+
+        float baseWX = chunkX * size * World.TILE_SIZE;
+        float baseWY = chunkY * size * World.TILE_SIZE;
+
+        for (int bx = 0; bx < outW; bx++) {
+            for (int by = 0; by < outH; by++) {
+                float fx = baseWX + bx * World.TILE_SIZE;
+                float fy = baseWY + by * World.TILE_SIZE;
+
+                float[] warped = domainWarp(fx, fy);
+                matrix[bx][by] = getBiomeFromAlreadyWarped(warped[0], warped[1]);
+            }
+        }
+
+        chunkBiomeCache.put(key, matrix);
+        return matrix;
     }
 
-    private List<SiteDistance> findNearestSites(float wx, float wy, int count) {
-        List<SiteDistance> distances = new ArrayList<>();
+    /**
+     * Domain warping for organic shapes
+     */
+    public float[] domainWarp(float x, float y) {
+        float dx1 = (float) OpenSimplex2.noise2(warpSeed, x * FREQ_WARP_1, y * FREQ_WARP_1) * AMP_WARP_1;
+        float dy1 = (float) OpenSimplex2.noise2(warpSeed + 1337, x * FREQ_WARP_1, y * FREQ_WARP_1) * AMP_WARP_1;
+        float wx1 = x + dx1;
+        float wy1 = y + dy1;
 
-        for (BiomeSite site : biomeSites) {
-            float dx = wx - site.x;
-            float dy = wy - site.y;
-            float dist = (float) Math.sqrt(dx * dx + dy * dy);
-            distances.add(new SiteDistance(site, dist));
+        float dx2 = (float) OpenSimplex2.noise2(warpSeed + 999, wx1 * FREQ_WARP_2, wy1 * FREQ_WARP_2) * AMP_WARP_2;
+        float dy2 = (float) OpenSimplex2.noise2(warpSeed + 1999, wx1 * FREQ_WARP_2, wy1 * FREQ_WARP_2) * AMP_WARP_2;
+
+        return new float[]{wx1 + dx2, wy1 + dy2};
+    }
+
+    private BiomeCluster findNearestCluster(float x, float y) {
+        BiomeCluster nearest = null;
+        float minDist = Float.MAX_VALUE;
+
+        for (BiomeCluster cluster : biomeClusters) {
+            float dist = Vector2.dst(x, y, cluster.x, cluster.y);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = cluster;
+            }
         }
-
-        distances.sort(Comparator.comparingDouble(sd -> sd.distance));
-
-        return distances.subList(0, Math.min(count, distances.size()));
+        return nearest;
     }
 
     private static float smoothStep(float t) {
+        t = Math.max(0, Math.min(1, t));
         return t * t * (3f - 2f * t);
-    }
-
-    public void setBaseSeed(long baseSeed) {
-        this.baseSeed = baseSeed;
     }
 
     public BiomeTransitionResult getBiomeAtTile(int tileX, int tileY) {
@@ -281,12 +427,21 @@ public class BiomeManager {
         return getBiomeAtTile(tileX, tileY);
     }
 
+    public Biome getBiome(BiomeType type) {
+        Biome b = biomes.get(type);
+        if (b == null) {
+            GameLogger.error("Biome data missing for " + type + ", fallback to PLAINS");
+            return biomes.get(BiomeType.PLAINS);
+        }
+        return b;
+    }
 
     public Vector2 findSafeSpawnLocation(World world, Random rng) {
         if (islandSites.isEmpty()) {
             GameLogger.error("No islands found; defaulting spawn to (0,0)");
             return new Vector2(0, 0);
         }
+
         int maxAttempts = 200;
         Island isl = islandSites.get(rng.nextInt(islandSites.size()));
         float margin = 100f;
@@ -315,143 +470,7 @@ public class BiomeManager {
         return new Vector2(cx, cy);
     }
 
-    public long getWarpSeed() {
-        return warpSeed;
-    }
-
-    public float[] domainWarp(float x, float y) {
-        float dx1 = (float) OpenSimplex2.noise2(warpSeed, x * FREQ_WARP_1, y * FREQ_WARP_1) * AMP_WARP_1;
-        float dy1 = (float) OpenSimplex2.noise2(warpSeed + 1337, x * FREQ_WARP_1, y * FREQ_WARP_1) * AMP_WARP_1;
-        float wx1 = x + dx1;
-        float wy1 = y + dy1;
-
-        float dx2 = (float) OpenSimplex2.noise2(warpSeed + 999, wx1 * FREQ_WARP_2, wy1 * FREQ_WARP_2) * AMP_WARP_2;
-        float dy2 = (float) OpenSimplex2.noise2(warpSeed + 1999, wx1 * FREQ_WARP_2, wy1 * FREQ_WARP_2) * AMP_WARP_2;
-
-        return new float[]{wx1 + dx2, wy1 + dy2};
-    }
-
-    private void generateRandomIslands(long seed) {
-        islandSites.clear();
-        Random rng = new Random(seed ^ 0xBEEF9876L);
-        float regionSize = WORLD_RADIUS * 0.85f;
-        for (int i = 0; i < ISLAND_COUNT; i++) {
-            float cx = -regionSize + rng.nextFloat() * (2 * regionSize);
-            float cy = -regionSize + rng.nextFloat() * (2 * regionSize);
-            float r = ISLAND_MIN_RADIUS + rng.nextFloat() * (ISLAND_MAX_RADIUS - ISLAND_MIN_RADIUS);
-            long islandSeed = rng.nextLong();
-            Island isl = new Island(cx, cy, r, islandSeed);
-            islandSites.add(isl);
-        }
-
-        Island centerIsland = new Island(0, 0, ISLAND_MAX_RADIUS, baseSeed);
-        islandSites.add(centerIsland);
-
-        GameLogger.info("Created " + islandSites.size() + " island sites (including central island).");
-    }
-
-    public Island findClosestIsland(float wx, float wy) {
-        // Round to grid cell for caching
-        if (Math.abs(wx) < ISLAND_MAX_RADIUS && Math.abs(wy) < ISLAND_MAX_RADIUS) {
-            // We know center island is likely closest
-            return islandSites.get(islandSites.size() - 1); // center island
-        }
-        long gridX = (long)(wx / GRID_SIZE);
-        long gridY = (long)(wy / GRID_SIZE);
-        long cacheKey = (gridX << 32) | (gridY & 0xFFFFFFFFL);
-
-        // Check cache first
-        Island cached = islandCache.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-
-        // Find closest island using squared distances (no sqrt)
-        Island best = null;
-        float bestDistSq = Float.MAX_VALUE;
-
-        // Check center island first (it's often the closest)
-        Island centerIsland = sortedIslandSites.get(sortedIslandSites.size() - 1);
-        float dx = wx - centerIsland.centerX;
-        float dy = wy - centerIsland.centerY;
-        float distSq = dx * dx + dy * dy;
-
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            best = centerIsland;
-        }
-
-        // Early exit if we're clearly inside the center island
-        if (distSq < centerIsland.radius * centerIsland.radius * 0.25f) {
-            islandCache.put(cacheKey, best);
-            return best;
-        }
-
-        // Check other islands
-        for (int i = 0; i < sortedIslandSites.size() - 1; i++) {
-            Island isl = sortedIslandSites.get(i);
-            dx = wx - isl.centerX;
-            dy = wy - isl.centerY;
-            distSq = dx * dx + dy * dy;
-
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                best = isl;
-
-                // Early exit if we're clearly inside this island
-                if (distSq < isl.radius * isl.radius * 0.25f) {
-                    break;
-                }
-            }
-        }
-
-        // Cache the result
-        islandCache.put(cacheKey, best);
-
-        // Limit cache size to prevent memory issues
-        if (islandCache.size() > 10000) {
-            islandCache.clear();
-        }
-
-        return best;
-    }
-
-    public BiomeTransitionResult[][] computeBiomeMatrixForChunk(int chunkX, int chunkY) {
-        Vector2 key = new Vector2(chunkX, chunkY);
-        if (chunkBiomeCache.containsKey(key)) {
-            return chunkBiomeCache.get(key);
-        }
-
-        int size = Chunk.CHUNK_SIZE;
-        int outW = size + 1;
-        int outH = size + 1;
-        BiomeTransitionResult[][] matrix = new BiomeTransitionResult[outW][outH];
-
-        float baseWX = chunkX * size * World.TILE_SIZE;
-        float baseWY = chunkY * size * World.TILE_SIZE;
-        for (int bx = 0; bx < outW; bx++) {
-            for (int by = 0; by < outH; by++) {
-                float fx = baseWX + bx * World.TILE_SIZE;
-                float fy = baseWY + by * World.TILE_SIZE;
-
-                // This is the expensive part, now done only once per vertex
-                float[] warped = domainWarp(fx, fy);
-                matrix[bx][by] = getBiomeFromAlreadyWarped(warped[0], warped[1]);
-            }
-        }
-
-        chunkBiomeCache.put(key, matrix);
-        return matrix;
-    }
-    public Biome getBiome(BiomeType type) {
-        Biome b = biomes.get(type);
-        if (b == null) {
-            GameLogger.error("Biome data missing for " + type + ", fallback to PLAINS");
-            return biomes.get(BiomeType.PLAINS);
-        }
-        return b;
-    }
-
+    // JSON loading methods
     private void loadBiomesFromJson() {
         try {
             String content = GameFileSystem.getInstance().getDelegate().readString("Data/biomes.json");
@@ -459,20 +478,24 @@ public class BiomeManager {
                 initializeDefaultBiomes();
                 return;
             }
+
             JsonParser parser = new JsonParser();
             JsonArray arr = parser.parse(content).getAsJsonArray();
+
             for (JsonElement elem : arr) {
                 JsonObject obj = elem.getAsJsonObject();
                 BiomeData data = parseBiomeData(obj);
                 if (validateBiomeData(data)) {
                     Biome b = createBiomeFromData(data);
                     biomes.put(b.getType(), b);
-                } else {
-                    GameLogger.error("Invalid biome data => " + data.getName());
                 }
             }
+
+            // Ensure default biomes exist
+            initializeDefaultBiomes();
+
         } catch (Exception e) {
-            GameLogger.error("BiomeManager => failed to load JSON => " + e.getMessage());
+            GameLogger.error("Failed to load biomes: " + e.getMessage());
             initializeDefaultBiomes();
         }
     }
@@ -490,7 +513,12 @@ public class BiomeManager {
             beach.getTileDistribution().put(TileType.BEACH_SAND, 100);
             biomes.put(BiomeType.BEACH, beach);
         }
-        GameLogger.info("Default fallback biomes have been created");
+        if (!biomes.containsKey(BiomeType.PLAINS)) {
+            Biome plains = new Biome("Plains", BiomeType.PLAINS);
+            plains.setAllowedTileTypes(List.of());
+            plains.getTileDistribution().put(TileType.GRASS, 100);
+            biomes.put(BiomeType.PLAINS, plains);
+        }
     }
 
     private BiomeData parseBiomeData(JsonObject json) {
@@ -511,12 +539,10 @@ public class BiomeManager {
         if (json.has("tileDistribution")) {
             JsonObject distObj = json.getAsJsonObject("tileDistribution");
             Map<Integer, Integer> dist = new HashMap<>();
-            double sum = 0.0;
             for (Map.Entry<String, JsonElement> en : distObj.entrySet()) {
                 int tid = Integer.parseInt(en.getKey());
                 double w = en.getValue().getAsDouble();
                 dist.put(tid, (int) Math.round(w));
-                sum += w;
             }
             data.setTileDistribution(dist);
         }
@@ -555,9 +581,10 @@ public class BiomeManager {
     }
 
     private boolean validateBiomeData(BiomeData data) {
-        if (data.getName() == null || data.getType() == null) return false;
-        if (data.getAllowedTileTypes().isEmpty()) return false;
-        return !data.getTileDistribution().isEmpty();
+        return data.getName() != null &&
+            data.getType() != null &&
+            !data.getAllowedTileTypes().isEmpty() &&
+            !data.getTileDistribution().isEmpty();
     }
 
     private Biome createBiomeFromData(BiomeData data) {
@@ -566,6 +593,7 @@ public class BiomeManager {
         b.setAllowedTileTypes(data.getAllowedTileTypes());
         b.setTileDistribution(data.getTileDistribution());
         b.setTransitionTileDistribution(data.getTransitionTileDistribution());
+
         if (data.getSpawnableObjects() != null) {
             b.loadSpawnableObjects(data.getSpawnableObjects());
         }
@@ -575,6 +603,11 @@ public class BiomeManager {
         return b;
     }
 
+    // Getters
+    public long getWarpSeed() { return warpSeed; }
+    public void setBaseSeed(long baseSeed) { this.baseSeed = baseSeed; }
+
+    // Inner classes
     public static class Island {
         public float centerX, centerY, radius;
         public long seed;
@@ -601,9 +634,6 @@ public class BiomeManager {
         }
     }
 
-    /**
-     * Biome cluster for grouping similar biomes
-     */
     private static class BiomeCluster {
         public float x, y, radius;
         public BiomeClusterType type;
@@ -616,47 +646,8 @@ public class BiomeManager {
         }
     }
 
-    public BiomeTransitionResult getBiomeFromAlreadyWarped(float wx, float wy) {
-        Island isl = findClosestIsland(wx, wy);
-        if (isl == null) {
-            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
-        }
-
-        float dx = wx - isl.centerX;
-        float dy = wy - isl.centerY;
-        float dist = (float) Math.sqrt(dx * dx + dy * dy);
-
-        float angle = MathUtils.atan2(dy, dx);
-        float distort = OpenSimplex2.noise2(isl.seed, MathUtils.cos(angle), MathUtils.sin(angle));
-        distort = Math.max(0f, distort);
-
-        float newExpandFactor = 1.3f;
-        float reducedFactor = 0.1f;
-        float effectiveRadius = isl.radius * newExpandFactor + (isl.radius * newExpandFactor * reducedFactor * distort);
-
-        // NEW: Clearer boundary logic for a guaranteed beach width.
-        float beachWidth = Math.max(1000f, effectiveRadius * 0.1f); // Min 1000 pixels wide beach
-        float landRadius = effectiveRadius - beachWidth;
-
-        if (dist < landRadius) {
-            // It's land, use the Voronoi logic to determine the specific biome.
-            return landBiomeVoronoi(wx, wy);
-        } else if (dist < effectiveRadius) {
-            // It's in the beach band.
-            return new BiomeTransitionResult(getBiome(BiomeType.BEACH), null, 1f);
-        } else {
-            // It's ocean.
-            return new BiomeTransitionResult(getBiome(BiomeType.OCEAN), null, 1f);
-        }
-    }
-
     private enum BiomeClusterType {
-        HOT_DRY,      // Desert clusters
-        HOT_WET,      // Rainforest clusters
-        COLD_DRY,     // Mountain/tundra clusters
-        COLD_WET,     // Snow clusters
-        TEMPERATE,    // Forest/plains clusters
-        MYSTICAL      // Cherry/haunted clusters
+        HOT_DRY, HOT_WET, COLD_DRY, COLD_WET, TEMPERATE, MYSTICAL
     }
 
     private static class SiteDistance {
@@ -688,26 +679,12 @@ public class BiomeManager {
             if (spawnChances == null) spawnChances = new HashMap<>();
         }
 
-        public String getName() {
-            return name;
-        }
+        public String getName() { return name; }
+        public void setName(String n) { name = n; }
+        public String getType() { return type; }
+        public void setType(String t) { type = t; }
 
-        public void setName(String n) {
-            name = n;
-        }
-
-        public String getType() {
-            return type;
-        }
-
-        public void setType(String t) {
-            type = t;
-        }
-
-        public ArrayList<Integer> getAllowedTileTypes() {
-            return allowedTileTypes;
-        }
-
+        public ArrayList<Integer> getAllowedTileTypes() { return allowedTileTypes; }
         public void setAllowedTileTypes(List<Integer> t) {
             if (t != null) {
                 allowedTileTypes.clear();
@@ -715,10 +692,7 @@ public class BiomeManager {
             }
         }
 
-        public HashMap<Integer, Integer> getTileDistribution() {
-            return tileDistribution;
-        }
-
+        public HashMap<Integer, Integer> getTileDistribution() { return tileDistribution; }
         public void setTileDistribution(Map<Integer, Integer> dist) {
             if (dist != null) {
                 tileDistribution.clear();
@@ -726,10 +700,7 @@ public class BiomeManager {
             }
         }
 
-        public HashMap<Integer, Integer> getTransitionTileDistribution() {
-            return transitionTileDistribution;
-        }
-
+        public HashMap<Integer, Integer> getTransitionTileDistribution() { return transitionTileDistribution; }
         public void setTransitionTileDistribution(Map<Integer, Integer> dist) {
             if (dist != null) {
                 transitionTileDistribution.clear();
@@ -737,67 +708,50 @@ public class BiomeManager {
             }
         }
 
-        public List<String> getSpawnableObjects() {
-            return spawnableObjects;
-        }
+        public List<String> getSpawnableObjects() { return spawnableObjects; }
+        public void setSpawnableObjects(List<String> s) { spawnableObjects = s; }
 
-        public void setSpawnableObjects(List<String> s) {
-            spawnableObjects = s;
-        }
-
-        public Map<String, Double> getSpawnChances() {
-            return spawnChances;
-        }
-
-        public void setSpawnChances(Map<String, Double> c) {
-            spawnChances = c;
-        }
+        public Map<String, Double> getSpawnChances() { return spawnChances; }
+        public void setSpawnChances(Map<String, Double> c) { spawnChances = c; }
     }
 
     private static class BiomeClassifier {
-
-        /**
-         * Enhanced biome classification with better thresholds for expansive biomes
-         */
-        public static BiomeType determineBiomeType(double temperature, double moisture, double altitude, long detailSeed, long siteDetail) {
-            double adjustedTemp = temperature - (altitude * 0.3f); // Was 0.4f
+        public static BiomeType determineBiomeType(double temperature, double moisture, double altitude,
+                                                   long detailSeed, long siteDetail) {
+            double adjustedTemp = temperature - (altitude * 0.25f);
             adjustedTemp = Math.min(Math.max(0, adjustedTemp), 1);
 
             double t = adjustedTemp;
             double m = moisture;
-            if (t < 0.2) { // Was 0.15
-                if (m < 0.35) return BiomeType.HAUNTED; // Expanded haunted range
-                return BiomeType.SNOW;
-            }
-            if (t < 0.35) { // Was 0.3
-                if (m < 0.25 && altitude > 0.5) return BiomeType.HAUNTED;
-                if (m > 0.6) return BiomeType.SNOW; // Cold and wet = snow
-                return BiomeType.PLAINS; // Cold temperate
-            }
-            if (t > 0.7) { // Was 0.75
-                if (m > 0.6) return BiomeType.RAIN_FOREST;
-                if (m < 0.35) return BiomeType.DESERT; // Expanded desert range
-                return BiomeType.PLAINS;
-            }
-            if (m > 0.65) { // Wet temperate
-                if (t > 0.55) return BiomeType.RAIN_FOREST;
-                return BiomeType.FOREST;
-            } else if (m > 0.35) { // Moderate moisture
-                double detailNoise = OpenSimplex2.noise2(siteDetail ^ detailSeed, t * 8, m * 8);
 
-                if (detailNoise > 0.6 && altitude < 0.5 && t > 0.45) {
-                    return BiomeType.CHERRY_GROVE; // Cherry groves in warm, low areas
-                }
-                if (detailNoise < -0.5 && t < 0.45) {
-                    return BiomeType.HAUNTED; // Haunted forests in cooler areas
-                }
-                if (detailNoise > 0.3 || detailNoise < -0.3) {
+            if (t < 0.25) { // Cold
+                if (m < 0.3) return BiomeType.HAUNTED;
+                if (m > 0.65) return BiomeType.SNOW;
+                if (altitude > 0.6) return BiomeType.SNOW;
+                return BiomeType.PLAINS;
+            } else if (t < 0.45) { // Cool
+                if (m < 0.25 && altitude > 0.5) return BiomeType.HAUNTED;
+                if (m > 0.7) return BiomeType.FOREST;
+                if (m > 0.5) {
+                    double variety = OpenSimplex2.noise2(siteDetail, t * 5, m * 5);
+                    if (variety > 0.5) return BiomeType.CHERRY_GROVE;
                     return BiomeType.FOREST;
                 }
                 return BiomeType.PLAINS;
-            } else { // Dry temperate
-                if (altitude > 0.7) return BiomeType.RUINS; // High dry areas are ruins
-                if (t > 0.6) return BiomeType.DESERT; // Warm and dry
+            } else if (t < 0.65) { // Warm
+                if (m > 0.7) return BiomeType.RAIN_FOREST;
+                if (m > 0.45) {
+                    double variety = OpenSimplex2.noise2(siteDetail ^ detailSeed, t * 6, m * 6);
+                    if (variety > 0.6) return BiomeType.CHERRY_GROVE;
+                    if (variety < -0.6) return BiomeType.HAUNTED;
+                    return BiomeType.FOREST;
+                }
+                if (m < 0.3) return BiomeType.DESERT;
+                return BiomeType.PLAINS;
+            } else { // Hot
+                if (m > 0.65) return BiomeType.RAIN_FOREST;
+                if (m < 0.4) return BiomeType.DESERT;
+                if (altitude > 0.7) return BiomeType.RUINS;
                 return BiomeType.PLAINS;
             }
         }

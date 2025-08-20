@@ -1,7 +1,10 @@
 package io.github.pokemeetup.multiplayer;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.g2d.*;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.context.GameContext;
@@ -18,10 +21,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class OtherPlayer implements Positionable {
 
+
+    private static final float OTHER_PLAYER_WALK_DURATION = 0.24f;  // Was 0.32f
+    private static final float OTHER_PLAYER_RUN_DURATION = 0.14f;
     @Override
     public boolean wasOnWater() {
         return wasOnWater;
     }
+
     private float animationSpeedMultiplier = 0.75f;
     private float movementProgress;
     private float animationTime = 0f;
@@ -48,6 +55,7 @@ public class OtherPlayer implements Positionable {
             this.waterSoundTimer -= delta;
         }
     }
+
     private boolean wasOnWater = false;
     private float waterSoundTimer = 0f;
     private static final float ANIMATION_SPEED_MULTIPLIER = 0.75f;
@@ -69,6 +77,7 @@ public class OtherPlayer implements Positionable {
         this.position = new Vector2(x, y);
         this.startPosition.set(x, y);
         this.targetPosition.set(x, y);
+        this.serverPosition = new Vector2(x, y); // Initialize server position to the start
         this.inventory = new Inventory();
         this.direction = "down";
         this.movementProgress = 1f; // Start as "finished"
@@ -80,67 +89,110 @@ public class OtherPlayer implements Positionable {
         prevTileX = pixelToTileX(position.x);
         prevTileY = pixelToTileY(position.y);
     }
-
+    private final Vector2 serverPosition; // The authoritative position from the server
+    private String serverDirection;
+    private boolean serverIsMoving;
+    private boolean serverWantsToRun;
     public void updateFromNetwork(NetworkProtocol.PlayerUpdate update) {
         synchronized (positionLock) {
             if (update == null) return;
 
-            if (!targetPosition.epsilonEquals(update.x, update.y, 0.1f)) {
-                this.startPosition.set(this.position); // Start lerp from current position
-                this.targetPosition.set(update.x, update.y);
-                this.movementProgress = 0f; // Reset interpolation progress
-            }
+            // Store the server's authoritative state
+            this.serverPosition.set(update.x, update.y);
+            this.serverDirection = update.direction;
+            this.serverIsMoving = update.isMoving;
+            this.serverWantsToRun = update.wantsToRun;
 
-            this.direction = update.direction;
-            this.isMoving.set(update.isMoving);
-            this.wantsToRun = update.wantsToRun;
-
+            // Update character type if it has changed
             if (update.characterType != null && !update.characterType.equalsIgnoreCase(animations.getCharacterType())) {
                 animations.dispose();
                 this.animations = new PlayerAnimations(update.characterType);
             }
+
+            // SOLUTION: Start a new interpolation if the server position is new
+            if (targetPosition.dst(serverPosition) > 0.1f) { // Use a small threshold to prevent jitter
+                startPosition.set(position); // Start from the current visual position
+                targetPosition.set(serverPosition); // The new goal is the server position
+                movementProgress = 0f; // Reset the interpolation timer
+            }
+
+            // Update state flags
+            this.direction = serverDirection;
+            this.isMoving.set(serverIsMoving);
+            this.wantsToRun = serverWantsToRun;
         }
     }
 
-    private float smoothstep(float x) {
-        x = MathUtils.clamp(x, 0f, 1f);
-        return x * x * (3 - 2 * x);
+    private float smoothStep(float t) {
+        t = MathUtils.clamp(t, 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
     private int pixelToTileX(float pixelX) {
         return (int) Math.floor(pixelX / World.TILE_SIZE);
     }
 
+    private float enhancedSmoothstep(float x) {
+        x = MathUtils.clamp(x, 0f, 1f);
+        // Smoother curve with better acceleration
+        return x * x * x * (x * (x * 6 - 15) + 10);
+    }
     private int pixelToTileY(float pixelY) {
         return (int) Math.floor(pixelY / World.TILE_SIZE);
     }
 
-    // [FIX] The update logic is now cleaner and focuses only on interpolation.
+    private float animationCycleTime = 0f;
+
     public void update(float deltaTime) {
         synchronized (positionLock) {
-            // Determine move duration based on running state
-            float moveDuration = wantsToRun
-                ? PlayerAnimations.SLOW_RUN_ANIMATION_DURATION
-                : PlayerAnimations.SLOW_WALK_ANIMATION_DURATION;
+            float moveDuration = wantsToRun ? OTHER_PLAYER_RUN_DURATION : OTHER_PLAYER_WALK_DURATION;
 
-            // Only interpolate if progress is not complete
+            // Only interpolate if we haven't reached target (KEEP SAME)
             if (movementProgress < 1.0f) {
                 movementProgress = Math.min(1f, movementProgress + deltaTime / moveDuration);
-                float smoothProgress = smoothstep(movementProgress);
+
+                // Use same smoothing as Player
+                float smoothProgress = smoothStep(movementProgress);
                 position.x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);
                 position.y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothProgress);
 
                 if (movementProgress >= 1.0f) {
-                    position.set(targetPosition); // Snap to final position
+                    position.set(targetPosition);
+                    animationCycleTime = 0f; // Reset for next movement
+
+                    // Check if we need to continue interpolating to server position
+                    if (targetPosition.dst(serverPosition) > 2f) {
+                        startPosition.set(position);
+                        targetPosition.set(serverPosition);
+                        movementProgress = 0f;
+                    }
                 }
             }
 
-            // Update animation time only when the server says we are moving
+            // Sync animation to movement progress
             if (isMoving.get()) {
-                animationTime += deltaTime * animationSpeedMultiplier;
+                // Calculate animation timing
+                float frameCount = 4f;
+                float frameDuration = wantsToRun ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
+                float fullCycleDuration = frameCount * frameDuration;
+
+                // Free-running animation with speed you like
+                float animSpeed = wantsToRun ? 0.7f : 0.6f;
+                animationCycleTime += deltaTime * animSpeed;
+
+                // Target animation time based on movement progress
+                float targetAnimTime = movementProgress * fullCycleDuration;
+
+                // Blend for smooth animation that completes per tile
+                animationTime = MathUtils.lerp(animationCycleTime, targetAnimTime, 0.3f);
             } else {
-                animationTime = 0f; // Reset when not moving
+                // Smooth animation decay when stopping
+                if (animationTime > 0) {
+                    animationTime = Math.max(0, animationTime - deltaTime * 2f);
+                }
+                animationCycleTime = 0f;
             }
+
 
             int currentTileX = pixelToTileX(position.x);
             int currentTileY = pixelToTileY(position.y);
@@ -166,26 +218,27 @@ public class OtherPlayer implements Positionable {
     public void render(SpriteBatch batch) {
         TextureRegion currentFrame;
         synchronized (positionLock) {
+            // Get current frame based on state
             if (animations.isChopping()) {
                 currentFrame = animations.getCurrentFrame(direction, false, false, animationTime);
-            }
-            else if (animations.isPunching()) {
+            } else if (animations.isPunching()) {
                 currentFrame = animations.getCurrentFrame(direction, false, false, animationTime);
-            }
-            else if (isMoving.get()) {
+            } else if (isMoving.get()) {
                 currentFrame = animations.getCurrentFrame(direction, true, isWantsToRun(), animationTime);
-            }
-            else {
+            } else {
                 currentFrame = animations.getStandingFrame(direction);
             }
+
             if (currentFrame == null) {
                 GameLogger.error("OtherPlayer " + username + " has null currentFrame");
                 return;
             }
+
             float regionW = currentFrame.getRegionWidth();
             float regionH = currentFrame.getRegionHeight();
-            float drawX = position.x - (regionW / 2f);
+            float drawX = position.x - (regionW / 2f);  // Use position directly, not renderPosition
             float drawY = position.y;
+
             batch.draw(currentFrame, drawX, drawY, regionW, regionH);
             renderUsername(batch, drawX, regionW, drawY, regionH);
         }
@@ -236,6 +289,7 @@ public class OtherPlayer implements Positionable {
                 break;
         }
     }
+
     public Vector2 getPosition() {
         synchronized (positionLock) {
             return new Vector2(position);

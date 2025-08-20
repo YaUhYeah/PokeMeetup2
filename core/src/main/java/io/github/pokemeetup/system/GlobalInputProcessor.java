@@ -2,6 +2,8 @@ package io.github.pokemeetup.system;
 
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
+import io.github.pokemeetup.chat.ChatSystem;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.utils.GameLogger;
 
 public class GlobalInputProcessor extends InputAdapter {
@@ -13,12 +15,31 @@ public class GlobalInputProcessor extends InputAdapter {
 
     @Override
     public boolean keyDown(int keycode) {
+        ChatSystem chat = GameContext.get().getChatSystem();
         InputManager.UIState currentState = inputManager.getCurrentState();
+        if (chat != null && chat.isActive() && keycode == Input.Keys.ESCAPE) {
+            chat.deactivateChat();
+            return true;
+        }
+        if ((currentState == InputManager.UIState.NORMAL || currentState == InputManager.UIState.BUILD_MODE)) {
+            if (chat != null && !chat.isActive()) {
+                if (keycode == Input.Keys.T) {
+                    // Activate chat directly from the stable global processor
+                    chat.activateChat("");
+                    return true; // Event handled
+                }
+                if (keycode == Input.Keys.SLASH) {
+                    chat.activateChat("/");
+                    return true; // Event handled
+                }
+            }
+        }
         if (keycode == Input.Keys.ESCAPE) {
             if (currentState != InputManager.UIState.MENU) {
                 inputManager.setUIState(InputManager.UIState.MENU);
             } else {
-                inputManager.setUIState(InputManager.UIState.NORMAL);
+                // MODIFICATION: Instead of forcing NORMAL, return to the previous state.
+                inputManager.returnToPreviousState();
             }
             return true; // Event handled
         }

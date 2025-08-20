@@ -1,6 +1,5 @@
 package io.github.pokemeetup.system.gameplay.overworld;
 
-import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.BiomeManager;
@@ -139,11 +138,6 @@ public class UnifiedWorldGenerator {
         // After setting base tiles, perform cleanup and apply autotiling for shorelines.
         removeInlandOceanPockets(tiles);
         chunk.setTileData(tiles);
-        try {
-            new AutoTileSystem().applyShorelineAutotiling(chunk,  GameContext.get().getWorld());
-        } catch (Exception e) {
-            GameLogger.error("Error during autotiling: " + e.getMessage());
-        }
 
         // Mark the chunk as "dirty" to ensure it gets saved.
         chunk.setDirty(true);

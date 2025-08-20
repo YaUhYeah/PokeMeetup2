@@ -345,15 +345,26 @@ public class AudioManager {
     }
 
     public void setMusicEnabled(boolean musicEnabled) {
+        // Store the previous state before updating
+        boolean wasEnabled = this.musicEnabled;
         this.musicEnabled = musicEnabled;
+
         if (!musicEnabled) {
-            stopAllMusic();
-        } else {
-            if (playerCurrentBiome == null) {
-                playMenuMusic();
-            } else {
-                playNextBiomeSong();
+            // If music is being disabled, only stop it if it was playing before.
+            if (wasEnabled) {
+                stopAllMusic();
             }
+        } else {
+            // If music is being enabled, only start playing if it was previously disabled.
+            if (!wasEnabled) {
+                if (playerCurrentBiome == null) {
+                    playMenuMusic();
+                } else {
+                    playNextBiomeSong();
+                }
+            }
+            // If music was already enabled (wasEnabled == true), do nothing.
+            // This prevents the save button from restarting the music.
         }
     }
 

@@ -1,14 +1,22 @@
+// src/main/java/org/discord/DeploymentHelper.java
+
 package org.discord;
 
 import com.badlogic.gdx.utils.Json;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 public class DeploymentHelper {
@@ -17,25 +25,32 @@ public class DeploymentHelper {
         createDirectory(deploymentDir);
         createDirectory(Paths.get(deploymentDir.toString(), "config"));
         createDirectory(Paths.get(deploymentDir.toString(), "plugins"));
-        createDirectory(Paths.get(deploymentDir.toString(), "worlds"));
-        createDirectory(Paths.get(deploymentDir.toString(), "server/data"));
+
+        // Consolidated data directory
+        Path dataDir = Paths.get(deploymentDir.toString(), "data");
+        createDirectory(dataDir);
+        createDirectory(dataDir.resolve("worlds"));
+
         Path serverJar;
         if (isRunningFromJar()) {
             serverJar = getCurrentJarPath();
             System.out.println("Running from JAR: " + serverJar);
         } else {
-            serverJar = Paths.get("server.jar");
+            serverJar = Paths.get("build/libs/server.jar"); // Adjusted path for dev environment
             System.out.println("Running in development mode, looking for: " + serverJar);
         }
 
         if (Files.exists(serverJar)) {
-            Files.copy(serverJar, Paths.get(deploymentDir.toString(), "server.jar"));
+            Files.copy(serverJar, Paths.get(deploymentDir.toString(), "server.jar"), StandardCopyOption.REPLACE_EXISTING);
             System.out.println("Copied server JAR successfully");
         } else {
-            System.out.println("Warning: Server JAR not found at: " + serverJar);
+            System.out.println("Warning: Server JAR not found at: " + serverJar.toAbsolutePath());
         }
+
         createDefaultConfig(deploymentDir);
+        copyBiomeDataFile(deploymentDir); // Fix for biome loading issue
         createStartScripts(deploymentDir);
+
         Path startSh = Paths.get(deploymentDir.toString(), "start.sh");
         if (Files.exists(startSh)) {
             startSh.toFile().setExecutable(true);
@@ -45,6 +60,57 @@ public class DeploymentHelper {
         System.out.println("Server deployment completed successfully");
     }
 
+    private static void copyBiomeDataFile(Path deploymentDir) throws IOException {
+        Path dataDir = deploymentDir.resolve("Data");
+        if (!Files.exists(dataDir)) {
+            Files.createDirectories(dataDir);
+        }
+        Path targetFile = dataDir.resolve("biomes.json");
+
+        // This is the path we expect inside the JAR, based on your screenshot showing "assets" as the resource root.
+        String resourcePath = "/Data/biomes.json";
+        System.out.println("--- Biome Loading Diagnostic ---");
+        System.out.println("Attempting to copy resource from JAR path: " + resourcePath);
+
+        InputStream is = null;
+
+        // Attempt 1: Standard ClassLoader
+        System.out.println("Attempt 1: Using DeploymentHelper.class.getResourceAsStream...");
+        is = DeploymentHelper.class.getResourceAsStream(resourcePath);
+
+        if (is == null) {
+            System.out.println("Attempt 1 FAILED. Trying Thread's ContextClassLoader...");
+            // Attempt 2: Thread Context ClassLoader (often more reliable in complex environments)
+            // Note: Context ClassLoader does not want the leading slash.
+            String contextPath = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
+            is = Thread.currentThread().getContextClassLoader().getResourceAsStream(contextPath);
+            if (is != null) {
+                System.out.println("Attempt 2 SUCCEEDED.");
+            }
+        } else {
+            System.out.println("Attempt 1 SUCCEEDED.");
+        }
+
+        if (is == null) {
+            String errorMessage = String.format(
+                "FATAL: Biome file could not be found inside the JAR using multiple methods.%n" +
+                    "Path tried: '%s'.%n" +
+                    "This confirms the file is NOT being packaged correctly into server.jar.%n" +
+                    "Please run './gradlew checkCoreResources' and verify its output.",
+                resourcePath
+            );
+            throw new IOException(errorMessage);
+        }
+
+        try (InputStream finalIs = is) {
+            Files.copy(finalIs, targetFile, StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("Successfully copied biomes.json to: " + targetFile.toAbsolutePath());
+        } catch (IOException e) {
+            throw new IOException("Failed to copy biomes.json from JAR to filesystem: " + e.getMessage(), e);
+        } finally {
+            System.out.println("--- End Biome Loading Diagnostic ---");
+        }
+    }
     private static boolean isRunningFromJar() {
         String className = DeploymentHelper.class.getName().replace('.', '/');
         String classJar = DeploymentHelper.class.getResource("/" + className + ".class").toString();
@@ -164,5 +230,4 @@ public class DeploymentHelper {
         Path readmeFile = Paths.get(deploymentDir.toString(), "README.md");
         Files.write(readmeFile, Arrays.asList(readme.split("\n")), StandardCharsets.UTF_8);
     }
-
 }

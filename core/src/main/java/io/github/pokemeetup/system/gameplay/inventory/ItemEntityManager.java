@@ -6,7 +6,6 @@ import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
-import io.github.pokemeetup.utils.GameLogger;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,18 +40,7 @@ public class ItemEntityManager {
         }
     }
 
-    public void spawnItemEntity(ItemData itemData, float x, float y) {
-        ItemEntity entity = new ItemEntity(itemData, x, y);
-        itemEntities.put(entity.getEntityId(), entity);
 
-        if (GameContext.get().isMultiplayer()) {
-            NetworkProtocol.ItemDrop drop = new NetworkProtocol.ItemDrop();
-            drop.itemData = itemData;
-            drop.x = x;
-            drop.y = y;
-            GameContext.get().getGameClient().sendItemDrop(itemData, new Vector2(x, y));
-        }
-    }
 
     public void spawnItemsFromChest(ChestData chest, float x, float y) {
         if (chest == null || chest.items == null) return;
@@ -67,16 +55,17 @@ public class ItemEntityManager {
         }
     }
 
-
-    public void removeItemEntity(UUID entityId) {
-        ItemEntity entity = itemEntities.get(entityId);
-        if (entity != null && !entity.canBePickedUp()) {
-            return;
-        }
+    public ItemEntity spawnItemEntity(ItemData itemData, float x, float y) {
+        ItemEntity entity = new ItemEntity(itemData, x, y);
+        itemEntities.put(entity.getEntityId(), entity);
+        return entity;
+    }
+    public ItemEntity removeItemEntity(UUID entityId) {
+        ItemEntity entity = itemEntities.remove(entityId);
         if (entity != null) {
             entity.markPickedUp();
-            itemEntities.remove(entityId);
         }
+        return entity;
     }
 
     public void handleRemoteItemDrop(NetworkProtocol.ItemDrop drop) {

@@ -1,11 +1,9 @@
 package io.github.pokemeetup.chat.commands;
 
-import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.chat.ChatSystem;
 import io.github.pokemeetup.chat.Command;
 import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.client.GameClient;
-import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.GameLogger;
@@ -13,43 +11,28 @@ import io.github.pokemeetup.utils.GameLogger;
 public class TeleportPositionCommand implements Command {
 
     @Override
-    public String getName() {
-        return "tp";
-    }
+    public String getName() { return "tp"; }
 
     @Override
-    public String[] getAliases() {
-        return new String[0];
-    }
+    public String[] getAliases() { return new String[0]; }
 
     @Override
-    public String getDescription() {
-        return "Teleports user to specified location.";
-    }
+    public String getDescription() { return "Teleports user to specified location."; }
 
     @Override
-    public String getUsage() {
-        return "tp <x> <y>";
-    }
+    public String getUsage() { return "/tp <x> <y>"; }
 
     @Override
-    public boolean isMultiplayerOnly() {
-        return false;
-    }
+    public boolean isMultiplayerOnly() { return false; }
 
     @Override
     public void execute(String args, GameClient gameClient, ChatSystem chatSystem) {
         String[] argsArray = args.split(" ");
         try {
-            GameLogger.info("Executing tp command...");
             Player player = GameContext.get().getPlayer();
-            if (player == null) {
-                chatSystem.addSystemMessage("Error: Player not found");
-                return;
-            }
             World currentWorld = GameContext.get().getWorld();
-            if (currentWorld == null) {
-                chatSystem.addSystemMessage("Error: World not found");
+            if (player == null || currentWorld == null) {
+                chatSystem.addSystemMessage("Error: Player or World not found.");
                 return;
             }
             if (argsArray.length != 2) {
@@ -59,42 +42,21 @@ public class TeleportPositionCommand implements Command {
             int tileX = Integer.parseInt(argsArray[0]);
             int tileY = Integer.parseInt(argsArray[1]);
             if (!currentWorld.isWithinWorldBounds(tileX, tileY)) {
-                chatSystem.addSystemMessage("Error: Teleport location (" + tileX + ", " + tileY + ") is outside the world border.");
+                chatSystem.addSystemMessage("Error: Teleport location is outside the world border.");
                 return;
             }
 
-            float pixelX = tileX * World.TILE_SIZE;
-            float pixelY = tileY * World.TILE_SIZE;
-            player.getPosition().set(pixelX, pixelY);
-            player.setTileX(tileX);
-            player.setTileY(tileY);
-            player.setX(pixelX);
-            player.setY(pixelY);
-            player.setRenderPosition(new Vector2(pixelX, pixelY));
-            player.setMoving(false);
-            currentWorld.clearChunks();
-            currentWorld.loadChunksAroundPlayer();
-            if (GameContext.get().isMultiplayer()) {
-                gameClient.sendPlayerUpdate();
-                gameClient.savePlayerState(player.getPlayerData());
-            }
-            if (GameContext.get().isMultiplayer()) {
-                NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
-                update.username = player.getUsername();
-                update.x = pixelX;
-                update.y = pixelY;
-                update.direction = player.getDirection();
-                update.isMoving = false;
-                update.timestamp = System.currentTimeMillis();
-                gameClient.getClient().sendTCP(update);
-                chatSystem.addSystemMessage("Teleported and updated position on server.");
-            } else {
-                chatSystem.addSystemMessage("Teleported successfully.");
-            }
+            // ✅ **REFACTOR:** Centralized teleport logic is now handled by the Player object.
+            player.teleportTo(tileX, tileY);
 
+            chatSystem.addSystemMessage("Teleported successfully to (" + tileX + ", " + tileY + ").");
+            GameLogger.info("Player teleported via /tp command.");
+
+        } catch (NumberFormatException e) {
+            chatSystem.addSystemMessage("Invalid coordinates. Use: " + getUsage());
         } catch (Exception e) {
             GameLogger.error("Error executing tp command: " + e.getMessage());
-            chatSystem.addSystemMessage("Error: " + e.getMessage());
+            chatSystem.addSystemMessage("An error occurred during teleport.");
         }
     }
 }

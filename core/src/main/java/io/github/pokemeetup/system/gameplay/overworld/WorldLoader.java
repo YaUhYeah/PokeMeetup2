@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class WorldLoader {
 
     private final ExecutorService executorService;
-    private final World world;
     private final BiomeManager biomeManager;
     private final long worldSeed;
 
@@ -28,8 +27,7 @@ public class WorldLoader {
     private final AtomicInteger chunksLoaded = new AtomicInteger(0);
     private volatile boolean isLoading = false;
 
-    public WorldLoader(World world, BiomeManager biomeManager, long worldSeed) {
-        this.world = world;
+    public WorldLoader(BiomeManager biomeManager, long worldSeed) {
         this.biomeManager = biomeManager;
         this.worldSeed = worldSeed;
         // Use a thread pool that matches the number of available processors for efficiency
@@ -38,11 +36,6 @@ public class WorldLoader {
         GameLogger.info("WorldLoader initialized with " + numThreads + " threads.");
     }
 
-    /**
-     * Starts the initial, asynchronous loading of chunks around the player.
-     * @param player The player to load chunks around.
-     * @param radius The radius of chunks (in chunks) to load.
-     */
     public void startInitialLoad(Player player, int radius) {
         if (isLoading) {
             GameLogger.info("Initial load is already in progress.");
@@ -65,18 +58,18 @@ public class WorldLoader {
         }
         totalChunksToLoad.set(chunksToLoad.size());
 
-        // Submit each chunk generation task to the thread pool
         for (Vector2 pos : chunksToLoad) {
             Callable<Chunk> task = () -> {
-                // This is the heavy work, now done on a background thread
-                Chunk chunk = UnifiedWorldGenerator.generateChunk((int) pos.x, (int) pos.y, worldSeed, biomeManager);
+                // Generate chunk but DON'T apply autotiling here
+                Chunk chunk = UnifiedWorldGenerator.generateChunkForServer(
+                    (int) pos.x, (int) pos.y, worldSeed, biomeManager
+                );
                 chunksLoaded.incrementAndGet();
                 return chunk;
             };
             chunkFutures.add(executorService.submit(task));
         }
     }
-
     /**
      * Checks if the initial world load is complete.
      * @return true if all chunks have been generated, false otherwise.

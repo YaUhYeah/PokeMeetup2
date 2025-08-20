@@ -8,7 +8,11 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.scenes.scene2d.*;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.InputListener;
+import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
+import com.badlogic.gdx.scenes.scene2d.actions.Actions;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable;
@@ -75,7 +79,7 @@ public class ChatSystem extends Table {
 
         createChatUI();
         setupChatHandler();
-        setupInputHandling();
+        installGlobalOpenCloseBindings();
     }
 
     @Override
@@ -186,31 +190,79 @@ public class ChatSystem extends Table {
         Gdx.app.postRunnable(() -> addMessageToChat(message));
     }
 
-    public void activateChat() {
+
+    // ChatSystem.java  (add this helper somewhere in the class)
+    private void refreshInputProcessors() {
+        try {
+            InputManager im = GameContext.get().getGameScreen() != null
+                ? GameContext.get().getGameScreen().getInputManager()
+                : null;
+            if (im != null) {
+                im.updateInputProcessors();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    // ChatSystem.java  (replace activateChat)
+    public void activateChat(String initialText) {
         isActive = true;
+        chatWindow.setTouchable(Touchable.enabled);
         inputField.setVisible(true);
-        inputField.setText("");
+        inputField.setText(initialText != null ? initialText : "");
+        inputField.setCursorPosition(inputField.getText().length());
         messageHistoryIndex = messageHistory.size();
         inactiveTimer = 0;
         chatWindow.getColor().a = 1f;
-        GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.CHAT);
 
-        Gdx.app.postRunnable(() -> {
-            stage.setKeyboardFocus(inputField);
-            if (Gdx.app.getType() == Application.ApplicationType.Android) {
-                Gdx.input.setOnscreenKeyboardVisible(true);
+        // Enter CHAT state and refresh processors so the Stage owns keyboard
+        GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.CHAT);
+        refreshInputProcessors();
+
+        // Queue focus on next stage pass
+        stage.addAction(Actions.run(() -> stage.setKeyboardFocus(inputField)));
+
+        if (Gdx.app.getType() == Application.ApplicationType.Android) {
+            Gdx.app.postRunnable(() -> Gdx.input.setOnscreenKeyboardVisible(true));
+        }
+    }// ChatSystem.java  (replace deactivateChat)
+
+    public void deactivateChat() {
+        isActive = false;
+        chatWindow.setTouchable(Touchable.disabled);
+        inputField.setVisible(false);
+
+        // Release focus safely on the stage tick
+        stage.addAction(Actions.run(() -> stage.setKeyboardFocus(null)));
+
+        if (Gdx.app.getType() == Application.ApplicationType.Android) {
+            Gdx.input.setOnscreenKeyboardVisible(false);
+        }
+
+        // Return to NORMAL state and refresh processors so gameplay handlers get keys again
+        GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.NORMAL);
+        refreshInputProcessors();
+    }
+    private void installGlobalOpenCloseBindings() {
+        stage.getRoot().addListener(new InputListener() {
+            @Override public boolean keyDown(InputEvent event, int keycode) {
+                InputManager.UIState st = GameContext.get().getGameScreen().getInputManager().getCurrentState();
+
+                if (isActive && keycode == Input.Keys.ESCAPE) { // close chat
+                    deactivateChat(); return true;
+                }
+                if (!isActive && (st == InputManager.UIState.NORMAL || st == InputManager.UIState.BUILD_MODE)) {
+                    if (keycode == Input.Keys.T) { activateChat(""); return true; }
+                    if (keycode == Input.Keys.SLASH) { activateChat("/"); return true; }
+                }
+                return false;
             }
         });
     }
 
-    public void deactivateChat() {
-        isActive = false;
-        inputField.setVisible(false);
-        stage.setKeyboardFocus(null);
-        if (Gdx.app.getType() == Application.ApplicationType.Android) {
-            Gdx.input.setOnscreenKeyboardVisible(false);
-        }
-        GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.NORMAL);
+
+    public void activateChat() {
+        activateChat(""); // This now calls the new method with an empty string
     }
 
 
@@ -235,6 +287,7 @@ public class ChatSystem extends Table {
             return;
         }
         chatWindow = new Table();
+        chatWindow.setTouchable(Touchable.disabled);
         chatWindow.top();
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(WINDOW_BACKGROUND);
@@ -367,28 +420,6 @@ public class ChatSystem extends Table {
         inactiveTimer = 0;
     }
 
-    private void setupInputHandling() {
-        stage.addListener(new InputListener() {
-            @Override
-            public boolean keyDown(InputEvent event, int keycode) {
-                if (!isActive && (keycode == Input.Keys.T || keycode == Input.Keys.SLASH)) {
-                    activateChat();
-                    if (keycode == Input.Keys.SLASH) {
-                        inputField.setText("/");
-                        inputField.setCursorPosition(1);
-                    }
-                    event.stop();
-                    return true;
-                }
-                if (isActive && keycode == Input.Keys.ESCAPE) {
-                    deactivateChat();
-                    event.stop();
-                    return true;
-                }
-                return false;
-            }
-        });
-    }
 
     private static class ChatMessage {
         public final String sender;

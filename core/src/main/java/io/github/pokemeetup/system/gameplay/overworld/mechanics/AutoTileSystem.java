@@ -29,7 +29,7 @@ public class AutoTileSystem {
                 if (world.getTileTypeAt(worldX, worldY) != TileType.WATER && hasWaterNeighbor(world, worldX, worldY)) {
                     byte mask = 0;
                     // Edge mask (lower 4 bits)
-                    mask |= computeEdgeMask(world, worldX, worldY);
+                    mask |= (byte) computeEdgeMask(world, worldX, worldY);
 
                     // Inner corner mask (upper 4 bits)
                     if (isInnerCornerTopLeft(world, worldX, worldY)) mask |= 0x10;
@@ -97,10 +97,6 @@ public class AutoTileSystem {
     }
 
 
-    private boolean isWaterSafe(int[][] t, int x, int y) {
-        if (x < 0 || y < 0 || x >= t.length || y >= t[0].length) return false;
-        return (t[x][y] == TileType.WATER);
-    }
 
 
 
@@ -118,13 +114,6 @@ public class AutoTileSystem {
             super(base);
             this.base32 = base;
         }
-
-        public void addMiniOverlay(TextureRegion mini, int offX, int offY) {
-            overlays.add(new MiniOverlay(mini, offX, offY));
-        }
-
-        public TextureRegion getBase32() {return base32;}
-        public List<MiniOverlay> getOverlays() {return overlays;}
     }
 
     /** A single 16×16 corner overlay with a local offset. */
