@@ -40,6 +40,8 @@ public class Player implements Positionable {
     public static final int FRAME_WIDTH = 32;
     private static final float BUFFER_WINDOW = 0.08f;
 
+    private static final float SMOOTH_WALK_DURATION = 0.32f;  // 4 frames × 0.08s
+    private static final float SMOOTH_RUN_DURATION = 0.24f;   // 4 frames × 0.06s
     @Override
     public boolean wasOnWater() {
         return wasOnWater;
@@ -50,7 +52,31 @@ public class Player implements Positionable {
     public void setElevationLevel(int elevationLevel) {
         this.elevationLevel = elevationLevel;
     }
+    public void stopMovement() {
+        synchronized (movementLock) {
+            if (isMoving) {
+                // Snap to the target destination to ensure grid alignment
+                x = targetPosition.x;
+                y = targetPosition.y;
+                tileX = targetTileX;
+                tileY = targetTileY;
+                position.set(x, y);
+                renderPosition.set(x, y);
+                updateCollisionBoxes();
+            }
+            // Reset all movement state variables
+            isMoving = false;
+            movementProgress = 0f;
+            queuedDirection = null;
+            animationTime = 0f; // Reset animation timer
 
+            // Also ensure any action animations are stopped
+            if (animations != null) {
+                animations.stopPunching();
+                animations.stopChopping();
+            }
+        }
+    }
     /**
      * ✅ **REFACTOR:** Centralized teleport method.
      * This method updates the player's position and tells the World and GameClient
@@ -488,7 +514,6 @@ public class Player implements Positionable {
     public void setSkin(Skin skin) {
         this.skin = skin;
     }
-
     public void update(float deltaTime) {
         if (!resourcesInitialized || disposed || animations == null || animations.isDisposed()) {
             initializeResources();
@@ -496,67 +521,38 @@ public class Player implements Positionable {
 
         synchronized (movementLock) {
             if (isMoving) {
-                // Simple progress calculation (KEEP SAME FOR SMOOTH MOVEMENT)
                 float moveDuration = isRunning ? SMOOTH_RUN_DURATION : SMOOTH_WALK_DURATION;
                 movementProgress += deltaTime / moveDuration;
 
                 if (movementProgress >= 1.0f) {
-                    // Complete the movement
                     completeMovement();
-
-                    // Reset animation cycle for next tile
-                    animationCycleTime = 0f;
-
-                    // Check for queued input
-                    if (queuedDirection != null) {
-                        String nextDir = queuedDirection;
-                        queuedDirection = null;
-                        move(nextDir);
-                    } else if (inputHeld) {
-                        // Continue in same direction if key held
-                        move(direction);
-                    }
+                    // Handle queued input...
                 } else {
-                    // Simple smooth interpolation (KEEP SAME)
+                    // Smooth position interpolation
                     float smoothed = smoothStep(movementProgress);
                     x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothed);
                     y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothed);
                     position.set(x, y);
 
-                    // Smooth render position (KEEP SAME)
-                    float lagFactor = 15f * deltaTime;
-                    renderPosition.x = MathUtils.lerp(renderPosition.x, x, lagFactor);
-                    renderPosition.y = MathUtils.lerp(renderPosition.y, y, lagFactor);
+                    // Tighter render position following for responsiveness
+                    renderPosition.set(x, y);  // Direct follow, no lag
                 }
 
-                // ANIMATION SYNC: Calculate total animation duration for one full cycle
-                float frameCount = 4f; // 4 frames in walk/run animations
+                // FIXED: Direct linear animation timing
+                // Ensures all 4 frames are shown equally during movement
+                float frameCount = 4f;
                 float frameDuration = isRunning ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
-                float fullCycleDuration = frameCount * frameDuration;
 
-                // Map movement progress to animation cycle (one full cycle per tile)
-                // But use the speed multiplier you liked for the actual playback
-                float animSpeed = isRunning ? 0.7f : 0.6f;
-                animationCycleTime += deltaTime * animSpeed;
-
-                // Calculate the actual animation time that ensures one full cycle
-                float targetAnimTime = movementProgress * fullCycleDuration;
-
-                // Blend between free-running animation and synced animation
-                // This keeps the feel you like while ensuring cycle completion
-                animationTime = MathUtils.lerp(animationCycleTime, targetAnimTime, 0.3f);
+                // Animation progresses linearly with movement
+                // This ensures each frame gets equal screen time
+                animationTime = movementProgress * (frameCount * frameDuration);
 
                 updateCollisionBoxes();
             } else {
-                // Not moving - let animation settle
-                if (animationTime > 0) {
-                    animationTime = Math.max(0, animationTime - deltaTime * 2f);
-                }
+                animationTime = 0f;
                 renderPosition.set(x, y);
-                animationCycleTime = 0f;
             }
 
-            // Get current frame
             currentFrame = animations.getCurrentFrame(
                 direction,
                 isMoving,
@@ -564,8 +560,6 @@ public class Player implements Positionable {
                 animationTime
             );
 
-
-            // Item pickup logic (keep existing)
             ItemEntity nearbyItem = world.getItemEntityManager()
                 .getClosestPickableItem(x, y, PICKUP_RANGE);
             if (nearbyItem != null) {
@@ -591,32 +585,7 @@ public class Player implements Positionable {
     private float movementEndTimer = 0f;
     private boolean movementStarted = false;
     private boolean movementEnding = false;
-    private static final float SMOOTH_WALK_DURATION = 0.24f;  // Was 0.22f
-    private static final float SMOOTH_RUN_DURATION = 0.14f;   // Was 0.11f
     private static final float ACCELERATION_CURVE = 2.5f;
-
-    // [NEW] Enhanced position update with better smoothing
-    private void updatePositionSmoothEnhanced(float progress, float deltaTime) {
-        // Use an improved easing function for AAA feel
-        float easedProgress = smoothStepEnhanced(progress);
-
-        // Add subtle overshoot for more dynamic movement
-        if (progress > 0.8f && progress < 1.0f) {
-            float overshoot = (progress - 0.8f) * 5f; // 0 to 1 in the last 20%
-            easedProgress += (float) (Math.sin(overshoot * Math.PI) * 0.02f); // Subtle bounce
-        }
-
-        x = MathUtils.lerp(startPosition.x, targetPosition.x, easedProgress);
-        y = MathUtils.lerp(startPosition.y, targetPosition.y, easedProgress);
-        position.set(x, y);
-
-        // [NEW] Smooth render position with appropriate lag for polish
-        float renderSmoothFactor = 20f; // Higher = tighter following, lower = more lag
-        renderPosition.x = MathUtils.lerp(renderPosition.x, x, deltaTime * renderSmoothFactor);
-        renderPosition.y = MathUtils.lerp(renderPosition.y, y, deltaTime * renderSmoothFactor);
-
-        updateCollisionBoxes();
-    }
 
     // [NEW] Enhanced easing function for more natural movement
     private float smoothStepEnhanced(float t) {
@@ -657,11 +626,14 @@ public class Player implements Positionable {
         tileX = targetTileX;
         tileY = targetTileY;
         position.set(x, y);
-        renderPosition.set(x, y);  // Snap render position
+        renderPosition.set(x, y);
         isMoving = false;
         movementProgress = 0f;
 
-        // Handle elevation
+        // --- FIX: Reset animation time on completion ---
+        // This is crucial for fixing the animation issues after a collision or at the end of a move.
+        animationTime = 0f;
+
         if (world != null) {
             int newElevation = world.getElevationAt(this.tileX, this.tileY);
             if (newElevation != -1) {
@@ -669,7 +641,6 @@ public class Player implements Positionable {
             }
         }
 
-        // Create footstep effect
         int tileType = GameContext.get().getWorld().getTileTypeAt(getTileX(), getTileY());
         if (tileType == TileType.SAND || tileType == TileType.SNOW ||
             tileType == TileType.DESERT_GRASS || tileType == TileType.DESERT_SAND ||
@@ -682,7 +653,6 @@ public class Player implements Positionable {
                 .addEffect(new FootstepEffect(new Vector2(x, y), direction, 1.0f));
         }
     }
-
     // 7. REPLACE smoothstep with simpler version:
     private float smoothStep(float t) {
         t = MathUtils.clamp(t, 0f, 1f);

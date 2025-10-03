@@ -295,7 +295,7 @@ public class WorldManager {
             try {
                 WorldData cached = worldCache.get(worldName);
                 if (cached != null) {
-                    GameLogger.info("Found cached world: " + worldName);
+                    GameLogger.info("Found cached world: " + worldName + " (WorldData.name = '" + cached.getName() + "')");
                     return cached;
                 }
 

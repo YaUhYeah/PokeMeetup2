@@ -83,6 +83,12 @@ public class InputManager {
         if (gameScreen.getInputHandler() != null) {
             gameScreen.getInputHandler().resetMovementFlags();
         }
+        if (currentState != UIState.NORMAL && currentState != UIState.BUILD_MODE) {
+            Player player = GameContext.get().getPlayer();
+            if (player != null) {
+                player.stopMovement();
+            }
+        }
     }
     public void hideAllUI() {
         if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {

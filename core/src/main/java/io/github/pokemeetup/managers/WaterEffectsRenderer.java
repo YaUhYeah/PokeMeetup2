@@ -97,10 +97,9 @@ public class WaterEffectsRenderer {
             int tileY = MathUtils.floor(entity.getY() / World.TILE_SIZE);
 
             float tileCenterX = tileX * World.TILE_SIZE + World.TILE_SIZE / 2f;
-            float tileBottomY = tileY * World.TILE_SIZE;
+            float effectY = tileY * World.TILE_SIZE;
 
             float effectX = tileCenterX - (effectWidth / 2f);
-            float effectY = tileBottomY;
 
             TextureRegion currentFrame = entity.isMoving() ?
                 movingAnimation.getKeyFrame(stateTime, true) :

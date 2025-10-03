@@ -63,11 +63,6 @@ public class Chunk {
         this.elevationData = new int[CHUNK_SIZE][CHUNK_SIZE]; // NEW: Initialize with default elevation
     }
 
-    // NEW: Getter for elevation data array
-    public int[][] getElevationData() {
-        return elevationData;
-    }
-
     // NEW: Setter for elevation data array
     public void setElevationData(int[][] elevationData) {
         this.elevationData = elevationData;
@@ -84,14 +79,23 @@ public class Chunk {
 
     public void addBlock(PlaceableBlock block) {
         if (block != null) {
+            PlaceableBlock existing = blocks.get(block.getPosition());
             blocks.put(block.getPosition(), block);
             isDirty = true;
+            io.github.pokemeetup.utils.GameLogger.info("Block added to chunk (" + chunkX + "," + chunkY + ") at position " + block.getPosition() + ", type: " + block.getId() + ". Total blocks: " + blocks.size() + ", replaced existing: " + (existing != null));
         }
     }
 
     public void removeBlock(Vector2 position) {
-        blocks.remove(position);
+        int sizeBefore = blocks.size();
+        PlaceableBlock removed = blocks.remove(position);
         isDirty = true;
+
+        io.github.pokemeetup.utils.GameLogger.info(
+            "Chunk (" + chunkX + "," + chunkY + ") removeBlock at " + position +
+            " - blocks before: " + sizeBefore +
+            ", blocks after: " + blocks.size() +
+            ", block was found: " + (removed != null));
     }
 
 
@@ -108,10 +112,17 @@ public class Chunk {
     }
 
     public Map<Vector2, PlaceableBlock> getBlocks() {
-        return new HashMap<>(blocks);
+        // Debug logging for chunk (-1, 1) specifically
+        if (chunkX == -1 && chunkY == 1 && !blocks.isEmpty()) {
+            io.github.pokemeetup.utils.GameLogger.info("getBlocks() called on chunk (-1,1), returning " + blocks.size() + " blocks");
+        }
+        return blocks;
     }
 
     public void setBlocks(Map<Vector2, PlaceableBlock> blocks) {
+        if (chunkX == -1 && chunkY == 1) {
+            io.github.pokemeetup.utils.GameLogger.info("setBlocks() called on chunk (-1,1), setting to " + (blocks == null ? "null" : blocks.size() + " blocks"));
+        }
         this.blocks = blocks;
     }
 
@@ -156,6 +167,7 @@ public class Chunk {
 
     public List<BlockSaveData.BlockData> getBlockDataForSave() {
         List<BlockSaveData.BlockData> blockDataList = new ArrayList<>();
+        io.github.pokemeetup.utils.GameLogger.info("getBlockDataForSave called for chunk (" + chunkX + "," + chunkY + "), blocks map size: " + blocks.size());
         for (PlaceableBlock b : blocks.values()) {
             BlockSaveData.BlockData data = new BlockSaveData.BlockData();
             data.type = b.getId();
@@ -167,6 +179,7 @@ public class Chunk {
                 data.chestData = b.getChestData();
             }
             blockDataList.add(data);
+            io.github.pokemeetup.utils.GameLogger.info("  Saving block: " + data.type + " at (" + data.x + "," + data.y + ")");
         }
         return blockDataList;
     }

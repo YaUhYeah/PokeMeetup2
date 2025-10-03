@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 public class BlockSaveData {
-    private Map<String, List<BlockData>> placedBlocks;
+    private HashMap<String, List<BlockData>> placedBlocks;
 
     public BlockSaveData() {
         this.placedBlocks = new HashMap<>();
@@ -26,15 +26,14 @@ public class BlockSaveData {
         placedBlocks.computeIfAbsent(chunkKey, k -> new ArrayList<>()).add(block);
         GameLogger.info("Added block " + block.type + " to chunk " + chunkKey);
     }
-
-    public Map<String, List<BlockData>> getPlacedBlocks() {
+    public HashMap<String, List<BlockData>> getPlacedBlocks() {
         if (placedBlocks == null) {
             placedBlocks = new HashMap<>();
         }
         return placedBlocks;
     }
 
-    public void setPlacedBlocks(Map<String, List<BlockData>> placedBlocks) {
+    public void setPlacedBlocks(HashMap<String, List<BlockData>> placedBlocks) {
         this.placedBlocks = placedBlocks;
     }
 
@@ -42,8 +41,8 @@ public class BlockSaveData {
         BlockSaveData copy = new BlockSaveData();
 
         if (this.placedBlocks != null) {
-            Map<String, List<BlockData>> placedBlocksCopy = new HashMap<>();
-            for (Map.Entry<String, List<BlockData>> entry : this.placedBlocks.entrySet()) {
+            HashMap<String, List<BlockData>> placedBlocksCopy = new HashMap<>();
+            for (HashMap.Entry<String, List<BlockData>> entry : this.placedBlocks.entrySet()) {
                 String chunkKey = entry.getKey();
                 List<BlockData> originalList = entry.getValue();
                 List<BlockData> copiedList = new ArrayList<>();
@@ -102,15 +101,46 @@ public class BlockSaveData {
             }
         }
 
+        // Corrected read() method in BlockSaveData.BlockData
         @Override
         public void read(Json json, JsonValue jsonData) {
-            type = jsonData.getString("type");
-            x = jsonData.getInt("x");
-            y = jsonData.getInt("y");
-            isFlipped = jsonData.getBoolean("isFlipped", false); // Reading flipped state
+            // Make every field access safe with defaults
+            type = jsonData.getString("type", null);
+            if (type == null) {
+                // If the block type is missing, this is invalid data. We cannot load it.
+                GameLogger.error("BlockData is missing 'type' field. Cannot load block.");
+                return;
+            }
+
+            x = jsonData.getInt("x", 0);
+            y = jsonData.getInt("y", 0);
+            isFlipped = jsonData.getBoolean("isFlipped", false);
             isChestOpen = jsonData.getBoolean("isChestOpen", false);
-            extraData = json.readValue(HashMap.class, jsonData.get("extraData"));
-            chestData = json.readValue(ChestData.class, jsonData.get("chestData"));
+
+            JsonValue extraDataValue = jsonData.get("extraData");
+            if (extraDataValue != null && extraDataValue.isObject()) {
+                try {
+                    // Safely initialize the map instead of relying on a potentially faulty parser for empty objects.
+                    extraData = new HashMap<>();
+                } catch (Exception e) {
+                    GameLogger.error("Could not parse extraData for block type " + type + ": " + e.getMessage());
+                    extraData = new HashMap<>(); // Default to empty on error
+                }
+            } else {
+                extraData = new HashMap<>();
+            }
+
+            JsonValue chestDataValue = jsonData.get("chestData");
+            if (chestDataValue != null && chestDataValue.isObject()) {
+                try {
+                    chestData = json.readValue(ChestData.class, chestDataValue);
+                } catch (Exception e) {
+                    GameLogger.error("Could not parse chestData for block type " + type + ": " + e.getMessage());
+                    chestData = null; // Default to null on error
+                }
+            } else {
+                chestData = null;
+            }
         }
 
         public BlockData copy() {

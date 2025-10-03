@@ -24,10 +24,10 @@ public class BlockManager {
         GameLogger.info("Initialized BlockManager");
     }
 
-    public PlaceableBlock getBlockAt(int worldX, int worldY) {
-        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(worldX, worldY);
+    public PlaceableBlock getBlockAt(int tileX, int tileY) {
+        Chunk chunk = GameContext.get().getWorld().getChunkAtTile(tileX, tileY);
         if (chunk == null) return null;
-        Vector2 blockPos = new Vector2(worldX, worldY);
+        Vector2 blockPos = new Vector2(tileX, tileY);
         return chunk.getBlock(blockPos);
     }
 
@@ -36,10 +36,13 @@ public class BlockManager {
         int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
-        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(tileX, tileY);
+        World world = GameContext.get().getWorld();
+        Chunk chunk = world.getChunkAtTile(tileX, tileY);
+        GameLogger.info("placeBlock called for tile (" + tileX + "," + tileY + ") in chunk (" + chunkX + "," + chunkY + "), chunk " + (chunk == null ? "NULL" : "exists"));
         if (chunk == null) {
-            chunk = GameContext.get().getWorld().loadOrGenerateChunk(chunkPos);
-            GameContext.get().getWorld().getChunks().put(chunkPos, chunk);
+            chunk = world.loadOrGenerateChunk(chunkPos);
+            world.getChunks().put(chunkPos, chunk);
+            GameLogger.info("Loaded/generated chunk for position (" + chunkX + "," + chunkY + ")");
         }
         Vector2 blockPos = new Vector2(tileX, tileY);
         if (chunk.getBlock(blockPos) != null) {
@@ -47,11 +50,12 @@ public class BlockManager {
             return false; // Can't place block on top of another block
         }
         PlaceableBlock block = new PlaceableBlock(type, blockPos, null, false);
-        block.setTexture(BlockTextureManager.getBlockFrame(block, 0));
         chunk.addBlock(block);
         chunk.setDirty(true); // Mark chunk as dirty for saving
-        GameLogger.info("Placed block of type " + type + " at " + blockPos);
-
+        world.queueChunkSave(chunkPos);
+        GameLogger.info("Placed block of type " + type + " at " + blockPos + ", queueing chunk save");
+        world.invalidateRenderCaches();
+        GameContext.get().getWorld().markYSortDirty();
         return true;
     }
 
@@ -60,11 +64,13 @@ public class BlockManager {
         int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
         int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
-        Chunk chunk = GameContext.get().getWorld().getChunkAtPosition(tileX, tileY);
+        World world = GameContext.get().getWorld();
+        Chunk chunk = world.getChunkAtTile(tileX, tileY);
         if (chunk == null) {
             GameLogger.info("Chunk not loaded at position: " + chunkPos);
             return;
         }
+
         Vector2 blockPos = new Vector2(tileX, tileY);
         PlaceableBlock block = chunk.getBlock(blockPos);
         if (block == null) {
@@ -73,6 +79,7 @@ public class BlockManager {
         }
         chunk.removeBlock(blockPos);
         chunk.setDirty(true); // Mark chunk as dirty for saving
+        world.queueChunkSave(chunkPos);        world.invalidateRenderCaches();
         GameLogger.info("Removed block at " + blockPos);
 
     }
@@ -113,6 +120,11 @@ public class BlockManager {
                 tempChunkPos.set(cx, cy);
                 Chunk chunk = world.getChunks().get(tempChunkPos);
                 if (chunk == null || chunk.getBlocks().isEmpty()) continue;
+
+                // Debug: Log if this is chunk (-1, 1) which should have blocks
+                if (cx == -1 && cy == 1 && !chunk.getBlocks().isEmpty()) {
+                    GameLogger.info("Rendering chunk (-1,1) with " + chunk.getBlocks().size() + " blocks");
+                }
 
                 renderChunkBlocks(batch, chunk, tempCullBounds, worldTimeInMinutes, worldColor, world);
             }

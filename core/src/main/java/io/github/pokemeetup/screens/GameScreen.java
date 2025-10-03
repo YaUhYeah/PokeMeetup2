@@ -408,28 +408,34 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             handleInitializationFailure();
         }
     }
+
+    @Override
     public void show() {
         GameLogger.info("GameScreen show() called. Setting up UI and input.");
         Stage uiStage = GameContext.get().getUiStage();
         if (uiStage == null) {
+            // This is a safety net in case GameContext was disposed, which shouldn't happen.
             uiStage = new Stage(new ScreenViewport(), new SpriteBatch());
             GameContext.get().setUiStage(uiStage);
         }
 
+        // Make sure the hotbar is visible when returning to the game screen
         if (GameContext.get().getHotbarSystem() != null &&
             GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
             GameContext.get().getHotbarSystem().getHotbarTable().getParent().setVisible(true);
         }
 
-        initializeChatSystem(); // ← always binds to uiStage (fresh)
+        // Always create a fresh ChatSystem instance for the new GameScreen session
+        initializeChatSystem();
 
-        // Recreate GameMenu cleanly
+        // Recreate GameMenu cleanly to avoid stale listeners
         if (GameContext.get().getGameMenu() != null) {
-            GameContext.get().getGameMenu().remove();   // ensure it’s off any stage
+            GameContext.get().getGameMenu().remove();
             GameContext.get().getGameMenu().dispose();
         }
         GameContext.get().setGameMenu(new GameMenu(game, skin, inputManager));
 
+        // Ensure Build Mode UI is properly handled
         if (GameContext.get().getBuildModeUI() != null) {
             GameContext.get().getBuildModeUI().remove();
         }
@@ -445,6 +451,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             initializeAndroidControls();
         }
 
+        // Handle new players or starter selection state
         if (GameContext.get().getPlayer() != null &&
             GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
             if (starterTable == null) handleNewPlayer();
@@ -452,8 +459,60 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         } else {
             inputManager.setUIState(InputManager.UIState.NORMAL);
         }
+
+        // This is the most important part: always refresh the input processors when the screen is shown.
         inputManager.updateInputProcessors();
         GameLogger.info("GameScreen show() completed successfully.");
+    }
+
+    @Override
+    public void hide() {
+        if (GameContext.get().getChatSystem() != null) {
+            GameContext.get().getChatSystem().remove();
+            GameContext.get().setChatSystem(null);
+        }
+        if (GameContext.get().getGameMenu() != null) {
+            GameContext.get().getGameMenu().hideSilently(); // Hides without changing input state
+            GameContext.get().getGameMenu().remove();
+        }
+        if (GameContext.get().getHotbarSystem() != null && GameContext.get().getHotbarSystem().getHotbarTable().getParent() != null) {
+            // The hotbar is inside a container table that was added to the stage
+            GameContext.get().getHotbarSystem().getHotbarTable().getParent().remove();
+        }
+    }
+
+    private void initializeChatSystem() {
+        Stage uiStage = GameContext.get().getUiStage();
+
+        // Ensure any old chat system is removed before creating a new one.
+        if (GameContext.get().getChatSystem() != null) {
+            GameContext.get().getChatSystem().remove();
+            GameContext.get().setChatSystem(null);
+        }
+
+        float screenW = Gdx.graphics.getWidth();
+        float screenH = Gdx.graphics.getHeight();
+
+        float chatWidth = Math.max(ChatSystem.MIN_CHAT_WIDTH, screenW * 0.25f);
+        float chatHeight = Math.max(ChatSystem.MIN_CHAT_HEIGHT, screenH * 0.3f);
+
+        ChatSystem chatSystem = new ChatSystem(
+            uiStage,
+            skin,
+            GameContext.get().getGameClient(),
+            username,
+            commandManager,
+            commandsEnabled // Pass the world's command setting
+        );
+        chatSystem.setSize(chatWidth, chatHeight);
+        chatSystem.setPosition(ChatSystem.CHAT_PADDING,
+            screenH - chatHeight - ChatSystem.CHAT_PADDING);
+        chatSystem.setVisible(true);
+        chatSystem.setTouchable(Touchable.enabled);
+
+        uiStage.addActor(chatSystem);
+        GameContext.get().setChatSystem(chatSystem);
+        GameLogger.info("ChatSystem initialized and attached to current uiStage");
     }
 
     private void handleNewPlayer() {
@@ -589,42 +648,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             throw new RuntimeException("Failed to initialize basic resources", e);
         }
     }
-
-    private void initializeChatSystem() {
-        Stage uiStage = GameContext.get().getUiStage();
-
-        // Always create or re-create on the current uiStage
-        if (GameContext.get().getChatSystem() != null) {
-            GameContext.get().getChatSystem().remove();
-            GameContext.get().setChatSystem(null);
-        }
-
-        float screenW = Gdx.graphics.getWidth();
-        float screenH = Gdx.graphics.getHeight();
-
-        float chatWidth = Math.max(ChatSystem.MIN_CHAT_WIDTH, screenW * 0.25f);
-        float chatHeight = Math.max(ChatSystem.MIN_CHAT_HEIGHT, screenH * 0.3f);
-
-        ChatSystem chatSystem = new ChatSystem(
-            uiStage,
-            skin,
-            GameContext.get().getGameClient(),
-            username,
-            commandManager,
-            commandsEnabled
-        );
-        chatSystem.setSize(chatWidth, chatHeight);
-        chatSystem.setPosition(ChatSystem.CHAT_PADDING,
-            screenH - chatHeight - ChatSystem.CHAT_PADDING);
-        chatSystem.setVisible(true);
-        chatSystem.setTouchable(Touchable.enabled);
-
-        uiStage.addActor(chatSystem);
-        GameContext.get().setChatSystem(chatSystem);
-        GameLogger.info("ChatSystem attached to current uiStage");
-    }
-
-
     private void initializeWorldAndPlayer(String worldName) {
         GameLogger.info("Initializing world and player");
 
@@ -912,10 +935,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         GameContext.get().getUiStage().addActor(partyDisplay);
     }
 
-    @Override
-    public void hide() {
 
-    }
 
     public World getWorld() {
         return GameContext.get().getWorld();
@@ -1632,11 +1652,11 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             renderDebugInfo();
         }
 
+        GameContext.get().getBatch().end();
         // Render build mode placement preview if active
         if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE && GameContext.get().getBuildModeUI() != null) {
             GameContext.get().getBuildModeUI().renderPlacementPreview(GameContext.get().getBatch(), camera);
         }
-        GameContext.get().getBatch().end();
 
         // Render all UI elements on top of the world
         Gdx.gl.glEnable(GL20.GL_BLEND);
@@ -1672,19 +1692,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         }
 
         Gdx.gl.glDisable(GL20.GL_BLEND);
-    }
-
-
-    private void renderLoadingOverlay() {
-        GameContext.get().getBatch().begin();
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0, 0, 0, 0.5f);
-        shapeRenderer.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        shapeRenderer.end();
-        font.draw(GameContext.get().getBatch(), "Loading world...",
-            Gdx.graphics.getWidth() * 0.5f - 50,
-            Gdx.graphics.getHeight() * 0.5f);
-        GameContext.get().getBatch().end();
     }
 
 

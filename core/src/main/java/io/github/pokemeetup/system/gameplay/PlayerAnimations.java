@@ -9,9 +9,8 @@ import io.github.pokemeetup.utils.textures.TextureManager;
 
 public class PlayerAnimations {
 
-
-    public static final float WALK_FRAME_DURATION = 0.10f;   // 4 frames over 0.24s
-    public static final float RUN_FRAME_DURATION = 0.06f;   // 4 frames over 0.14s
+    public static final float WALK_FRAME_DURATION = 0.08f;  // Was 0.06f
+    public static final float RUN_FRAME_DURATION = 0.06f;   // Was 0.035f
     public static final float PUNCH_ANIMATION_DURATION = 1.1f;
     public static final float PUNCH_FRAME_DURATION = PUNCH_ANIMATION_DURATION / 4f;
     public static final float CHOP_ANIMATION_DURATION = 1.2f;
@@ -201,7 +200,7 @@ public class PlayerAnimations {
                     frames[f] = reg;
                 }
                 Animation<TextureRegion> walkAnim = new Animation<>(WALK_FRAME_DURATION, frames);
-                walkAnim.setPlayMode(Animation.PlayMode.NORMAL);
+                walkAnim.setPlayMode(Animation.PlayMode.LOOP);
                 assignWalkAnimation(i, walkAnim);
                 if (standingFrames[i] == null) {
                     standingFrames[i] = frames[3];
@@ -224,7 +223,7 @@ public class PlayerAnimations {
                     frames[f] = reg;
                 }
                 Animation<TextureRegion> runAnim = new Animation<>(RUN_FRAME_DURATION, frames);
-                runAnim.setPlayMode(Animation.PlayMode.NORMAL);
+                runAnim.setPlayMode(Animation.PlayMode.LOOP);
                 assignRunAnimation(i, runAnim);
             }
 

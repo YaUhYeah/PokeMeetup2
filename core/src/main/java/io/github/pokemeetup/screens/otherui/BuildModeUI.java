@@ -270,7 +270,6 @@
             return GameContext.get().getWorld().isPassable(tileX, tileY) &&
                 GameContext.get().getWorld().getBlockManager().getBlockAt(tileX, tileY) == null;
         }
-
         public boolean tryPlaceBlock(int tileX, int tileY) {
             ItemData selectedItem = GameContext.get().getPlayer().getBuildInventory().getItemAt(selectedSlot);
             if (selectedItem == null) return false;
@@ -288,8 +287,21 @@
                 consumeItem(inventoryItem);
                 refreshBuildInventory();
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_PLACE_0);
+
+                // FIX: Moved multiplayer sync BEFORE return
+                if (GameContext.get().isMultiplayer()) {
+                    NetworkProtocol.BlockPlacement placementMessage = new NetworkProtocol.BlockPlacement();
+                    placementMessage.username = GameContext.get().getPlayer().getUsername();
+                    placementMessage.blockTypeId = blockType.id;
+                    placementMessage.tileX = tileX;
+                    placementMessage.tileY = tileY;
+                    placementMessage.action = NetworkProtocol.BlockAction.PLACE;
+                    GameContext.get().getGameClient().sendBlockPlacement(placementMessage);
+                }
+
                 return true;
             }
+
             return false;
         }
 

@@ -342,8 +342,6 @@ public class ServerWorldManager {
             WorldData wd = loadWorld(worldName);
             if (wd != null) {
                 Vector2 chunkKey = new Vector2(chunk.getChunkX(), chunk.getChunkY());
-                wd.getChunks().put(chunkKey, chunk);
-                wd.addChunkObjects(chunkKey, objects);
                 wd.setDirty(true);
                 saveWorld(wd);
             } else {

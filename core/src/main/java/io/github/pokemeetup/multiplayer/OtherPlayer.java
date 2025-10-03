@@ -22,8 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OtherPlayer implements Positionable {
 
 
-    private static final float OTHER_PLAYER_WALK_DURATION = 0.24f;  // Was 0.32f
-    private static final float OTHER_PLAYER_RUN_DURATION = 0.14f;
+    private static final float OTHER_PLAYER_WALK_DURATION = 0.32f;
+    private static final float OTHER_PLAYER_RUN_DURATION = 0.24f;
+
     @Override
     public boolean wasOnWater() {
         return wasOnWater;
@@ -169,29 +170,16 @@ public class OtherPlayer implements Positionable {
                 }
             }
 
-            // Sync animation to movement progress
             if (isMoving.get()) {
-                // Calculate animation timing
                 float frameCount = 4f;
                 float frameDuration = wantsToRun ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
-                float fullCycleDuration = frameCount * frameDuration;
 
-                // Free-running animation with speed you like
-                float animSpeed = wantsToRun ? 0.7f : 0.6f;
-                animationCycleTime += deltaTime * animSpeed;
-
-                // Target animation time based on movement progress
-                float targetAnimTime = movementProgress * fullCycleDuration;
-
-                // Blend for smooth animation that completes per tile
-                animationTime = MathUtils.lerp(animationCycleTime, targetAnimTime, 0.3f);
+                // Direct linear animation tied to movement progress
+                animationTime = movementProgress * (frameCount * frameDuration);
             } else {
-                // Smooth animation decay when stopping
-                if (animationTime > 0) {
-                    animationTime = Math.max(0, animationTime - deltaTime * 2f);
-                }
-                animationCycleTime = 0f;
+                animationTime = 0f;
             }
+
 
 
             int currentTileX = pixelToTileX(position.x);

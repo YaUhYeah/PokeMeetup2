@@ -16,8 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class WorldData {
     private final Map<UUID, WildPokemon> wildPokemonMap = new ConcurrentHashMap<>();
-    private Map<Vector2, List<WorldObject>> chunkObjects = new ConcurrentHashMap<>();
-    private Map<Vector2, Chunk> chunks = new ConcurrentHashMap<>();
     private Map<String, PlayerData> players = new ConcurrentHashMap<>();
     private Set<UUID> playerUUIDs = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Object timeLock = new Object();
@@ -48,8 +46,6 @@ public class WorldData {
         this.players = new HashMap<>();
         this.pokemonData = new PokemonData();
         this.lastPlayed = System.currentTimeMillis();
-        this.chunks = new HashMap<>();
-        this.chunkObjects = new HashMap<>();
         this.commandsAllowed = false;
     }
 
@@ -115,33 +111,13 @@ public class WorldData {
             if (this.blockData != null) {
                 copy.blockData = this.blockData.copy();
             }
-            if (this.chunks != null) {
-                copy.chunks = new HashMap<>(this.chunks);
-            }
-            if (this.chunkObjects != null) {
-                copy.dynamicObjects = new HashMap<>();
-                for (Map.Entry<Vector2, List<WorldObject>> entry : this.chunkObjects.entrySet()) {
-                    List<WorldObject> objectsCopy = new ArrayList<>();
-                    for (WorldObject obj : entry.getValue()) {
-                        objectsCopy.add(obj.copy());
-                    }
-                    copy.dynamicObjects.put(entry.getKey().cpy(), objectsCopy);
-                }
-            }
+
 
 
             return copy;
         }
     }
 
-    public Map<Vector2, Chunk> getChunks() {
-        return chunks;
-    }
-
-
-    public Map<Vector2, List<WorldObject>> getChunkObjects() {
-        return chunkObjects;
-    }
 
     public double getWorldTimeInMinutes() {
         synchronized (timeLock) {
@@ -292,10 +268,6 @@ public class WorldData {
         }
     }
 
-
-    public void addChunkObjects(Vector2 position, List<WorldObject> objects) {
-        chunkObjects.put(position, new ArrayList<>(objects));
-    }
 
     public Object getTimeLock() {
         return timeLock;

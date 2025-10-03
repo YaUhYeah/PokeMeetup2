@@ -74,6 +74,7 @@ public class JsonConfig {
                 json.writeValue("players", world.getPlayers());
                 json.writeValue("pokemonData", world.getPokemonData());
                 json.writeValue("commands_allowed", world.commandsAllowed());
+                json.writeValue("blockData", world.getBlockData());
                 json.writeObjectEnd();
             }
 

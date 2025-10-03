@@ -1,4 +1,3 @@
-
 package io.github.pokemeetup.chat;
 
 import com.badlogic.gdx.Application;
@@ -79,7 +78,6 @@ public class ChatSystem extends Table {
 
         createChatUI();
         setupChatHandler();
-        installGlobalOpenCloseBindings();
     }
 
     @Override
@@ -134,18 +132,27 @@ public class ChatSystem extends Table {
             messageHistoryIndex = messageHistory.size();
         }
 
+        // START OF FIX
         if (content.startsWith("/")) {
-            if (commandsEnabled || GameContext.get().isMultiplayer()) {
+            boolean canUseCommands = commandsEnabled || (GameContext.get() != null && GameContext.get().isMultiplayer());
+
+            if (canUseCommands) {
                 String command = content.substring(1);
+                // Handle case where user just types "/" and hits enter
+                if (command.isEmpty()) {
+                    addSystemMessage("Please specify a command.");
+                    return;
+                }
                 String[] parts = command.split(" ", 2);
                 String commandName = parts[0].toLowerCase();
                 String args = parts.length > 1 ? parts[1] : "";
+
                 if (commandManager != null) {
                     Command cmd = commandManager.getCommand(commandName);
                     if (cmd != null) {
                         try {
                             cmd.execute(args, gameClient, this);
-                            return;
+                            return; // Command executed, do not send as chat message
                         } catch (Exception e) {
                             addSystemMessage("Error executing command: " + e.getMessage());
                             return;
@@ -158,11 +165,12 @@ public class ChatSystem extends Table {
                     addSystemMessage("Command system not initialized!");
                     return;
                 }
-            } else {
-                addSystemMessage("Commands are currently disabled.");
-                return;
             }
+            // If we are here and the message starts with '/', it means commands are disabled.
+            // We will let the code fall through to send it as a normal chat message.
+            // This allows players to type things like "/home?" without it being blocked.
         }
+        // END OF FIX
 
         NetworkProtocol.ChatMessage chatMessage = new NetworkProtocol.ChatMessage();
         chatMessage.sender = username;
@@ -170,7 +178,7 @@ public class ChatSystem extends Table {
         chatMessage.timestamp = System.currentTimeMillis();
         chatMessage.type = NetworkProtocol.ChatType.NORMAL;
 
-        if (gameClient == null || gameClient.isSinglePlayer()) {
+        if (gameClient == null || !GameContext.get().isMultiplayer()) {
             handleIncomingMessage(chatMessage);
         } else {
             gameClient.sendMessage(chatMessage);
@@ -191,7 +199,6 @@ public class ChatSystem extends Table {
     }
 
 
-    // ChatSystem.java  (add this helper somewhere in the class)
     private void refreshInputProcessors() {
         try {
             InputManager im = GameContext.get().getGameScreen() != null
@@ -204,7 +211,6 @@ public class ChatSystem extends Table {
         }
     }
 
-    // ChatSystem.java  (replace activateChat)
     public void activateChat(String initialText) {
         isActive = true;
         chatWindow.setTouchable(Touchable.enabled);
@@ -215,54 +221,35 @@ public class ChatSystem extends Table {
         inactiveTimer = 0;
         chatWindow.getColor().a = 1f;
 
-        // Enter CHAT state and refresh processors so the Stage owns keyboard
         GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.CHAT);
         refreshInputProcessors();
 
-        // Queue focus on next stage pass
         stage.addAction(Actions.run(() -> stage.setKeyboardFocus(inputField)));
 
         if (Gdx.app.getType() == Application.ApplicationType.Android) {
             Gdx.app.postRunnable(() -> Gdx.input.setOnscreenKeyboardVisible(true));
         }
-    }// ChatSystem.java  (replace deactivateChat)
+    }
 
     public void deactivateChat() {
         isActive = false;
         chatWindow.setTouchable(Touchable.disabled);
         inputField.setVisible(false);
 
-        // Release focus safely on the stage tick
         stage.addAction(Actions.run(() -> stage.setKeyboardFocus(null)));
 
         if (Gdx.app.getType() == Application.ApplicationType.Android) {
             Gdx.input.setOnscreenKeyboardVisible(false);
         }
 
-        // Return to NORMAL state and refresh processors so gameplay handlers get keys again
         GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.NORMAL);
         refreshInputProcessors();
     }
-    private void installGlobalOpenCloseBindings() {
-        stage.getRoot().addListener(new InputListener() {
-            @Override public boolean keyDown(InputEvent event, int keycode) {
-                InputManager.UIState st = GameContext.get().getGameScreen().getInputManager().getCurrentState();
 
-                if (isActive && keycode == Input.Keys.ESCAPE) { // close chat
-                    deactivateChat(); return true;
-                }
-                if (!isActive && (st == InputManager.UIState.NORMAL || st == InputManager.UIState.BUILD_MODE)) {
-                    if (keycode == Input.Keys.T) { activateChat(""); return true; }
-                    if (keycode == Input.Keys.SLASH) { activateChat("/"); return true; }
-                }
-                return false;
-            }
-        });
-    }
 
 
     public void activateChat() {
-        activateChat(""); // This now calls the new method with an empty string
+        activateChat("");
     }
 
 

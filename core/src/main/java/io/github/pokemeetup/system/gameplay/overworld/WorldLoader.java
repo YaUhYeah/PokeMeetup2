@@ -21,8 +21,10 @@ public class WorldLoader {
     private final ExecutorService executorService;
     private final BiomeManager biomeManager;
     private final long worldSeed;
+    private final World world;
 
     private List<Future<Chunk>> chunkFutures = new ArrayList<>();
+    private List<Vector2> chunksAlreadyLoaded = new ArrayList<>();
     private final AtomicInteger totalChunksToLoad = new AtomicInteger(0);
     private final AtomicInteger chunksLoaded = new AtomicInteger(0);
     private volatile boolean isLoading = false;
@@ -30,6 +32,7 @@ public class WorldLoader {
     public WorldLoader(BiomeManager biomeManager, long worldSeed) {
         this.biomeManager = biomeManager;
         this.worldSeed = worldSeed;
+        this.world = GameContext.get().getWorld();
         // Use a thread pool that matches the number of available processors for efficiency
         int numThreads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
         this.executorService = Executors.newFixedThreadPool(numThreads);
@@ -46,6 +49,7 @@ public class WorldLoader {
         isLoading = true;
         chunksLoaded.set(0);
         chunkFutures.clear();
+        chunksAlreadyLoaded.clear();
 
         int playerChunkX = (int) Math.floor(player.getTileX() / (float) Chunk.CHUNK_SIZE);
         int playerChunkY = (int) Math.floor(player.getTileY() / (float) Chunk.CHUNK_SIZE);
@@ -59,11 +63,21 @@ public class WorldLoader {
         totalChunksToLoad.set(chunksToLoad.size());
 
         for (Vector2 pos : chunksToLoad) {
+            // Check if chunk already exists in world before submitting task
+            if (world != null && world.getChunks().containsKey(pos)) {
+                // Chunk already loaded from disk, skip it
+                chunksAlreadyLoaded.add(new Vector2(pos.x, pos.y));
+                chunksLoaded.incrementAndGet();
+                GameLogger.info("WorldLoader: Chunk " + pos + " already loaded from disk, skipping");
+                continue;
+            }
+
+            // Only generate new chunks that don't exist
             Callable<Chunk> task = () -> {
-                // Generate chunk but DON'T apply autotiling here
                 Chunk chunk = UnifiedWorldGenerator.generateChunkForServer(
                     (int) pos.x, (int) pos.y, worldSeed, biomeManager
                 );
+                GameLogger.info("WorldLoader: Generated new chunk at " + pos);
                 chunksLoaded.incrementAndGet();
                 return chunk;
             };

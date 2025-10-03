@@ -24,7 +24,7 @@ public class PlaceableBlock {
         this.id = type.id;
         this.isFlipped = isFlipped;
         this.position = position;
-        this.texture = texture;
+        this.texture = null;
         if (type == BlockType.CHEST) {
             this.chestData = new ChestData((int) position.x, (int) position.y);
         }

@@ -407,9 +407,11 @@ public class InputHandler extends InputAdapter {
         }
     }
 
-
     public void toggleBuildMode() {
         if (inputManager.getCurrentState() == InputManager.UIState.BUILD_MODE) {
+            // Exiting build mode - save all blocks
+            GameContext.get().getWorld().forceSaveAllBlocks();
+
             inputManager.setUIState(InputManager.UIState.NORMAL);
             GameContext.get().getPlayer().setBuildMode(false);
             if (gameScreen.getHouseToggleButton() != null) {
@@ -599,91 +601,6 @@ public class InputHandler extends InputAdapter {
             stopChopOrPunch();
         }
     }
-    private void updateChopping(float deltaTime) {
-        if (!isValidTarget(targetObject)) {
-            stopChopOrPunch();
-            return;
-        }
-        chopProgress += deltaTime;
-        lastChopSoundTime += deltaTime;
-        swingTimer += deltaTime;
-        ItemData axeItem = hasAxe ? findAxeInInventory() : null;
-        float chopTime = (hasAxe && axeItem != null) ? TREE_CHOP_WITH_AXE_TIME : TREE_CHOP_WITHOUT_AXE_TIME;
-        float soundInterval = hasAxe ? CHOP_SOUND_INTERVAL_WITH_AXE : CHOP_SOUND_INTERVAL_WITHOUT_AXE;
-
-        if (lastChopSoundTime >= soundInterval) {
-            if (hasAxe && axeItem != null) {
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
-                if (swingTimer >= SWING_INTERVAL) {
-                    handleToolDurabilityPerSwing(axeItem);
-                    swingTimer = 0f;
-                }
-            } else {
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
-            }
-            lastChopSoundTime = 0f;
-        }
-        if (chopProgress >= chopTime) {
-            if (!chopComplete) {
-                GameLogger.info("Tree chopped down! " + (hasAxe ? "(with axe)" : "(without axe)"));
-                destroyObject(targetObject);
-                chopComplete = true;
-            }
-            if (chopProgress >= (chopTime + PlayerAnimations.CHOP_ANIMATION_DURATION)) {
-                stopChopOrPunch();
-                chopComplete = false;
-            }
-        }
-    }
-    private void handleToolDurabilityPerSwing(ItemData axeItem) {
-        if (axeItem == null) return;
-        axeItem.updateDurability(-DURABILITY_LOSS_PER_SWING);
-        GameContext.get().getPlayer().getInventory().notifyObservers();
-        if (axeItem.isBroken()) {
-            playToolBreakEffect();
-            for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
-                ItemData item = GameContext.get().getPlayer().getInventory().getItemAt(i);
-                if (item != null && item.getUuid().equals(axeItem.getUuid())) {
-                    GameContext.get().getPlayer().getInventory().removeItemAt(i);
-                    break;
-                }
-            }
-            hasAxe = false;
-            stopChopOrPunch();
-            GameLogger.info("Axe broke during use!");
-        } else {
-            if (axeItem.getDurabilityPercentage() <= 0.1f) {
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);
-            }
-        }
-    }
-
-    private void playToolBreakEffect() {
-        AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
-        AudioManager.getInstance().playSound(AudioManager.SoundEffect.TOOL_BREAK);
-        GameContext.get().getPlayer().getAnimations().stopChopping();
-        GameContext.get().getPlayer().getAnimations().startPunching();
-    }
-
-    private boolean isValidTarget(WorldObject obj) {
-        if (obj == null || GameContext.get().getPlayer() == null ||
-            GameContext.get().getPlayer().getWorld() == null) {
-            return false;
-        }
-        float playerCenterX = GameContext.get().getPlayer().getTileX() * World.TILE_SIZE + (World.TILE_SIZE / 2f);
-        float playerCenterY = GameContext.get().getPlayer().getTileY() * World.TILE_SIZE + (World.TILE_SIZE / 2f);
-        Rectangle treeBox = obj.getCollisionBox();
-        if (treeBox == null) return false;
-        float treeCenterX = treeBox.x + treeBox.width / 2f;
-        float treeCenterY = treeBox.y + treeBox.height / 2f;
-        float distance = Vector2.dst(playerCenterX, playerCenterY, treeCenterX, treeCenterY);
-        float maxRange = World.TILE_SIZE * 2.5f;
-        Vector2 chunkPos = new Vector2(
-            (int) Math.floor(obj.getPixelX() / (World.CHUNK_SIZE * World.TILE_SIZE)),
-            (int) Math.floor(obj.getPixelY() / (World.CHUNK_SIZE * World.TILE_SIZE))
-        );
-        return GameContext.get().getPlayer().getWorld().getChunks().containsKey(chunkPos) && distance <= maxRange;
-    }
 
     private boolean isChoppable(WorldObject obj) {
         return obj.getType().breakTime < 9999f; // Any object with a finite break time
@@ -780,46 +697,7 @@ public class InputHandler extends InputAdapter {
         return GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(targetX, targetY);
     }
 
-    void startBreaking(PlaceableBlock block) {
-        if (isBreaking) return;
-        checkForAxe();
-        isBreaking = true;
-        targetBlock = block;
-        breakProgress = 0f;
-        lastBreakSoundTime = 0f;
-        if (hasAxe) {
-            GameContext.get().getPlayer().getAnimations().startChopping();
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
-        } else {
-            GameContext.get().getPlayer().getAnimations().startPunching();
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
-        }
-    }
 
-    private void updateBreaking(float deltaTime) {
-        if (targetBlock == null) {
-            if (targetObject != null) {
-                updateChopping(deltaTime);
-            }
-            return;
-        }
-        breakProgress += deltaTime;
-        lastBreakSoundTime += deltaTime;
-        float breakInterval = hasAxe ? CHOP_SOUND_INTERVAL_WITH_AXE : CHOP_SOUND_INTERVAL_WITHOUT_AXE;
-        if (lastBreakSoundTime >= breakInterval) {
-            if (hasAxe) {
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD);
-            } else {
-                AudioManager.getInstance().playSound(AudioManager.SoundEffect.BLOCK_BREAK_WOOD_HAND);
-            }
-            lastBreakSoundTime = 0f;
-        }
-        float needed = targetBlock.getType().getBreakTime(hasAxe);
-        if (breakProgress >= needed) {
-            destroyBlock(targetBlock);
-            stopChopOrPunch();
-        }
-    }
     private void destroyBlock(PlaceableBlock block) {
         if (block == null) return;
         World world = GameContext.get().getPlayer().getWorld();
@@ -903,31 +781,6 @@ public class InputHandler extends InputAdapter {
         }
     }
 
-    private void processMovementInput(Player player) {
-        if (!player.isMoving()) {
-            // Priority order for diagonal prevention
-            if (upPressed) {
-                player.move("up");
-            } else if (downPressed) {
-                player.move("down");
-            } else if (leftPressed) {
-                player.move("left");
-            } else if (rightPressed) {
-                player.move("right");
-            }
-        } else {
-            // Buffer the input for smooth chaining
-            if (upPressed && !player.getDirection().equals("up")) {
-                player.setBufferedDirection("up");
-            } else if (downPressed && !player.getDirection().equals("down")) {
-                player.setBufferedDirection("down");
-            } else if (leftPressed && !player.getDirection().equals("left")) {
-                player.setBufferedDirection("left");
-            } else if (rightPressed && !player.getDirection().equals("right")) {
-                player.setBufferedDirection("right");
-            }
-        }
-    }
 
 
     /************************************************************************
