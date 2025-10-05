@@ -455,6 +455,18 @@ public class GameClient {
         }
         Gdx.app.postRunnable(() -> {
             if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getItemEntityManager() != null) {
+                // Get the item before removing it
+                ItemEntity entity = GameContext.get().getWorld().getItemEntityManager().getItemEntity(pickup.entityId);
+
+                // If this is the local player who picked up the item, add it to inventory and play sound
+                if (pickup.username.equals(getLocalUsername()) && entity != null) {
+                    if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getInventory().addItem(entity.getItemData())) {
+                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
+                        GameLogger.info("Local player picked up item " + pickup.entityId);
+                    }
+                }
+
+                // Remove the item from the world for all clients
                 GameContext.get().getWorld().getItemEntityManager().removeItemEntity(pickup.entityId);
                 GameLogger.info("Removed item entity " + pickup.entityId + " picked up by " + pickup.username);
             }

@@ -58,6 +58,14 @@ public class ServerPokemonSpawnManager {
      * @param delta Elapsed time in seconds.
      */
     public void update(float delta) {
+        // Update all active Pokemon (AI, movement, animations)
+        World world = null; // Server-side Pokemon don't need full world for AI
+        for (WildPokemon pokemon : activePokemon.values()) {
+            if (pokemon != null) {
+                pokemon.update(delta, world);
+            }
+        }
+
         spawnTimer += delta;
         if (spawnTimer >= SPAWN_INTERVAL) {
             spawnTimer = 0f;

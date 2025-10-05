@@ -22,15 +22,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OtherPlayer implements Positionable {
 
 
-    private static final float OTHER_PLAYER_WALK_DURATION = 0.32f;
-    private static final float OTHER_PLAYER_RUN_DURATION = 0.24f;
+    // Match main player's animation timing: 4 frames * frame duration
+    private static final float OTHER_PLAYER_WALK_DURATION = PlayerAnimations.WALK_FRAME_DURATION * 4; // 0.32f
+    private static final float OTHER_PLAYER_RUN_DURATION = PlayerAnimations.RUN_FRAME_DURATION * 4;   // 0.24f
 
     @Override
     public boolean wasOnWater() {
         return wasOnWater;
     }
 
-    private float animationSpeedMultiplier = 0.75f;
     private float movementProgress;
     private float animationTime = 0f;
     private int prevTileX, prevTileY;
@@ -59,7 +59,6 @@ public class OtherPlayer implements Positionable {
 
     private boolean wasOnWater = false;
     private float waterSoundTimer = 0f;
-    private static final float ANIMATION_SPEED_MULTIPLIER = 0.75f;
     private final String username;
     private final Inventory inventory;
     private PlayerAnimations animations;

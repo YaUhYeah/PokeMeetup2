@@ -563,15 +563,19 @@ public class Player implements Positionable {
             ItemEntity nearbyItem = world.getItemEntityManager()
                 .getClosestPickableItem(x, y, PICKUP_RANGE);
             if (nearbyItem != null) {
-                if (inventory.addItem(nearbyItem.getItemData())) {
-                    world.getItemEntityManager().removeItemEntity(nearbyItem.getEntityId());
-                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
-                    if (GameContext.get().isMultiplayer()) {
-                        NetworkProtocol.ItemPickup pickup = new NetworkProtocol.ItemPickup();
-                        pickup.entityId = nearbyItem.getEntityId();
-                        pickup.username = this.getUsername();
-                        pickup.timestamp = System.currentTimeMillis();
-                        GameContext.get().getGameClient().sendItemPickup(pickup);
+                if (GameContext.get().isMultiplayer()) {
+                    // In multiplayer, send pickup request to server and wait for confirmation
+                    // Server will validate, remove item, and broadcast to all clients
+                    NetworkProtocol.ItemPickup pickup = new NetworkProtocol.ItemPickup();
+                    pickup.entityId = nearbyItem.getEntityId();
+                    pickup.username = this.getUsername();
+                    pickup.timestamp = System.currentTimeMillis();
+                    GameContext.get().getGameClient().sendItemPickup(pickup);
+                } else {
+                    // In singleplayer, handle pickup locally
+                    if (inventory.addItem(nearbyItem.getItemData())) {
+                        world.getItemEntityManager().removeItemEntity(nearbyItem.getEntityId());
+                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
                     }
                 }
             }

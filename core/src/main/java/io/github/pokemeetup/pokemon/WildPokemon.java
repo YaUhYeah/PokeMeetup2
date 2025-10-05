@@ -86,10 +86,13 @@ public class WildPokemon extends Pokemon implements Positionable {
         this.pixelY = tileY * World.TILE_SIZE;
         this.x = this.pixelX;
         this.y = this.pixelY;
+        this.startPosition = new Vector2(this.x, this.y);
+        this.targetPosition = new Vector2(this.x, this.y);
 
         this.level = level;
         this.name = name;
-        this.isNetworkControlled = true;
+        // Server Pokemon should NOT be network controlled - they are the authority
+        this.isNetworkControlled = false;
         this.animations = null;
 
         setSpawnTime(System.currentTimeMillis() / 1000L);
@@ -98,6 +101,7 @@ public class WildPokemon extends Pokemon implements Positionable {
 
         this.direction = "down";
         this.isMoving = false;
+        this.currentMoveTime = 0;
     }
 
     public WildPokemon(String name, int level, int pixelX, int pixelY, TextureRegion overworldSprite) {
@@ -211,8 +215,6 @@ public class WildPokemon extends Pokemon implements Positionable {
 
 
     public void update(float delta, World world) {
-        if (world == null) return;
-
         if (isDespawning) {
             if (despawnAnimation != null && despawnAnimation.update(delta)) {
                 isExpired = true;
@@ -229,7 +231,8 @@ public class WildPokemon extends Pokemon implements Positionable {
                 return;
             }
         }
-        if (!isNetworkControlled) {
+        // Update AI only if not network controlled and world is available
+        if (!isNetworkControlled && world != null) {
             if (enhancedAI != null) {
                 enhancedAI.update(delta, world);
             } else if (legacyAI != null) {
