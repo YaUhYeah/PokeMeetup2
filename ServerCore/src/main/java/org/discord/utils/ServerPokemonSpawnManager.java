@@ -42,6 +42,7 @@ public class ServerPokemonSpawnManager {
     private float spawnTimer = 0f;
     private final Map<UUID, WildPokemon> activePokemon = new HashMap<>();
     private final Random random = new Random();
+    private final ServerWorldAdapter serverWorld;
 
     /**
      * Constructs a server spawn manager for the given world.
@@ -50,6 +51,7 @@ public class ServerPokemonSpawnManager {
      */
     public ServerPokemonSpawnManager(String worldName) {
         this.worldName = worldName;
+        this.serverWorld = new ServerWorldAdapter(worldName);
         initializePokemonSpawns();
     }
 
@@ -60,10 +62,10 @@ public class ServerPokemonSpawnManager {
      */
     public void update(float delta) {
         // Update all active Pokemon (AI, movement, animations)
-        World world = null; // Server-side Pokemon don't need full world for AI
+        // Pass the ServerWorldAdapter so AI can check tile passability
         for (WildPokemon pokemon : activePokemon.values()) {
             if (pokemon != null) {
-                pokemon.update(delta, world);
+                pokemon.update(delta, serverWorld);
             }
         }
 
@@ -241,6 +243,13 @@ public class ServerPokemonSpawnManager {
                 (int) pixelY,
                 true // noTexture mode on the server
             );
+
+            // Initialize AI for server-side Pokemon
+            // Create a ServerPokemonAI that doesn't require texture/rendering but handles movement
+            io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI ai =
+                new io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI(pokemon);
+            pokemon.setAi(ai);
+
             activePokemon.put(pokemon.getUuid(), pokemon);
             NetworkProtocol.WildPokemonSpawn spawnMsg = new NetworkProtocol.WildPokemonSpawn();
             spawnMsg.uuid = pokemon.getUuid();

@@ -1071,11 +1071,20 @@ public class GameServer {
             GameLogger.error("Unauthorized chest update from " + update.username);
             return;
         }
+
+        // First try to find chest in placedBlocks
         Vector2 chestPos = findChestPositionInPlacedBlocks(update.chestId);
+
+        // If not found, search through all loaded chunks
+        if (chestPos == null) {
+            chestPos = findChestPositionInLoadedChunks(update.chestId);
+        }
+
         if (chestPos == null) {
             GameLogger.error("Could not find chest position for chestId = " + update.chestId);
             return;
         }
+
         int chunkX = chestPos.x >= 0 ? (int) (chestPos.x / World.CHUNK_SIZE)
             : Math.floorDiv((int) chestPos.x, World.CHUNK_SIZE);
         int chunkY = chestPos.y >= 0 ? (int) (chestPos.y / World.CHUNK_SIZE)
@@ -1112,6 +1121,46 @@ public class GameServer {
                 }
             }
         }
+        return null;
+    }
+
+    /**
+     * Searches through all loaded chunks to find a chest with the given chestId.
+     * If found, adds it to the ServerBlockManager's placedBlocks map for faster future lookups.
+     *
+     * @param chestId The UUID of the chest to find
+     * @return The tile position of the chest, or null if not found
+     */
+    private Vector2 findChestPositionInLoadedChunks(UUID chestId) {
+        Map<Vector2, Chunk> loadedChunks = ServerGameContext.get().getWorldManager()
+            .getLoadedChunks(MULTIPLAYER_WORLD_NAME);
+
+        if (loadedChunks == null) {
+            return null;
+        }
+
+        for (Map.Entry<Vector2, Chunk> chunkEntry : loadedChunks.entrySet()) {
+            Chunk chunk = chunkEntry.getValue();
+            if (chunk == null || chunk.getBlocks() == null) {
+                continue;
+            }
+
+            for (Map.Entry<Vector2, PlaceableBlock> blockEntry : chunk.getBlocks().entrySet()) {
+                PlaceableBlock block = blockEntry.getValue();
+                if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
+                    ChestData cd = block.getChestData();
+                    if (cd != null && cd.chestId.equals(chestId)) {
+                        Vector2 position = blockEntry.getKey();
+                        // Add to ServerBlockManager for faster future lookups
+                        ServerGameContext.get().getServerBlockManager().getPlacedBlocks()
+                            .put(position, block);
+                        GameLogger.info("Found chest " + chestId + " in loaded chunk, added to ServerBlockManager");
+                        return position;
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
