@@ -62,7 +62,7 @@ public class PackLeaderBehavior implements PokemonBehavior {
             int tileX = Math.round(x / World.TILE_SIZE);
             int tileY = Math.round(y / World.TILE_SIZE);
 
-            if (world.isPassable(tileX, tileY)) {
+            if (ai.checkPassable(world, tileX, tileY)) {
                 return new Vector2(tileX * World.TILE_SIZE, tileY * World.TILE_SIZE);
             }
         }
@@ -108,7 +108,7 @@ public class PackLeaderBehavior implements PokemonBehavior {
                 direction = dy > 0 ? "up" : "down";
             }
 
-            if (world.isPassable(targetTileX, targetTileY)) {
+            if (ai.checkPassable(world, targetTileX, targetTileY)) {
                 pokemon.moveToTile(targetTileX, targetTileY, direction);
                 ai.setCurrentState(PokemonAI.AIState.WANDERING);
                 return; // Move made, exit

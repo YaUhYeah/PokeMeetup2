@@ -71,7 +71,7 @@ public class InvestigateBehavior implements PokemonBehavior {
             nextTileY += dy;
         }
 
-        if (world.isPassable(nextTileX, nextTileY)) {
+        if (ai.checkPassable(world, nextTileX, nextTileY)) {
             pokemon.moveToTile(nextTileX, nextTileY, direction);
             ai.setCurrentState(PokemonAI.AIState.INVESTIGATING);
         } else {

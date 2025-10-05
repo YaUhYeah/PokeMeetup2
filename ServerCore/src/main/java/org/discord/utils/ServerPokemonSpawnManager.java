@@ -62,10 +62,13 @@ public class ServerPokemonSpawnManager {
      */
     public void update(float delta) {
         // Update all active Pokemon (AI, movement, animations)
-        // Pass the ServerWorldAdapter so AI can check tile passability
+        // Note: We pass null for world since AI behaviors will use the adapter directly
+        // The Pokemon AI has been modified to work with the ServerWorldAdapter
         for (WildPokemon pokemon : activePokemon.values()) {
             if (pokemon != null) {
-                pokemon.update(delta, serverWorld);
+                // For now, pass null - Pokemon will move via AI that checks passability
+                // through the serverWorld adapter we stored in the AI
+                pokemon.update(delta, null);
             }
         }
 
@@ -245,9 +248,10 @@ public class ServerPokemonSpawnManager {
             );
 
             // Initialize AI for server-side Pokemon
-            // Create a ServerPokemonAI that doesn't require texture/rendering but handles movement
+            // Create a PokemonAI and inject the passability checker
             io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI ai =
                 new io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI(pokemon);
+            ai.setServerPassabilityChecker(serverWorld);
             pokemon.setAi(ai);
 
             activePokemon.put(pokemon.getUuid(), pokemon);

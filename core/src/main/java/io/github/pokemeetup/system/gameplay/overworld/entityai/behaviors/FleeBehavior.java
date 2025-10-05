@@ -66,7 +66,7 @@ public class FleeBehavior implements PokemonBehavior {
                 break;
         }
 
-        if (world.isPassable(targetTileX, targetTileY)) {
+        if (ai.checkPassable(world, targetTileX, targetTileY)) {
             pokemon.moveToTile(targetTileX, targetTileY, fleeDirection);
             fleeStepsRemaining--;
             ai.setCurrentState(PokemonAI.AIState.FLEEING);
@@ -105,7 +105,7 @@ public class FleeBehavior implements PokemonBehavior {
                     break;
             }
 
-            if (world.isPassable(targetTileX, targetTileY)) {
+            if (ai.checkPassable(world, targetTileX, targetTileY)) {
                 pokemon.moveToTile(targetTileX, targetTileY, direction);
                 fleeDirection = direction;
                 fleeStepsRemaining--;

@@ -57,7 +57,9 @@ public class WanderBehavior implements PokemonBehavior {
                 case "right": nextTileX++; break;
             }
 
-            if (GameContext.get().getWorld().isPassable(nextTileX, nextTileY) && isWithinWanderRange(nextTileX, nextTileY)) {
+            // Use AI's passability checker which works on both client and server
+            World world = GameContext.get() != null ? GameContext.get().getWorld() : null;
+            if (ai.checkPassable(world, nextTileX, nextTileY) && isWithinWanderRange(nextTileX, nextTileY)) {
                 currentWanderDirection = direction;
                 stepsRemaining = MathUtils.random(1, 4); // New path of 1-4 steps
                 moveAlongPath(); // Take the first step
@@ -81,7 +83,9 @@ public class WanderBehavior implements PokemonBehavior {
             case "right": targetTileX++; break;
         }
 
-        if (GameContext.get().getWorld().isPassable(targetTileX, targetTileY) && isWithinWanderRange(targetTileX, targetTileY)) {
+        // Use AI's passability checker which works on both client and server
+        World world = GameContext.get() != null ? GameContext.get().getWorld() : null;
+        if (ai.checkPassable(world, targetTileX, targetTileY) && isWithinWanderRange(targetTileX, targetTileY)) {
             pokemon.moveToTile(targetTileX, targetTileY, currentWanderDirection);
             stepsRemaining--;
 

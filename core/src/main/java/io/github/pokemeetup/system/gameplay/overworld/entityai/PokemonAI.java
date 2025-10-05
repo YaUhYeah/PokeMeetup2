@@ -21,6 +21,9 @@ public class PokemonAI {
     private final Vector2 territoryCenter;
     private final float territoryRadius;
 
+    // Server-side passability checker (null on client)
+    private Object serverPassabilityChecker = null;
+
     private float updateTimer = 0f;
     private boolean isPaused = false;
     private AIState currentState = AIState.IDLE;
@@ -140,8 +143,44 @@ public class PokemonAI {
         }
     }
 
+    /**
+     * Sets the server-side passability checker for AI.
+     * This allows the AI to work on the server without a full World instance.
+     */
+    public void setServerPassabilityChecker(Object checker) {
+        this.serverPassabilityChecker = checker;
+    }
+
+    /**
+     * Gets the server passability checker if one is set.
+     */
+    public Object getServerPassabilityChecker() {
+        return serverPassabilityChecker;
+    }
+
+    /**
+     * Checks if a tile is passable, using either the World or server passability checker.
+     */
+    public boolean checkPassable(World world, int tileX, int tileY) {
+        if (serverPassabilityChecker != null) {
+            // Use reflection to call isPassable on the server adapter
+            try {
+                java.lang.reflect.Method method = serverPassabilityChecker.getClass()
+                    .getMethod("isPassable", int.class, int.class);
+                return (Boolean) method.invoke(serverPassabilityChecker, tileX, tileY);
+            } catch (Exception e) {
+                return false;
+            }
+        } else if (world != null) {
+            return world.isPassable(tileX, tileY);
+        }
+        return false;
+    }
+
     public void update(float delta, World world) {
-        if (world == null || pokemon == null || isPaused) return;
+        // Allow AI to run on server if passability checker is set
+        if (pokemon == null || isPaused) return;
+        if (world == null && serverPassabilityChecker == null) return;
 
         updateTimer += delta;
         if (updateTimer < UPDATE_INTERVAL) return;
@@ -222,7 +261,7 @@ public class PokemonAI {
             int targetTileX = currentTileX + Math.round(MathUtils.cos(angle) * distance);
             int targetTileY = currentTileY + Math.round(MathUtils.sin(angle) * distance);
 
-            if (world.isPassable(targetTileX, targetTileY)) {
+            if (checkPassable(world, targetTileX, targetTileY)) {
                 GameLogger.info(pokemon.getName() + " teleports to (" + targetTileX + "," + targetTileY + ")");
                 pokemon.setX(targetTileX * World.TILE_SIZE);
                 pokemon.setY(targetTileY * World.TILE_SIZE);
@@ -255,7 +294,7 @@ public class PokemonAI {
             case "right": targetTileX += 2; break;
         }
 
-        if (world.isPassable(targetTileX, targetTileY)) {
+        if (checkPassable(world, targetTileX, targetTileY)) {
             GameLogger.info(pokemon.getName() + " phases through obstacles");
             pokemon.setX(targetTileX * World.TILE_SIZE);
             pokemon.setY(targetTileY * World.TILE_SIZE);

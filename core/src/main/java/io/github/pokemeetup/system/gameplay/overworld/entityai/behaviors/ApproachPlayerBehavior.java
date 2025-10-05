@@ -96,7 +96,7 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
                 direction = dy > 0 ? "up" : "down";
             }
 
-            if (world.isPassable(targetTileX, targetTileY)) {
+            if (ai.checkPassable(world, targetTileX, targetTileY)) {
                 pokemon.moveToTile(targetTileX, targetTileY, direction);
                 ai.setCurrentState(PokemonAI.AIState.APPROACHING);
                 moveMade = true;
