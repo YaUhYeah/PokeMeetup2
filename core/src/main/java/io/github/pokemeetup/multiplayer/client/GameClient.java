@@ -340,6 +340,33 @@ public class GameClient {
         }
     }
 
+    /**
+     * Sends a chest operation request to the server (transaction-based approach)
+     */
+    public void sendChestOperation(UUID chestId, NetworkProtocol.ChestOperationType operation,
+                                   int slotIndex, int secondarySlotIndex, ItemData itemData) {
+        if (!GameContext.get().isMultiplayer() || !isConnected() || !isAuthenticated()) {
+            GameLogger.error("Cannot send chest operation - not in multiplayer or not connected");
+            return;
+        }
+
+        try {
+            NetworkProtocol.ChestOperationRequest request = new NetworkProtocol.ChestOperationRequest();
+            request.chestId = chestId;
+            request.operation = operation;
+            request.slotIndex = slotIndex;
+            request.secondarySlotIndex = secondarySlotIndex;
+            request.itemData = itemData;
+            request.username = getLocalUsername();
+            request.timestamp = System.currentTimeMillis();
+
+            client.sendTCP(request);
+            GameLogger.info("Sent chest operation request: " + operation + " on chest " + chestId + " slot " + slotIndex);
+        } catch (Exception e) {
+            GameLogger.error("Failed to send chest operation: " + e.getMessage());
+        }
+    }
+
     private void loadSavedCredentials() {
         try {
             String savedUsername = credentials.getString("username", "");
@@ -452,24 +479,99 @@ public class GameClient {
 
     private void handleItemPickup(NetworkProtocol.ItemPickup pickup) {
         if (pickup == null || pickup.entityId == null) {
+            GameLogger.error("Received invalid ItemPickup message");
             return;
         }
         Gdx.app.postRunnable(() -> {
-            if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getItemEntityManager() != null) {
+            try {
+                if (GameContext.get().getWorld() == null || GameContext.get().getWorld().getItemEntityManager() == null) {
+                    GameLogger.error("World or ItemEntityManager is null, cannot process pickup");
+                    return;
+                }
+
                 // Get the item before removing it
                 ItemEntity entity = GameContext.get().getWorld().getItemEntityManager().getItemEntity(pickup.entityId);
 
-                // If this is the local player who picked up the item, add it to inventory and play sound
-                if (pickup.username.equals(getLocalUsername()) && entity != null) {
-                    if (GameContext.get().getPlayer() != null && GameContext.get().getPlayer().getInventory().addItem(entity.getItemData())) {
-                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
-                        GameLogger.info("Local player picked up item " + pickup.entityId);
-                    }
+                if (entity == null) {
+                    GameLogger.info("Item entity " + pickup.entityId + " already removed or doesn't exist");
+                    return;
                 }
 
-                // Remove the item from the world for all clients
+                // If this is the local player who picked up the item, add it to inventory
+                if (pickup.username.equals(getLocalUsername())) {
+                    if (GameContext.get().getPlayer() != null) {
+                        ItemData itemData = entity.getItemData();
+                        if (itemData != null) {
+                            if (GameContext.get().getPlayer().getInventory().addItem(itemData)) {
+                                AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
+                                GameLogger.info("Local player picked up item " + pickup.entityId + " (" + itemData.getItemId() + ")");
+                            } else {
+                                GameLogger.error("Failed to add item to local player inventory");
+                            }
+                        } else {
+                            GameLogger.error("Item entity has null ItemData");
+                        }
+                    }
+                } else {
+                    GameLogger.info("Other player " + pickup.username + " picked up item " + pickup.entityId);
+                }
+
+                // Remove the item from the world for all clients (server confirmed the pickup)
                 GameContext.get().getWorld().getItemEntityManager().removeItemEntity(pickup.entityId);
-                GameLogger.info("Removed item entity " + pickup.entityId + " picked up by " + pickup.username);
+            } catch (Exception e) {
+                GameLogger.error("Error handling item pickup: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+    }
+
+    /**
+     * Handles chest operation responses from the server
+     */
+    private void handleChestOperationResponse(NetworkProtocol.ChestOperationResponse response) {
+        if (response == null || response.chestId == null) {
+            GameLogger.error("Received invalid chest operation response");
+            return;
+        }
+
+        Gdx.app.postRunnable(() -> {
+            try {
+                ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
+                if (chestScreen == null || !chestScreen.getChestData().chestId.equals(response.chestId)) {
+                    // Response is for a chest that's not currently open
+                    return;
+                }
+
+                if (response.success) {
+                    // Update chest inventory with server-authoritative state
+                    chestScreen.getChestData().setItems(new ArrayList<>(response.chestItems));
+
+                    // If this was a TAKE operation for the local player, add the returned item to inventory
+                    if (response.returnedItem != null && response.username.equals(getLocalUsername())) {
+                        if (GameContext.get().getPlayer().getInventory().addItem(response.returnedItem)) {
+                            GameLogger.info("Added item from chest to inventory: " + response.returnedItem.getItemId());
+                        } else {
+                            GameLogger.error("Failed to add item to inventory - inventory full");
+                        }
+                    }
+
+                    // Refresh UI
+                    chestScreen.updateUI();
+                    GameLogger.info("Chest operation successful, updated chest state");
+                } else {
+                    // Operation failed - log the reason
+                    GameLogger.info("Chest operation failed: " + response.reason);
+
+                    // Optionally show error message to player
+                    if (response.username.equals(getLocalUsername())) {
+                        NetworkProtocol.ChatMessage errorMsg = createSystemMessage("Chest operation failed: " + response.reason);
+                        if (chatMessageHandler != null) {
+                            chatMessageHandler.accept(errorMsg);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                GameLogger.error("Error handling chest operation response: " + e.getMessage());
             }
         });
     }
@@ -952,6 +1054,9 @@ public class GameClient {
                     }
                 });
                 return;
+            } else if (object instanceof NetworkProtocol.ChestOperationResponse) {
+                handleChestOperationResponse((NetworkProtocol.ChestOperationResponse) object);
+                return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {
                 handlePlayerUpdate((NetworkProtocol.PlayerUpdate) object);
             } else if (object instanceof NetworkProtocol.PlayerJoined) {
@@ -1024,8 +1129,16 @@ public class GameClient {
     }
 
     private void handleItemDrop(NetworkProtocol.ItemDrop drop) {
+        if (drop.entityId == null) {
+            GameLogger.error("Received ItemDrop with null entityId");
+            return;
+        }
+
         GameContext.get().getWorld().getItemEntityManager()
-            .spawnItemEntityFromNetwork(drop.itemData, drop.x, drop.y);
+            .spawnItemEntityFromNetwork(drop.itemData, drop.x, drop.y, drop.entityId);
+
+        GameLogger.info("Spawned item entity " + drop.entityId + " (" + drop.itemData.getItemId() + ") from " + drop.username);
+
         float distance = Vector2.dst(
             GameContext.get().getPlayer().getX(),
             GameContext.get().getPlayer().getY(),

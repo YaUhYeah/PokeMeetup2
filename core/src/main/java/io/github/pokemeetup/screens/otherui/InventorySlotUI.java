@@ -12,6 +12,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.*;
 import com.badlogic.gdx.utils.Align;
 import io.github.pokemeetup.audio.AudioManager;
 import io.github.pokemeetup.context.GameContext;
+import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.screens.InventoryScreenInterface;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
@@ -325,7 +326,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             InventoryLock.writeUnlock();
             updateSlot();
             screenInterface.updateHeldItemDisplay();
-            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
                 GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
             }
         }
@@ -393,7 +394,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         updateSlot();
         screenInterface.updateHeldItemDisplay();
-        if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
+        if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
             GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
         }
     }

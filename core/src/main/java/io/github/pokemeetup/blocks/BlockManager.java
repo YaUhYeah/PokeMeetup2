@@ -141,6 +141,9 @@ public class BlockManager {
         Color originalColor = batch.getColor();
 
         for (PlaceableBlock block : chunk.getBlocks().values()) {
+            // Update block animations (especially chest open/close)
+            block.update(com.badlogic.gdx.Gdx.graphics.getDeltaTime());
+
             float tileX = block.getPosition().x * World.TILE_SIZE;
             float tileY = block.getPosition().y * World.TILE_SIZE;
 

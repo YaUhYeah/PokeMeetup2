@@ -25,7 +25,11 @@ public class ItemEntity {
     private boolean pickedUp;
 
     public ItemEntity(ItemData itemData, float x, float y) {
-        this.entityId = UUID.randomUUID();
+        this(itemData, x, y, UUID.randomUUID());
+    }
+
+    public ItemEntity(ItemData itemData, float x, float y, UUID entityId) {
+        this.entityId = entityId;
         this.itemData = itemData;
         this.position = new Vector2(x, y);
         this.bounds = new Rectangle(x - ITEM_SIZE/2, y - ITEM_SIZE/2, ITEM_SIZE, ITEM_SIZE);

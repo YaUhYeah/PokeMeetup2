@@ -396,14 +396,22 @@ public class InputHandler extends InputAdapter {
                 dropX += 32;
                 break;
         }
-        if (player.getInventory().removeItem(itemData)) {
-            GameContext.get().getHotbarSystem().updateHotbar();
-            if (GameContext.get().isMultiplayer()) {
+
+        if (GameContext.get().isMultiplayer()) {
+            // In multiplayer, remove item first, then send to server
+            // Server will create authoritative entity and broadcast to all clients
+            if (player.getInventory().removeItem(itemData)) {
+                GameContext.get().getHotbarSystem().updateHotbar();
                 GameContext.get().getGameClient().sendItemDrop(itemData, new Vector2(dropX, dropY));
-            } else {
-                GameContext.get().getWorld().getItemEntityManager().spawnItemEntity(itemData, dropX, dropY);
+                AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
             }
-            AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
+        } else {
+            // In singleplayer, just spawn locally
+            if (player.getInventory().removeItem(itemData)) {
+                GameContext.get().getHotbarSystem().updateHotbar();
+                GameContext.get().getWorld().getItemEntityManager().spawnItemEntity(itemData, dropX, dropY);
+                AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
+            }
         }
     }
 

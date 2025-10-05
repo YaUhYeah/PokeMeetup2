@@ -120,6 +120,9 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(ServerInfoResponse.class);
         kryo.register(SavePlayerDataRequest.class);
         kryo.register(ChestUpdate.class);
+        kryo.register(ChestOperationType.class);
+        kryo.register(ChestOperationRequest.class);
+        kryo.register(ChestOperationResponse.class);
         kryo.register(SavePlayerDataResponse.class);
         kryo.register(GetPlayerDataRequest.class);
         kryo.register(GetPlayerDataResponse.class);
@@ -521,6 +524,32 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public String username;       // The player making the update
         public UUID chestId;           // The chest UUID
         public List<ItemData> items;  // The new list of items in the chest
+        public long timestamp;
+    }
+
+    public enum ChestOperationType {
+        TAKE_ITEM,      // Remove item from chest slot
+        ADD_ITEM,       // Add item to chest slot
+        SWAP_ITEMS      // Swap items between slots
+    }
+
+    public static class ChestOperationRequest implements Serializable {
+        public UUID chestId;
+        public ChestOperationType operation;
+        public int slotIndex;           // Primary slot for operation
+        public int secondarySlotIndex;  // For SWAP operations (-1 if not used)
+        public ItemData itemData;       // For ADD operations
+        public String username;
+        public long timestamp;
+    }
+
+    public static class ChestOperationResponse implements Serializable {
+        public UUID chestId;
+        public boolean success;
+        public String reason;           // Error reason if failed
+        public List<ItemData> chestItems; // Updated chest state if successful
+        public ItemData returnedItem;   // Item returned to player (for TAKE)
+        public String username;
         public long timestamp;
     }
 

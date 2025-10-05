@@ -272,6 +272,15 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         try {
             this.heldItem = null; // Clear any previously held item
             updateHeldItemDisplay(); // Update the UI accordingly
+
+            // Set chest block to open state for animation
+            PlaceableBlock block = GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(
+                (int) chestPosition.x, (int) chestPosition.y);
+            if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
+                block.setChestOpen(true);
+                GameLogger.info("Set chest to open state for animation");
+            }
+
             setupUI();
             updateUI();
 

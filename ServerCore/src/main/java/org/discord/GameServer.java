@@ -997,6 +997,10 @@ public class GameServer {
                         handleChestUpdate(connection, (NetworkProtocol.ChestUpdate) object);
                         return;
                     }
+                    if (object instanceof NetworkProtocol.ChestOperationRequest) {
+                        handleChestOperation(connection, (NetworkProtocol.ChestOperationRequest) object);
+                        return;
+                    }
                     if (object instanceof NetworkProtocol.ItemPickup) {
                         handleItemPickup(connection, (NetworkProtocol.ItemPickup) object);
                         return;
@@ -1166,6 +1170,150 @@ public class GameServer {
         }
 
         return null;
+    }
+
+    /**
+     * Handles atomic chest operations with server-authoritative validation
+     */
+    private void handleChestOperation(Connection connection, NetworkProtocol.ChestOperationRequest request) {
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null || !username.equals(request.username)) {
+            sendChestOperationFailure(connection, request.chestId, "Unauthorized operation");
+            return;
+        }
+
+        // Find chest position
+        Vector2 chestPos = findChestPositionInPlacedBlocks(request.chestId);
+        if (chestPos == null) {
+            chestPos = findChestPositionInLoadedChunks(request.chestId);
+        }
+
+        if (chestPos == null) {
+            sendChestOperationFailure(connection, request.chestId, "Chest not found");
+            return;
+        }
+
+        // Get chest block
+        PlaceableBlock chestBlock = ServerGameContext.get().getServerBlockManager().getChestBlock(request.chestId);
+        if (chestBlock == null || chestBlock.getType() != PlaceableBlock.BlockType.CHEST) {
+            sendChestOperationFailure(connection, request.chestId, "Invalid chest block");
+            return;
+        }
+
+        // Synchronize on chest-specific lock for atomic operation
+        Object lock = chestLocks.computeIfAbsent(request.chestId, id -> new Object());
+        synchronized (lock) {
+            ChestData chestData = chestBlock.getChestData();
+            if (chestData == null) {
+                chestData = new ChestData((int) chestPos.x, (int) chestPos.y);
+                chestBlock.setChestData(chestData);
+            }
+
+            // Execute operation atomically
+            NetworkProtocol.ChestOperationResponse response = executeChestOperation(request, chestData);
+            response.username = username;
+            response.chestId = request.chestId;
+
+            if (response.success) {
+                // Save chunk
+                int chunkX = Math.floorDiv((int) chestPos.x, World.CHUNK_SIZE);
+                int chunkY = Math.floorDiv((int) chestPos.y, World.CHUNK_SIZE);
+                Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, chunkX, chunkY);
+                if (chunk != null) {
+                    chunk.setDirty(true);
+                    ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
+                }
+
+                // Broadcast to ALL clients (including requester for confirmation)
+                networkServer.sendToAllTCP(response);
+                GameLogger.info("Chest operation " + request.operation + " by " + username + " on chest " + request.chestId + " succeeded");
+            } else {
+                // Send failure only to requester
+                connection.sendTCP(response);
+                GameLogger.info("Chest operation " + request.operation + " by " + username + " failed: " + response.reason);
+            }
+        }
+    }
+
+    /**
+     * Executes a single chest operation atomically
+     */
+    private NetworkProtocol.ChestOperationResponse executeChestOperation(
+        NetworkProtocol.ChestOperationRequest request, ChestData chestData) {
+
+        NetworkProtocol.ChestOperationResponse response = new NetworkProtocol.ChestOperationResponse();
+        response.timestamp = System.currentTimeMillis();
+
+        try {
+            switch (request.operation) {
+                case TAKE_ITEM:
+                    // Validate slot has item
+                    ItemData item = chestData.getItemAt(request.slotIndex);
+                    if (item == null) {
+                        response.success = false;
+                        response.reason = "Slot is empty";
+                        return response;
+                    }
+
+                    // Remove from chest
+                    chestData.setItemAt(request.slotIndex, null);
+                    response.success = true;
+                    response.returnedItem = item.copy();
+                    response.chestItems = new ArrayList<>(chestData.getItems());
+                    break;
+
+                case ADD_ITEM:
+                    // Validate slot is empty
+                    if (chestData.getItemAt(request.slotIndex) != null) {
+                        response.success = false;
+                        response.reason = "Slot is occupied";
+                        return response;
+                    }
+
+                    // Add to chest
+                    chestData.setItemAt(request.slotIndex, request.itemData);
+                    response.success = true;
+                    response.chestItems = new ArrayList<>(chestData.getItems());
+                    break;
+
+                case SWAP_ITEMS:
+                    // Validate both slots exist
+                    if (request.secondarySlotIndex < 0 || request.secondarySlotIndex >= ChestData.CHEST_SIZE) {
+                        response.success = false;
+                        response.reason = "Invalid secondary slot";
+                        return response;
+                    }
+
+                    // Swap items
+                    ItemData item1 = chestData.getItemAt(request.slotIndex);
+                    ItemData item2 = chestData.getItemAt(request.secondarySlotIndex);
+                    chestData.setItemAt(request.slotIndex, item2);
+                    chestData.setItemAt(request.secondarySlotIndex, item1);
+                    response.success = true;
+                    response.chestItems = new ArrayList<>(chestData.getItems());
+                    break;
+
+                default:
+                    response.success = false;
+                    response.reason = "Unknown operation";
+                    break;
+            }
+        } catch (Exception e) {
+            GameLogger.error("Error executing chest operation: " + e.getMessage());
+            response.success = false;
+            response.reason = "Server error: " + e.getMessage();
+        }
+
+        return response;
+    }
+
+    private void sendChestOperationFailure(Connection connection, UUID chestId, String reason) {
+        NetworkProtocol.ChestOperationResponse response = new NetworkProtocol.ChestOperationResponse();
+        response.chestId = chestId;
+        response.success = false;
+        response.reason = reason;
+        response.timestamp = System.currentTimeMillis();
+        connection.sendTCP(response);
     }
 
     private void handleBuildingPlacement(Connection connection, NetworkProtocol.BuildingPlacement bp) {
