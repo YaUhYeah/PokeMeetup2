@@ -331,9 +331,11 @@ public class GameClient {
                 update.chestId = chestData.chestId;
                 update.username = GameContext.get().getPlayer().getUsername();
                 update.items = chestData.getItems();
+                update.version = chestData.version; // Include version for optimistic locking
                 update.timestamp = System.currentTimeMillis();
                 client.sendTCP(update);
-                GameLogger.info("Sent chest update: " + update.chestId + " with " + update.items.size() + " items");
+                GameLogger.info("Sent chest update: " + update.chestId + " with " + update.items.size() +
+                    " items (version " + update.version + ")");
             } catch (Exception e) {
                 GameLogger.error("Failed to send chest update: " + e.getMessage());
             }
@@ -943,9 +945,19 @@ public class GameClient {
                 NetworkProtocol.ChestUpdate update = (NetworkProtocol.ChestUpdate) object;
                 ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
                 if (chestScreen != null && chestScreen.getChestData().chestId.equals(update.chestId)) {
-                    chestScreen.getChestData().setItems(update.items);
-                    chestScreen.updateUI();
-                    GameContext.get().getGameScreen().setChestScreen(chestScreen);
+                    ChestData chestData = chestScreen.getChestData();
+
+                    // Only apply update if it's newer than our current version
+                    // or if it's from the server (version correction)
+                    if (update.version >= chestData.version || "SERVER".equals(update.username)) {
+                        chestData.setItems(update.items);
+                        chestData.version = update.version;
+                        chestScreen.updateUI();
+                        GameLogger.info("Applied chest update: version " + update.version);
+                    } else {
+                        GameLogger.info("Ignored stale chest update: received version " + update.version +
+                            ", current version " + chestData.version);
+                    }
                 }
                 return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {

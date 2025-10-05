@@ -17,6 +17,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
     public List<ItemData> items;
     public Vector2 position;
     public boolean isDirty;
+    public long version; // For optimistic locking and synchronization
     public transient InventorySlotData[] slotDataArray;
 
     public List<ItemData> getItems() {
@@ -31,6 +32,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         this.chestId = UUID.randomUUID();
         this.items = new ArrayList<>(CHEST_SIZE);
         this.position = new Vector2(0, 0);
+        this.version = 0;
         initializeSlots();
     }
 
@@ -39,6 +41,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         this.items = new ArrayList<>(CHEST_SIZE);
         this.position = new Vector2(x, y);
         this.isDirty = false;
+        this.version = 0;
         initializeSlots();
     }
 
@@ -89,6 +92,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
                 items.set(index, null);
             }
             isDirty = true;
+            version++; // Increment version on modification
         }
     }
 
@@ -104,6 +108,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         json.writeValue("chestId", chestId.toString());
         json.writeValue("position", position);
         json.writeValue("isDirty", isDirty);
+        json.writeValue("version", version);
         json.writeValue("items", items, ArrayList.class, ItemData.class);
     }
 
@@ -112,6 +117,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         chestId = UUID.fromString(jsonData.getString("chestId"));
         position = json.readValue(Vector2.class, jsonData.get("position"));
         isDirty = jsonData.getBoolean("isDirty", false);
+        version = jsonData.getLong("version", 0L);
         items = json.readValue(ArrayList.class, ItemData.class, jsonData.get("items"));
         initializeSlotDataArray();
     }
@@ -130,6 +136,7 @@ public class ChestData implements Serializable, Json.Serializable,ItemContainer 
         ChestData copy = new ChestData((int)position.x, (int)position.y);
         copy.chestId = UUID.fromString(this.chestId.toString()); // Deep copy UUID
         copy.isDirty = this.isDirty;
+        copy.version = this.version;
         if (this.items != null) {
             for (int i = 0; i < this.items.size(); i++) {
                 ItemData item = this.items.get(i);

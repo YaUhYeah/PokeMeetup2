@@ -231,10 +231,14 @@ public class WildPokemon extends Pokemon implements Positionable {
                 return;
             }
         }
-        // Update AI only if not network controlled and world is available
-        if (!isNetworkControlled && world != null) {
+        // Update AI only if not network controlled
+        // AI can work with either a World instance or a ServerWorldAdapter passability checker
+        if (!isNetworkControlled) {
             if (enhancedAI != null) {
-                enhancedAI.update(delta, world);
+                // Check if AI can run (either world is available or server passability checker is set)
+                if (world != null || enhancedAI.getServerPassabilityChecker() != null) {
+                    enhancedAI.update(delta, world);
+                }
             } else if (legacyAI != null) {
             }
         }

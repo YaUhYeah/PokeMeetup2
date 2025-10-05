@@ -521,6 +521,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public String username;       // The player making the update
         public UUID chestId;           // (Assuming your ChestData has an integer id)
         public List<ItemData> items;  // The new list of items in the chest
+        public long version;           // Version for optimistic locking
         public long timestamp;
     }
 

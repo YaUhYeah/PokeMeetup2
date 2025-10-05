@@ -62,12 +62,10 @@ public class ServerPokemonSpawnManager {
      */
     public void update(float delta) {
         // Update all active Pokemon (AI, movement, animations)
-        // Note: We pass null for world since AI behaviors will use the adapter directly
-        // The Pokemon AI has been modified to work with the ServerWorldAdapter
+        // Pass null for world - the Pokemon AI uses the ServerWorldAdapter (serverPassabilityChecker)
+        // for tile passability checks instead of requiring a full World instance
         for (WildPokemon pokemon : activePokemon.values()) {
             if (pokemon != null) {
-                // For now, pass null - Pokemon will move via AI that checks passability
-                // through the serverWorld adapter we stored in the AI
                 pokemon.update(delta, null);
             }
         }

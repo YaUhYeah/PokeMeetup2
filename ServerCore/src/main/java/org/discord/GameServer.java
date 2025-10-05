@@ -1102,11 +1102,38 @@ public class GameServer {
                 currentChest = new ChestData((int) chestPos.x, (int) chestPos.y);
                 chestBlock.setChestData(currentChest);
             }
+
+            // Validate update using version-based optimistic locking
+            // If client's version is older than server's, reject the update
+            if (update.version > 0 && currentChest.version > update.version) {
+                GameLogger.error("Chest update rejected: version mismatch. Server version: " +
+                    currentChest.version + ", Client version: " + update.version);
+
+                // Send correction back to the client with current chest state
+                NetworkProtocol.ChestUpdate correctionUpdate = new NetworkProtocol.ChestUpdate();
+                correctionUpdate.chestId = update.chestId;
+                correctionUpdate.items = new ArrayList<>(currentChest.items);
+                correctionUpdate.version = currentChest.version;
+                correctionUpdate.username = "SERVER"; // Mark as server-originated
+                correctionUpdate.timestamp = System.currentTimeMillis();
+                connection.sendTCP(correctionUpdate);
+                return;
+            }
+
+            // Apply the update
             currentChest.setItems(new ArrayList<>(update.items));
+            currentChest.version++; // Increment server version
+
+            // Update the network message with the new authoritative version
+            update.version = currentChest.version;
+
             chunk.setDirty(true);
             ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
+
+            // Broadcast to all clients with authoritative version
             networkServer.sendToAllTCP(update);
-            GameLogger.info("Processed chest update for chestId " + update.chestId + " from " + update.username);
+            GameLogger.info("Processed chest update for chestId " + update.chestId + " from " +
+                update.username + " (version " + currentChest.version + ")");
         }
     }
 
