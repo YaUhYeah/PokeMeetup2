@@ -270,8 +270,8 @@ public class DeploymentHelper {
                 "Logs:\n" +
                 "- Server logs are stored in the logs directory\n\n" +
                 "Support:\n" +
-                "- Issues: https://github.com/yourusername/pokemon-meetup/issues\n" +
-                "- Wiki: https://github.com/yourusername/pokemon-meetup/wiki\n";
+                "- Issues: https://github.com/YaUhYeah/pokemon-meetup/issues\n" +
+                "- Wiki: https://github.com/YaUhYeah/pokemon-meetup/wiki\n";
 
         Path readmeFile = Paths.get(deploymentDir.toString(), "README.md");
         Files.write(readmeFile, Arrays.asList(readme.split("\n")), StandardCharsets.UTF_8);

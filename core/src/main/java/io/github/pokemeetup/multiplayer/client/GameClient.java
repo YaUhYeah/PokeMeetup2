@@ -330,12 +330,10 @@ public class GameClient {
                 NetworkProtocol.ChestUpdate update = new NetworkProtocol.ChestUpdate();
                 update.chestId = chestData.chestId;
                 update.username = GameContext.get().getPlayer().getUsername();
-                update.items = chestData.getItems();
-                update.version = chestData.version; // Include version for optimistic locking
+                update.items = new ArrayList<>(chestData.getItems()); // Copy the list
                 update.timestamp = System.currentTimeMillis();
                 client.sendTCP(update);
-                GameLogger.info("Sent chest update: " + update.chestId + " with " + update.items.size() +
-                    " items (version " + update.version + ")");
+                GameLogger.info("Sent chest update: " + update.chestId + " with " + update.items.size() + " items");
             } catch (Exception e) {
                 GameLogger.error("Failed to send chest update: " + e.getMessage());
             }
@@ -945,19 +943,10 @@ public class GameClient {
                 NetworkProtocol.ChestUpdate update = (NetworkProtocol.ChestUpdate) object;
                 ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
                 if (chestScreen != null && chestScreen.getChestData().chestId.equals(update.chestId)) {
-                    ChestData chestData = chestScreen.getChestData();
-
-                    // Only apply update if it's newer than our current version
-                    // or if it's from the server (version correction)
-                    if (update.version >= chestData.version || "SERVER".equals(update.username)) {
-                        chestData.setItems(update.items);
-                        chestData.version = update.version;
-                        chestScreen.updateUI();
-                        GameLogger.info("Applied chest update: version " + update.version);
-                    } else {
-                        GameLogger.info("Ignored stale chest update: received version " + update.version +
-                            ", current version " + chestData.version);
-                    }
+                    // Apply the update from server
+                    chestScreen.getChestData().setItems(new ArrayList<>(update.items));
+                    chestScreen.updateUI();
+                    GameLogger.info("Applied chest update from " + update.username);
                 }
                 return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {

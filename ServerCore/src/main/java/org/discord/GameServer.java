@@ -1072,10 +1072,8 @@ public class GameServer {
             return;
         }
 
-        // First try to find chest in placedBlocks
+        // Find chest in placedBlocks or loaded chunks
         Vector2 chestPos = findChestPositionInPlacedBlocks(update.chestId);
-
-        // If not found, search through all loaded chunks
         if (chestPos == null) {
             chestPos = findChestPositionInLoadedChunks(update.chestId);
         }
@@ -1092,9 +1090,11 @@ public class GameServer {
         Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
         PlaceableBlock chestBlock = ServerGameContext.get().getServerBlockManager().getChestBlock(update.chestId);
         if (chestBlock == null) {
-            GameLogger.error("Chest block with id " + update.chestId + " not found even after loading chunk");
+            GameLogger.error("Chest block with id " + update.chestId + " not found");
             return;
         }
+
+        // Synchronize on chest-specific lock to prevent concurrent modifications
         Object lock = chestLocks.computeIfAbsent(update.chestId, id -> new Object());
         synchronized (lock) {
             ChestData currentChest = chestBlock.getChestData();
@@ -1103,37 +1103,14 @@ public class GameServer {
                 chestBlock.setChestData(currentChest);
             }
 
-            // Validate update using version-based optimistic locking
-            // If client's version is older than server's, reject the update
-            if (update.version > 0 && currentChest.version > update.version) {
-                GameLogger.error("Chest update rejected: version mismatch. Server version: " +
-                    currentChest.version + ", Client version: " + update.version);
-
-                // Send correction back to the client with current chest state
-                NetworkProtocol.ChestUpdate correctionUpdate = new NetworkProtocol.ChestUpdate();
-                correctionUpdate.chestId = update.chestId;
-                correctionUpdate.items = new ArrayList<>(currentChest.items);
-                correctionUpdate.version = currentChest.version;
-                correctionUpdate.username = "SERVER"; // Mark as server-originated
-                correctionUpdate.timestamp = System.currentTimeMillis();
-                connection.sendTCP(correctionUpdate);
-                return;
-            }
-
             // Apply the update
             currentChest.setItems(new ArrayList<>(update.items));
-            currentChest.version++; // Increment server version
-
-            // Update the network message with the new authoritative version
-            update.version = currentChest.version;
-
             chunk.setDirty(true);
             ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
 
-            // Broadcast to all clients with authoritative version
+            // Broadcast to all clients (including sender for confirmation)
             networkServer.sendToAllTCP(update);
-            GameLogger.info("Processed chest update for chestId " + update.chestId + " from " +
-                update.username + " (version " + currentChest.version + ")");
+            GameLogger.info("Processed chest update for chestId " + update.chestId + " from " + update.username);
         }
     }
 

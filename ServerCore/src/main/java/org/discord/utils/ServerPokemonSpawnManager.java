@@ -168,8 +168,7 @@ public class ServerPokemonSpawnManager {
             ServerGameContext.get().getWorldManager().getLoadedChunks(worldName);
 
         if (loadedChunks == null || loadedChunks.isEmpty()) {
-            GameLogger.error("No loaded chunks for world " + worldName + "; cannot spawn Pokémon.");
-            return;
+            return; // Don't spam logs
         }
         Set<Vector2> playerChunks =
             ServerGameContext.get().getGameServer().getPlayerOccupiedChunks();
@@ -177,18 +176,28 @@ public class ServerPokemonSpawnManager {
         if (playerChunks.isEmpty()) {
             return;
         }
+
+        int totalPokemon = activePokemon.size();
+        GameLogger.info("Spawn tick: " + totalPokemon + " active Pokemon, checking " + playerChunks.size() + " player chunks");
+
         for (Vector2 chunkPos : playerChunks) {
             Chunk chunk = loadedChunks.get(chunkPos);
             if (chunk == null) {
+                GameLogger.info("Chunk " + chunkPos + " not loaded, skipping");
                 continue;
             }
 
             int count = getPokemonCountInChunk(chunkPos);
 
-            float chance = random.nextFloat();
-
-            if (count < MAX_POKEMON_PER_CHUNK && chance < 0.4f) {
-                spawnPokemonInChunk(chunkPos, chunk);
+            if (count < MAX_POKEMON_PER_CHUNK) {
+                // Attempt spawn with higher chance
+                float chance = random.nextFloat();
+                if (chance < 0.7f) { // 70% chance per spawn cycle
+                    GameLogger.info("Attempting to spawn Pokemon in chunk " + chunkPos + " (current count: " + count + ")");
+                    spawnPokemonInChunk(chunkPos, chunk);
+                }
+            } else {
+                GameLogger.info("Chunk " + chunkPos + " full (" + count + "/" + MAX_POKEMON_PER_CHUNK + ")");
             }
         }
     }
@@ -217,58 +226,67 @@ public class ServerPokemonSpawnManager {
         return new Vector2(chunkX, chunkY);
     }
     private void spawnPokemonInChunk(Vector2 chunkPos, Chunk chunk) {
-        int localX = random.nextInt(Chunk.CHUNK_SIZE);
-        int localY = random.nextInt(Chunk.CHUNK_SIZE);
+        // Try up to 5 times to find a passable location
+        for (int attempt = 0; attempt < 5; attempt++) {
+            int localX = random.nextInt(Chunk.CHUNK_SIZE);
+            int localY = random.nextInt(Chunk.CHUNK_SIZE);
 
-        boolean passable = chunk.isPassable(localX, localY);
-        if (!passable) {
-            GameLogger.info("Spawn location not passable in chunk " + chunkPos);
-            return;
-        }
-
-        try {
-            int worldTileX = (int)(chunkPos.x * Chunk.CHUNK_SIZE + localX);
-            int worldTileY = (int)(chunkPos.y * Chunk.CHUNK_SIZE + localY);
-            float pixelX = worldTileX * TILE_SIZE;
-            float pixelY = worldTileY * TILE_SIZE;
-            Biome biome = chunk.getBiome();
-            if (biome == null) {
-                GameLogger.error("Null biome at chunk " + chunkPos + ", defaulting to PLAINS biome.");
+            boolean passable = chunk.isPassable(localX, localY);
+            if (!passable) {
+                continue; // Try again
             }
-            String pokemonName = selectRandomPokemonForBiome(biome);
-            int level = calculatePokemonLevel(pixelX, pixelY);
-            WildPokemon pokemon = new WildPokemon(
-                pokemonName,
-                level,
-                (int) pixelX,
-                (int) pixelY,
-                true // noTexture mode on the server
-            );
 
-            // Initialize AI for server-side Pokemon
-            // Create a PokemonAI and inject the passability checker
-            io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI ai =
-                new io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI(pokemon);
-            ai.setServerPassabilityChecker(serverWorld);
-            pokemon.setAi(ai);
+            try {
+                int worldTileX = (int)(chunkPos.x * Chunk.CHUNK_SIZE + localX);
+                int worldTileY = (int)(chunkPos.y * Chunk.CHUNK_SIZE + localY);
+                float pixelX = worldTileX * TILE_SIZE;
+                float pixelY = worldTileY * TILE_SIZE;
+                Biome biome = chunk.getBiome();
+                if (biome == null) {
+                    GameLogger.error("Null biome at chunk " + chunkPos + ", cannot spawn Pokemon");
+                    return;
+                }
+                String pokemonName = selectRandomPokemonForBiome(biome);
+                int level = calculatePokemonLevel(pixelX, pixelY);
+                WildPokemon pokemon = new WildPokemon(
+                    pokemonName,
+                    level,
+                    (int) pixelX,
+                    (int) pixelY,
+                    true // noTexture mode on the server
+                );
 
-            activePokemon.put(pokemon.getUuid(), pokemon);
-            NetworkProtocol.WildPokemonSpawn spawnMsg = new NetworkProtocol.WildPokemonSpawn();
-            spawnMsg.uuid = pokemon.getUuid();
-            spawnMsg.x = pokemon.getX();
-            spawnMsg.y = pokemon.getY();
-            spawnMsg.timestamp = System.currentTimeMillis();
-            spawnMsg.data = createPokemonData(pokemon); // might throw if dictionary is missing?
-            ServerGameContext.get()
-                .getGameServer()
-                .getNetworkServer()
-                .sendToAllTCP(spawnMsg);
+                // Initialize AI for server-side Pokemon
+                // Create a PokemonAI and inject the passability checker
+                io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI ai =
+                    new io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI(pokemon);
+                ai.setServerPassabilityChecker(serverWorld);
+                pokemon.setAi(ai);
 
+                activePokemon.put(pokemon.getUuid(), pokemon);
 
-        } catch (Exception ex) {
-            GameLogger.error("spawnPokemonInChunk: Unexpected error => " + ex.getMessage());
-            ex.printStackTrace();
+                NetworkProtocol.WildPokemonSpawn spawnMsg = new NetworkProtocol.WildPokemonSpawn();
+                spawnMsg.uuid = pokemon.getUuid();
+                spawnMsg.x = pokemon.getX();
+                spawnMsg.y = pokemon.getY();
+                spawnMsg.timestamp = System.currentTimeMillis();
+                spawnMsg.data = createPokemonData(pokemon);
+                ServerGameContext.get()
+                    .getGameServer()
+                    .getNetworkServer()
+                    .sendToAllTCP(spawnMsg);
+
+                GameLogger.info("Successfully spawned " + pokemonName + " level " + level +
+                    " in chunk " + chunkPos + " at (" + worldTileX + "," + worldTileY + ")");
+                return; // Success!
+
+            } catch (Exception ex) {
+                GameLogger.error("spawnPokemonInChunk: Unexpected error => " + ex.getMessage());
+                ex.printStackTrace();
+                return;
+            }
         }
+        GameLogger.info("Failed to find passable location in chunk " + chunkPos + " after 5 attempts");
     }
 
 
