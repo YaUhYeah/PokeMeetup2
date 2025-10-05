@@ -63,7 +63,8 @@ public class World {
     public static final float INTERACTION_RANGE = TILE_SIZE * 1.6f;
     private static final float COLOR_TRANSITION_SPEED = 2.0f;
     private static final int MAX_CHUNK_LOAD_RADIUS = 10;
-    private static final int MAX_LOADED_CHUNKS = 150;
+    // Increased to accommodate larger load radius (7 chunks = ~225 chunks in a circle)
+    private static final int MAX_LOADED_CHUNKS = 250;
     private static final long UNLOAD_IDLE_THRESHOLD_MS = 30000;
     private static final int MAX_CHUNK_RETRY = 3;
     public static int DEFAULT_X_POSITION = 0;
@@ -1732,6 +1733,10 @@ public class World {
         // --- 8) Footstep FX ---
         if (footstepEffectManager != null) footstepEffectManager.update(delta);
 
+        // --- 8.5) Mark Y-sort dirty every frame to ensure proper layering ---
+        // This ensures entities are always sorted correctly as player/objects move
+        ySortDirty = true;
+
         // --- 9) Chunk streaming (ONE pass per frame, no sleeps) ---
         // Only start managing when initial loads are done/allowed.
         manageChunksTimer += delta;
@@ -1968,7 +1973,9 @@ public class World {
     }// --- Modified manageChunks method in World.java ---
 
     private void manageChunks(int playerChunkX, int playerChunkY) {
-        int loadRadius = INITIAL_LOAD_RADIUS + 1;
+        // Increased load radius to prevent objects from popping in during exploration
+        // 7 chunks = ~224 tiles = ~7168 pixels of view distance (plenty of buffer)
+        int loadRadius = 7;
         PriorityQueue<Vector2> chunkQueue = new PriorityQueue<>(Comparator.comparingDouble(
             cp -> Vector2.dst2(cp.x, cp.y, playerChunkX, playerChunkY)
         ));
@@ -1978,7 +1985,8 @@ public class World {
                 chunkQueue.add(new Vector2(playerChunkX + dx, playerChunkY + dy));
             }
         }
-        final int MAX_CHUNKS_PER_FRAME = 8;
+        // Increased to load chunks faster and reduce pop-in
+        final int MAX_CHUNKS_PER_FRAME = 12;
         int loadedThisFrame = 0;
         long now = System.currentTimeMillis();
 
@@ -2674,16 +2682,27 @@ public class World {
                     if (!isObjectInView(obj, expandedBounds)) continue;
 
                     if (isTallGrassType(obj.getType())) {
-                        if (player != null && obj.getTileX() == player.getTileX() && obj.getTileY() == player.getTileY()) {
-                            ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.TALL_GRASS_BACKGROUND));
-                            ySortQueue.add(renderableEntityPool.obtain().init(obj, player.getRenderPosition().y - 1, RenderableType.TALL_GRASS_FOREGROUND));
-                        } else {
-                            ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
-                        }
+                        // AAA-quality tall grass layering: Split grass based on player position
+                        // The bottom/stalk part (FOREGROUND) appears below player (renders first)
+                        // The top/fluffy part (BACKGROUND) appears above player (renders last)
+                        // Use grass base Y for stalks, and slightly higher Y for top foliage
+                        float grassBaseY = obj.getPixelY();
+                        float grassTopY = obj.getPixelY() + (TILE_SIZE * 0.5f);
+
+                        // Render bottom stalks first (lower Y = renders earlier = behind player)
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, grassBaseY, RenderableType.TALL_GRASS_FOREGROUND));
+                        // Render top foliage last (higher Y = renders later = in front of player)
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, grassTopY, RenderableType.TALL_GRASS_BACKGROUND));
                     } else if (obj.getType().renderLayer == WorldObject.ObjectType.RenderLayer.LAYERED) {
-                        ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.TREE_BASE));
-                        ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.TREE_TOP));
+                        // Trees: Base renders at object Y, top renders at visual top position
+                        // This ensures the player can walk "between" the trunk and leaves
+                        float treeBaseY = obj.getPixelY();
+                        float treeTopY = obj.getPixelY() + (TILE_SIZE * 2); // Top is 2 tiles up from base
+
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, treeBaseY, RenderableType.TREE_BASE));
+                        ySortQueue.add(renderableEntityPool.obtain().init(obj, treeTopY, RenderableType.TREE_TOP));
                     } else if (obj.getType().renderLayer == WorldObject.ObjectType.RenderLayer.BELOW_PLAYER) {
+                        // Regular objects render at their base Y position
                         ySortQueue.add(renderableEntityPool.obtain().init(obj, obj.getPixelY(), RenderableType.WORLD_OBJECT));
                     }
                 }
