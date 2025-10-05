@@ -7,6 +7,7 @@ import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.DayNightCycle;
+import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.PokemonSpawnManager;
