@@ -941,13 +941,16 @@ public class GameClient {
                 handleChatMessage((NetworkProtocol.ChatMessage) object);
             } else if (object instanceof NetworkProtocol.ChestUpdate) {
                 NetworkProtocol.ChestUpdate update = (NetworkProtocol.ChestUpdate) object;
-                ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
-                if (chestScreen != null && chestScreen.getChestData().chestId.equals(update.chestId)) {
-                    // Apply the update from server
-                    chestScreen.getChestData().setItems(new ArrayList<>(update.items));
-                    chestScreen.updateUI();
-                    GameLogger.info("Applied chest update from " + update.username);
-                }
+                // Use postRunnable to ensure UI updates happen on the render thread
+                com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+                    ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
+                    if (chestScreen != null && chestScreen.getChestData().chestId.equals(update.chestId)) {
+                        // Apply the update from server
+                        chestScreen.getChestData().setItems(new ArrayList<>(update.items));
+                        chestScreen.updateUI();
+                        GameLogger.info("Applied chest update from " + update.username);
+                    }
+                });
                 return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {
                 handlePlayerUpdate((NetworkProtocol.PlayerUpdate) object);

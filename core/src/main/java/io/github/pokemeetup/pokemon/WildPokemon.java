@@ -238,6 +238,13 @@ public class WildPokemon extends Pokemon implements Positionable {
                 // Check if AI can run (either world is available or server passability checker is set)
                 if (world != null || enhancedAI.getServerPassabilityChecker() != null) {
                     enhancedAI.update(delta, world);
+                } else {
+                    // Debug logging
+                    if (System.currentTimeMillis() % 5000 < 100) { // Log occasionally
+                        io.github.pokemeetup.utils.GameLogger.error(
+                            "Pokemon " + getName() + " cannot run AI: world=" + world +
+                            ", passabilityChecker=" + (enhancedAI.getServerPassabilityChecker() != null));
+                    }
                 }
             } else if (legacyAI != null) {
             }

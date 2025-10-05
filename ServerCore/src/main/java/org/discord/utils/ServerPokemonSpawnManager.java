@@ -34,8 +34,8 @@ public class ServerPokemonSpawnManager {
     private static final float MOVEMENT_THRESHOLD = 1.0f;
     private final Map<UUID, Vector2> lastSentPositions = new ConcurrentHashMap<>();
     private float movementUpdateTimer = 0f;
-    private static final float SPAWN_INTERVAL = 5f;
-    private static final int MAX_POKEMON_PER_CHUNK = 5;
+    private static final float SPAWN_INTERVAL = 2f; // Spawn every 2 seconds
+    private static final int MAX_POKEMON_PER_CHUNK = 8; // More Pokemon per chunk
     private static final int TILE_SIZE = 32;
 
     private final String worldName;
@@ -94,6 +94,7 @@ public class ServerPokemonSpawnManager {
             boolean movingChanged = pokemon.isMoving() != syncedPokemonData
                 .getOrDefault(pokemon.getUuid(), new PokemonSpawnManager.NetworkSyncData()).isMoving;
             if (distance > MOVEMENT_THRESHOLD || directionChanged || movingChanged) {
+                GameLogger.info("Pokemon " + pokemon.getName() + " moved " + distance + " pixels, broadcasting update");
                 NetworkProtocol.PokemonUpdate update = createPokemonUpdate(pokemon);
                 updates.add(update);
                 lastSentPositions.put(pokemon.getUuid(), new Vector2(pokemon.getX(), pokemon.getY()));
@@ -103,6 +104,7 @@ public class ServerPokemonSpawnManager {
             }
         }
         if (!updates.isEmpty()) {
+            GameLogger.info("Broadcasting " + updates.size() + " Pokemon movement updates");
             broadcastPokemonUpdates(updates);
         }
     }  private NetworkProtocol.PokemonUpdate createPokemonUpdate(WildPokemon pokemon) {
@@ -190,14 +192,12 @@ public class ServerPokemonSpawnManager {
             int count = getPokemonCountInChunk(chunkPos);
 
             if (count < MAX_POKEMON_PER_CHUNK) {
-                // Attempt spawn with higher chance
+                // High spawn rate - 90% chance
                 float chance = random.nextFloat();
-                if (chance < 0.7f) { // 70% chance per spawn cycle
+                if (chance < 0.9f) {
                     GameLogger.info("Attempting to spawn Pokemon in chunk " + chunkPos + " (current count: " + count + ")");
                     spawnPokemonInChunk(chunkPos, chunk);
                 }
-            } else {
-                GameLogger.info("Chunk " + chunkPos + " full (" + count + "/" + MAX_POKEMON_PER_CHUNK + ")");
             }
         }
     }

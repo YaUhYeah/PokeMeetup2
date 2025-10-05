@@ -180,7 +180,10 @@ public class PokemonAI {
     public void update(float delta, World world) {
         // Allow AI to run on server if passability checker is set
         if (pokemon == null || isPaused) return;
-        if (world == null && serverPassabilityChecker == null) return;
+        if (world == null && serverPassabilityChecker == null) {
+            GameLogger.error("PokemonAI.update: Cannot run - no world and no passability checker for " + pokemon.getName());
+            return;
+        }
 
         updateTimer += delta;
         if (updateTimer < UPDATE_INTERVAL) return;
@@ -200,7 +203,11 @@ public class PokemonAI {
         }
 
         if (activeBehavior != null) {
+            GameLogger.info(pokemon.getName() + " executing behavior: " + activeBehavior.getName() +
+                " at position (" + pokemon.getX() + "," + pokemon.getY() + ")");
             activeBehavior.execute(delta);
+        } else {
+            GameLogger.error(pokemon.getName() + " has no active behavior!");
         }
     }
 
