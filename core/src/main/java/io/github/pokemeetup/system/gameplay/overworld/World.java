@@ -1236,10 +1236,14 @@ public class World {
         int chunkX = Math.floorDiv(tileX, CHUNK_SIZE);
         int chunkY = Math.floorDiv(tileY, CHUNK_SIZE);
         Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+        // In multiplayer, always prioritize the stored biome transition from server
         BiomeTransitionResult storedTransition = biomeTransitions.get(chunkPos);
         if (storedTransition != null && storedTransition.getPrimaryBiome() != null) {
             return storedTransition.getPrimaryBiome();
         }
+
+        // Check if chunk exists and has biome set
         Chunk chunk = chunks.get(chunkPos);
         if (chunk != null && chunk.getBiome() != null) {
             if (!biomeTransitions.containsKey(chunkPos)) {
@@ -1247,17 +1251,24 @@ public class World {
             }
             return chunk.getBiome();
         }
-        BiomeManager bm = GameContext.get().getBiomeManager();
-        if (bm != null) {
-            BiomeTransitionResult calculatedResult = bm.getBiomeAtTile(tileX, tileY); // Use tile-based query
-            if (calculatedResult != null && calculatedResult.getPrimaryBiome() != null) {
-                storeBiomeTransition(chunkPos, calculatedResult);
-                return calculatedResult.getPrimaryBiome();
+
+        // Only calculate biome locally in singleplayer mode
+        // In multiplayer, wait for server to send biome data
+        if (!GameContext.get().isMultiplayer()) {
+            BiomeManager bm = GameContext.get().getBiomeManager();
+            if (bm != null) {
+                BiomeTransitionResult calculatedResult = bm.getBiomeAtTile(tileX, tileY);
+                if (calculatedResult != null && calculatedResult.getPrimaryBiome() != null) {
+                    storeBiomeTransition(chunkPos, calculatedResult);
+                    return calculatedResult.getPrimaryBiome();
+                }
             }
         }
+
+        // Fallback to PLAINS if no biome data available
         return GameContext.get().getBiomeManager() != null
             ? GameContext.get().getBiomeManager().getBiome(BiomeType.PLAINS)
-            : null; // Or handle null case appropriately
+            : null;
     }
 
 

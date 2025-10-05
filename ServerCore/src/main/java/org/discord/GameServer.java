@@ -56,12 +56,33 @@ import static io.github.pokemeetup.system.gameplay.overworld.WorldObject.WorldOb
 import static io.github.pokemeetup.system.gameplay.overworld.WorldObject.WorldObjectManager.POKEBALL_SPAWN_CHANCE;
 
 public class GameServer {
-    private static final int WRITE_BUFFER = 65536;
-    private static final int OBJECT_BUFFER = 65536;
-    private static final int SCHEDULER_POOL_SIZE = 3;
-    private static final long AUTH_TIMEOUT = 15000;
+    private static final int WRITE_BUFFER = 1048576; // 1MB buffer for large chunk data
+    private static final int OBJECT_BUFFER = 1048576; // 1MB object buffer
+    private static final int SCHEDULER_POOL_SIZE = 6; // Increased pool size for better parallelism
+    private static final long AUTH_TIMEOUT = 30000; // 30 seconds for authentication
     private static final long SAVE_INTERVAL = 300000;
     private static final ConcurrentHashMap<UUID, Object> chestLocks = new ConcurrentHashMap<>();
+
+    // Thread-local Kryo instance for chunk compression to avoid creating new instances
+    private static final ThreadLocal<Kryo> kryoThreadLocal = ThreadLocal.withInitial(() -> {
+        Kryo kryo = new Kryo();
+        NetworkProtocol.registerClasses(kryo);
+        kryo.setReferences(false);
+        return kryo;
+    });
+
+    // Cache for recently compressed chunks to avoid re-compression
+    private final Map<String, NetworkProtocol.CompressedChunkData> chunkCache = new ConcurrentHashMap<>();
+    private static final int MAX_CHUNK_CACHE_SIZE = 100;
+
+    /**
+     * Invalidate chunk cache for a specific chunk position
+     */
+    private void invalidateChunkCache(int chunkX, int chunkY) {
+        String cacheKey = chunkX + "," + chunkY;
+        chunkCache.remove(cacheKey);
+    }
+
     private final Server networkServer;
     private final ServerConnectionConfig config;
     private final DatabaseManager databaseManager;
@@ -108,7 +129,8 @@ public class GameServer {
 
 
         try {
-            this.worldData = initializeMultiplayerWorld(); this.weatherSystem = new WeatherSystem();
+            this.worldData = initializeMultiplayerWorld();
+            this.weatherSystem = new WeatherSystem();
             serverPokemonSpawnManager = new ServerPokemonSpawnManager(MULTIPLAYER_WORLD_NAME);
             setupNetworkListener();
             scheduler.scheduleAtFixedRate(() -> {
@@ -186,6 +208,7 @@ public class GameServer {
         connection.sendTCP(response);
         GameLogger.info("Sent ServerInfoResponse to " + connection.getRemoteAddressTCP());
     }
+
     private WorldData initializeMultiplayerWorld() {
         try {
             WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
@@ -358,83 +381,54 @@ public class GameServer {
     }
 
 
+    // Legacy methods without player parameter - delegate to new methods with null player
     private void serverDestroyBlock(PlaceableBlock block) {
-        if (block == null) return;
-        Vector2 pos = block.getPosition();
-        ServerGameContext.get().getServerBlockManager().removeBlock((int)pos.x, (int)pos.y);
-        NetworkProtocol.BlockPlacement removalMsg = new NetworkProtocol.BlockPlacement();
-        removalMsg.action = NetworkProtocol.BlockAction.REMOVE;
-        removalMsg.blockTypeId = block.getType().id;
-        removalMsg.tileX = (int)pos.x;
-        removalMsg.tileY = (int)pos.y;
-        networkServer.sendToAllTCP(removalMsg);
-        String itemId = block.getType().itemId;
-        if (itemId != null) {
-            ItemData dropData = new ItemData(itemId, 1);
-            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
-            dropMsg.itemData = dropData;
-            dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f;
-            dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f;
-            networkServer.sendToAllTCP(dropMsg);
-        }
-        if (block.getType() == PlaceableBlock.BlockType.CHEST) {
-            ChestData chestData = block.getChestData();
-            if (chestData != null && chestData.items != null) {
-                for (ItemData item : chestData.items) {
-                    if (item != null) {
-                        NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
-                        dropMsg.itemData = item;
-                        dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
-                        dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
-                        networkServer.sendToAllTCP(dropMsg);
-                    }
-                }
-            }
-        }
+        serverDestroyBlock(block, null);
     }
 
     private void serverDestroyObject(WorldObject object) {
-        if (object == null) return;
-        Vector2 chunkPos = new Vector2((int) Math.floor(object.getPixelX() / (CHUNK_SIZE * TILE_SIZE)), (int) Math.floor(object.getPixelY() / (CHUNK_SIZE * TILE_SIZE)));
-        ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, object.getId());
-        NetworkProtocol.WorldObjectUpdate removalMsg = new NetworkProtocol.WorldObjectUpdate();
-        removalMsg.objectId = object.getId();
-        removalMsg.type = NetworkProtocol.NetworkObjectUpdateType.REMOVE;
-        removalMsg.data = object.getSerializableData();
-        networkServer.sendToAllTCP(removalMsg);
-        String dropItemId = object.getType().dropItemId;
-        int dropCount = object.getType().dropItemCount;
-        if (dropItemId != null && dropCount > 0) {
-            ItemData dropData = new ItemData(dropItemId, dropCount);
-            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
-            dropMsg.itemData = dropData;
-            dropMsg.x = object.getPixelX() + TILE_SIZE / 2f;
-            dropMsg.y = object.getPixelY();
-            networkServer.sendToAllTCP(dropMsg);
-        }
+        serverDestroyObject(object, null);
     }
 
     private WorldObject findServerChoppableObject(int tileX, int tileY) {
-        for (int x = tileX - 1; x <= tileX + 1; x++) {
-            for (int y = tileY - 1; y <= tileY + 1; y++) {
-                Vector2 chunkPos = new Vector2(
-                    (int) Math.floor(x / (float)CHUNK_SIZE),
-                    (int) Math.floor(y / (float)CHUNK_SIZE)
-                );
+        // Calculate the chunk position for the target tile
+        int chunkX = Math.floorDiv(tileX, CHUNK_SIZE);
+        int chunkY = Math.floorDiv(tileY, CHUNK_SIZE);
+        Vector2 chunkPos = new Vector2(chunkX, chunkY);
 
-                List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
-                if (objects == null || objects.isEmpty()) continue;
+        // Load chunk if not loaded
+        Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, chunkX, chunkY);
+        if (chunk == null) {
+            GameLogger.error("Failed to load chunk (" + chunkX + "," + chunkY + ") for tile (" + tileX + "," + tileY + ")");
+            return null;
+        }
 
-                for (WorldObject obj : objects) {
-                    if (isChoppable(obj.getType()) && obj.getBoundingBox().contains(x * TILE_SIZE + TILE_SIZE/2f, y * TILE_SIZE + TILE_SIZE/2f)) {
-                        GameLogger.info("Found choppable object " + obj.getId() + " at tile (" + obj.getTileX() + "," + obj.getTileY() + ") while checking ("+x+","+y+")");
-                        return obj;
-                    }
-                }
+        List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager().getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+        if (objects == null || objects.isEmpty()) {
+            // Try to generate objects for this chunk
+            objects = ServerGameContext.get().getWorldObjectManager().generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
+            GameLogger.info("Generated " + (objects != null ? objects.size() : 0) + " objects for chunk (" + chunkX + "," + chunkY + ")");
+        }
+
+        if (objects == null || objects.isEmpty()) {
+            GameLogger.info("No objects in chunk (" + chunkX + "," + chunkY + ") for tile (" + tileX + "," + tileY + ")");
+            return null;
+        }
+
+        // Find the object at the exact tile position the player is facing
+        float pixelX = tileX * TILE_SIZE + TILE_SIZE / 2f;
+        float pixelY = tileY * TILE_SIZE + TILE_SIZE / 2f;
+
+        for (WorldObject obj : objects) {
+            if (isChoppable(obj.getType()) && obj.getBoundingBox().contains(pixelX, pixelY)) {
+                GameLogger.info("Found choppable object " + obj.getId() + " (" + obj.getType() + ") at tile (" +
+                    obj.getTileX() + "," + obj.getTileY() + ") matching target tile (" + tileX + "," + tileY + ")");
+                return obj;
             }
         }
-        GameLogger.info("No choppable object found near tile ("+tileX+","+tileY+")");
-        return null; // No object found in the 3x3 area
+
+        GameLogger.info("No choppable object found at tile (" + tileX + "," + tileY + ") in chunk (" + chunkX + "," + chunkY + ") with " + objects.size() + " objects");
+        return null;
     }
 
     private void cleanupPlayerSession(int connectionId, String username) {
@@ -714,21 +708,33 @@ public class GameServer {
             }
         }
     }
+
     public void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request) {
         Vector2 chunkPos = new Vector2(request.chunkX, request.chunkY);
+        String cacheKey = request.chunkX + "," + request.chunkY;
+
         try {
+            // Check cache first for recently compressed chunks
+            NetworkProtocol.CompressedChunkData cached = chunkCache.get(cacheKey);
+            if (cached != null) {
+                connection.sendTCP(cached);
+                return;
+            }
+
             WorldData worldData = ServerGameContext.get().getWorldManager().loadWorld(MULTIPLAYER_WORLD_NAME);
             if (worldData == null) {
                 GameLogger.error("Failed to load world data for chunk request at " + chunkPos);
                 return;
             }
+
             long chunkSeed = worldData.getConfig().getSeed() +
-                (((long)request.chunkX << 32) | ((long)request.chunkY & 0xFFFFFFFFL));
+                (((long) request.chunkX << 32) | ((long) request.chunkY & 0xFFFFFFFFL));
             Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, request.chunkX, request.chunkY);
             if (chunk == null) {
                 GameLogger.error("Failed to load/generate chunk at " + chunkPos);
                 return;
             }
+
             float centerPixelX = (request.chunkX * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
             float centerPixelY = (request.chunkY * Chunk.CHUNK_SIZE + Chunk.CHUNK_SIZE * 0.5f) * World.TILE_SIZE;
             BiomeTransitionResult transition = ServerGameContext.get().getWorldManager().getBiomeTransitionAt(
@@ -737,13 +743,14 @@ public class GameServer {
             if (transition != null && transition.getPrimaryBiome() != null) {
                 chunk.setBiome(transition.getPrimaryBiome());
             }
+
             List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
                 .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
             if (objects == null || objects.isEmpty()) {
                 objects = ServerGameContext.get().getWorldObjectManager()
                     .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
-                GameLogger.info("Generated " + objects.size() + " objects for chunk " + chunkPos);
             }
+
             NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
             chunkData.chunkX = request.chunkX;
             chunkData.chunkY = request.chunkY;
@@ -756,7 +763,7 @@ public class GameServer {
                 chunkData.biomeTransitionFactor = 1.0f;
             }
 
-            chunkData.tileData = chunk.getTileData().clone(); // Send a clone to prevent modifications
+            chunkData.tileData = chunk.getTileData().clone();
             chunkData.blockData = chunk.getBlockDataForSave();
             chunkData.generationSeed = chunkSeed;
             chunkData.timestamp = System.currentTimeMillis();
@@ -771,17 +778,28 @@ public class GameServer {
                     }
                 }
             }
+
             NetworkProtocol.CompressedChunkData compressed = compressChunkData(chunkData);
             if (compressed == null) {
                 GameLogger.error("Failed to compress chunk data for " + chunkPos);
                 return;
             }
+
+            // Log compression stats for monitoring
+            int originalSize = (chunkData.tileData != null ? chunkData.tileData.length * chunkData.tileData[0].length * 4 : 0);
+            float compressionRatio = originalSize > 0 ? (float) compressed.data.length / originalSize * 100 : 0;
+            if (compressionRatio > 80) {
+                GameLogger.info("Warning: Low compression ratio " + compressionRatio + "% for chunk " + chunkPos);
+            }
+
+            // Cache the compressed chunk if cache isn't full
+            if (chunkCache.size() < MAX_CHUNK_CACHE_SIZE) {
+                chunkCache.put(cacheKey, compressed);
+            }
+
             connection.sendTCP(compressed);
-            GameLogger.info("Sent chunk " + chunkPos + " to client with " +
-                (objects != null ? objects.size() : 0) + " objects and biome: " +
-                chunkData.primaryBiomeType + (chunkData.secondaryBiomeType != null ?
-                " blended with " + chunkData.secondaryBiomeType + " at " +
-                    chunkData.biomeTransitionFactor : ""));
+            GameLogger.info("Sent chunk " + chunkPos + " (" + compressed.data.length + " bytes compressed) with " +
+                (objects != null ? objects.size() : 0) + " objects");
 
         } catch (Exception e) {
             GameLogger.error("Error processing chunk request at " + chunkPos + ": " + e.getMessage());
@@ -829,6 +847,7 @@ public class GameServer {
 
         networkServer.sendToAllTCP(update);
     }
+
     /**
      * Example helper that computes a temperature (in °C) based on a given biome type.
      */
@@ -856,17 +875,23 @@ public class GameServer {
     private NetworkProtocol.CompressedChunkData compressChunkData(NetworkProtocol.ChunkData chunkData) {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            int initialBufferSize = 16 * 1024;   // 16 KB
-            int maxBufferSize = 256 * 1024;        // 256 KB
+            int initialBufferSize = 64 * 1024;   // 64 KB
+            int maxBufferSize = 2 * 1024 * 1024;  // 2 MB max buffer for large chunks
             Output output = new Output(initialBufferSize, maxBufferSize);
             output.setOutputStream(baos);
 
-            Kryo kryo = new Kryo();
-            NetworkProtocol.registerClasses(kryo);
-            kryo.setReferences(false);
+            // Use thread-local Kryo instance for better performance
+            Kryo kryo = kryoThreadLocal.get();
             kryo.writeObject(output, chunkData);
             output.close();
             byte[] uncompressedData = baos.toByteArray();
+
+            if (uncompressedData.length > 1024 * 1024) {
+                GameLogger.info("Large chunk data before compression: " + uncompressedData.length + " bytes for chunk (" +
+                    chunkData.chunkX + "," + chunkData.chunkY + ") with " +
+                    (chunkData.worldObjects != null ? chunkData.worldObjects.size() : 0) + " objects");
+            }
+
             LZ4Factory factory = LZ4Factory.fastestInstance();
             LZ4Compressor compressor = factory.fastCompressor();
             int maxCompressedLength = compressor.maxCompressedLength(uncompressedData.length);
@@ -874,18 +899,22 @@ public class GameServer {
             int compressedLength = compressor.compress(uncompressedData, 0, uncompressedData.length,
                 compressedBuffer, 0, maxCompressedLength);
             byte[] finalCompressedData = Arrays.copyOf(compressedBuffer, compressedLength);
+
             NetworkProtocol.CompressedChunkData compressed = new NetworkProtocol.CompressedChunkData();
             compressed.chunkX = chunkData.chunkX;
             compressed.chunkY = chunkData.chunkY;
             compressed.primaryBiomeType = chunkData.primaryBiomeType;
-            compressed.secondaryBiomeType = chunkData.secondaryBiomeType; // may be null
-            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor; // may be 0
+            compressed.secondaryBiomeType = chunkData.secondaryBiomeType;
+            compressed.biomeTransitionFactor = chunkData.biomeTransitionFactor;
             compressed.generationSeed = worldData.getConfig().getSeed();
             compressed.originalLength = uncompressedData.length;
             compressed.data = finalCompressedData;
+
             return compressed;
         } catch (Exception e) {
-            GameLogger.error("Chunk compression failed: " + e.getMessage());
+            GameLogger.error("Chunk compression failed for (" + chunkData.chunkX + "," + chunkData.chunkY + "): " +
+                e.getClass().getSimpleName() + " - " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -959,7 +988,8 @@ public class GameServer {
                     }
                     if (object instanceof NetworkProtocol.BuildingPlacement) {
                         handleBuildingPlacement(connection, (NetworkProtocol.BuildingPlacement) object);
-                    } if (object instanceof NetworkProtocol.ServerInfoRequest) {
+                    }
+                    if (object instanceof NetworkProtocol.ServerInfoRequest) {
                         handleServerInfoRequest(connection);
                         return; // Message handled
                     }
@@ -974,7 +1004,8 @@ public class GameServer {
                     if (object instanceof NetworkProtocol.PlayerInfoUpdate) {
                         NetworkProtocol.PlayerInfoUpdate update = (NetworkProtocol.PlayerInfoUpdate) object;
                         playerPingMap.put(update.username, update.ping);
-                        broadcastPlayerList();return;
+                        broadcastPlayerList();
+                        return;
                     }
 
                     if (object instanceof NetworkProtocol.PingRequest) {
@@ -1295,6 +1326,7 @@ public class GameServer {
             connection.sendTCP(batchUpdate);
         }
     }
+
     private void handlePlayerAction(Connection connection, NetworkProtocol.PlayerAction action) {
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(action.playerId)) {
@@ -1486,113 +1518,6 @@ public class GameServer {
         return networkServer;
     }
 
-    /**
-     * Returns the first WorldObject that is choppable and whose bounding box
-     * overlaps a search rectangle in front of the player.
-     * <p>
-     * This version uses the player's current pixel position and computes a target
-     * point based on the chop direction. It then constructs a search rectangle (2×tile size)
-     * centered at that target and searches current and adjacent chunks for a matching object.
-     *
-     * @param player    The ServerPlayer performing the chop action.
-     * @param direction The chop direction (e.g. "up", "down", "left", or "right")
-     * @return A choppable WorldObject if found; otherwise null.
-     */
-    private WorldObject findServerChoppableObject(ServerPlayer player, String direction) {
-        Vector2 playerPos = player.getPosition();
-        float searchDistance = TILE_SIZE * 1.5f;
-        float targetX = playerPos.x;
-        float targetY = playerPos.y;
-
-        switch (direction.toLowerCase()) {
-            case "up":
-                targetY += searchDistance;
-                break;
-            case "down":
-                targetY -= searchDistance;
-                break;
-            case "left":
-                targetX -= searchDistance;
-                break;
-            case "right":
-                targetX += searchDistance;
-                break;
-            default:
-                GameLogger.error("Unknown chopping direction: " + direction);
-                return null;
-        }
-        Rectangle searchArea = new Rectangle(targetX - TILE_SIZE, targetY - TILE_SIZE, TILE_SIZE * 2, TILE_SIZE * 2);
-        GameLogger.info("Chop search area: x=" + searchArea.x + " y=" + searchArea.y +
-            " width=" + searchArea.width + " height=" + searchArea.height);
-        int chunkX = (int) Math.floor(targetX / (TILE_SIZE * CHUNK_SIZE));
-        int chunkY = (int) Math.floor(targetY / (TILE_SIZE * CHUNK_SIZE));
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                Vector2 searchChunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                List<WorldObject> objects = ServerGameContext.get()
-                    .getWorldObjectManager()
-                    .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, searchChunkPos);
-                if (objects == null || objects.isEmpty()) {
-                    GameLogger.error("No objects found in chunk " + searchChunkPos);
-                    continue;
-                }
-                for (WorldObject obj : objects) {
-                    if (isChoppable(obj.getType())) {
-                        Rectangle objBounds = obj.getBoundingBox();
-                        if (objBounds.overlaps(searchArea)) {
-                            GameLogger.info("Found choppable object: " + obj.getType() +
-                                " (ID: " + obj.getId() + ") in chunk " + searchChunkPos);
-                            return obj;
-                        }
-                    }
-                }
-            }
-        }
-
-        GameLogger.info("No choppable objects found in search area: " + searchArea);
-        return null;
-    }
-
-
-    private void handlePokeballSpawning(Vector2 chunkPos, Chunk chunk) {
-        try {
-            List<WorldObject> chunkObjects = worldData.getChunkObjects().computeIfAbsent(chunkPos, k -> new ArrayList<>());
-            long pokeballCount = chunkObjects.stream()
-                .filter(obj -> obj.getType() == WorldObject.ObjectType.POKEBALL)
-                .count();
-            Random random = new Random();
-            if (pokeballCount < MAX_POKEBALLS_PER_CHUNK && random.nextFloat() < POKEBALL_SPAWN_CHANCE) {
-                int attempts = 10;
-                while (attempts > 0) {
-                    int localX = random.nextInt(Chunk.CHUNK_SIZE);
-                    int localY = random.nextInt(Chunk.CHUNK_SIZE);
-
-                    int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE + localX);
-                    int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE + localY);
-                    if (chunk.isPassable(localX, localY)) {
-                        WorldObject pokeball = new WorldObject(
-                            worldTileX,
-                            worldTileY,
-                            null, // Server doesn't need texture
-                            WorldObject.ObjectType.POKEBALL
-                        );
-                        chunkObjects.add(pokeball);
-                        NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
-                        update.objectId = pokeball.getId();
-                        update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
-                        update.data = pokeball.getSerializableData();
-                        networkServer.sendToAllTCP(update);
-
-                        GameLogger.info("Spawned pokeball at " + worldTileX + "," + worldTileY);
-                        break;
-                    }
-                    attempts--;
-                }
-            }
-        } catch (Exception e) {
-            GameLogger.error("Error handling pokeball spawn: " + e.getMessage());
-        }
-    }
 
     private boolean isChoppable(WorldObject.ObjectType type) {
         return type == WorldObject.ObjectType.TREE_0 ||
@@ -1601,7 +1526,7 @@ public class GameServer {
             type == WorldObject.ObjectType.HAUNTED_TREE ||
             type == WorldObject.ObjectType.RAIN_TREE ||
             type == WorldObject.ObjectType.APRICORN_TREE ||
-            type == WorldObject.ObjectType.RUINS_TREE ||
+            type == WorldObject.ObjectType.RUINS_TREE || type == WorldObject.ObjectType.CACTUS || type == WorldObject.ObjectType.DEAD_TREE ||
             type == WorldObject.ObjectType.CHERRY_TREE;
     }
 
@@ -1612,13 +1537,14 @@ public class GameServer {
             return;
         }
 
+        int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
+        int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
+
         switch (placement.action) {
             case PLACE:
                 PlaceableBlock.BlockType type = PlaceableBlock.BlockType.fromItemId(placement.blockTypeId);
                 boolean placed = ServerGameContext.get().getServerBlockManager().placeBlock(type, placement.tileX, placement.tileY, false);
                 if (placed) {
-                    int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
-                    int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
                     Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
                     if (chunk != null) {
                         Vector2 blockPos = new Vector2(placement.tileX, placement.tileY);
@@ -1629,6 +1555,8 @@ public class GameServer {
                             ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
                         }
                     }
+                    // Invalidate chunk cache since the chunk has been modified
+                    invalidateChunkCache(chunkX, chunkY);
                     ServerGameContext.get().getEventManager().fireEvent(
                         new BlockPlaceEvent(placement.username, placement.tileX, placement.tileY, placement.blockTypeId)
                     );
@@ -1639,14 +1567,14 @@ public class GameServer {
                 break;
             case REMOVE:
                 ServerGameContext.get().getServerBlockManager().removeBlock(placement.tileX, placement.tileY);
-                int chunkX = Math.floorDiv(placement.tileX, World.CHUNK_SIZE);
-                int chunkY = Math.floorDiv(placement.tileY, World.CHUNK_SIZE);
                 Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
                 if (chunk != null) {
                     chunk.getBlocks().remove(new Vector2(placement.tileX, placement.tileY));
                     chunk.setDirty(true);
                     ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
                 }
+                // Invalidate chunk cache since the chunk has been modified
+                invalidateChunkCache(chunkX, chunkY);
                 networkServer.sendToAllExceptTCP(connection.getID(), placement);
                 break;
         }

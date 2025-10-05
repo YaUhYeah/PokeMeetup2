@@ -648,6 +648,7 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             throw new RuntimeException("Failed to initialize basic resources", e);
         }
     }
+
     private void initializeWorldAndPlayer(String worldName) {
         GameLogger.info("Initializing world and player");
 
@@ -934,7 +935,6 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         partyDisplay.add(slotsTable);
         GameContext.get().getUiStage().addActor(partyDisplay);
     }
-
 
 
     public World getWorld() {
@@ -1777,24 +1777,26 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         float pixelY = GameContext.get().getPlayer().getY();
         int tileX = (int) Math.floor(pixelX / TILE_SIZE);
         int tileY = (int) Math.floor(pixelY / TILE_SIZE);
-        Biome currentBiome = GameContext.get().getWorld().getBiomeAt(tileX, tileY);
-        String biomeName = (currentBiome != null) ? currentBiome.getName() : "Unknown";
-        font.draw(GameContext.get().getBatch(), String.format("Pixels: (%d, %d)", (int) pixelX, (int) pixelY), 10, debugY);
-        debugY += 20;
-        font.draw(GameContext.get().getBatch(), String.format("Tiles: (%d, %d)", tileX, tileY), 10, debugY);
-        debugY += 20;
-        font.draw(GameContext.get().getBatch(), "Direction: " + GameContext.get().getPlayer().getDirection(), 10, debugY);
-        debugY += 20;
-        font.draw(GameContext.get().getBatch(), "Biome: " + biomeName, 10, debugY); // Use the fetched name
-        debugY += 20;
+        if (GameContext.get().getWorld() != null) {
+            Biome currentBiome = GameContext.get().getWorld().getBiomeAt(tileX, tileY);
+            String biomeName = (currentBiome != null) ? currentBiome.getName() : "Unknown";
 
-        font.draw(GameContext.get().getBatch(), "Active Pokemon: " + getTotalPokemonCount(), 10, debugY);
-        debugY += 20;
+            font.draw(GameContext.get().getBatch(), String.format("Pixels: (%d, %d)", (int) pixelX, (int) pixelY), 10, debugY);
+            debugY += 20;
+            font.draw(GameContext.get().getBatch(), String.format("Tiles: (%d, %d)", tileX, tileY), 10, debugY);
+            debugY += 20;
+            font.draw(GameContext.get().getBatch(), "Direction: " + GameContext.get().getPlayer().getDirection(), 10, debugY);
+            debugY += 20;
+            font.draw(GameContext.get().getBatch(), "Biome: " + biomeName, 10, debugY); // Use the fetched name
+            debugY += 20;
 
-        String timeString = DayNightCycle.getTimeString(GameContext.get().getWorld().getWorldData().getWorldTimeInMinutes());
-        font.draw(GameContext.get().getBatch(), "Time: " + timeString, 10, debugY);
-        debugY += 20;
+            font.draw(GameContext.get().getBatch(), "Active Pokemon: " + getTotalPokemonCount(), 10, debugY);
+            debugY += 20;
 
+            String timeString = DayNightCycle.getTimeString(GameContext.get().getWorld().getWorldData().getWorldTimeInMinutes());
+            font.draw(GameContext.get().getBatch(), "Time: " + timeString, 10, debugY);
+            debugY += 20;
+        }
         if (!GameContext.get().isMultiplayer()) {
             long playedTimeMillis = GameContext.get().getWorld().getWorldData().getPlayedTime();
             String playedTimeStr = formatPlayedTime(playedTimeMillis);

@@ -94,21 +94,7 @@ public class ServerLauncher {
                 }
             }
         }
-        for (int x = -radius; x <= radius; x++) {
-            for (int y = -radius; y <= radius; y++) {
-                Vector2 chunkPos = new Vector2(x, y);
-                List<WorldObject> objects = worldData.getChunkObjects().get(chunkPos);
-                if (objects != null) {
-                    logger.info(String.format("Chunk (%d, %d) contains %d objects", x, y, objects.size()));
-                    for (WorldObject obj : objects) {
-                        if (obj != null) {
-                            logger.fine(String.format("- %s at (%d,%d)",
-                                obj.getType(), obj.getTileX(), obj.getTileY()));
-                        }
-                    }
-                }
-            }
-        }
+
 
         logger.info("Initial spawn chunks generated");
         serverWorldManager.saveWorld(worldData);
@@ -132,48 +118,130 @@ public class ServerLauncher {
         Path configDir = SERVER_ROOT.resolve("config");
         Path configFile = configDir.resolve("server.json");
 
+        // Load defaults or from file
+        ServerConnectionConfig config;
         try {
             if (!configFile.toFile().exists()) {
-                logger.info("Configuration not found, loading defaults");
-                return new ServerConnectionConfig(
-                    "0.0.0.0",
-                    54555,
-                    54556,
-                    "Pokemon Meetup Server",
-                    100
-                );
-            }
+                logger.info("Configuration file not found, creating default config");
+                Files.createDirectories(configDir);
+                config = createDefaultConfig();
+                saveDefaultConfig(configFile, config);
+            } else {
+                Gson gson = new GsonBuilder()
+                    .setPrettyPrinting()
+                    .serializeNulls()
+                    .create();
 
+                String jsonContent = Files.readString(configFile);
+                config = gson.fromJson(jsonContent, ServerConnectionConfig.class);
+                logger.info("Configuration loaded from file");
+            }
+        } catch (Exception e) {
+            logger.warning("Error loading config: " + e.getMessage() + ". Using defaults.");
+            config = createDefaultConfig();
+        }
+
+        // Override with environment variables (for Pterodactyl compatibility)
+        applyEnvironmentVariables(config);
+
+        // Ensure server icon exists
+        ensureServerIcon();
+
+        config.setServerIP("0.0.0.0"); // Always bind to all interfaces
+        logger.info("Server configuration: " + config.getServerName() +
+                   " | TCP: " + config.getTcpPort() +
+                   " | UDP: " + config.getUdpPort() +
+                   " | Max Players: " + config.getMaxPlayers());
+
+        return config;
+    }
+
+    private static ServerConnectionConfig createDefaultConfig() {
+        ServerConnectionConfig config = new ServerConnectionConfig(
+            "0.0.0.0",
+            54555,
+            54556,
+            "Pokemon Meetup Server",
+            100
+        );
+        config.setMotd(DEFAULT_MOTD);
+        config.setIconPath(DEFAULT_ICON);
+        config.setVersion("1.0.0");
+        return config;
+    }
+
+    private static void saveDefaultConfig(Path configFile, ServerConnectionConfig config) {
+        try {
             Gson gson = new GsonBuilder()
                 .setPrettyPrinting()
                 .serializeNulls()
                 .create();
 
-            String jsonContent = Files.readString(configFile);
-            ServerConnectionConfig config = gson.fromJson(jsonContent, ServerConnectionConfig.class);
-            config.setServerIP("0.0.0.0");
-
-            return config;
+            String jsonContent = gson.toJson(config);
+            Files.writeString(configFile, jsonContent);
+            logger.info("Default configuration saved to: " + configFile);
         } catch (Exception e) {
-            Path iconPath = SERVER_ROOT.resolve(DEFAULT_ICON);
-            if (!Files.exists(iconPath)) {
-                try (InputStream is = ServerLauncher.class.getResourceAsStream("/assets/default-server-icon.png")) {
-                    if (is != null) {
-                        Files.copy(is, iconPath);
-                    }
-                }
+            logger.warning("Failed to save default config: " + e.getMessage());
+        }
+    }
+    private static void applyEnvironmentVariables(ServerConnectionConfig config) {
+        // Server Name
+        String serverName = System.getenv("GAME_NAME");
+        if (serverName != null && !serverName.isEmpty()) {
+            config.setServerName(serverName);
+            logger.info("Server name set from environment: " + serverName);
+        }
+
+        // MOTD (Message of the Day)
+        String motd = System.getenv("GAME_MOTD");
+        if (motd != null && !motd.isEmpty()) {
+            config.setMotd(motd);
+            logger.info("MOTD set from environment");
+        }
+
+        // TCP Port (Pterodactyl provides SERVER_PORT automatically)
+        String tcpPort = System.getenv("SERVER_PORT");
+        if (tcpPort != null && !tcpPort.isEmpty()) {
+            try {
+                int port = Integer.parseInt(tcpPort);
+                config.setTcpPort(port);
+                config.setUdpPort(port + 1);
+                logger.info("Ports set from environment - TCP: " + port + ", UDP: " + (port + 1));
+            } catch (NumberFormatException e) {
+                logger.warning("Invalid SERVER_PORT value: " + tcpPort);
             }
-            logger.warning("Error loading config: " + e.getMessage() + ". Using defaults.");
-            ServerConnectionConfig config = new ServerConnectionConfig(
-                "0.0.0.0",
-                54555,
-                54556,
-                "Pokemon Meetup Server",
-                100
-            );
-            config.setMotd(DEFAULT_MOTD);
-            config.setIconPath(DEFAULT_ICON);
-            return config;
+        }
+
+        // Max Players
+        String maxPlayers = System.getenv("MAX_PLAYERS");
+        if (maxPlayers != null && !maxPlayers.isEmpty()) {
+            try {
+                config.setMaxPlayers(Integer.parseInt(maxPlayers));
+                logger.info("Max players set from environment: " + maxPlayers);
+            } catch (NumberFormatException e) {
+                logger.warning("Invalid max players value: " + maxPlayers);
+            }
+        }
+
+        // Version
+        String version = System.getenv("GAME_VERSION");
+        if (version != null && !version.isEmpty()) {
+            config.setVersion(version);
+            logger.info("Version set from environment: " + version);
+        }
+    }
+
+    private static void ensureServerIcon() {
+        Path iconPath = SERVER_ROOT.resolve(DEFAULT_ICON);
+        if (!Files.exists(iconPath)) {
+            try (InputStream is = ServerLauncher.class.getResourceAsStream("/assets/default-server-icon.png")) {
+                if (is != null) {
+                    Files.copy(is, iconPath);
+                    logger.info("Default server icon created");
+                }
+            } catch (Exception e) {
+                logger.warning("Could not create default server icon: " + e.getMessage());
+            }
         }
     }
     private static void addShutdownHook(GameServer server, Server h2Server) {

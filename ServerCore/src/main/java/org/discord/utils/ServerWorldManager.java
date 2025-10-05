@@ -237,7 +237,10 @@ public class ServerWorldManager {
                     }
                 }
             }
+            // Set objects in both the chunk and the WorldObjectManager
+            chunk.setWorldObjects(objectList);
             ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(worldName, chunkPos, objectList);
+            GameLogger.info("Loaded chunk (" + chunkX + "," + chunkY + ") from disk with " + objectList.size() + " objects");
             return chunk;
         } catch (Exception e) {
             GameLogger.error("Error reading chunk from disk: " + e.getMessage());

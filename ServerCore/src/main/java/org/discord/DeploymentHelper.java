@@ -49,6 +49,7 @@ public class DeploymentHelper {
 
         createDefaultConfig(deploymentDir);
         copyBiomeDataFile(deploymentDir); // Fix for biome loading issue
+        copyPokemonDataFiles(deploymentDir); // Copy Pokemon database files
         createStartScripts(deploymentDir);
 
         Path startSh = Paths.get(deploymentDir.toString(), "start.sh");
@@ -58,6 +59,21 @@ public class DeploymentHelper {
         createReadme(deploymentDir);
 
         System.out.println("Server deployment completed successfully");
+    }
+
+    private static void copyPokemonDataFiles(Path deploymentDir) throws IOException {
+        System.out.println("--- Pokemon Data Files Loading Diagnostic ---");
+        Path dataDir = deploymentDir.resolve("Data");
+        if (!Files.exists(dataDir)) {
+            Files.createDirectories(dataDir);
+        }
+
+        // Copy moves.json
+        copyDataFileFromJar(dataDir, "moves.json");
+        // Copy pokemon.json
+        copyDataFileFromJar(dataDir, "pokemon.json");
+
+        System.out.println("--- End Pokemon Data Files Loading Diagnostic ---");
     }
 
     private static void copyBiomeDataFile(Path deploymentDir) throws IOException {
@@ -109,6 +125,36 @@ public class DeploymentHelper {
             throw new IOException("Failed to copy biomes.json from JAR to filesystem: " + e.getMessage(), e);
         } finally {
             System.out.println("--- End Biome Loading Diagnostic ---");
+        }
+    }
+
+    private static void copyDataFileFromJar(Path dataDir, String fileName) throws IOException {
+        Path targetFile = dataDir.resolve(fileName);
+        String resourcePath = "/Data/" + fileName;
+        System.out.println("Attempting to copy resource from JAR path: " + resourcePath);
+
+        InputStream is = DeploymentHelper.class.getResourceAsStream(resourcePath);
+
+        if (is == null) {
+            String contextPath = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
+            is = Thread.currentThread().getContextClassLoader().getResourceAsStream(contextPath);
+        }
+
+        if (is == null) {
+            String errorMessage = String.format(
+                "FATAL: %s could not be found inside the JAR.%n" +
+                    "Path tried: '%s'.%n" +
+                    "This confirms the file is NOT being packaged correctly into server.jar.",
+                fileName, resourcePath
+            );
+            throw new IOException(errorMessage);
+        }
+
+        try (InputStream finalIs = is) {
+            Files.copy(finalIs, targetFile, StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("Successfully copied " + fileName + " to: " + targetFile.toAbsolutePath());
+        } catch (IOException e) {
+            throw new IOException("Failed to copy " + fileName + " from JAR to filesystem: " + e.getMessage(), e);
         }
     }
     private static boolean isRunningFromJar() {

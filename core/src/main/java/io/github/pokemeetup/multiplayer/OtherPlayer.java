@@ -143,6 +143,8 @@ public class OtherPlayer implements Positionable {
     }
 
     private float animationCycleTime = 0f;
+    private float choppingAnimationTime = 0f;
+    private float punchingAnimationTime = 0f;
 
     public void update(float deltaTime) {
         synchronized (positionLock) {
@@ -170,14 +172,21 @@ public class OtherPlayer implements Positionable {
                 }
             }
 
-            if (isMoving.get()) {
-                float frameCount = 4f;
+            // Update animation time based on action state
+            if (animations.isChopping()) {
+                choppingAnimationTime += deltaTime;
+                animationTime = choppingAnimationTime;
+            } else if (animations.isPunching()) {
+                punchingAnimationTime += deltaTime;
+                animationTime = punchingAnimationTime;
+            } else if (isMoving.get()) {
+                // Continuous animation cycling while moving
+                animationCycleTime += deltaTime;
                 float frameDuration = wantsToRun ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
-
-                // Direct linear animation tied to movement progress
-                animationTime = movementProgress * (frameCount * frameDuration);
+                animationTime = animationCycleTime;
             } else {
                 animationTime = 0f;
+                animationCycleTime = 0f;
             }
 
 
@@ -260,16 +269,20 @@ public class OtherPlayer implements Positionable {
         switch (action.actionType) {
             case CHOP_START:
                 animations.startChopping();
+                choppingAnimationTime = 0f;
                 break;
             case CHOP_STOP:
                 animations.stopChopping();
+                choppingAnimationTime = 0f;
                 animationTime = 0f;
                 break;
             case PUNCH_START:
                 animations.startPunching();
+                punchingAnimationTime = 0f;
                 break;
             case PUNCH_STOP:
                 animations.stopPunching();
+                punchingAnimationTime = 0f;
                 animationTime = 0f;
                 break;
             default:
