@@ -27,6 +27,7 @@ import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.overworld.*;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
 import io.github.pokemeetup.system.gameplay.overworld.mechanics.AutoTileSystem;
