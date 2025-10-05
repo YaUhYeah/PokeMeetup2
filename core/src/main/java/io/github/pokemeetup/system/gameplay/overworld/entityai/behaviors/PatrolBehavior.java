@@ -67,7 +67,7 @@ public class PatrolBehavior implements PokemonBehavior {
                     direction = dy > 0 ? "up" : "down";
                 }
 
-                if (world.isPassable(nextTileX, nextTileY)) {
+                if (ai.checkPassable(world, nextTileX, nextTileY)) {
                     pokemon.moveToTile(nextTileX, nextTileY, direction);
                     ai.setCurrentState(PokemonAI.AIState.PATROLLING);
                     return; // Move made, exit
