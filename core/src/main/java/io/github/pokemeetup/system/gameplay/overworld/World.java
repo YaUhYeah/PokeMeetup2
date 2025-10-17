@@ -471,7 +471,6 @@ public class World {
         }
 
         Vector2 chunkPos = new Vector2(chunkData.chunkX, chunkData.chunkY);
-        GameLogger.info("processChunkData called for chunk " + chunkPos + " in singleplayer mode!");
         try {
             Biome primaryBiome = getBiomeManager().getBiome(chunkData.primaryBiomeType);
             if (primaryBiome == null) {

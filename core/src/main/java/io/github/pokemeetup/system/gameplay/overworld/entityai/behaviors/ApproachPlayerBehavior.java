@@ -34,10 +34,10 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
             return;
         }
 
-        Player player = GameContext.get().getPlayer();
-        if (player == null) return;
+        Vector2 playerPos = ai.getSafePlayerPosition();
+        if (playerPos == null) return;
 
-        float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
+        float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), playerPos.x, playerPos.y);
 
         // Stop approaching if close enough (for curious pokemon) or if battle is initiated.
         if (!ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= OPTIMAL_DISTANCE) {
@@ -47,30 +47,40 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
         }
 
         if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= ATTACK_RANGE) {
-            if (GameContext.get().getGameScreen() != null && !GameContext.get().getBattleSystem().isInBattle()) {
-                GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
-                Gdx.app.postRunnable(() -> {
-                    GameContext.get().getGameScreen().forceBattleInitiation(pokemon);
-                });
-                ai.setCooldown(getName(), 15f); // Long cooldown after initiating battle.
+            try {
+                if (GameContext.get().getGameScreen() != null && !GameContext.get().getBattleSystem().isInBattle()) {
+                    GameLogger.info(pokemon.getName() + " is initiating battle forcefully!");
+                    Gdx.app.postRunnable(() -> {
+                        GameContext.get().getGameScreen().forceBattleInitiation(pokemon);
+                    });
+                    ai.setCooldown(getName(), 15f); // Long cooldown after initiating battle.
+                }
+            } catch (IllegalStateException e) {
+                // Server-side: cannot initiate battles
             }
             return;
         }
 
         // If not on cooldown from a failed move, attempt to move.
         if (!ai.isOnCooldown(getName())) {
-            moveTowardsPlayer(player);
+            moveTowardsPlayer(playerPos);
         }
     }
 
-    private void moveTowardsPlayer(Player player) {
-        World world = GameContext.get().getWorld();
+    private void moveTowardsPlayer(Vector2 playerPos) {
+        World world;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side: no world available
+            return;
+        }
         if (world == null) return;
 
         int pokemonTileX = pokemon.getTileX();
         int pokemonTileY = pokemon.getTileY();
-        int playerTileX = player.getTileX();
-        int playerTileY = player.getTileY();
+        int playerTileX = (int)(playerPos.x / World.TILE_SIZE);
+        int playerTileY = (int)(playerPos.y / World.TILE_SIZE);
 
         int dx = Integer.compare(playerTileX, pokemonTileX);
         int dy = Integer.compare(playerTileY, pokemonTileY);
@@ -117,11 +127,11 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
             return false;
         }
 
-        Player player = GameContext.get().getPlayer();
-        if (player == null) return false;
+        Vector2 playerPos = ai.getSafePlayerPosition();
+        if (playerPos == null) return false;
 
         float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
-            player.getX(), player.getY());
+            playerPos.x, playerPos.y);
 
         if (ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE)) {
             return distance <= APPROACH_RANGE;

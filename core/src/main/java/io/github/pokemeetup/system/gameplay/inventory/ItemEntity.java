@@ -36,10 +36,17 @@ public class ItemEntity {
         this.pickupDelay = PICKUP_DELAY;
         this.canBePickedUp = false;
         this.pickedUp = false;  // Initially not picked up.
-        String textureKey = itemData.getItemId().toLowerCase() + "_item";
-        this.texture = TextureManager.items.findRegion(textureKey);
-        if (this.texture == null) {
-            this.texture = TextureManager.items.findRegion(itemData.getItemId().toLowerCase());
+
+        // Only load textures if TextureManager is available (client-side only)
+        if (TextureManager.items != null) {
+            String textureKey = itemData.getItemId().toLowerCase() + "_item";
+            this.texture = TextureManager.items.findRegion(textureKey);
+            if (this.texture == null) {
+                this.texture = TextureManager.items.findRegion(itemData.getItemId().toLowerCase());
+            }
+        } else {
+            // Server-side: no textures needed
+            this.texture = null;
         }
     }
 

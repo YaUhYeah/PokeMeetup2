@@ -170,6 +170,21 @@ public class GameServer {
     }
 
     /**
+     * Gets all current player positions for Pokemon AI behaviors.
+     * Enables Pokemon to react to players (flee, approach, investigate, etc.)
+     */
+    public Map<String, Vector2> getAllPlayerPositions() {
+        Map<String, Vector2> positions = new HashMap<>();
+        for (Map.Entry<String, ServerPlayer> entry : activePlayers.entrySet()) {
+            ServerPlayer player = entry.getValue();
+            if (player != null) {
+                positions.put(entry.getKey(), new Vector2(player.getPosition().x, player.getPosition().y));
+            }
+        }
+        return positions;
+    }
+
+    /**
      * Handles a request for server information from a client.
      * It reads the server icon, encodes it, and sends it back along with other server details.
      *
@@ -304,9 +319,13 @@ public class GameServer {
      * and broadcasts this new, authoritative entity information to all clients.
      */
     private void handleItemDrop(Connection connection, NetworkProtocol.ItemDrop drop) {
+        GameLogger.info("Received ItemDrop from connection " + connection.getID() +
+                       " - item: " + (drop.itemData != null ? drop.itemData.getItemId() : "null") +
+                       ", pos: (" + drop.x + "," + drop.y + "), username: " + drop.username);
+
         String username = connectedPlayers.get(connection.getID());
         if (username == null || !username.equals(drop.username)) {
-            GameLogger.error("Unauthorized item drop attempt");
+            GameLogger.error("Unauthorized item drop attempt - connection user: " + username + ", drop username: " + drop.username);
             return;
         }
         ServerPlayer player = activePlayers.get(username);
@@ -1656,12 +1675,29 @@ public class GameServer {
                 GameLogger.info("Player " + player.getUsername() + " gets axe bonus! +" + bonus + " " + dropItemId);
             }
 
-            ItemData dropData = new ItemData(dropItemId, dropCount);
-            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
-            dropMsg.itemData = dropData;
-            dropMsg.x = object.getPixelX() + TILE_SIZE / 2f;
-            dropMsg.y = object.getPixelY();
-            networkServer.sendToAllTCP(dropMsg);
+            // Create server-authoritative item entity
+            float dropX = object.getPixelX() + TILE_SIZE / 2f;
+            float dropY = object.getPixelY();
+
+            ItemEntity serverEntity = ServerGameContext.get().getItemEntityManager()
+                .spawnItemEntity(new ItemData(dropItemId, dropCount), dropX, dropY);
+
+            if (serverEntity != null) {
+                // Broadcast to all clients with server's UUID
+                NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+                dropMsg.itemData = new ItemData(dropItemId, dropCount);
+                dropMsg.x = dropX;
+                dropMsg.y = dropY;
+                dropMsg.username = player.getUsername();
+                dropMsg.entityId = serverEntity.getEntityId();
+                dropMsg.timestamp = System.currentTimeMillis();
+                networkServer.sendToAllTCP(dropMsg);
+
+                GameLogger.info("Spawned item drop from object break: " + dropItemId + " x" + dropCount +
+                               " at (" + dropX + "," + dropY + ") with UUID " + serverEntity.getEntityId());
+            } else {
+                GameLogger.error("Failed to spawn item entity on server for object break");
+            }
         }
     }
 

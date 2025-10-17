@@ -33,16 +33,26 @@ public class FleeBehavior implements PokemonBehavior {
     }
 
     private void initiateFlee() {
-        Player player = GameContext.get().getPlayer();
-        if (player == null) return;
+        Vector2 playerPos = ai.getSafePlayerPosition();
+        if (playerPos == null) {
+            fleeStepsRemaining = 0;
+            return;
+        }
 
-        fleeDirection = calculateFleeDirection(player);
+        fleeDirection = calculateFleeDirection(playerPos);
         fleeStepsRemaining = MathUtils.random(2, MAX_FLEE_STEPS);
         continueFleeMovement();
     }
 
     private void continueFleeMovement() {
-        World world = GameContext.get().getWorld();
+        World world = null;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side, end flee behavior
+            fleeStepsRemaining = 0;
+            return;
+        }
         if (world == null) return;
 
         int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
@@ -115,11 +125,11 @@ public class FleeBehavior implements PokemonBehavior {
         fleeStepsRemaining = 0;
     }
 
-    private String calculateFleeDirection(Player player) {
+    private String calculateFleeDirection(Vector2 playerPos) {
         int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);
         int pokemonTileY = (int) (pokemon.getY() / World.TILE_SIZE);
-        int playerTileX = (int) (player.getX() / World.TILE_SIZE);
-        int playerTileY = (int) (player.getY() / World.TILE_SIZE);
+        int playerTileX = (int) (playerPos.x / World.TILE_SIZE);
+        int playerTileY = (int) (playerPos.y / World.TILE_SIZE);
 
         int dx = pokemonTileX - playerTileX;
         int dy = pokemonTileY - playerTileY;
@@ -133,11 +143,12 @@ public class FleeBehavior implements PokemonBehavior {
 
     @Override
     public boolean canExecute() {
-        Player player = GameContext.get().getPlayer();
-        if (player == null) return false;
+        // Works on both client and server using safe player position
+        Vector2 playerPos = ai.getSafePlayerPosition();
+        if (playerPos == null) return false;
 
         float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
-            player.getX(), player.getY());
+            playerPos.x, playerPos.y);
         return distance < ai.getFleeThreshold();
     }
 

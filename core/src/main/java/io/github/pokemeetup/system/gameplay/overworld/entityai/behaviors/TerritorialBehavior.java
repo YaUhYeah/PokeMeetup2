@@ -9,8 +9,6 @@ import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait;
 import io.github.pokemeetup.utils.GameLogger;
 public class TerritorialBehavior implements PokemonBehavior {
-    private static final float TERRITORY_AGGRESSION_RANGE = 3.0f * World.TILE_SIZE;
-
     private final WildPokemon pokemon;
     private final PokemonAI ai;
     private boolean isDefending = false;
@@ -23,22 +21,22 @@ public class TerritorialBehavior implements PokemonBehavior {
     @Override
     public void execute(float delta) {
         if (!pokemon.isMoving()) {
-            Player player = GameContext.get().getPlayer();
-            if (player != null && isPlayerInTerritory(player)) {
-                initiateDefense(player);
+            Vector2 playerPos = ai.getSafePlayerPosition();
+            if (playerPos != null && isPlayerInTerritory(playerPos)) {
+                initiateDefense(playerPos);
             } else {
                 isDefending = false;
             }
         }
     }
 
-    private boolean isPlayerInTerritory(Player player) {
+    private boolean isPlayerInTerritory(Vector2 playerPos) {
         Vector2 territory = ai.getTerritoryCenter();
-        float distance = Vector2.dst(player.getX(), player.getY(), territory.x, territory.y);
+        float distance = Vector2.dst(playerPos.x, playerPos.y, territory.x, territory.y);
         return distance <= ai.getTerritoryRadius();
     }
 
-    private void initiateDefense(Player player) {
+    private void initiateDefense(Vector2 playerPos) {
         if (!isDefending) {
             GameLogger.info(pokemon.getName() + " is defending its territory!");
             isDefending = true;
@@ -46,8 +44,8 @@ public class TerritorialBehavior implements PokemonBehavior {
         Vector2 territory = ai.getTerritoryCenter();
         int pokemonTileX = (int)(pokemon.getX() / World.TILE_SIZE);
         int pokemonTileY = (int)(pokemon.getY() / World.TILE_SIZE);
-        int playerTileX = (int)(player.getX() / World.TILE_SIZE);
-        int playerTileY = (int)(player.getY() / World.TILE_SIZE);
+        int playerTileX = (int)(playerPos.x / World.TILE_SIZE);
+        int playerTileY = (int)(playerPos.y / World.TILE_SIZE);
         int dx = Integer.compare(playerTileX, pokemonTileX);
         int dy = Integer.compare(playerTileY, pokemonTileY);
 
@@ -63,7 +61,12 @@ public class TerritorialBehavior implements PokemonBehavior {
             targetTileY += dy;
         }
 
-        World world = GameContext.get().getWorld();
+        World world = null;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side
+        }
         if (ai.checkPassable(world, targetTileX, targetTileY)) {
             pokemon.moveToTile(targetTileX, targetTileY, direction);
             ai.setCurrentState(PokemonAI.AIState.APPROACHING);

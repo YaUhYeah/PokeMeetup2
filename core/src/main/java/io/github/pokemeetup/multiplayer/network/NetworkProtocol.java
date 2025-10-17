@@ -68,7 +68,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(RegisterResponse.class);
         kryo.register(ItemData.class);
         kryo.register(ItemData[].class);
-        kryo.register(UUID.class);
+        // UUID.class already registered with custom serializer above - DO NOT register again
         kryo.register(InventoryUpdate.class);
         kryo.register(ChunkData.class);
         kryo.register(BiomeType.class);

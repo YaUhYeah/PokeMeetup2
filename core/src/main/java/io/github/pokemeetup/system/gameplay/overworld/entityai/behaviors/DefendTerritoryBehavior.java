@@ -31,10 +31,10 @@ public class DefendTerritoryBehavior implements PokemonBehavior {
     @Override
     public void execute(float delta) {
         if (!pokemon.isMoving()) {
-            Player player = GameContext.get().getPlayer();
-            if (player != null) {
-                if (shouldChasePlayer(player)) {
-                    initiateChase(player);
+            Vector2 playerPos = ai.getSafePlayerPosition();
+            if (playerPos != null) {
+                if (shouldChasePlayer(playerPos)) {
+                    initiateChase(playerPos);
                 } else if (isChasing) {
                     endChase();
                 }
@@ -42,16 +42,16 @@ public class DefendTerritoryBehavior implements PokemonBehavior {
         }
     }
 
-    private boolean shouldChasePlayer(Player player) {
+    private boolean shouldChasePlayer(Vector2 playerPos) {
         Vector2 territory = ai.getTerritoryCenter();
-        float playerDistanceFromTerritory = Vector2.dst(player.getX(), player.getY(), territory.x, territory.y);
-        float pokemonDistanceFromPlayer = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
+        float playerDistanceFromTerritory = Vector2.dst(playerPos.x, playerPos.y, territory.x, territory.y);
+        float pokemonDistanceFromPlayer = Vector2.dst(pokemon.getX(), pokemon.getY(), playerPos.x, playerPos.y);
 
         return playerDistanceFromTerritory <= ai.getTerritoryRadius() &&
             pokemonDistanceFromPlayer <= CHASE_DISTANCE;
     }
 
-    private void initiateChase(Player player) {
+    private void initiateChase(Vector2 playerPos) {
         if (!isChasing) {
             GameLogger.info(pokemon.getName() + " aggressively chases intruder!");
             isChasing = true;
@@ -59,31 +59,40 @@ public class DefendTerritoryBehavior implements PokemonBehavior {
         }
 
         if (chaseStepsRemaining > 0) {
-            moveTowardsPlayer(player);
-            float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), player.getX(), player.getY());
+            moveTowardsPlayer(playerPos);
+            float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), playerPos.x, playerPos.y);
             if (distance <= 1.5f * World.TILE_SIZE) {
-                if (GameContext.get().getGameScreen()!=null) {
-                    GameLogger.info(pokemon.getName() + " is initiating battle while defending territory!");
-                    Gdx.app.postRunnable(() -> {
-                        GameContext.get().getGameScreen().forceBattleInitiation(pokemon);
-                    });
-                    ai.setCooldown(getName(), 15f);
-                    endChase(); // End the chase behavior
-                    return;
+                try {
+                    if (GameContext.get().getGameScreen()!=null) {
+                        GameLogger.info(pokemon.getName() + " is initiating battle while defending territory!");
+                        Gdx.app.postRunnable(() -> {
+                            GameContext.get().getGameScreen().forceBattleInitiation(pokemon);
+                        });
+                        ai.setCooldown(getName(), 15f);
+                        endChase(); // End the chase behavior
+                        return;
+                    }
+                } catch (IllegalStateException e) {
+                    // Server-side: cannot initiate battles
                 }
             }
             chaseStepsRemaining--;
         } else {
             endChase();
         }}
-    private void moveTowardsPlayer(Player player) {
-        World world = GameContext.get().getWorld();
+    private void moveTowardsPlayer(Vector2 playerPos) {
+        World world = null;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side
+        }
         if (world == null) return;
 
         int pokemonTileX = pokemon.getTileX();
         int pokemonTileY = pokemon.getTileY();
-        int playerTileX = player.getTileX();
-        int playerTileY = player.getTileY();
+        int playerTileX = (int)(playerPos.x / World.TILE_SIZE);
+        int playerTileY = (int)(playerPos.y / World.TILE_SIZE);
 
         int dx = Integer.compare(playerTileX, pokemonTileX);
         int dy = Integer.compare(playerTileY, pokemonTileY);

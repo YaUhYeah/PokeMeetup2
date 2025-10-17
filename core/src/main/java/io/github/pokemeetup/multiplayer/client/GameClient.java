@@ -458,12 +458,20 @@ public class GameClient {
 
 
     public void sendItemDrop(ItemData itemData, Vector2 position) {
+        if (client == null || !isConnected()) {
+            GameLogger.error("Cannot send ItemDrop - client not connected");
+            return;
+        }
+
         NetworkProtocol.ItemDrop drop = new NetworkProtocol.ItemDrop();
         drop.itemData = itemData;
         drop.x = position.x;
         drop.y = position.y;
         drop.username = getLocalUsername();
         drop.timestamp = System.currentTimeMillis();
+
+        GameLogger.info("Sending ItemDrop to server - item: " + itemData.getItemId() +
+                       ", pos: (" + position.x + "," + position.y + "), username: " + drop.username);
 
         client.sendTCP(drop);
     }

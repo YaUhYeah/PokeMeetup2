@@ -3,7 +3,9 @@ package io.github.pokemeetup.system.gameplay.overworld.entityai;
 
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
+import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.pokemon.WildPokemon;
+import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.entityai.behaviors.*;
 import io.github.pokemeetup.utils.GameLogger;
@@ -158,6 +160,34 @@ public class PokemonAI {
         return serverPassabilityChecker;
     }
 
+    // Server-side player position tracking
+    private Vector2 nearestPlayerPosition = null;
+
+    public void setNearestPlayerPosition(Vector2 position) {
+        this.nearestPlayerPosition = position;
+    }
+
+    public Vector2 getNearestPlayerPosition() {
+        return nearestPlayerPosition;
+    }
+
+    /**
+     * Server-safe method to get player position.
+     * On client: returns actual player position from GameContext
+     * On server: returns nearest tracked player position
+     */
+    public Vector2 getSafePlayerPosition() {
+        try {
+            Player player = GameContext.get().getPlayer();
+            if (player != null) {
+                return new Vector2(player.getX(), player.getY());
+            }
+        } catch (IllegalStateException e) {
+            // Server-side: use tracked position
+        }
+        return nearestPlayerPosition;
+    }
+
     /**
      * Checks if a tile is passable, using either the World or server passability checker.
      */
@@ -181,7 +211,10 @@ public class PokemonAI {
         // Allow AI to run on server if passability checker is set
         if (pokemon == null || isPaused) return;
         if (world == null && serverPassabilityChecker == null) {
-            GameLogger.error("PokemonAI.update: Cannot run - no world and no passability checker for " + pokemon.getName());
+            // Only log this error occasionally to avoid spam
+            if (System.currentTimeMillis() % 5000 < 100) {
+                GameLogger.error("PokemonAI.update: Cannot run - no world and no passability checker for " + pokemon.getName());
+            }
             return;
         }
 
@@ -203,8 +236,13 @@ public class PokemonAI {
         }
 
         if (activeBehavior != null) {
-            GameLogger.info(pokemon.getName() + " executing behavior: " + activeBehavior.getName() +
-                " at position (" + pokemon.getX() + "," + pokemon.getY() + ")");
+            // Only log occasionally to avoid spam
+            if (System.currentTimeMillis() % 2000 < 100) {
+                GameLogger.info(pokemon.getName() + " executing behavior: " + activeBehavior.getName() +
+                    " at position (" + pokemon.getX() + "," + pokemon.getY() + ")" +
+                    " isMoving: " + pokemon.isMoving() +
+                    " hasPassabilityChecker: " + (serverPassabilityChecker != null));
+            }
             activeBehavior.execute(delta);
         } else {
             GameLogger.error(pokemon.getName() + " has no active behavior!");

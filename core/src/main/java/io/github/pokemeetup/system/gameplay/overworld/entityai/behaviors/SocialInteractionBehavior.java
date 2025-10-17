@@ -32,9 +32,15 @@ public class SocialInteractionBehavior implements PokemonBehavior {
     }
 
     private WildPokemon findNearbyPokemon() {
-        Collection<WildPokemon> nearby = GameContext.get().getWorld()
-            .getPokemonSpawnManager().getPokemonInRange(
-                pokemon.getX(), pokemon.getY(), INTERACTION_RANGE);
+        Collection<WildPokemon> nearby;
+        try {
+            nearby = GameContext.get().getWorld()
+                .getPokemonSpawnManager().getPokemonInRange(
+                    pokemon.getX(), pokemon.getY(), INTERACTION_RANGE);
+        } catch (IllegalStateException e) {
+            // Server-side: cannot get nearby Pokemon (would need server-side Pokemon manager)
+            return null;
+        }
 
         for (WildPokemon other : nearby) {
             if (!other.getUuid().equals(pokemon.getUuid()) && !other.isMoving()) {

@@ -32,18 +32,23 @@ public class InvestigateBehavior implements PokemonBehavior {
     }
 
     private void findSomethingToInvestigate() {
-        Player player = GameContext.get().getPlayer();
-        if (player != null) {
+        Vector2 playerPos = ai.getSafePlayerPosition();
+        if (playerPos != null) {
             float distance = Vector2.dst(pokemon.getX(), pokemon.getY(),
-                player.getX(), player.getY());
+                playerPos.x, playerPos.y);
             if (distance <= INVESTIGATION_RANGE) {
-                investigationTarget = new Vector2(player.getX(), player.getY());
+                investigationTarget = new Vector2(playerPos.x, playerPos.y);
             }
         }
     }
 
     private void moveTowardsInvestigationTarget() {
-        World world = GameContext.get().getWorld();
+        World world = null;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side: no world available
+        }
         if (world == null) return;
 
         int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);

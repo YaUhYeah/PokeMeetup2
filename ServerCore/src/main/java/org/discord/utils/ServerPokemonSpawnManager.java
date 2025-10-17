@@ -34,8 +34,8 @@ public class ServerPokemonSpawnManager {
     private static final float MOVEMENT_THRESHOLD = 1.0f;
     private final Map<UUID, Vector2> lastSentPositions = new ConcurrentHashMap<>();
     private float movementUpdateTimer = 0f;
-    private static final float SPAWN_INTERVAL = 2f; // Spawn every 2 seconds
-    private static final int MAX_POKEMON_PER_CHUNK = 8; // More Pokemon per chunk
+    private static final float SPAWN_INTERVAL = 3.0f; // Spawn every 3 seconds (realistic for open world)
+    private static final int MAX_POKEMON_PER_CHUNK = 4; // 4 Pokemon per chunk (balanced for open world)
     private static final int TILE_SIZE = 32;
 
     private final String worldName;
@@ -64,10 +64,37 @@ public class ServerPokemonSpawnManager {
         // Update all active Pokemon (AI, movement, animations)
         // Pass null for world - the Pokemon AI uses the ServerWorldAdapter (serverPassabilityChecker)
         // for tile passability checks instead of requiring a full World instance
+
+        // Get all player positions from server for AI behaviors
+        Map<String, Vector2> playerPositions = ServerGameContext.get().getGameServer().getAllPlayerPositions();
+
+        int updatedCount = 0;
         for (WildPokemon pokemon : activePokemon.values()) {
             if (pokemon != null) {
-                pokemon.update(delta, null);
+                try {
+                    // Update nearest player position for AI behaviors (flee, approach, etc.)
+                    Vector2 nearestPlayer = findNearestPlayer(pokemon, playerPositions);
+                    if (nearestPlayer != null && pokemon.getAi() != null) {
+                        // Use reflection to call setNearestPlayerPosition (AI is Object to avoid circular deps)
+                        try {
+                            java.lang.reflect.Method method = pokemon.getAi().getClass()
+                                .getMethod("setNearestPlayerPosition", Vector2.class);
+                            method.invoke(pokemon.getAi(), nearestPlayer);
+                        } catch (Exception aiEx) {
+                            GameLogger.error("Failed to update AI player position: " + aiEx.getMessage());
+                        }
+                    }
+
+                    pokemon.update(delta, null);
+                    updatedCount++;
+                } catch (Exception e) {
+                    GameLogger.error("Error updating Pokemon " + pokemon.getName() + ": " + e.getMessage());
+                    e.printStackTrace();
+                }
             }
+        }
+        if (updatedCount > 0 && System.currentTimeMillis() % 10000 < 100) { // Log every 10 seconds
+            GameLogger.info("Updated " + updatedCount + " active Pokemon AI with " + playerPositions.size() + " player positions");
         }
 
         spawnTimer += delta;
@@ -87,20 +114,29 @@ public class ServerPokemonSpawnManager {
         List<NetworkProtocol.PokemonUpdate> updates = new ArrayList<>();
 
         for (WildPokemon pokemon : activePokemon.values()) {
-            Vector2 lastPos = lastSentPositions.getOrDefault(pokemon.getUuid(), new Vector2(Float.MAX_VALUE, Float.MAX_VALUE));
+            // Get last position, defaulting to current position if not set
+            Vector2 lastPos = lastSentPositions.get(pokemon.getUuid());
+            if (lastPos == null) {
+                // First update for this Pokemon, initialize position
+                lastPos = new Vector2(pokemon.getX(), pokemon.getY());
+                lastSentPositions.put(pokemon.getUuid(), lastPos);
+            }
+
             float distance = Vector2.dst(lastPos.x, lastPos.y, pokemon.getX(), pokemon.getY());
-            boolean directionChanged = !pokemon.getDirection().equals(syncedPokemonData
-                .getOrDefault(pokemon.getUuid(), new PokemonSpawnManager.NetworkSyncData()).direction);
-            boolean movingChanged = pokemon.isMoving() != syncedPokemonData
-                .getOrDefault(pokemon.getUuid(), new PokemonSpawnManager.NetworkSyncData()).isMoving;
+
+            PokemonSpawnManager.NetworkSyncData syncData = syncedPokemonData.get(pokemon.getUuid());
+            boolean directionChanged = syncData == null || !pokemon.getDirection().equals(syncData.direction);
+            boolean movingChanged = syncData == null || pokemon.isMoving() != syncData.isMoving;
+
             if (distance > MOVEMENT_THRESHOLD || directionChanged || movingChanged) {
                 GameLogger.info("Pokemon " + pokemon.getName() + " moved " + distance + " pixels, broadcasting update");
                 NetworkProtocol.PokemonUpdate update = createPokemonUpdate(pokemon);
                 updates.add(update);
                 lastSentPositions.put(pokemon.getUuid(), new Vector2(pokemon.getX(), pokemon.getY()));
-                PokemonSpawnManager.NetworkSyncData syncData = syncedPokemonData.computeIfAbsent(pokemon.getUuid(), k -> new PokemonSpawnManager.NetworkSyncData());
-                syncData.direction = pokemon.getDirection();
-                syncData.isMoving = pokemon.isMoving();
+
+                PokemonSpawnManager.NetworkSyncData updatedSyncData = syncedPokemonData.computeIfAbsent(pokemon.getUuid(), k -> new PokemonSpawnManager.NetworkSyncData());
+                updatedSyncData.direction = pokemon.getDirection();
+                updatedSyncData.isMoving = pokemon.isMoving();
             }
         }
         if (!updates.isEmpty()) {
@@ -182,7 +218,14 @@ public class ServerPokemonSpawnManager {
         int totalPokemon = activePokemon.size();
         GameLogger.info("Spawn tick: " + totalPokemon + " active Pokemon, checking " + playerChunks.size() + " player chunks");
 
+        // Spawn in multiple chunks per tick for balanced world population
+        int spawnAttempts = 0;
+        int maxSpawnAttemptsPerTick = 2; // Try to spawn in up to 2 chunks per tick (balanced)
+
         for (Vector2 chunkPos : playerChunks) {
+            if (spawnAttempts >= maxSpawnAttemptsPerTick) {
+                break; // Limit spawn attempts per tick to avoid lag
+            }
             Chunk chunk = loadedChunks.get(chunkPos);
             if (chunk == null) {
                 GameLogger.info("Chunk " + chunkPos + " not loaded, skipping");
@@ -192,14 +235,15 @@ public class ServerPokemonSpawnManager {
             int count = getPokemonCountInChunk(chunkPos);
 
             if (count < MAX_POKEMON_PER_CHUNK) {
-                // High spawn rate - 90% chance
-                float chance = random.nextFloat();
-                if (chance < 0.9f) {
-                    GameLogger.info("Attempting to spawn Pokemon in chunk " + chunkPos + " (current count: " + count + ")");
-                    spawnPokemonInChunk(chunkPos, chunk);
-                }
+                // Aggressive spawning - always attempt if below max
+                GameLogger.info("Attempting to spawn Pokemon in chunk " + chunkPos + " (current count: " + count + "/" + MAX_POKEMON_PER_CHUNK + ")");
+                spawnPokemonInChunk(chunkPos, chunk);
+                spawnAttempts++;
+            } else {
+                GameLogger.info("Chunk " + chunkPos + " is full (" + count + "/" + MAX_POKEMON_PER_CHUNK + " Pokemon)");
             }
         }
+        GameLogger.info("Spawn tick complete: attempted " + spawnAttempts + " spawns, total active: " + activePokemon.size());
     }
 
     private int getPokemonCountInChunk(Vector2 chunkPos) {
@@ -225,9 +269,53 @@ public class ServerPokemonSpawnManager {
         int chunkY = (int)Math.floor(pixelPos.y / (TILE_SIZE * Chunk.CHUNK_SIZE));
         return new Vector2(chunkX, chunkY);
     }
+
+    /**
+     * Finds the nearest player to a Pokemon from the current player positions.
+     * This enables Pokemon to react to players on the server (flee, approach, etc.)
+     */
+    private Vector2 findNearestPlayer(WildPokemon pokemon, Map<String, Vector2> playerPositions) {
+        if (playerPositions == null || playerPositions.isEmpty()) {
+            return null;
+        }
+
+        Vector2 nearestPos = null;
+        float nearestDist = Float.MAX_VALUE;
+
+        for (Vector2 playerPos : playerPositions.values()) {
+            float dist = Vector2.dst(pokemon.getX(), pokemon.getY(), playerPos.x, playerPos.y);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestPos = playerPos;
+            }
+        }
+
+        return nearestPos;
+    }
+
+    /**
+     * Determines if a Pokemon species should spawn as a pack.
+     * Pack species have a 30% chance to spawn in groups of 2-4.
+     */
+    private boolean shouldSpawnAsPack(String species) {
+        String lowerSpecies = species.toLowerCase();
+        // Common pack species
+        boolean isPackSpecies = lowerSpecies.equals("rattata") || lowerSpecies.equals("pidgey") ||
+                               lowerSpecies.equals("zubat") || lowerSpecies.equals("caterpie") ||
+                               lowerSpecies.equals("weedle") || lowerSpecies.equals("sentret") ||
+                               lowerSpecies.equals("hoppip") || lowerSpecies.equals("poochyena") ||
+                               lowerSpecies.equals("zigzagoon") || lowerSpecies.equals("spinarak");
+
+        if (!isPackSpecies) {
+            return false;
+        }
+
+        // 30% chance for pack spawn
+        return random.nextFloat() < 0.3f;
+    }
     private void spawnPokemonInChunk(Vector2 chunkPos, Chunk chunk) {
-        // Try up to 5 times to find a passable location
-        for (int attempt = 0; attempt < 5; attempt++) {
+        // Try up to 15 times to find a passable location (increased for better spawn success rate)
+        for (int attempt = 0; attempt < 15; attempt++) {
             int localX = random.nextInt(Chunk.CHUNK_SIZE);
             int localY = random.nextInt(Chunk.CHUNK_SIZE);
 
@@ -248,36 +336,75 @@ public class ServerPokemonSpawnManager {
                 }
                 String pokemonName = selectRandomPokemonForBiome(biome);
                 int level = calculatePokemonLevel(pixelX, pixelY);
-                WildPokemon pokemon = new WildPokemon(
-                    pokemonName,
-                    level,
-                    (int) pixelX,
-                    (int) pixelY,
-                    true // noTexture mode on the server
-                );
 
-                // Initialize AI for server-side Pokemon
-                // Create a PokemonAI and inject the passability checker
-                io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI ai =
-                    new io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI(pokemon);
-                ai.setServerPassabilityChecker(serverWorld);
-                pokemon.setAi(ai);
+                // Check if this should spawn as a pack (30% chance for pack species)
+                boolean shouldSpawnPack = shouldSpawnAsPack(pokemonName);
+                int spawnCount = 1;
 
-                activePokemon.put(pokemon.getUuid(), pokemon);
+                if (shouldSpawnPack) {
+                    // Spawn pack of 2-4 Pokemon
+                    spawnCount = random.nextInt(3) + 2; // 2 to 4 Pokemon
+                    GameLogger.info("Spawning pack of " + spawnCount + " " + pokemonName);
+                }
 
-                NetworkProtocol.WildPokemonSpawn spawnMsg = new NetworkProtocol.WildPokemonSpawn();
-                spawnMsg.uuid = pokemon.getUuid();
-                spawnMsg.x = pokemon.getX();
-                spawnMsg.y = pokemon.getY();
-                spawnMsg.timestamp = System.currentTimeMillis();
-                spawnMsg.data = createPokemonData(pokemon);
-                ServerGameContext.get()
-                    .getGameServer()
-                    .getNetworkServer()
-                    .sendToAllTCP(spawnMsg);
+                for (int i = 0; i < spawnCount; i++) {
+                    // For pack members after first, offset position slightly
+                    float spawnX = pixelX;
+                    float spawnY = pixelY;
+                    if (i > 0) {
+                        // Offset by 1-2 tiles in random direction
+                        int offsetTiles = random.nextInt(2) + 1;
+                        float angle = random.nextFloat() * (float)(2 * Math.PI);
+                        spawnX += (float)Math.cos(angle) * offsetTiles * TILE_SIZE;
+                        spawnY += (float)Math.sin(angle) * offsetTiles * TILE_SIZE;
 
-                GameLogger.info("Successfully spawned " + pokemonName + " level " + level +
-                    " in chunk " + chunkPos + " at (" + worldTileX + "," + worldTileY + ")");
+                        // Verify new position is passable
+                        int testTileX = (int)(spawnX / TILE_SIZE);
+                        int testTileY = (int)(spawnY / TILE_SIZE);
+                        int testLocalX = testTileX - (int)(chunkPos.x * Chunk.CHUNK_SIZE);
+                        int testLocalY = testTileY - (int)(chunkPos.y * Chunk.CHUNK_SIZE);
+
+                        if (testLocalX < 0 || testLocalX >= Chunk.CHUNK_SIZE ||
+                            testLocalY < 0 || testLocalY >= Chunk.CHUNK_SIZE ||
+                            !chunk.isPassable(testLocalX, testLocalY)) {
+                            continue; // Skip this pack member if position isn't passable
+                        }
+                    }
+
+                    WildPokemon pokemon = new WildPokemon(
+                        pokemonName,
+                        level + random.nextInt(2), // Slight level variation in pack
+                        (int) spawnX,
+                        (int) spawnY,
+                        true // noTexture mode on the server
+                    );
+
+                    // Initialize AI for server-side Pokemon
+                    io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI ai =
+                        new io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI(pokemon);
+                    ai.setServerPassabilityChecker(serverWorld);
+                    pokemon.setAi(ai);
+
+                    activePokemon.put(pokemon.getUuid(), pokemon);
+
+                    // Initialize last sent position to prevent Infinity distance calculation
+                    lastSentPositions.put(pokemon.getUuid(), new Vector2(pokemon.getX(), pokemon.getY()));
+
+                    NetworkProtocol.WildPokemonSpawn spawnMsg = new NetworkProtocol.WildPokemonSpawn();
+                    spawnMsg.uuid = pokemon.getUuid();
+                    spawnMsg.x = pokemon.getX();
+                    spawnMsg.y = pokemon.getY();
+                    spawnMsg.timestamp = System.currentTimeMillis();
+                    spawnMsg.data = createPokemonData(pokemon);
+                    ServerGameContext.get()
+                        .getGameServer()
+                        .getNetworkServer()
+                        .sendToAllTCP(spawnMsg);
+
+                    GameLogger.info("Successfully spawned " + pokemonName + " level " + level +
+                        " in chunk " + chunkPos + " at (" + (int)(spawnX/TILE_SIZE) + "," + (int)(spawnY/TILE_SIZE) + ")" +
+                        (shouldSpawnPack ? " (pack " + (i+1) + "/" + spawnCount + ")" : ""));
+                }
                 return; // Success!
 
             } catch (Exception ex) {

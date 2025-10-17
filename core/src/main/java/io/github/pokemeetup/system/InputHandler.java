@@ -400,10 +400,16 @@ public class InputHandler extends InputAdapter {
         if (GameContext.get().isMultiplayer()) {
             // In multiplayer, remove item first, then send to server
             // Server will create authoritative entity and broadcast to all clients
+            GameLogger.info("Attempting to drop item in multiplayer: " + itemData.getItemId() +
+                           " at (" + dropX + "," + dropY + ")");
+
             if (player.getInventory().removeItem(itemData)) {
                 GameContext.get().getHotbarSystem().updateHotbar();
+                GameLogger.info("Item removed from inventory, sending to server");
                 GameContext.get().getGameClient().sendItemDrop(itemData, new Vector2(dropX, dropY));
                 AudioManager.getInstance().playSound(AudioManager.SoundEffect.ITEM_PICKUP_OW);
+            } else {
+                GameLogger.error("Failed to remove item from inventory: " + itemData.getItemId());
             }
         } else {
             // In singleplayer, just spawn locally

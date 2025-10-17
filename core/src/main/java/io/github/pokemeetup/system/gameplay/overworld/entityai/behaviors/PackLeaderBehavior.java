@@ -45,7 +45,12 @@ public class PackLeaderBehavior implements PokemonBehavior {
     }
 
     private Vector2 selectNewPackDestination() {
-        World world = GameContext.get().getWorld();
+        World world = null;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side
+        }
         if (world == null) return null;
         Vector2 center = ai.hasPersonalityTrait(PokemonPersonalityTrait.TERRITORIAL) ?
             ai.getTerritoryCenter() : new Vector2(pokemon.getX(), pokemon.getY());
@@ -78,7 +83,12 @@ public class PackLeaderBehavior implements PokemonBehavior {
         return distance <= World.TILE_SIZE;
     }
     private void moveTowardsDestination() {
-        World world = GameContext.get().getWorld();
+        World world = null;
+        try {
+            world = GameContext.get().getWorld();
+        } catch (IllegalStateException e) {
+            // Server-side
+        }
         if (world == null || packDestination == null) return;
 
         int pokemonTileX = pokemon.getTileX();

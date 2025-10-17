@@ -58,7 +58,12 @@ public class WanderBehavior implements PokemonBehavior {
             }
 
             // Use AI's passability checker which works on both client and server
-            World world = GameContext.get() != null ? GameContext.get().getWorld() : null;
+            World world = null;
+            try {
+                world = GameContext.get() != null ? GameContext.get().getWorld() : null;
+            } catch (IllegalStateException e) {
+                // Server-side: world will be null, AI will use serverPassabilityChecker
+            }
             if (ai.checkPassable(world, nextTileX, nextTileY) && isWithinWanderRange(nextTileX, nextTileY)) {
                 currentWanderDirection = direction;
                 stepsRemaining = MathUtils.random(1, 4); // New path of 1-4 steps
