@@ -369,6 +369,29 @@ public class GameClient {
     }
 
     /**
+     * Sends chest open/close state change to server for multiplayer sync
+     */
+    public void sendChestStateChange(int tileX, int tileY, boolean isOpen) {
+        if (!GameContext.get().isMultiplayer() || !isConnected() || !isAuthenticated()) {
+            return;
+        }
+
+        try {
+            NetworkProtocol.ChestStateChange msg = new NetworkProtocol.ChestStateChange();
+            msg.tileX = tileX;
+            msg.tileY = tileY;
+            msg.isOpen = isOpen;
+            msg.username = getLocalUsername();
+            msg.timestamp = System.currentTimeMillis();
+
+            client.sendTCP(msg);
+            GameLogger.info("Sent chest state change: " + (isOpen ? "OPEN" : "CLOSE") + " at (" + tileX + "," + tileY + ")");
+        } catch (Exception e) {
+            GameLogger.error("Failed to send chest state change: " + e.getMessage());
+        }
+    }
+
+    /**
      * Sends a chest operation request to the server (transaction-based approach)
      */
     public void sendChestOperation(UUID chestId, NetworkProtocol.ChestOperationType operation,
@@ -608,6 +631,41 @@ public class GameClient {
                 }
             } catch (Exception e) {
                 GameLogger.error("Error handling chest operation response: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Handles chest open/close state changes from other players
+     */
+    private void handleChestStateChange(NetworkProtocol.ChestStateChange msg) {
+        if (msg == null || msg.username == null) {
+            GameLogger.error("Received invalid ChestStateChange message");
+            return;
+        }
+
+        // Don't process our own state changes
+        if (msg.username.equals(getLocalUsername())) {
+            return;
+        }
+
+        Gdx.app.postRunnable(() -> {
+            try {
+                PlaceableBlock block = GameContext.get().getWorld().getBlockManager().getBlockAt(msg.tileX, msg.tileY);
+                if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
+                    block.setChestOpen(msg.isOpen);
+
+                    // Play appropriate sound
+                    if (msg.isOpen) {
+                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_OPEN);
+                        GameLogger.info("Player " + msg.username + " opened chest at (" + msg.tileX + "," + msg.tileY + ")");
+                    } else {
+                        AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_CLOSE);
+                        GameLogger.info("Player " + msg.username + " closed chest at (" + msg.tileX + "," + msg.tileY + ")");
+                    }
+                }
+            } catch (Exception e) {
+                GameLogger.error("Error handling chest state change: " + e.getMessage());
             }
         });
     }
@@ -1133,6 +1191,9 @@ public class GameClient {
                 return;
             } else if (object instanceof NetworkProtocol.ChestClosed) {
                 handleChestClosed((NetworkProtocol.ChestClosed) object);
+                return;
+            } else if (object instanceof NetworkProtocol.ChestStateChange) {
+                handleChestStateChange((NetworkProtocol.ChestStateChange) object);
                 return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {
                 handlePlayerUpdate((NetworkProtocol.PlayerUpdate) object);

@@ -283,7 +283,14 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
                 (int) chestPosition.x, (int) chestPosition.y);
             if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
                 block.setChestOpen(true);
-                GameLogger.info("Set chest to open state for animation");
+                AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_OPEN);
+                GameLogger.info("Set chest to open state for animation and played open sound");
+
+                // Broadcast chest open state to multiplayer
+                if (GameContext.get().isMultiplayer()) {
+                    GameContext.get().getGameClient().sendChestStateChange(
+                        (int) chestPosition.x, (int) chestPosition.y, true);
+                }
             }
 
             setupUI();
@@ -333,7 +340,6 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
     }
 
     private void saveChestState() {
-        AudioManager.getInstance().playSound(AudioManager.SoundEffect.CHEST_CLOSE);
         if (GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
             PlaceableBlock block = GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(
                 (int) chestPosition.x, (int) chestPosition.y);
@@ -342,6 +348,12 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
                 if (block.getChestData() != null && block.getChestData().chestId.equals(chestData.chestId)) {
                     block.setChestOpen(false);
                     block.setChestData(chestData); // Update block with the current chest data
+
+                    // Broadcast chest close state to multiplayer
+                    if (GameContext.get().isMultiplayer()) {
+                        GameContext.get().getGameClient().sendChestStateChange(
+                            (int) chestPosition.x, (int) chestPosition.y, false);
+                    }
                     int chunkX = Math.floorDiv((int) chestPosition.x, World.CHUNK_SIZE);
                     int chunkY = Math.floorDiv((int) chestPosition.y, World.CHUNK_SIZE);
                     Vector2 chunkPos = new Vector2(chunkX, chunkY);

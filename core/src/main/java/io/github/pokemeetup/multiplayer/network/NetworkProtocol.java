@@ -121,6 +121,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(ChestOperationRequest.class);
         kryo.register(ChestOperationResponse.class);
         kryo.register(ChestClosed.class);
+        kryo.register(ChestStateChange.class);
         kryo.register(SavePlayerDataResponse.class);
         kryo.register(GetPlayerDataRequest.class);
         kryo.register(GetPlayerDataResponse.class);
@@ -556,6 +557,14 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public int tileX;              // Position for verification
         public int tileY;
         public boolean destroyed;      // True if chest was broken, false if just closed
+        public long timestamp;
+    }
+
+    public static class ChestStateChange implements Serializable {
+        public int tileX;              // Chest position
+        public int tileY;
+        public boolean isOpen;         // True if opening, false if closing
+        public String username;        // Player opening/closing
         public long timestamp;
     }
 

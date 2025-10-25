@@ -1020,6 +1020,10 @@ public class GameServer {
                         handleChestOperation(connection, (NetworkProtocol.ChestOperationRequest) object);
                         return;
                     }
+                    if (object instanceof NetworkProtocol.ChestStateChange) {
+                        handleChestStateChange(connection, (NetworkProtocol.ChestStateChange) object);
+                        return;
+                    }
                     if (object instanceof NetworkProtocol.ItemPickup) {
                         handleItemPickup(connection, (NetworkProtocol.ItemPickup) object);
                         return;
@@ -1334,6 +1338,22 @@ public class GameServer {
         response.reason = reason;
         response.timestamp = System.currentTimeMillis();
         connection.sendTCP(response);
+    }
+
+    /**
+     * Handles chest open/close state changes and broadcasts to all clients
+     */
+    private void handleChestStateChange(Connection connection, NetworkProtocol.ChestStateChange msg) {
+        String username = connectedPlayers.get(connection.getID());
+        if (username == null || !username.equals(msg.username)) {
+            GameLogger.error("Unauthorized chest state change attempt by " + msg.username);
+            return;
+        }
+
+        // Broadcast to all clients (including sender for confirmation)
+        networkServer.sendToAllTCP(msg);
+        GameLogger.info("Player " + msg.username + " " + (msg.isOpen ? "opened" : "closed") +
+                       " chest at (" + msg.tileX + "," + msg.tileY + ")");
     }
 
     private void handleBuildingPlacement(Connection connection, NetworkProtocol.BuildingPlacement bp) {
