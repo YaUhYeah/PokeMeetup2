@@ -1301,20 +1301,38 @@ public class GameServer {
                     break;
 
                 case SWAP_ITEMS:
-                    // Validate both slots exist
-                    if (request.secondarySlotIndex < 0 || request.secondarySlotIndex >= ChestData.CHEST_SIZE) {
-                        response.success = false;
-                        response.reason = "Invalid secondary slot";
-                        return response;
-                    }
+                    if (request.secondarySlotIndex < 0) {
+                        // Swap between chest and player inventory (itemData contains player's item)
+                        // Take the item from chest
+                        ItemData chestItem = chestData.getItemAt(request.slotIndex);
+                        if (chestItem == null) {
+                            response.success = false;
+                            response.reason = "Chest slot is empty";
+                            return response;
+                        }
 
-                    // Swap items
-                    ItemData item1 = chestData.getItemAt(request.slotIndex);
-                    ItemData item2 = chestData.getItemAt(request.secondarySlotIndex);
-                    chestData.setItemAt(request.slotIndex, item2);
-                    chestData.setItemAt(request.secondarySlotIndex, item1);
-                    response.success = true;
-                    response.chestItems = new ArrayList<>(chestData.getItems());
+                        // Place player's item in chest
+                        chestData.setItemAt(request.slotIndex, request.itemData);
+
+                        // Return chest's item to player
+                        response.success = true;
+                        response.returnedItem = chestItem.copy();
+                        response.chestItems = new ArrayList<>(chestData.getItems());
+                    } else {
+                        // Swap between two chest slots
+                        if (request.secondarySlotIndex >= ChestData.CHEST_SIZE) {
+                            response.success = false;
+                            response.reason = "Invalid secondary slot";
+                            return response;
+                        }
+
+                        ItemData item1 = chestData.getItemAt(request.slotIndex);
+                        ItemData item2 = chestData.getItemAt(request.secondarySlotIndex);
+                        chestData.setItemAt(request.slotIndex, item2);
+                        chestData.setItemAt(request.secondarySlotIndex, item1);
+                        response.success = true;
+                        response.chestItems = new ArrayList<>(chestData.getItems());
+                    }
                     break;
 
                 default:

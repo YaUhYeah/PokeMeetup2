@@ -262,6 +262,222 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         return Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT) || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT);
     }
 
+    /**
+     * Handles chest operations in multiplayer by sending server-authoritative requests
+     */
+    private void handleMultiplayerChestOperation(ItemData chestItem, Item heldItem) {
+        if (screenInterface.getChestData() == null) {
+            GameLogger.error("No chest data available for multiplayer operation");
+            return;
+        }
+
+        UUID chestId = screenInterface.getChestData().chestId;
+        int slotIndex = slotData.getSlotIndex();
+
+        // Determine operation type
+        if (chestItem != null && heldItem == null) {
+            // Taking item from chest
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.TAKE_ITEM,
+                slotIndex,
+                -1,
+                null,
+                -1  // -1 = take all
+            );
+            GameLogger.info("Sent TAKE_ITEM request for chest slot " + slotIndex);
+        } else if (chestItem == null && heldItem != null) {
+            // Placing item into empty chest slot
+            ItemData itemToPlace = InventoryConverter.itemToItemData(heldItem);
+            screenInterface.setHeldItem(null);  // Clear held item optimistically
+
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.ADD_ITEM,
+                slotIndex,
+                -1,
+                itemToPlace,
+                -1  // -1 = add all
+            );
+            GameLogger.info("Sent ADD_ITEM request for chest slot " + slotIndex);
+        } else if (chestItem != null && heldItem != null) {
+            // Both slots occupied - check if we can merge or need to swap
+            if (canStackTogether(chestItem, heldItem)) {
+                // Merging stacks - calculate the merge locally
+                int maxStack = Item.MAX_STACK_SIZE;
+                int total = chestItem.getCount() + heldItem.getCount();
+
+                if (total <= maxStack) {
+                    // All items fit in chest slot - remove held item and add to chest
+                    ItemData mergedItem = chestItem.copy();
+                    mergedItem.setCount(total);
+                    screenInterface.setHeldItem(null);  // Clear held item
+
+                    // Use a TAKE then ADD approach for merging
+                    // First take the existing item
+                    GameContext.get().getGameClient().sendChestOperation(
+                        chestId,
+                        NetworkProtocol.ChestOperationType.TAKE_ITEM,
+                        slotIndex,
+                        -1,
+                        null,
+                        -1  // -1 = take all
+                    );
+                    // Then immediately add the merged stack
+                    // Note: This is not truly atomic but is the best we can do without a MERGE operation
+                    GameContext.get().getGameClient().sendChestOperation(
+                        chestId,
+                        NetworkProtocol.ChestOperationType.ADD_ITEM,
+                        slotIndex,
+                        -1,
+                        mergedItem,
+                        -1  // -1 = add all
+                    );
+                    GameLogger.info("Sent MERGE request (TAKE+ADD) for chest slot " + slotIndex);
+                } else {
+                    // Overflow - some items remain in hand
+                    ItemData fullStack = chestItem.copy();
+                    fullStack.setCount(maxStack);
+                    int remainder = total - maxStack;
+
+                    heldItem.setCount(remainder);
+                    screenInterface.setHeldItem(heldItem);
+
+                    // Same approach: TAKE then ADD
+                    GameContext.get().getGameClient().sendChestOperation(
+                        chestId,
+                        NetworkProtocol.ChestOperationType.TAKE_ITEM,
+                        slotIndex,
+                        -1,
+                        null,
+                        -1  // -1 = take all
+                    );
+                    GameContext.get().getGameClient().sendChestOperation(
+                        chestId,
+                        NetworkProtocol.ChestOperationType.ADD_ITEM,
+                        slotIndex,
+                        -1,
+                        fullStack,
+                        -1  // -1 = add all
+                    );
+                    GameLogger.info("Sent MERGE with remainder request for chest slot " + slotIndex);
+                }
+            } else {
+                // Different items - swap them
+                ItemData itemToPlace = InventoryConverter.itemToItemData(heldItem);
+
+                // Create held item from chest item
+                Item newHeld = new Item(chestItem.getItemId());
+                newHeld.setCount(chestItem.getCount());
+                newHeld.setUuid(UUID.randomUUID());
+                newHeld.setDurability(chestItem.getDurability());
+                newHeld.setMaxDurability(chestItem.getMaxDurability());
+                screenInterface.setHeldItem(newHeld);
+
+                GameContext.get().getGameClient().sendChestOperation(
+                    chestId,
+                    NetworkProtocol.ChestOperationType.SWAP_ITEMS,
+                    slotIndex,
+                    -1,  // No secondary slot for chest swaps
+                    itemToPlace,
+                    -1  // -1 = swap all
+                );
+                GameLogger.info("Sent SWAP_ITEMS request for chest slot " + slotIndex);
+            }
+        }
+    }
+
+    /**
+     * Handles right-click chest operations in multiplayer (split stack, place one, etc.)
+     */
+    private void handleMultiplayerChestRightClick(ItemData chestItem, Item heldItem) {
+        if (screenInterface.getChestData() == null) {
+            GameLogger.error("No chest data available for multiplayer right-click operation");
+            return;
+        }
+
+        UUID chestId = screenInterface.getChestData().chestId;
+        int slotIndex = slotData.getSlotIndex();
+
+        // Determine right-click operation type
+        if (chestItem == null && heldItem != null) {
+            // Right-click empty slot with held item → Place 1 item
+            ItemData itemToPlace = new ItemData(heldItem.getName(), 1, UUID.randomUUID());
+            itemToPlace.setDurability(heldItem.getDurability());
+            itemToPlace.setMaxDurability(heldItem.getMaxDurability());
+
+            // Update held item optimistically
+            int newCount = heldItem.getCount() - 1;
+            if (newCount <= 0) {
+                screenInterface.setHeldItem(null);
+            } else {
+                heldItem.setCount(newCount);
+                screenInterface.setHeldItem(heldItem);
+            }
+
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.ADD_ITEM,
+                slotIndex,
+                -1,
+                itemToPlace,
+                1  // Place exactly 1 item
+            );
+            GameLogger.info("Sent right-click ADD_ITEM (1) request for chest slot " + slotIndex);
+
+        } else if (chestItem != null && heldItem == null) {
+            // Right-click chest slot with empty hand → Pick up half the stack
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.TAKE_ITEM,
+                slotIndex,
+                -1,
+                null,
+                0  // 0 = take half
+            );
+            GameLogger.info("Sent right-click TAKE_ITEM (half) request for chest slot " + slotIndex);
+
+        } else if (chestItem != null && heldItem != null && canStackTogether(chestItem, heldItem)) {
+            // Right-click to add 1 item to existing stack
+            if (chestItem.getCount() >= Item.MAX_STACK_SIZE) {
+                GameLogger.info("Chest slot is full, cannot add more items");
+                return;
+            }
+
+            // Create updated chest item with +1 count
+            ItemData updatedChestItem = chestItem.copy();
+            updatedChestItem.setCount(chestItem.getCount() + 1);
+
+            // Update held item optimistically
+            int newCount = heldItem.getCount() - 1;
+            if (newCount <= 0) {
+                screenInterface.setHeldItem(null);
+            } else {
+                heldItem.setCount(newCount);
+                screenInterface.setHeldItem(heldItem);
+            }
+
+            // Use TAKE then ADD approach
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.TAKE_ITEM,
+                slotIndex,
+                -1,
+                null,
+                -1  // Take all
+            );
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.ADD_ITEM,
+                slotIndex,
+                -1,
+                updatedChestItem,
+                -1  // Add the updated stack
+            );
+            GameLogger.info("Sent right-click add-one request for chest slot " + slotIndex);
+        }
+    }
+
     private void handleLeftClick(boolean shiftHeld) {
         InventoryLock.writeLock();
         try {
@@ -276,6 +492,12 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
             if (shiftHeld && currentSlotItem != null) {
                 handleShiftClickMove(currentSlotItem);
+                return;
+            }
+
+            // IMPORTANT: In multiplayer, chest operations must be server-authoritative
+            if (slotType == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
+                handleMultiplayerChestOperation(currentSlotItem, heldItem);
                 return;
             }
 
@@ -297,16 +519,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             InventoryLock.writeUnlock();
             updateSlot();
             screenInterface.updateHeldItemDisplay();
-            // Send real-time chest update with validation
-            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST &&
-                GameContext.get().isMultiplayer() &&
-                screenInterface.getChestData() != null &&
-                screenInterface.getChestPosition() != null) {
-                GameContext.get().getGameClient().sendValidatedChestUpdate(
-                    screenInterface.getChestData(),
-                    screenInterface.getChestPosition()
-                );
-            }
         }
     }
 
@@ -316,6 +528,12 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             Item heldItem = screenInterface.getHeldItemObject();
             ItemData currentSlotItem = getSlotItemData();
             InventorySlotData.SlotType slotType = slotData.getSlotType();
+
+            // IMPORTANT: In multiplayer, chest operations must be server-authoritative
+            if (slotType == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
+                GameLogger.info("Right-click chest operations in multiplayer not yet implemented");
+                return;
+            }
 
             if (slotType == InventorySlotData.SlotType.CRAFTING_RESULT) {
                 pickUpOneCraftedItem();
@@ -333,16 +551,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             InventoryLock.writeUnlock();
             updateSlot();
             screenInterface.updateHeldItemDisplay();
-            // Send real-time chest update with validation
-            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST &&
-                GameContext.get().isMultiplayer() &&
-                screenInterface.getChestData() != null &&
-                screenInterface.getChestPosition() != null) {
-                GameContext.get().getGameClient().sendValidatedChestUpdate(
-                    screenInterface.getChestData(),
-                    screenInterface.getChestPosition()
-                );
-            }
         }
     }
 

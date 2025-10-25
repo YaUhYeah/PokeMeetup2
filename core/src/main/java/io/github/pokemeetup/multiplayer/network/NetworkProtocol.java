@@ -538,6 +538,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public int slotIndex;           // Primary slot for operation
         public int secondarySlotIndex;  // For SWAP operations (-1 if not used)
         public ItemData itemData;       // For ADD operations
+        public int count;               // For partial operations (-1 = all, 0 = half, >0 = specific amount)
         public String username;
         public long timestamp;
     }

@@ -363,8 +363,8 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
                         GameContext.get().getWorld().saveChunkData(chunkPos, chunk);
                     }
 
-                    // Only send chest update if chest still exists and UUIDs match
-                    GameContext.get().getGameClient().sendChestUpdate(chestData);
+                    // NOTE: No longer sending ChestUpdate on close - operations are server-authoritative
+                    // Chest state is synchronized via ChestOperationResponse broadcasts from server
                 } else {
                     GameLogger.info("Chest at (" + (int)chestPosition.x + "," + (int)chestPosition.y +
                                    ") was destroyed or replaced - skipping chest update");

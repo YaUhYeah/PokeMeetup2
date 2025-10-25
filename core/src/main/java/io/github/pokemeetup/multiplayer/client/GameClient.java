@@ -27,6 +27,7 @@ import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.inventory.Item;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.overworld.*;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
@@ -395,7 +396,7 @@ public class GameClient {
      * Sends a chest operation request to the server (transaction-based approach)
      */
     public void sendChestOperation(UUID chestId, NetworkProtocol.ChestOperationType operation,
-                                   int slotIndex, int secondarySlotIndex, ItemData itemData) {
+                                   int slotIndex, int secondarySlotIndex, ItemData itemData, int count) {
         if (!GameContext.get().isMultiplayer() || !isConnected() || !isAuthenticated()) {
             GameLogger.error("Cannot send chest operation - not in multiplayer or not connected");
             return;
@@ -408,11 +409,12 @@ public class GameClient {
             request.slotIndex = slotIndex;
             request.secondarySlotIndex = secondarySlotIndex;
             request.itemData = itemData;
+            request.count = count;
             request.username = getLocalUsername();
             request.timestamp = System.currentTimeMillis();
 
             client.sendTCP(request);
-            GameLogger.info("Sent chest operation request: " + operation + " on chest " + chestId + " slot " + slotIndex);
+            GameLogger.info("Sent chest operation request: " + operation + " on chest " + chestId + " slot " + slotIndex + " count " + count);
         } catch (Exception e) {
             GameLogger.error("Failed to send chest operation: " + e.getMessage());
         }
@@ -605,18 +607,45 @@ public class GameClient {
                     // Update chest inventory with server-authoritative state
                     chestScreen.getChestData().setItems(new ArrayList<>(response.chestItems));
 
-                    // If this was a TAKE operation for the local player, add the returned item to inventory
+                    // If a TAKE or SWAP operation returned an item to the local player
                     if (response.returnedItem != null && response.username.equals(getLocalUsername())) {
-                        if (GameContext.get().getPlayer().getInventory().addItem(response.returnedItem)) {
-                            GameLogger.info("Added item from chest to inventory: " + response.returnedItem.getItemId());
+                        // For SWAP operations, the item goes to the cursor (held item)
+                        // For TAKE operations, try to add to inventory, or drop on ground if full
+                        ChestScreen screen = GameContext.get().getGameScreen().getChestScreen();
+                        if (screen != null && screen.getHeldItemObject() == null) {
+                            // No item on cursor - this is a TAKE operation, add to inventory
+                            if (GameContext.get().getPlayer().getInventory().addItem(response.returnedItem)) {
+                                GameLogger.info("Added item from chest to inventory: " + response.returnedItem.getItemId());
+                            } else {
+                                // Inventory full - drop item on ground at player's feet
+                                GameLogger.info("Inventory full, dropping item on ground: " + response.returnedItem.getItemId());
+                                float playerX = GameContext.get().getPlayer().getX();
+                                float playerY = GameContext.get().getPlayer().getY();
+                                GameContext.get().getWorld().getItemEntityManager().spawnItemEntity(
+                                    response.returnedItem, playerX, playerY);
+
+                                // Show message to player
+                                NetworkProtocol.ChatMessage msg = createSystemMessage(
+                                    "Inventory full! " + response.returnedItem.getItemId() + " dropped on ground.");
+                                if (chatMessageHandler != null) {
+                                    chatMessageHandler.accept(msg);
+                                }
+                            }
                         } else {
-                            GameLogger.error("Failed to add item to inventory - inventory full");
+                            // SWAP operation - place returned item on cursor
+                            Item returnedItem = new Item(response.returnedItem.getItemId());
+                            returnedItem.setCount(response.returnedItem.getCount());
+                            returnedItem.setUuid(UUID.randomUUID());
+                            returnedItem.setDurability(response.returnedItem.getDurability());
+                            returnedItem.setMaxDurability(response.returnedItem.getMaxDurability());
+                            screen.setHeldItem(returnedItem);
+                            GameLogger.info("SWAP completed, placed item on cursor: " + response.returnedItem.getItemId());
                         }
                     }
 
-                    // Refresh UI
+                    // Refresh UI for all clients
                     chestScreen.updateUI();
-                    GameLogger.info("Chest operation successful, updated chest state");
+                    GameLogger.info("Chest operation by " + response.username + " successful, updated chest state");
                 } else {
                     // Operation failed - log the reason
                     GameLogger.info("Chest operation failed: " + response.reason);
