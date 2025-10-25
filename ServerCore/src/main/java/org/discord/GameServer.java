@@ -1338,8 +1338,36 @@ public class GameServer {
                         return response;
                     }
 
-                    // Add to chest
-                    chestData.setItemAt(request.slotIndex, request.itemData);
+                    if (request.itemData == null) {
+                        response.success = false;
+                        response.reason = "No item to add";
+                        return response;
+                    }
+
+                    // Determine how many items to add
+                    int countToAdd;
+                    if (request.count == -1) {
+                        // Add all items
+                        countToAdd = request.itemData.getCount();
+                    } else {
+                        // Add specific count
+                        countToAdd = Math.min(request.count, request.itemData.getCount());
+                    }
+
+                    // Create item to place in chest
+                    ItemData itemForChest = request.itemData.copy();
+                    itemForChest.setCount(countToAdd);
+                    chestData.setItemAt(request.slotIndex, itemForChest);
+
+                    // Calculate remainder for player's cursor
+                    int remainder = request.itemData.getCount() - countToAdd;
+                    if (remainder > 0) {
+                        ItemData remainderItem = request.itemData.copy();
+                        remainderItem.setCount(remainder);
+                        response.returnedItem = remainderItem;
+                    }
+                    // If remainder is 0, returnedItem stays null (cursor cleared)
+
                     response.success = true;
                     response.chestItems = new ArrayList<>(chestData.getItems());
                     break;
@@ -1377,6 +1405,51 @@ public class GameServer {
                         response.success = true;
                         response.chestItems = new ArrayList<>(chestData.getItems());
                     }
+                    break;
+
+                case MERGE_ITEMS:
+                    // Atomic merge operation: merge held item with chest slot
+                    ItemData chestItemToMerge = chestData.getItemAt(request.slotIndex);
+                    if (chestItemToMerge == null) {
+                        response.success = false;
+                        response.reason = "Cannot merge with empty slot";
+                        return response;
+                    }
+
+                    if (request.itemData == null) {
+                        response.success = false;
+                        response.reason = "No item to merge";
+                        return response;
+                    }
+
+                    // Verify items can stack together
+                    if (!chestItemToMerge.getItemId().equals(request.itemData.getItemId())) {
+                        response.success = false;
+                        response.reason = "Items cannot be stacked together";
+                        return response;
+                    }
+
+                    // Calculate merged count
+                    int maxStack = 64; // Item.MAX_STACK_SIZE
+                    int totalCount = chestItemToMerge.getCount() + request.itemData.getCount();
+                    int mergedCount = Math.min(totalCount, maxStack);
+                    remainder = totalCount - mergedCount;
+
+                    // Update chest with merged stack
+                    ItemData mergedStack = chestItemToMerge.copy();
+                    mergedStack.setCount(mergedCount);
+                    chestData.setItemAt(request.slotIndex, mergedStack);
+
+                    // Return remainder to player (if any)
+                    if (remainder > 0) {
+                        ItemData remainderItem = request.itemData.copy();
+                        remainderItem.setCount(remainder);
+                        response.returnedItem = remainderItem;
+                    }
+                    // If no remainder, returnedItem stays null (hand cleared)
+
+                    response.success = true;
+                    response.chestItems = new ArrayList<>(chestData.getItems());
                     break;
 
                 default:

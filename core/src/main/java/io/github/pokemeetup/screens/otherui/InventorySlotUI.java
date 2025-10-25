@@ -297,92 +297,40 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             GameLogger.info("Sent TAKE_ITEM request for chest slot " + slotIndex);
         } else if (chestItem == null && heldItem != null) {
             // Placing item into empty chest slot
-            ItemData itemToPlace = InventoryConverter.itemToItemData(heldItem);
-            screenInterface.setHeldItem(null);  // Clear held item optimistically
+            ItemData fullStack = InventoryConverter.itemToItemData(heldItem);
 
+            // Don't do optimistic updates - wait for server response
+            // Send full stack, count=-1 means place all
             GameContext.get().getGameClient().sendChestOperation(
                 chestId,
                 NetworkProtocol.ChestOperationType.ADD_ITEM,
                 slotIndex,
                 -1,
-                itemToPlace,
-                -1  // -1 = add all
+                fullStack,
+                -1  // -1 = add all from stack
             );
-            GameLogger.info("Sent ADD_ITEM request for chest slot " + slotIndex);
+            GameLogger.info("Sent ADD_ITEM (all) request for chest slot " + slotIndex);
         } else if (chestItem != null && heldItem != null) {
             // Both slots occupied - check if we can merge or need to swap
             if (canStackTogether(chestItem, heldItem)) {
-                // Merging stacks - calculate the merge locally
-                int maxStack = Item.MAX_STACK_SIZE;
-                int total = chestItem.getCount() + heldItem.getCount();
+                // Merging stacks - use atomic MERGE operation
+                ItemData itemToMerge = InventoryConverter.itemToItemData(heldItem);
 
-                if (total <= maxStack) {
-                    // All items fit in chest slot - remove held item and add to chest
-                    ItemData mergedItem = chestItem.copy();
-                    mergedItem.setCount(total);
-                    screenInterface.setHeldItem(null);  // Clear held item
-
-                    // Use a TAKE then ADD approach for merging
-                    // First take the existing item
-                    GameContext.get().getGameClient().sendChestOperation(
-                        chestId,
-                        NetworkProtocol.ChestOperationType.TAKE_ITEM,
-                        slotIndex,
-                        -1,
-                        null,
-                        -1  // -1 = take all
-                    );
-                    // Then immediately add the merged stack
-                    // Note: This is not truly atomic but is the best we can do without a MERGE operation
-                    GameContext.get().getGameClient().sendChestOperation(
-                        chestId,
-                        NetworkProtocol.ChestOperationType.ADD_ITEM,
-                        slotIndex,
-                        -1,
-                        mergedItem,
-                        -1  // -1 = add all
-                    );
-                    GameLogger.info("Sent MERGE request (TAKE+ADD) for chest slot " + slotIndex);
-                } else {
-                    // Overflow - some items remain in hand
-                    ItemData fullStack = chestItem.copy();
-                    fullStack.setCount(maxStack);
-                    int remainder = total - maxStack;
-
-                    heldItem.setCount(remainder);
-                    screenInterface.setHeldItem(heldItem);
-
-                    // Same approach: TAKE then ADD
-                    GameContext.get().getGameClient().sendChestOperation(
-                        chestId,
-                        NetworkProtocol.ChestOperationType.TAKE_ITEM,
-                        slotIndex,
-                        -1,
-                        null,
-                        -1  // -1 = take all
-                    );
-                    GameContext.get().getGameClient().sendChestOperation(
-                        chestId,
-                        NetworkProtocol.ChestOperationType.ADD_ITEM,
-                        slotIndex,
-                        -1,
-                        fullStack,
-                        -1  // -1 = add all
-                    );
-                    GameLogger.info("Sent MERGE with remainder request for chest slot " + slotIndex);
-                }
+                // Send single atomic MERGE request
+                GameContext.get().getGameClient().sendChestOperation(
+                    chestId,
+                    NetworkProtocol.ChestOperationType.MERGE_ITEMS,
+                    slotIndex,
+                    -1,
+                    itemToMerge,
+                    -1
+                );
+                GameLogger.info("Sent MERGE_ITEMS request for chest slot " + slotIndex);
             } else {
                 // Different items - swap them
                 ItemData itemToPlace = InventoryConverter.itemToItemData(heldItem);
 
-                // Create held item from chest item
-                Item newHeld = new Item(chestItem.getItemId());
-                newHeld.setCount(chestItem.getCount());
-                newHeld.setUuid(UUID.randomUUID());
-                newHeld.setDurability(chestItem.getDurability());
-                newHeld.setMaxDurability(chestItem.getMaxDurability());
-                screenInterface.setHeldItem(newHeld);
-
+                // Don't do optimistic updates - wait for server response
                 GameContext.get().getGameClient().sendChestOperation(
                     chestId,
                     NetworkProtocol.ChestOperationType.SWAP_ITEMS,
@@ -420,41 +368,23 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         // Determine right-click operation type
         if (chestItem == null && heldItem != null) {
             // Right-click empty slot with held item → Place 1 item
-            ItemData itemToPlace = new ItemData(heldItem.getName(), 1, UUID.randomUUID());
-            itemToPlace.setDurability(heldItem.getDurability());
-            itemToPlace.setMaxDurability(heldItem.getMaxDurability());
+            ItemData fullStack = InventoryConverter.itemToItemData(heldItem);
 
-            // Update held item optimistically
-            int newCount = heldItem.getCount() - 1;
-            if (newCount <= 0) {
-                screenInterface.setHeldItem(null);
-            } else {
-                heldItem.setCount(newCount);
-                screenInterface.setHeldItem(heldItem);
-            }
-
+            // Don't do optimistic updates - wait for server response
+            // Send full stack, count=1 means place only 1 item
             GameContext.get().getGameClient().sendChestOperation(
                 chestId,
                 NetworkProtocol.ChestOperationType.ADD_ITEM,
                 slotIndex,
                 -1,
-                itemToPlace,
-                1  // Place exactly 1 item
+                fullStack,
+                1  // Place exactly 1 item from stack
             );
             GameLogger.info("Sent right-click ADD_ITEM (1) request for chest slot " + slotIndex);
 
         } else if (chestItem != null && heldItem == null) {
             // Right-click chest slot with empty hand → Pick up half the stack
-            // Calculate half to show on cursor optimistically
-            int half = (chestItem.getCount() + 1) / 2;
-
-            Item newHeld = new Item(chestItem.getItemId());
-            newHeld.setCount(half);
-            newHeld.setDurability(chestItem.getDurability());
-            newHeld.setMaxDurability(chestItem.getMaxDurability());
-            newHeld.setUuid(UUID.randomUUID());
-            screenInterface.setHeldItem(newHeld);
-
+            // Don't do optimistic updates - wait for server response
             GameContext.get().getGameClient().sendChestOperation(
                 chestId,
                 NetworkProtocol.ChestOperationType.TAKE_ITEM,
@@ -469,40 +399,25 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             // Right-click to add 1 item to existing stack
             if (chestItem.getCount() >= Item.MAX_STACK_SIZE) {
                 GameLogger.info("Chest slot is full, cannot add more items");
+                screenInterface.setPendingOperation(false); // Clear the flag since we're not sending a request
                 return;
             }
 
-            // Create updated chest item with +1 count
-            ItemData updatedChestItem = chestItem.copy();
-            updatedChestItem.setCount(chestItem.getCount() + 1);
+            // Create itemData with just 1 item to merge
+            ItemData oneItem = new ItemData(heldItem.getName(), 1, UUID.randomUUID());
+            oneItem.setDurability(heldItem.getDurability());
+            oneItem.setMaxDurability(heldItem.getMaxDurability());
 
-            // Update held item optimistically
-            int newCount = heldItem.getCount() - 1;
-            if (newCount <= 0) {
-                screenInterface.setHeldItem(null);
-            } else {
-                heldItem.setCount(newCount);
-                screenInterface.setHeldItem(heldItem);
-            }
-
-            // Use TAKE then ADD approach
+            // Send atomic MERGE request with count=1
             GameContext.get().getGameClient().sendChestOperation(
                 chestId,
-                NetworkProtocol.ChestOperationType.TAKE_ITEM,
+                NetworkProtocol.ChestOperationType.MERGE_ITEMS,
                 slotIndex,
                 -1,
-                null,
-                -1  // Take all
+                oneItem,
+                1  // Merge exactly 1 item
             );
-            GameContext.get().getGameClient().sendChestOperation(
-                chestId,
-                NetworkProtocol.ChestOperationType.ADD_ITEM,
-                slotIndex,
-                -1,
-                updatedChestItem,
-                -1  // Add the updated stack
-            );
-            GameLogger.info("Sent right-click add-one request for chest slot " + slotIndex);
+            GameLogger.info("Sent right-click MERGE_ITEMS (1) request for chest slot " + slotIndex);
         }
     }
 

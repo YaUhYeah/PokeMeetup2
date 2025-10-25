@@ -612,18 +612,24 @@ public class GameClient {
                     // Update chest inventory with server-authoritative state
                     chestScreen.getChestData().setItems(new ArrayList<>(response.chestItems));
 
-                    // If a TAKE or SWAP operation returned an item to the local player
-                    if (response.returnedItem != null && response.username.equals(getLocalUsername())) {
+                    // Update held item for local player based on server response
+                    if (response.username.equals(getLocalUsername())) {
                         ChestScreen screen = GameContext.get().getGameScreen().getChestScreen();
                         if (screen != null) {
-                            // Server returned an item - place it on cursor (single-player parity)
-                            Item returnedItem = new Item(response.returnedItem.getItemId());
-                            returnedItem.setCount(response.returnedItem.getCount());
-                            returnedItem.setUuid(UUID.randomUUID());
-                            returnedItem.setDurability(response.returnedItem.getDurability());
-                            returnedItem.setMaxDurability(response.returnedItem.getMaxDurability());
-                            screen.setHeldItem(returnedItem);
-                            GameLogger.info("Placed item on cursor: " + response.returnedItem.getItemId() + " x" + response.returnedItem.getCount());
+                            if (response.returnedItem != null) {
+                                // Server returned an item - place it on cursor
+                                Item returnedItem = new Item(response.returnedItem.getItemId());
+                                returnedItem.setCount(response.returnedItem.getCount());
+                                returnedItem.setUuid(UUID.randomUUID());
+                                returnedItem.setDurability(response.returnedItem.getDurability());
+                                returnedItem.setMaxDurability(response.returnedItem.getMaxDurability());
+                                screen.setHeldItem(returnedItem);
+                                GameLogger.info("Placed item on cursor: " + response.returnedItem.getItemId() + " x" + response.returnedItem.getCount());
+                            } else {
+                                // Server returned null - clear cursor (for MERGE operations with no remainder)
+                                screen.setHeldItem(null);
+                                GameLogger.info("Cleared cursor (operation completed with no remainder)");
+                            }
                         }
                     }
 

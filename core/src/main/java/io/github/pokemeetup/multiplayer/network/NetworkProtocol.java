@@ -529,7 +529,8 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     public enum ChestOperationType {
         TAKE_ITEM,      // Remove item from chest slot
         ADD_ITEM,       // Add item to chest slot
-        SWAP_ITEMS      // Swap items between slots
+        SWAP_ITEMS,     // Swap items between slots
+        MERGE_ITEMS     // Merge held item with chest slot (atomic)
     }
 
     public static class ChestOperationRequest implements Serializable {
