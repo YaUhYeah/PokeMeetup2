@@ -22,9 +22,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OtherPlayer implements Positionable {
 
 
-    // Match main player's animation timing: 4 frames * frame duration
-    private static final float OTHER_PLAYER_WALK_DURATION = PlayerAnimations.WALK_FRAME_DURATION * 4; // 0.32f
-    private static final float OTHER_PLAYER_RUN_DURATION = PlayerAnimations.RUN_FRAME_DURATION * 4;   // 0.24f
+    // Network interpolation settings
+    // Network updates arrive every ~0.05s (20 times/sec), so interpolate faster than update rate
+    private static final float NETWORK_INTERPOLATION_TIME = 0.15f; // Smooth interpolation between network updates
+
+    // Full tile-to-tile movement durations (for animation timing reference)
+    private static final float TILE_WALK_DURATION = PlayerAnimations.WALK_FRAME_DURATION * 4; // 0.32f
+    private static final float TILE_RUN_DURATION = PlayerAnimations.RUN_FRAME_DURATION * 4;   // 0.24f
 
     @Override
     public boolean wasOnWater() {
@@ -34,6 +38,7 @@ public class OtherPlayer implements Positionable {
     private float movementProgress;
     private float animationTime = 0f;
     private int prevTileX, prevTileY;
+    private float distanceTraveled = 0f; // Track actual distance for animation timing
 
     @Override
     public void setWasOnWater(boolean onWater) {
@@ -82,6 +87,7 @@ public class OtherPlayer implements Positionable {
         this.direction = "down";
         this.movementProgress = 1f; // Start as "finished"
         this.animationTime = 0f;
+        this.distanceTraveled = 0f;
         this.isMoving = new AtomicBoolean(false);
         this.wantsToRun = false;
         this.animations = new PlayerAnimations();
@@ -114,12 +120,19 @@ public class OtherPlayer implements Positionable {
                 startPosition.set(position); // Start from the current visual position
                 targetPosition.set(serverPosition); // The new goal is the server position
                 movementProgress = 0f; // Reset the interpolation timer
+                animationCycleTime = 0f; // Reset animation cycle for smooth start
             }
 
             // Update state flags
             this.direction = serverDirection;
+            boolean wasMoving = this.isMoving.get();
             this.isMoving.set(serverIsMoving);
             this.wantsToRun = serverWantsToRun;
+
+            // Reset distance tracking when stopping
+            if (wasMoving && !serverIsMoving) {
+                distanceTraveled = 0f;
+            }
         }
     }
 
@@ -147,26 +160,40 @@ public class OtherPlayer implements Positionable {
 
     public void update(float deltaTime) {
         synchronized (positionLock) {
-            float moveDuration = wantsToRun ? OTHER_PLAYER_RUN_DURATION : OTHER_PLAYER_WALK_DURATION;
+            // Use fixed interpolation time for smooth network position updates
+            float interpolationDuration = NETWORK_INTERPOLATION_TIME;
 
-            // Only interpolate if we haven't reached target (KEEP SAME)
+            // Track previous position for distance calculation
+            float prevX = position.x;
+            float prevY = position.y;
+
+            // Only interpolate if we haven't reached target
             if (movementProgress < 1.0f) {
-                movementProgress = Math.min(1f, movementProgress + deltaTime / moveDuration);
+                movementProgress = Math.min(1f, movementProgress + deltaTime / interpolationDuration);
 
                 // Use same smoothing as Player
                 float smoothProgress = smoothStep(movementProgress);
                 position.x = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);
                 position.y = MathUtils.lerp(startPosition.y, targetPosition.y, smoothProgress);
 
+                // Track distance traveled this frame for animation
+                float dx = position.x - prevX;
+                float dy = position.y - prevY;
+                float frameDistance = (float) Math.sqrt(dx * dx + dy * dy);
+                distanceTraveled += frameDistance;
+
                 if (movementProgress >= 1.0f) {
                     position.set(targetPosition);
-                    animationCycleTime = 0f; // Reset for next movement
 
                     // Check if we need to continue interpolating to server position
                     if (targetPosition.dst(serverPosition) > 2f) {
                         startPosition.set(position);
                         targetPosition.set(serverPosition);
                         movementProgress = 0f;
+                        // Don't reset distanceTraveled - let animation continue smoothly
+                    } else {
+                        // Reached destination, ready for animation cycle mode
+                        animationCycleTime = 0f;
                     }
                 }
             }
@@ -179,13 +206,23 @@ public class OtherPlayer implements Positionable {
                 punchingAnimationTime += deltaTime;
                 animationTime = punchingAnimationTime;
             } else if (isMoving.get()) {
-                // Continuous animation cycling while moving
-                animationCycleTime += deltaTime;
-                float frameDuration = wantsToRun ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
-                animationTime = animationCycleTime;
+                // FIXED: Base animation on actual distance traveled at walk/run speed
+                // One tile (32 pixels) = one full animation cycle
+                float tileDuration = wantsToRun ? TILE_RUN_DURATION : TILE_WALK_DURATION;
+                float tilesMovedFraction = distanceTraveled / World.TILE_SIZE;
+
+                // Animation time = (tiles moved) * (time per tile)
+                // This makes animation speed match the actual movement speed
+                animationTime = tilesMovedFraction * tileDuration;
+
+                // Wrap animation time to prevent overflow on long movements
+                float fullCycleDuration = tileDuration; // One full cycle per tile
+                animationTime = animationTime % fullCycleDuration;
             } else {
+                // Not moving - reset everything
                 animationTime = 0f;
                 animationCycleTime = 0f;
+                distanceTraveled = 0f;
             }
 
 
@@ -302,6 +339,7 @@ public class OtherPlayer implements Positionable {
             this.startPosition.set(position);
             this.targetPosition.set(position);
             this.movementProgress = 1.0f; // Mark as finished at this new position
+            this.distanceTraveled = 0f; // Reset animation distance
         }
     }
 

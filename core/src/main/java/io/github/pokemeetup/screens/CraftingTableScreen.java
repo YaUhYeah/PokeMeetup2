@@ -102,6 +102,11 @@ public class CraftingTableScreen implements Screen, InventoryScreenInterface, In
         return null;
     }
 
+    @Override
+    public Vector2 getChestPosition() {
+        return null; // Crafting table doesn't have a chest
+    }
+
     private Table createInventorySection() {
         Table container = new Table();
         container.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("hotbar_bg")));

@@ -101,6 +101,11 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         return chestData;
     }
 
+    @Override
+    public Vector2 getChestPosition() {
+        return chestPosition;
+    }
+
     private void createChestInventoryGrid() {
         chestTable.clear();
         chestTable.setBackground(new TextureRegionDrawable(TextureManager.ui.findRegion("hotbar_bg")));
@@ -332,20 +337,28 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
         if (GameContext.get().getPlayer() != null && GameContext.get().getWorld() != null) {
             PlaceableBlock block = GameContext.get().getPlayer().getWorld().getBlockManager().getBlockAt(
                 (int) chestPosition.x, (int) chestPosition.y);
-            if (block != null) {
-                block.setChestOpen(false);
-                block.setChestData(chestData); // Update block with the current chest data
-                int chunkX = Math.floorDiv((int) chestPosition.x, World.CHUNK_SIZE);
-                int chunkY = Math.floorDiv((int) chestPosition.y, World.CHUNK_SIZE);
-                Vector2 chunkPos = new Vector2(chunkX, chunkY);
+            if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST) {
+                // Verify this is the same chest (not a new one placed at same position)
+                if (block.getChestData() != null && block.getChestData().chestId.equals(chestData.chestId)) {
+                    block.setChestOpen(false);
+                    block.setChestData(chestData); // Update block with the current chest data
+                    int chunkX = Math.floorDiv((int) chestPosition.x, World.CHUNK_SIZE);
+                    int chunkY = Math.floorDiv((int) chestPosition.y, World.CHUNK_SIZE);
+                    Vector2 chunkPos = new Vector2(chunkX, chunkY);
 
-                Chunk chunk = GameContext.get().getWorld().getChunks().get(chunkPos);
-                if (chunk != null) {
-                    GameContext.get().getWorld().saveChunkData(chunkPos, chunk);
+                    Chunk chunk = GameContext.get().getWorld().getChunks().get(chunkPos);
+                    if (chunk != null) {
+                        GameContext.get().getWorld().saveChunkData(chunkPos, chunk);
+                    }
+
+                    // Only send chest update if chest still exists and UUIDs match
+                    GameContext.get().getGameClient().sendChestUpdate(chestData);
+                } else {
+                    GameLogger.info("Chest at (" + (int)chestPosition.x + "," + (int)chestPosition.y +
+                                   ") was destroyed or replaced - skipping chest update");
                 }
             }
         }
-        GameContext.get().getGameClient().sendChestUpdate(chestData);
         if (gameScreen != null && gameScreen.getChestHandler() != null) {
             gameScreen.getChestHandler().setChestOpen(false);
             gameScreen.getChestHandler().reset();

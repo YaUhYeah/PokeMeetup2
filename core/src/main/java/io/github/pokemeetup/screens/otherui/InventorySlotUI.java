@@ -297,8 +297,15 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             InventoryLock.writeUnlock();
             updateSlot();
             screenInterface.updateHeldItemDisplay();
-            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST) {
-                GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
+            // Send real-time chest update with validation
+            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST &&
+                GameContext.get().isMultiplayer() &&
+                screenInterface.getChestData() != null &&
+                screenInterface.getChestPosition() != null) {
+                GameContext.get().getGameClient().sendValidatedChestUpdate(
+                    screenInterface.getChestData(),
+                    screenInterface.getChestPosition()
+                );
             }
         }
     }
@@ -326,8 +333,15 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             InventoryLock.writeUnlock();
             updateSlot();
             screenInterface.updateHeldItemDisplay();
-            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
-                GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
+            // Send real-time chest update with validation
+            if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST &&
+                GameContext.get().isMultiplayer() &&
+                screenInterface.getChestData() != null &&
+                screenInterface.getChestPosition() != null) {
+                GameContext.get().getGameClient().sendValidatedChestUpdate(
+                    screenInterface.getChestData(),
+                    screenInterface.getChestPosition()
+                );
             }
         }
     }
@@ -394,8 +408,14 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         updateSlot();
         screenInterface.updateHeldItemDisplay();
-        if (slotData.getSlotType() == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
-            GameContext.get().getGameClient().sendChestUpdate(screenInterface.getChestData());
+        // Send real-time chest update with validation (for shift-click moves)
+        if (GameContext.get().isMultiplayer() &&
+            screenInterface.getChestData() != null &&
+            screenInterface.getChestPosition() != null) {
+            GameContext.get().getGameClient().sendValidatedChestUpdate(
+                screenInterface.getChestData(),
+                screenInterface.getChestPosition()
+            );
         }
     }
 

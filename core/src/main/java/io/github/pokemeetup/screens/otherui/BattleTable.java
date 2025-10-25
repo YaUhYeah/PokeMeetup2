@@ -30,6 +30,7 @@ import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.pokemon.attacks.Move;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.data.ItemData;
+import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
@@ -100,6 +101,7 @@ public class BattleTable extends Table {
     private float stateTimer = 0;
     private Table weatherDisplay;
     private Label weatherLabel;
+    private WeatherSystem.WeatherType battleWeather;
     private boolean moveSelectionActive = false;
     private int turnCount = 0;
     // MODIFICATION: Changed to Map<Pokemon, Pokemon> for better tracking
@@ -146,13 +148,15 @@ public class BattleTable extends Table {
         }
     }
 
-    public BattleTable(Stage stage, Skin skin, Pokemon playerPokemon, Pokemon enemyPokemon) {
+    // Constructor with weather parameter
+    public BattleTable(Stage stage, Skin skin, Pokemon playerPokemon, Pokemon enemyPokemon, WeatherSystem.WeatherType weather) {
         super();
         this.stage = stage;
         this.currentState = BattleState.BATTLE_INTRO;
         this.skin = skin;
         this.playerPokemon = playerPokemon;
         this.enemyPokemon = enemyPokemon;
+        this.battleWeather = weather != null ? weather : WeatherSystem.WeatherType.CLEAR;
         setFillParent(true);
         setTouchable(Touchable.enabled);
         setZIndex(100);
@@ -174,6 +178,11 @@ public class BattleTable extends Table {
         } catch (Exception e) {
             GameLogger.error("Error initializing battle table: " + e.getMessage());
         }
+    }
+
+    // Constructor without weather parameter (defaults to CLEAR)
+    public BattleTable(Stage stage, Skin skin, Pokemon playerPokemon, Pokemon enemyPokemon) {
+        this(stage, skin, playerPokemon, enemyPokemon, WeatherSystem.WeatherType.CLEAR);
     }// In class BattleTable
 
     private void handlePokemonButton() {
@@ -1263,7 +1272,43 @@ public class BattleTable extends Table {
     }
 
     private void updateWeatherDisplay() {
-        weatherDisplay.setVisible(false);
+        if (battleWeather == null || battleWeather == WeatherSystem.WeatherType.CLEAR) {
+            weatherDisplay.setVisible(false);
+            return;
+        }
+
+        // Show weather indicator
+        String weatherText = "";
+        switch (battleWeather) {
+            case RAIN:
+            case HEAVY_RAIN:
+                weatherText = "Rain";
+                break;
+            case SNOW:
+            case BLIZZARD:
+                weatherText = "Hail";  // Snow/Blizzard acts like Hail in battles
+                break;
+            case SANDSTORM:
+                weatherText = "Sandstorm";
+                break;
+            case FOG:
+                weatherText = "Fog";
+                break;
+            case THUNDERSTORM:
+                weatherText = "Rain";  // Thunderstorm acts like heavy rain
+                break;
+            default:
+                weatherDisplay.setVisible(false);
+                return;
+        }
+
+        weatherLabel.setText(weatherText);
+        weatherDisplay.setVisible(true);
+
+        // Position in top-right corner
+        weatherDisplay.pack();
+        float tableWidth = getWidth() > 0 ? getWidth() : BATTLE_SCREEN_WIDTH;
+        weatherDisplay.setPosition(tableWidth - weatherDisplay.getWidth() - 10, BATTLE_SCREEN_HEIGHT - weatherDisplay.getHeight() - 10);
     }
 
     private TextureRegionDrawable createTranslucentBackground(float alpha) {
@@ -2072,10 +2117,13 @@ public class BattleTable extends Table {
 // ... (rest of the class up to applyEndOfTurnEffectsForTurn) ...
 
     /**
-     * Applies all end-of-turn effects like poison damage and Leech Seed drain
+     * Applies all end-of-turn effects like poison damage, Leech Seed drain, and weather damage
      * for both Pokémon at the conclusion of a full battle round.
      */
     private void applyEndOfTurnEffectsForTurn() {
+        // Apply weather damage to both Pokemon at end of turn
+        applyWeatherDamage();
+
         if (playerPokemon.getCurrentHp() > 0) {
             playerPokemon.applyEndOfTurnEffects();
             if (leechSeedTargets.containsKey(playerPokemon)) {
@@ -2105,6 +2153,79 @@ public class BattleTable extends Table {
             }
         }
         checkFaintConditions();
+    }
+
+    /**
+     * Applies weather damage to both Pokemon if applicable.
+     * Sandstorm and Hail deal 1/16 of max HP damage to non-immune Pokemon.
+     */
+    private void applyWeatherDamage() {
+        if (battleWeather == null) return;
+
+        switch (battleWeather) {
+            case SANDSTORM:
+                // Sandstorm damages all Pokemon except Rock, Ground, and Steel types
+                if (playerPokemon.getCurrentHp() > 0 && !isImmuneToSandstorm(playerPokemon)) {
+                    int damage = Math.max(1, playerPokemon.getStats().getHp() / 16);
+                    queueMessage(playerPokemon.getName() + " is buffeted by the sandstorm!");
+                    applyDamage(playerPokemon, damage);
+                }
+                if (checkFaintConditions()) return;
+                if (enemyPokemon.getCurrentHp() > 0 && !isImmuneToSandstorm(enemyPokemon)) {
+                    int damage = Math.max(1, enemyPokemon.getStats().getHp() / 16);
+                    queueMessage(enemyPokemon.getName() + " is buffeted by the sandstorm!");
+                    applyDamage(enemyPokemon, damage);
+                }
+                break;
+
+            case SNOW:
+            case BLIZZARD:
+                // Hail (Snow/Blizzard) damages all Pokemon except Ice types
+                if (playerPokemon.getCurrentHp() > 0 && !isImmuneToHail(playerPokemon)) {
+                    int damage = Math.max(1, playerPokemon.getStats().getHp() / 16);
+                    queueMessage(playerPokemon.getName() + " is buffeted by the hail!");
+                    applyDamage(playerPokemon, damage);
+                }
+                if (checkFaintConditions()) return;
+                if (enemyPokemon.getCurrentHp() > 0 && !isImmuneToHail(enemyPokemon)) {
+                    int damage = Math.max(1, enemyPokemon.getStats().getHp() / 16);
+                    queueMessage(enemyPokemon.getName() + " is buffeted by the hail!");
+                    applyDamage(enemyPokemon, damage);
+                }
+                break;
+
+            default:
+                // Other weather types don't deal damage
+                break;
+        }
+    }
+
+    /**
+     * Checks if a Pokemon is immune to Sandstorm damage.
+     * Rock, Ground, and Steel types are immune.
+     */
+    private boolean isImmuneToSandstorm(Pokemon pokemon) {
+        Pokemon.PokemonType primary = pokemon.getPrimaryType();
+        Pokemon.PokemonType secondary = pokemon.getSecondaryType();
+
+        return primary == Pokemon.PokemonType.ROCK ||
+               primary == Pokemon.PokemonType.GROUND ||
+               primary == Pokemon.PokemonType.STEEL ||
+               secondary == Pokemon.PokemonType.ROCK ||
+               secondary == Pokemon.PokemonType.GROUND ||
+               secondary == Pokemon.PokemonType.STEEL;
+    }
+
+    /**
+     * Checks if a Pokemon is immune to Hail damage.
+     * Ice types are immune.
+     */
+    private boolean isImmuneToHail(Pokemon pokemon) {
+        Pokemon.PokemonType primary = pokemon.getPrimaryType();
+        Pokemon.PokemonType secondary = pokemon.getSecondaryType();
+
+        return primary == Pokemon.PokemonType.ICE ||
+               secondary == Pokemon.PokemonType.ICE;
     }
 
 

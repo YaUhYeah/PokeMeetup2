@@ -7,11 +7,8 @@ import com.esotericsoftware.kryonet.FrameworkMessage;
 import io.github.pokemeetup.blocks.PlaceableBlock;
 import io.github.pokemeetup.managers.BiomeManager;
 import io.github.pokemeetup.pokemon.Pokemon;
-import io.github.pokemeetup.system.data.BlockSaveData;
-import io.github.pokemeetup.system.data.ItemData;
+import io.github.pokemeetup.system.data.*;
 import com.badlogic.gdx.math.Vector2;
-import io.github.pokemeetup.system.data.PlayerData;
-import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
 import io.github.pokemeetup.system.gameplay.overworld.World;
@@ -123,6 +120,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         kryo.register(ChestOperationType.class);
         kryo.register(ChestOperationRequest.class);
         kryo.register(ChestOperationResponse.class);
+        kryo.register(ChestClosed.class);
         kryo.register(SavePlayerDataResponse.class);
         kryo.register(GetPlayerDataRequest.class);
         kryo.register(GetPlayerDataResponse.class);
@@ -553,6 +551,14 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public long timestamp;
     }
 
+    public static class ChestClosed implements Serializable {
+        public UUID chestId;           // The chest UUID that was closed/destroyed
+        public int tileX;              // Position for verification
+        public int tileY;
+        public boolean destroyed;      // True if chest was broken, false if just closed
+        public long timestamp;
+    }
+
     public static class SavePlayerDataRequest {
         public UUID uuid;
         public PlayerData playerData;
@@ -724,6 +730,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public int tileX;
         public int tileY;
         public BlockAction action; // PLACE or REMOVE
+        public ChestData chestData; // Server-authoritative chest data for CHEST blocks
     }
 
     public static class TeleportResponse {

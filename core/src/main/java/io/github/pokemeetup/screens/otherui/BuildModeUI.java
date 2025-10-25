@@ -296,6 +296,15 @@
                     placementMessage.tileX = tileX;
                     placementMessage.tileY = tileY;
                     placementMessage.action = NetworkProtocol.BlockAction.PLACE;
+
+                    // If placing a chest, include the ChestData for server-authoritative sync
+                    if (blockType == PlaceableBlock.BlockType.CHEST) {
+                        PlaceableBlock placedBlock = GameContext.get().getWorld().getBlockManager().getBlockAt(tileX, tileY);
+                        if (placedBlock != null && placedBlock.getChestData() != null) {
+                            placementMessage.chestData = placedBlock.getChestData();
+                        }
+                    }
+
                     GameContext.get().getGameClient().sendBlockPlacement(placementMessage);
                 }
 

@@ -341,6 +341,34 @@ public class GameClient {
     }
 
     /**
+     * Sends chest update with validation to ensure chest still exists.
+     * Use this for real-time updates during chest interactions.
+     */
+    public void sendValidatedChestUpdate(ChestData chestData, com.badlogic.gdx.math.Vector2 chestPosition) {
+        if (!GameContext.get().isMultiplayer() || chestData == null || chestPosition == null) {
+            return;
+        }
+
+        try {
+            // Validate chest still exists at the position
+            PlaceableBlock block = GameContext.get().getWorld().getBlockManager()
+                .getBlockAt((int) chestPosition.x, (int) chestPosition.y);
+
+            if (block != null && block.getType() == PlaceableBlock.BlockType.CHEST &&
+                block.getChestData() != null && block.getChestData().chestId.equals(chestData.chestId)) {
+                // Chest exists and UUIDs match - send update
+                sendChestUpdate(chestData);
+            } else {
+                // Chest was destroyed or replaced - don't send update
+                GameLogger.info("Skipping chest update - chest at (" + (int)chestPosition.x + "," +
+                               (int)chestPosition.y + ") no longer exists or UUID mismatch");
+            }
+        } catch (Exception e) {
+            GameLogger.error("Error validating chest update: " + e.getMessage());
+        }
+    }
+
+    /**
      * Sends a chest operation request to the server (transaction-based approach)
      */
     public void sendChestOperation(UUID chestId, NetworkProtocol.ChestOperationType operation,
@@ -583,6 +611,44 @@ public class GameClient {
             }
         });
     }
+
+    private void handleChestClosed(NetworkProtocol.ChestClosed closedMsg) {
+        if (closedMsg == null || closedMsg.chestId == null) {
+            GameLogger.error("Received invalid ChestClosed message");
+            return;
+        }
+
+        Gdx.app.postRunnable(() -> {
+            try {
+                ChestScreen chestScreen = GameContext.get().getGameScreen().getChestScreen();
+                if (chestScreen != null && chestScreen.isVisible() &&
+                    chestScreen.getChestData() != null &&
+                    chestScreen.getChestData().chestId.equals(closedMsg.chestId)) {
+
+                    // Force close the chest screen
+                    chestScreen.hide();
+
+                    if (closedMsg.destroyed) {
+                        GameLogger.info("Chest at (" + closedMsg.tileX + "," + closedMsg.tileY +
+                                       ") was destroyed - forced chest screen closure");
+
+                        // Show message to player
+                        NetworkProtocol.ChatMessage systemMsg = createSystemMessage(
+                            "The chest you were viewing was destroyed!");
+                        if (chatMessageHandler != null) {
+                            chatMessageHandler.accept(systemMsg);
+                        }
+                    } else {
+                        GameLogger.info("Chest at (" + closedMsg.tileX + "," + closedMsg.tileY +
+                                       ") was closed remotely");
+                    }
+                }
+            } catch (Exception e) {
+                GameLogger.error("Error handling chest closure: " + e.getMessage());
+            }
+        });
+    }
+
     public void sendPlayerUpdate() {
         if (!isConnected() || !isAuthenticated() || GameContext.get().getPlayer() == null) return;
 
@@ -1065,6 +1131,9 @@ public class GameClient {
             } else if (object instanceof NetworkProtocol.ChestOperationResponse) {
                 handleChestOperationResponse((NetworkProtocol.ChestOperationResponse) object);
                 return;
+            } else if (object instanceof NetworkProtocol.ChestClosed) {
+                handleChestClosed((NetworkProtocol.ChestClosed) object);
+                return;
             } else if (object instanceof NetworkProtocol.PlayerUpdate) {
                 handlePlayerUpdate((NetworkProtocol.PlayerUpdate) object);
             } else if (object instanceof NetworkProtocol.PlayerJoined) {
@@ -1173,6 +1242,18 @@ public class GameClient {
                 if (type != null) {
                     if (placement.action == NetworkProtocol.BlockAction.PLACE) {
                         GameContext.get().getWorld().getBlockManager().placeBlock(type, placement.tileX, placement.tileY);
+
+                        // If chest, use server-provided ChestData for UUID synchronization
+                        if (type == PlaceableBlock.BlockType.CHEST && placement.chestData != null) {
+                            PlaceableBlock placedBlock = GameContext.get().getWorld().getBlockManager()
+                                .getBlockAt(placement.tileX, placement.tileY);
+                            if (placedBlock != null) {
+                                placedBlock.setChestData(placement.chestData);
+                                GameLogger.info("Synced chest at (" + placement.tileX + "," + placement.tileY +
+                                               ") with server UUID " + placement.chestData.chestId);
+                            }
+                        }
+
                         GameLogger.info("Block placed by " + placement.username + " at (" + placement.tileX + ", " + placement.tileY + ")");
                     } else if (placement.action == NetworkProtocol.BlockAction.REMOVE) {
                         GameContext.get().getWorld().getBlockManager().removeBlock(placement.tileX, placement.tileY);

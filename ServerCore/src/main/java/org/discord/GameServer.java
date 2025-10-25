@@ -1102,7 +1102,8 @@ public class GameServer {
         }
 
         if (chestPos == null) {
-            GameLogger.error("Could not find chest position for chestId = " + update.chestId);
+            GameLogger.info("Ignoring chest update for non-existent chest " + update.chestId +
+                           " (likely destroyed or in unloaded chunk) from " + update.username);
             return;
         }
 
@@ -1617,6 +1618,18 @@ public class GameServer {
         if (block == null || player == null) return;
         Vector2 pos = block.getPosition();
 
+        // If chest, broadcast closure FIRST to force-close all open chest screens
+        if (block.getType() == PlaceableBlock.BlockType.CHEST && block.getChestData() != null) {
+            NetworkProtocol.ChestClosed chestClosedMsg = new NetworkProtocol.ChestClosed();
+            chestClosedMsg.chestId = block.getChestData().chestId;
+            chestClosedMsg.tileX = (int) pos.x;
+            chestClosedMsg.tileY = (int) pos.y;
+            chestClosedMsg.destroyed = true;
+            chestClosedMsg.timestamp = System.currentTimeMillis();
+            networkServer.sendToAllTCP(chestClosedMsg);
+            GameLogger.info("Broadcasted chest closure for UUID " + block.getChestData().chestId + " before destruction");
+        }
+
         ServerGameContext.get().getServerBlockManager().removeBlock((int) pos.x, (int) pos.y);
 
         NetworkProtocol.BlockPlacement removalMsg = new NetworkProtocol.BlockPlacement();
@@ -1629,25 +1642,68 @@ public class GameServer {
         String itemId = block.getType().itemId;
         if (itemId != null) {
             int dropCount = 1;
+            float dropX = pos.x * TILE_SIZE + TILE_SIZE / 2f;
+            float dropY = pos.y * TILE_SIZE + TILE_SIZE / 2f;
 
-            ItemData dropData = new ItemData(itemId, dropCount);
-            NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
-            dropMsg.itemData = dropData;
-            dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f;
-            dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f;
-            networkServer.sendToAllTCP(dropMsg);
+            // Create server-authoritative item entity
+            ItemEntity serverEntity = ServerGameContext.get().getItemEntityManager()
+                .spawnItemEntity(new ItemData(itemId, dropCount), dropX, dropY);
+
+            if (serverEntity != null) {
+                // Broadcast to all clients with server's UUID
+                NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+                dropMsg.itemData = new ItemData(itemId, dropCount);
+                dropMsg.x = dropX;
+                dropMsg.y = dropY;
+                dropMsg.username = player.getUsername();
+                dropMsg.entityId = serverEntity.getEntityId();
+                dropMsg.timestamp = System.currentTimeMillis();
+                networkServer.sendToAllTCP(dropMsg);
+
+                GameLogger.info("Spawned item drop from block break: " + itemId + " x" + dropCount +
+                               " at (" + dropX + "," + dropY + ") with UUID " + serverEntity.getEntityId());
+            } else {
+                GameLogger.error("Failed to spawn item entity on server for block break");
+            }
         }
 
         if (block.getType() == PlaceableBlock.BlockType.CHEST) {
             ChestData chestData = block.getChestData();
-            if (chestData != null && chestData.items != null) {
-                for (ItemData item : chestData.items) {
-                    if (item != null) {
-                        NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
-                        dropMsg.itemData = item;
-                        dropMsg.x = pos.x * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
-                        dropMsg.y = pos.y * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
-                        networkServer.sendToAllTCP(dropMsg);
+            if (chestData == null) {
+                GameLogger.error("CHEST BREAK: ChestData is NULL for chest at (" + pos.x + "," + pos.y + ")");
+            } else {
+                GameLogger.info("CHEST BREAK: ChestData found with UUID " + chestData.chestId + " at (" + pos.x + "," + pos.y + ")");
+                if (chestData.items == null) {
+                    GameLogger.error("CHEST BREAK: ChestData.items is NULL");
+                } else {
+                    long itemCount = chestData.items.stream().filter(item -> item != null).count();
+                    GameLogger.info("CHEST BREAK: ChestData has " + itemCount + " non-null items out of " + chestData.items.size() + " slots");
+
+                    for (ItemData item : chestData.items) {
+                        if (item != null) {
+                            float dropX = pos.x * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
+                            float dropY = pos.y * TILE_SIZE + TILE_SIZE / 2f + (MathUtils.random() * 16 - 8);
+
+                            // Create server-authoritative item entity for chest contents
+                            ItemEntity serverEntity = ServerGameContext.get().getItemEntityManager()
+                                .spawnItemEntity(item, dropX, dropY);
+
+                            if (serverEntity != null) {
+                                NetworkProtocol.ItemDrop dropMsg = new NetworkProtocol.ItemDrop();
+                                dropMsg.itemData = item;
+                                dropMsg.x = dropX;
+                                dropMsg.y = dropY;
+                                dropMsg.username = player.getUsername();
+                                dropMsg.entityId = serverEntity.getEntityId();
+                                dropMsg.timestamp = System.currentTimeMillis();
+                                networkServer.sendToAllTCP(dropMsg);
+
+                                GameLogger.info("Spawned chest item drop: " + item.getItemId() + " x" + item.getCount() +
+                                               " at (" + dropX + "," + dropY + ") with UUID " + serverEntity.getEntityId());
+                            } else {
+                                GameLogger.error("Failed to spawn item entity on server for chest item: " + item.getItemId());
+                            }
+                        }
                     }
                 }
             }
@@ -1780,7 +1836,11 @@ public class GameServer {
         switch (placement.action) {
             case PLACE:
                 PlaceableBlock.BlockType type = PlaceableBlock.BlockType.fromItemId(placement.blockTypeId);
-                boolean placed = ServerGameContext.get().getServerBlockManager().placeBlock(type, placement.tileX, placement.tileY, false);
+
+                // Use client-provided ChestData if available, otherwise server will create new one
+                boolean placed = ServerGameContext.get().getServerBlockManager().placeBlock(
+                    type, placement.tileX, placement.tileY, false, placement.chestData);
+
                 if (placed) {
                     Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk("multiplayer_world", chunkX, chunkY);
                     if (chunk != null) {
@@ -1790,6 +1850,13 @@ public class GameServer {
                             chunk.getBlocks().put(blockPos, block);
                             chunk.setDirty(true);
                             ServerGameContext.get().getWorldManager().saveChunk("multiplayer_world", chunk);
+
+                            // If chest, ensure ChestData is included in broadcast
+                            if (type == PlaceableBlock.BlockType.CHEST && block.getChestData() != null) {
+                                placement.chestData = block.getChestData();
+                                GameLogger.info("Placed chest at (" + placement.tileX + "," + placement.tileY +
+                                               ") with UUID " + block.getChestData().chestId);
+                            }
                         }
                     }
                     // Invalidate chunk cache since the chunk has been modified
@@ -1797,6 +1864,7 @@ public class GameServer {
                     ServerGameContext.get().getEventManager().fireEvent(
                         new BlockPlaceEvent(placement.username, placement.tileX, placement.tileY, placement.blockTypeId)
                     );
+                    // Broadcast placement to all clients (including ChestData if applicable)
                     networkServer.sendToAllExceptTCP(connection.getID(), placement);
                 } else {
                     GameLogger.error("Failed to place block at (" + placement.tileX + ", " + placement.tileY + ")");

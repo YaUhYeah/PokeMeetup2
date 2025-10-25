@@ -26,6 +26,22 @@ public class ServerBlockManager {
      * @return true if placement succeeded; false otherwise.
      */
     public boolean placeBlock(PlaceableBlock.BlockType type, int tileX, int tileY, boolean isFlipped) {
+        return placeBlock(type, tileX, tileY, isFlipped, null);
+    }
+
+    /**
+     * Places a block at the given tile coordinates with optional chest data.
+     * In addition to storing the block in our internal map, we also determine the chunk
+     * that covers the tile, add the block to that chunk, and mark the chunk as dirty.
+     *
+     * @param type       The type of block to place.
+     * @param tileX      The world X tile coordinate.
+     * @param tileY      The world Y tile coordinate.
+     * @param isFlipped  Whether the block should be rendered flipped.
+     * @param chestData  Pre-existing ChestData to use (null to create new one for chests).
+     * @return true if placement succeeded; false otherwise.
+     */
+    public boolean placeBlock(PlaceableBlock.BlockType type, int tileX, int tileY, boolean isFlipped, ChestData chestData) {
         Vector2 pos = new Vector2(tileX, tileY);
         if (placedBlocks.containsKey(pos)) {
             return false;
@@ -35,8 +51,14 @@ public class ServerBlockManager {
             block.toggleFlip();
         }
         if (type == PlaceableBlock.BlockType.CHEST) {
-            ChestData chestData = new ChestData(tileX, tileY);
-            block.setChestData(chestData);
+            if (chestData != null) {
+                // Use client-provided chest data (server-authoritative approach)
+                block.setChestData(chestData);
+            } else {
+                // Create new chest data if none provided
+                ChestData newChestData = new ChestData(tileX, tileY);
+                block.setChestData(newChestData);
+            }
         }
 
         placedBlocks.put(pos, block);

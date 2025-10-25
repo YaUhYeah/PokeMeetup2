@@ -11,6 +11,7 @@ import com.badlogic.gdx.graphics.g2d.ParticleEffect;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.*;
@@ -134,6 +135,11 @@ public class InventoryScreen implements Screen, InventoryObserver, CraftingSyste
     @Override
     public ChestData getChestData() {
         return null;
+    }
+
+    @Override
+    public Vector2 getChestPosition() {
+        return null; // Inventory screen doesn't have a chest
     }
 
     private void initializeInventorySlots() {

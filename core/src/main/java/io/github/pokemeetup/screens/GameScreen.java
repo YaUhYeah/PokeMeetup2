@@ -831,11 +831,18 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             true
         );
 
+        // Get current weather from the world and pass to battle
+        WeatherSystem.WeatherType currentWeather = WeatherSystem.WeatherType.CLEAR;
+        if (GameContext.get().getWorld() != null && GameContext.get().getWorld().getWeatherSystem() != null) {
+            currentWeather = GameContext.get().getWorld().getWeatherSystem().getCurrentWeather();
+        }
+
         battleTable = new BattleTable(
             battleStage,
             battleSkin,
             validPokemon,
-            nearestPokemon
+            nearestPokemon,
+            currentWeather
         );
         GameContext.get().setBattleTable(battleTable);
 
@@ -1362,15 +1369,14 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     }
 
     private void handleBattleVictory(WildPokemon wildPokemon) {
-        int expGain = calculateExperienceGain(wildPokemon);
-        GameContext.get().getPlayer().getPokemonParty().getFirstPokemon().addExperience(expGain);
+        // NOTE: XP is already awarded in BattleTable.handleEnemyFaint()
+        // Don't award XP here again to avoid duplicate XP gain!
+
+        // Play victory sound
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.BATTLE_WIN);
-        if (GameContext.get().getChatSystem() != null) {
-            GameContext.get().getChatSystem().handleIncomingMessage(createSystemMessage(
-                "Victory! " + GameContext.get().getPlayer().getPokemonParty().getFirstPokemon().getName() +
-                    " gained " + expGain + " experience!"
-            ));
-        }
+
+        // Victory message is already shown in BattleTable, so we don't need another one here
+        // The chat system will have received the XP gain message from BattleTable
     }
 
     private void teleportPlayerToSpawn(Player player, World world) {
@@ -1440,9 +1446,9 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         teleportPlayerToSpawn(player, world);
     }
 
-    private int calculateExperienceGain(WildPokemon wildPokemon) {
-        return wildPokemon.getBaseExperience() * wildPokemon.getLevel() / 7;
-    }
+    // REMOVED: This method was using an incorrect XP formula (missing level ratio adjustment)
+    // XP calculation is now centralized in BattleTable.calculateExperienceGain()
+    // which uses the proper Pokemon formula with level-based scaling
 
     private NetworkProtocol.ChatMessage createSystemMessage(String content) {
         NetworkProtocol.ChatMessage message = new NetworkProtocol.ChatMessage();

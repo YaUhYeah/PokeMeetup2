@@ -1,5 +1,6 @@
 package io.github.pokemeetup.screens;
 
+import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
@@ -18,4 +19,5 @@ public interface InventoryScreenInterface {
     void setHeldItem(Item item);
     CraftingSystem getCraftingSystem();
     ChestData getChestData();
+    Vector2 getChestPosition(); // For real-time chest synchronization
 }
