@@ -403,10 +403,8 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                 return;
             }
 
-            // Create itemData with just 1 item to merge
-            ItemData oneItem = new ItemData(heldItem.getName(), 1, UUID.randomUUID());
-            oneItem.setDurability(heldItem.getDurability());
-            oneItem.setMaxDurability(heldItem.getMaxDurability());
+            // Send FULL held stack, server will merge 1 and return remainder
+            ItemData fullStack = InventoryConverter.itemToItemData(heldItem);
 
             // Send atomic MERGE request with count=1
             GameContext.get().getGameClient().sendChestOperation(
@@ -414,8 +412,8 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
                 NetworkProtocol.ChestOperationType.MERGE_ITEMS,
                 slotIndex,
                 -1,
-                oneItem,
-                1  // Merge exactly 1 item
+                fullStack,
+                1  // Merge exactly 1 item from the stack
             );
             GameLogger.info("Sent right-click MERGE_ITEMS (1) request for chest slot " + slotIndex);
         }

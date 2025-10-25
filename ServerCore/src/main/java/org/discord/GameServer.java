@@ -1429,11 +1429,23 @@ public class GameServer {
                         return response;
                     }
 
+                    // Determine how many items to merge from held stack
+                    int heldCount = request.itemData.getCount();
+                    int amountToMerge;
+                    if (request.count == -1) {
+                        // Merge all items from held stack
+                        amountToMerge = heldCount;
+                    } else {
+                        // Merge specific count
+                        amountToMerge = Math.min(request.count, heldCount);
+                    }
+
                     // Calculate merged count
                     int maxStack = 64; // Item.MAX_STACK_SIZE
-                    int totalCount = chestItemToMerge.getCount() + request.itemData.getCount();
+                    int totalCount = chestItemToMerge.getCount() + amountToMerge;
                     int mergedCount = Math.min(totalCount, maxStack);
-                    remainder = totalCount - mergedCount;
+                    int overflow = totalCount - mergedCount;  // Items that couldn't fit in chest
+                    int remainderInHand = heldCount - amountToMerge + overflow;  // Remaining in player's hand
 
                     // Update chest with merged stack
                     ItemData mergedStack = chestItemToMerge.copy();
@@ -1441,9 +1453,9 @@ public class GameServer {
                     chestData.setItemAt(request.slotIndex, mergedStack);
 
                     // Return remainder to player (if any)
-                    if (remainder > 0) {
+                    if (remainderInHand > 0) {
                         ItemData remainderItem = request.itemData.copy();
-                        remainderItem.setCount(remainder);
+                        remainderItem.setCount(remainderInHand);
                         response.returnedItem = remainderItem;
                     }
                     // If no remainder, returnedItem stays null (hand cleared)
