@@ -527,10 +527,11 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
     }
 
     public enum ChestOperationType {
-        TAKE_ITEM,      // Remove item from chest slot
-        ADD_ITEM,       // Add item to chest slot
-        SWAP_ITEMS,     // Swap items between slots
-        MERGE_ITEMS     // Merge held item with chest slot (atomic)
+        TAKE_ITEM,       // Remove item from chest slot
+        ADD_ITEM,        // Add item to chest slot
+        SWAP_ITEMS,      // Swap items between slots
+        MERGE_ITEMS,     // Merge held item with chest slot (atomic)
+        SHIFT_TRANSFER   // Shift-click: move item from chest to inventory or vice versa
     }
 
     public static class ChestOperationRequest implements Serializable {
@@ -541,12 +542,14 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public int secondarySlotIndex;  // For SWAP operations (-1 if not used)
         public ItemData itemData;       // For ADD operations
         public int count;               // For partial operations (-1 = all, 0 = half, >0 = specific amount)
+        public boolean fromChest;       // For SHIFT_TRANSFER: true = chest->inventory, false = inventory->chest
         public String username;
         public long timestamp;
     }
 
     public static class ChestOperationResponse implements Serializable {
         public UUID chestId;
+        public ChestOperationType operation; // The operation that was performed
         public boolean success;
         public String reason;           // Error reason if failed
         public List<ItemData> chestItems; // Updated chest state if successful

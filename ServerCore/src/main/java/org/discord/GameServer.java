@@ -1284,6 +1284,7 @@ public class GameServer {
         NetworkProtocol.ChestOperationRequest request, ChestData chestData) {
 
         NetworkProtocol.ChestOperationResponse response = new NetworkProtocol.ChestOperationResponse();
+        response.operation = request.operation;
         response.timestamp = System.currentTimeMillis();
 
         try {
@@ -1458,10 +1459,85 @@ public class GameServer {
                         remainderItem.setCount(remainderInHand);
                         response.returnedItem = remainderItem;
                     }
-                    // If no remainder, returnedItem stays null (hand cleared)
 
                     response.success = true;
                     response.chestItems = new ArrayList<>(chestData.getItems());
+                    break;
+
+                case SHIFT_TRANSFER:
+                    // Shift-click transfer: move item from chest to inventory or vice versa
+                    if (request.fromChest) {
+                        // Transfer FROM chest TO inventory
+                        // Take item from chest and return it to client for inventory placement
+                        ItemData chestItemForTransfer = chestData.getItemAt(request.slotIndex);
+                        if (chestItemForTransfer == null) {
+                            response.success = false;
+                            response.reason = "Chest slot is empty";
+                            return response;
+                        }
+
+                        // Remove entire stack from chest
+                        chestData.setItemAt(request.slotIndex, null);
+
+                        // Return the item to client (client will handle inventory placement)
+                        response.success = true;
+                        response.returnedItem = chestItemForTransfer.copy();
+                        response.chestItems = new ArrayList<>(chestData.getItems());
+                        GameLogger.info("SHIFT_TRANSFER from chest: removed " + chestItemForTransfer.getItemId() +
+                                       " x" + chestItemForTransfer.getCount() + " from slot " + request.slotIndex);
+
+                    } else {
+                        // Transfer FROM inventory TO chest
+                        // Try to merge with existing stacks first, then place in empty slots
+                        if (request.itemData == null) {
+                            response.success = false;
+                            response.reason = "No item to transfer";
+                            return response;
+                        }
+
+                        int remainingCount = request.itemData.getCount();
+                        String itemId = request.itemData.getItemId();
+
+                        // Phase 1: Try to merge with existing stacks
+                        for (int i = 0; i < ChestData.CHEST_SIZE && remainingCount > 0; i++) {
+                            ItemData slotItem = chestData.getItemAt(i);
+                            if (slotItem != null && slotItem.getItemId().equals(itemId)) {
+                                maxStack = 64; // Item.MAX_STACK_SIZE
+                                int spaceAvailable = maxStack - slotItem.getCount();
+                                if (spaceAvailable > 0) {
+                                    int toTransfer = Math.min(remainingCount, spaceAvailable);
+                                    slotItem.setCount(slotItem.getCount() + toTransfer);
+                                    chestData.setItemAt(i, slotItem);
+                                    remainingCount -= toTransfer;
+                                    GameLogger.info("SHIFT_TRANSFER to chest: merged " + toTransfer + " into slot " + i);
+                                }
+                            }
+                        }
+
+                        // Phase 2: Place remaining items in empty slots
+                        for (int i = 0; i < ChestData.CHEST_SIZE && remainingCount > 0; i++) {
+                            if (chestData.getItemAt(i) == null) {
+                                maxStack = 64; // Item.MAX_STACK_SIZE
+                                int toPlace = Math.min(remainingCount, maxStack);
+                                ItemData newStack = request.itemData.copy();
+                                newStack.setCount(toPlace);
+                                chestData.setItemAt(i, newStack);
+                                remainingCount -= toPlace;
+                                GameLogger.info("SHIFT_TRANSFER to chest: placed " + toPlace + " in empty slot " + i);
+                            }
+                        }
+
+                        // Return remainder (if any) to client
+                        if (remainingCount > 0) {
+                            ItemData remainderItem = request.itemData.copy();
+                            remainderItem.setCount(remainingCount);
+                            response.returnedItem = remainderItem;
+                            GameLogger.info("SHIFT_TRANSFER to chest: " + remainingCount + " items did not fit, returning to player");
+                        }
+
+                        response.success = true;
+                        response.chestItems = new ArrayList<>(chestData.getItems());
+                    }
                     break;
 
                 default:
@@ -1496,8 +1572,6 @@ public class GameServer {
             GameLogger.error("Unauthorized chest state change attempt by " + msg.username);
             return;
         }
-
-        // Broadcast to all clients (including sender for confirmation)
         networkServer.sendToAllTCP(msg);
         GameLogger.info("Player " + msg.username + " " + (msg.isOpen ? "opened" : "closed") +
                        " chest at (" + msg.tileX + "," + msg.tileY + ")");

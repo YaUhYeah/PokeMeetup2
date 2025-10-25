@@ -27,6 +27,7 @@ import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
 import io.github.pokemeetup.system.data.WorldData;
+import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.inventory.Item;
 import io.github.pokemeetup.system.gameplay.inventory.ItemEntity;
 import io.github.pokemeetup.system.gameplay.overworld.*;
@@ -397,6 +398,14 @@ public class GameClient {
      */
     public void sendChestOperation(UUID chestId, NetworkProtocol.ChestOperationType operation,
                                    int slotIndex, int secondarySlotIndex, ItemData itemData, int count) {
+        sendChestOperation(chestId, operation, slotIndex, secondarySlotIndex, itemData, count, false);
+    }
+
+    /**
+     * Sends a chest operation request to the server with fromChest parameter (for SHIFT_TRANSFER)
+     */
+    public void sendChestOperation(UUID chestId, NetworkProtocol.ChestOperationType operation,
+                                   int slotIndex, int secondarySlotIndex, ItemData itemData, int count, boolean fromChest) {
         if (!GameContext.get().isMultiplayer() || !isConnected() || !isAuthenticated()) {
             GameLogger.error("Cannot send chest operation - not in multiplayer or not connected");
             return;
@@ -411,11 +420,12 @@ public class GameClient {
             request.secondarySlotIndex = secondarySlotIndex;
             request.itemData = itemData;
             request.count = count;
+            request.fromChest = fromChest;
             request.username = getLocalUsername();
             request.timestamp = System.currentTimeMillis();
 
             client.sendTCP(request);
-            GameLogger.info("Sent chest operation request: " + operation + " (ID: " + request.requestId + ") on chest " + chestId + " slot " + slotIndex + " count " + count);
+            GameLogger.info("Sent chest operation request: " + operation + " (ID: " + request.requestId + ") on chest " + chestId + " slot " + slotIndex + " count " + count + " fromChest=" + fromChest);
         } catch (Exception e) {
             GameLogger.error("Failed to send chest operation: " + e.getMessage());
         }
@@ -616,19 +626,55 @@ public class GameClient {
                     if (response.username.equals(getLocalUsername())) {
                         ChestScreen screen = GameContext.get().getGameScreen().getChestScreen();
                         if (screen != null) {
-                            if (response.returnedItem != null) {
-                                // Server returned an item - place it on cursor
-                                Item returnedItem = new Item(response.returnedItem.getItemId());
-                                returnedItem.setCount(response.returnedItem.getCount());
-                                returnedItem.setUuid(UUID.randomUUID());
-                                returnedItem.setDurability(response.returnedItem.getDurability());
-                                returnedItem.setMaxDurability(response.returnedItem.getMaxDurability());
-                                screen.setHeldItem(returnedItem);
-                                GameLogger.info("Placed item on cursor: " + response.returnedItem.getItemId() + " x" + response.returnedItem.getCount());
+                            // Handle SHIFT_TRANSFER differently - items go to inventory, not cursor
+                            if (response.operation == NetworkProtocol.ChestOperationType.SHIFT_TRANSFER) {
+                                if (response.returnedItem != null) {
+                                    // Server returned an item from SHIFT_TRANSFER
+                                    // Try to add it to the appropriate container
+                                    ItemData returnedItemData = response.returnedItem;
+
+                                    // Note: The request's fromChest field tells us the direction
+                                    // fromChest=true means chest->inventory (add to inventory)
+                                    // fromChest=false means inventory->chest (remainder goes back to inventory)
+                                    // In both cases, we add the returned item to the inventory
+
+                                    Inventory playerInventory = GameContext.get().getPlayer().getInventory();
+                                    boolean added = playerInventory.addItem(returnedItemData);
+
+                                    if (!added) {
+                                        // If inventory is full, place remainder on cursor as fallback
+                                        Item fallbackItem = new Item(returnedItemData.getItemId());
+                                        fallbackItem.setCount(returnedItemData.getCount());
+                                        fallbackItem.setUuid(UUID.randomUUID());
+                                        fallbackItem.setDurability(returnedItemData.getDurability());
+                                        fallbackItem.setMaxDurability(returnedItemData.getMaxDurability());
+                                        screen.setHeldItem(fallbackItem);
+                                        GameLogger.info("SHIFT_TRANSFER: Inventory full, placed remainder on cursor: " +
+                                                       returnedItemData.getItemId() + " x" + returnedItemData.getCount());
+                                    } else {
+                                        GameLogger.info("SHIFT_TRANSFER: Added to inventory: " +
+                                                       returnedItemData.getItemId() + " x" + returnedItemData.getCount());
+                                    }
+                                } else {
+                                    // No remainder - all items were transferred successfully
+                                    GameLogger.info("SHIFT_TRANSFER: All items transferred successfully");
+                                }
                             } else {
-                                // Server returned null - clear cursor (for MERGE operations with no remainder)
-                                screen.setHeldItem(null);
-                                GameLogger.info("Cleared cursor (operation completed with no remainder)");
+                                // Normal operations: place items on cursor
+                                if (response.returnedItem != null) {
+                                    // Server returned an item - place it on cursor
+                                    Item returnedItem = new Item(response.returnedItem.getItemId());
+                                    returnedItem.setCount(response.returnedItem.getCount());
+                                    returnedItem.setUuid(UUID.randomUUID());
+                                    returnedItem.setDurability(response.returnedItem.getDurability());
+                                    returnedItem.setMaxDurability(response.returnedItem.getMaxDurability());
+                                    screen.setHeldItem(returnedItem);
+                                    GameLogger.info("Placed item on cursor: " + response.returnedItem.getItemId() + " x" + response.returnedItem.getCount());
+                                } else {
+                                    // Server returned null - clear cursor (for MERGE operations with no remainder)
+                                    screen.setHeldItem(null);
+                                    GameLogger.info("Cleared cursor (operation completed with no remainder)");
+                                }
                             }
                         }
                     }

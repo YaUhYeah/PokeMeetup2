@@ -496,6 +496,60 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
     }
 
     /**
+     * Handles shift-click transfer in multiplayer using server-authoritative SHIFT_TRANSFER operation
+     */
+    private void handleMultiplayerShiftTransfer(ItemData currentSlotItem, InventorySlotData.SlotType slotType) {
+        if (screenInterface.getChestData() == null) {
+            GameLogger.error("No chest data available for multiplayer shift-transfer");
+            return;
+        }
+
+        // CRITICAL: Block spam-clicking to prevent duplication
+        if (screenInterface.hasPendingOperation()) {
+            GameLogger.info("Ignoring shift-click - waiting for server response");
+            return;
+        }
+
+        UUID chestId = screenInterface.getChestData().chestId;
+        int slotIndex = slotData.getSlotIndex();
+
+        // Mark that we're sending a request
+        screenInterface.setPendingOperation(true);
+
+        if (slotType == InventorySlotData.SlotType.CHEST) {
+            // Shift-clicking a CHEST slot -> Transfer FROM chest TO inventory
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.SHIFT_TRANSFER,
+                slotIndex,
+                -1,
+                null,
+                -1,
+                true  // fromChest = true (chest -> inventory)
+            );
+            GameLogger.info("Sent SHIFT_TRANSFER request: chest->inventory, slot " + slotIndex);
+
+        } else if (slotType == InventorySlotData.SlotType.INVENTORY) {
+            // Shift-clicking an INVENTORY slot -> Transfer FROM inventory TO chest
+            ItemData itemToTransfer = currentSlotItem.copy();
+
+            GameContext.get().getGameClient().sendChestOperation(
+                chestId,
+                NetworkProtocol.ChestOperationType.SHIFT_TRANSFER,
+                slotIndex,  // Pass slot index so server response can identify which slot to update
+                -1,
+                itemToTransfer,
+                -1,
+                false  // fromChest = false (inventory -> chest)
+            );
+            GameLogger.info("Sent SHIFT_TRANSFER request: inventory->chest, item " + itemToTransfer.getItemId() + " from slot " + slotIndex);
+
+            // Remove the item from inventory slot (server will return remainder if any)
+            setSlotItem(null);
+        }
+    }
+
+    /**
      * [FIXED] Handles crafting one item and putting it on the cursor.
      */
     private void pickUpOneCraftedItem() {
@@ -532,6 +586,13 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
         InventorySlotData.SlotType slotType = slotData.getSlotType();
         if (currentSlotItem == null) return;
 
+        // In multiplayer, use server-authoritative SHIFT_TRANSFER operation
+        if (GameContext.get().isMultiplayer() &&
+            (slotType == InventorySlotData.SlotType.CHEST || screenInterface.getChestData() != null)) {
+            handleMultiplayerShiftTransfer(currentSlotItem, slotType);
+            return;
+        }
+
         if (slotType == InventorySlotData.SlotType.CHEST) {
             int remainder = fullyTryAddItem(screenInterface.getInventory(), currentSlotItem);
             if (remainder <= 0) {
@@ -557,15 +618,6 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         updateSlot();
         screenInterface.updateHeldItemDisplay();
-        // Send real-time chest update with validation (for shift-click moves)
-        if (GameContext.get().isMultiplayer() &&
-            screenInterface.getChestData() != null &&
-            screenInterface.getChestPosition() != null) {
-            GameContext.get().getGameClient().sendValidatedChestUpdate(
-                screenInterface.getChestData(),
-                screenInterface.getChestPosition()
-            );
-        }
     }
 
     /**
