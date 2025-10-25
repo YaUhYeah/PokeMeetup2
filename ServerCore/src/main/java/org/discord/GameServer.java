@@ -63,6 +63,10 @@ public class GameServer {
     private static final long SAVE_INTERVAL = 300000;
     private static final ConcurrentHashMap<UUID, Object> chestLocks = new ConcurrentHashMap<>();
 
+    // Track processed chest operation request IDs to prevent duplicate processing
+    private static final Map<UUID, Long> processedChestRequests = new ConcurrentHashMap<>();
+    private static final long REQUEST_ID_EXPIRY = 10000; // Keep request IDs for 10 seconds
+
     // Thread-local Kryo instance for chunk compression to avoid creating new instances
     private static final ThreadLocal<Kryo> kryoThreadLocal = ThreadLocal.withInitial(() -> {
         Kryo kryo = new Kryo();
@@ -1204,6 +1208,20 @@ public class GameServer {
         if (username == null || !username.equals(request.username)) {
             sendChestOperationFailure(connection, request.chestId, "Unauthorized operation");
             return;
+        }
+
+        // CRITICAL: Check for duplicate request to prevent spam-click duplication
+        if (request.requestId != null) {
+            Long previousTime = processedChestRequests.putIfAbsent(request.requestId, System.currentTimeMillis());
+            if (previousTime != null) {
+                // This request was already processed - ignore duplicate
+                GameLogger.info("Ignoring duplicate chest operation request " + request.requestId + " from " + username);
+                return;
+            }
+
+            // Cleanup old request IDs (older than 10 seconds)
+            long now = System.currentTimeMillis();
+            processedChestRequests.entrySet().removeIf(entry -> now - entry.getValue() > REQUEST_ID_EXPIRY);
         }
 
         // Find chest position

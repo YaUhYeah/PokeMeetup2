@@ -534,6 +534,7 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
 
     public static class ChestOperationRequest implements Serializable {
         public UUID chestId;
+        public UUID requestId;          // Unique ID to prevent duplicate processing
         public ChestOperationType operation;
         public int slotIndex;           // Primary slot for operation
         public int secondarySlotIndex;  // For SWAP operations (-1 if not used)

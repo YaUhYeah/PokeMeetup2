@@ -271,8 +271,17 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             return;
         }
 
+        // CRITICAL: Block spam-clicking to prevent duplication
+        if (screenInterface.hasPendingOperation()) {
+            GameLogger.info("Ignoring click - waiting for server response");
+            return;
+        }
+
         UUID chestId = screenInterface.getChestData().chestId;
         int slotIndex = slotData.getSlotIndex();
+
+        // Mark that we're sending a request
+        screenInterface.setPendingOperation(true);
 
         // Determine operation type
         if (chestItem != null && heldItem == null) {
@@ -396,8 +405,17 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
             return;
         }
 
+        // CRITICAL: Block spam-clicking to prevent duplication
+        if (screenInterface.hasPendingOperation()) {
+            GameLogger.info("Ignoring right-click - waiting for server response");
+            return;
+        }
+
         UUID chestId = screenInterface.getChestData().chestId;
         int slotIndex = slotData.getSlotIndex();
+
+        // Mark that we're sending a request
+        screenInterface.setPendingOperation(true);
 
         // Determine right-click operation type
         if (chestItem == null && heldItem != null) {

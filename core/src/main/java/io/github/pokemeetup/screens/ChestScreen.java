@@ -51,6 +51,8 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
     private Image heldItemImage;
     private Label heldItemCountLabel;
     private boolean isClosing = false;
+    private boolean pendingChestOperation = false;
+    private long lastOperationTime = 0;
 
     public ChestScreen(Skin skin, ChestData chestData, Vector2 chestPosition, GameScreen gameScreen) {
         this.skin = skin;
@@ -458,5 +460,29 @@ public class ChestScreen implements Screen, InventoryScreenInterface {
 
     public void setVisible(boolean visible) {
         this.isVisible = visible;
+    }
+
+    /**
+     * Check if we're waiting for a server response to prevent spam-clicking duplication
+     */
+    @Override
+    public boolean hasPendingOperation() {
+        // Timeout after 5 seconds to prevent permanent lock
+        if (pendingChestOperation && System.currentTimeMillis() - lastOperationTime > 5000) {
+            GameLogger.info("Chest operation timeout - clearing pending flag");
+            pendingChestOperation = false;
+        }
+        return pendingChestOperation;
+    }
+
+    /**
+     * Mark that we've sent a request to the server
+     */
+    @Override
+    public void setPendingOperation(boolean pending) {
+        this.pendingChestOperation = pending;
+        if (pending) {
+            this.lastOperationTime = System.currentTimeMillis();
+        }
     }
 }

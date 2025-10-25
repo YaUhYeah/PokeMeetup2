@@ -20,4 +20,13 @@ public interface InventoryScreenInterface {
     CraftingSystem getCraftingSystem();
     ChestData getChestData();
     Vector2 getChestPosition(); // For real-time chest synchronization
+
+    // Pending operation tracking to prevent spam-click duplication
+    default boolean hasPendingOperation() {
+        return false;
+    }
+
+    default void setPendingOperation(boolean pending) {
+        // Default implementation does nothing (for non-chest screens)
+    }
 }

@@ -405,6 +405,7 @@ public class GameClient {
         try {
             NetworkProtocol.ChestOperationRequest request = new NetworkProtocol.ChestOperationRequest();
             request.chestId = chestId;
+            request.requestId = UUID.randomUUID();  // Unique ID to prevent duplicate processing
             request.operation = operation;
             request.slotIndex = slotIndex;
             request.secondarySlotIndex = secondarySlotIndex;
@@ -414,7 +415,7 @@ public class GameClient {
             request.timestamp = System.currentTimeMillis();
 
             client.sendTCP(request);
-            GameLogger.info("Sent chest operation request: " + operation + " on chest " + chestId + " slot " + slotIndex + " count " + count);
+            GameLogger.info("Sent chest operation request: " + operation + " (ID: " + request.requestId + ") on chest " + chestId + " slot " + slotIndex + " count " + count);
         } catch (Exception e) {
             GameLogger.error("Failed to send chest operation: " + e.getMessage());
         }
@@ -602,6 +603,10 @@ public class GameClient {
                     // Response is for a chest that's not currently open
                     return;
                 }
+
+                // CRITICAL: Clear pending flag to allow next operation
+                // This must happen regardless of success/failure
+                chestScreen.setPendingOperation(false);
 
                 if (response.success) {
                     // Update chest inventory with server-authoritative state
