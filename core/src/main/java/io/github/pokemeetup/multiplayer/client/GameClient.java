@@ -609,37 +609,16 @@ public class GameClient {
 
                     // If a TAKE or SWAP operation returned an item to the local player
                     if (response.returnedItem != null && response.username.equals(getLocalUsername())) {
-                        // For SWAP operations, the item goes to the cursor (held item)
-                        // For TAKE operations, try to add to inventory, or drop on ground if full
                         ChestScreen screen = GameContext.get().getGameScreen().getChestScreen();
-                        if (screen != null && screen.getHeldItemObject() == null) {
-                            // No item on cursor - this is a TAKE operation, add to inventory
-                            if (GameContext.get().getPlayer().getInventory().addItem(response.returnedItem)) {
-                                GameLogger.info("Added item from chest to inventory: " + response.returnedItem.getItemId());
-                            } else {
-                                // Inventory full - drop item on ground at player's feet
-                                GameLogger.info("Inventory full, dropping item on ground: " + response.returnedItem.getItemId());
-                                float playerX = GameContext.get().getPlayer().getX();
-                                float playerY = GameContext.get().getPlayer().getY();
-                                GameContext.get().getWorld().getItemEntityManager().spawnItemEntity(
-                                    response.returnedItem, playerX, playerY);
-
-                                // Show message to player
-                                NetworkProtocol.ChatMessage msg = createSystemMessage(
-                                    "Inventory full! " + response.returnedItem.getItemId() + " dropped on ground.");
-                                if (chatMessageHandler != null) {
-                                    chatMessageHandler.accept(msg);
-                                }
-                            }
-                        } else {
-                            // SWAP operation - place returned item on cursor
+                        if (screen != null) {
+                            // Server returned an item - place it on cursor (single-player parity)
                             Item returnedItem = new Item(response.returnedItem.getItemId());
                             returnedItem.setCount(response.returnedItem.getCount());
                             returnedItem.setUuid(UUID.randomUUID());
                             returnedItem.setDurability(response.returnedItem.getDurability());
                             returnedItem.setMaxDurability(response.returnedItem.getMaxDurability());
                             screen.setHeldItem(returnedItem);
-                            GameLogger.info("SWAP completed, placed item on cursor: " + response.returnedItem.getItemId());
+                            GameLogger.info("Placed item on cursor: " + response.returnedItem.getItemId() + " x" + response.returnedItem.getCount());
                         }
                     }
 

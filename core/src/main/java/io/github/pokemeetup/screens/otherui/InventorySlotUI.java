@@ -427,6 +427,16 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
         } else if (chestItem != null && heldItem == null) {
             // Right-click chest slot with empty hand → Pick up half the stack
+            // Calculate half to show on cursor optimistically
+            int half = (chestItem.getCount() + 1) / 2;
+
+            Item newHeld = new Item(chestItem.getItemId());
+            newHeld.setCount(half);
+            newHeld.setDurability(chestItem.getDurability());
+            newHeld.setMaxDurability(chestItem.getMaxDurability());
+            newHeld.setUuid(UUID.randomUUID());
+            screenInterface.setHeldItem(newHeld);
+
             GameContext.get().getGameClient().sendChestOperation(
                 chestId,
                 NetworkProtocol.ChestOperationType.TAKE_ITEM,
@@ -531,7 +541,7 @@ public class InventorySlotUI extends Table implements InventorySlotDataObserver 
 
             // IMPORTANT: In multiplayer, chest operations must be server-authoritative
             if (slotType == InventorySlotData.SlotType.CHEST && GameContext.get().isMultiplayer()) {
-                GameLogger.info("Right-click chest operations in multiplayer not yet implemented");
+                handleMultiplayerChestRightClick(currentSlotItem, heldItem);
                 return;
             }
 

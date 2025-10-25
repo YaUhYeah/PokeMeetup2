@@ -1279,10 +1279,36 @@ public class GameServer {
                         return response;
                     }
 
-                    // Remove from chest
-                    chestData.setItemAt(request.slotIndex, null);
+                    // Handle partial vs full take based on count parameter
+                    // count: -1 = take all, 0 = take half, >0 = take specific amount
+                    int amountToTake;
+                    if (request.count == -1) {
+                        // Take all
+                        amountToTake = item.getCount();
+                    } else if (request.count == 0) {
+                        // Take half (rounded up)
+                        amountToTake = (item.getCount() + 1) / 2;
+                    } else {
+                        // Take specific amount
+                        amountToTake = Math.min(request.count, item.getCount());
+                    }
+
+                    ItemData returnedItem = item.copy();
+                    returnedItem.setCount(amountToTake);
+
+                    int remaining = item.getCount() - amountToTake;
+                    if (remaining <= 0) {
+                        // Remove entire stack
+                        chestData.setItemAt(request.slotIndex, null);
+                    } else {
+                        // Update chest with remaining items
+                        ItemData remainingItem = item.copy();
+                        remainingItem.setCount(remaining);
+                        chestData.setItemAt(request.slotIndex, remainingItem);
+                    }
+
                     response.success = true;
-                    response.returnedItem = item.copy();
+                    response.returnedItem = returnedItem;
                     response.chestItems = new ArrayList<>(chestData.getItems());
                     break;
 
