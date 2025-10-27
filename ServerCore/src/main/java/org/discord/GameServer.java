@@ -140,7 +140,30 @@ public class GameServer {
             scheduler.scheduleAtFixedRate(() -> {
                 serverPokemonSpawnManager.update(0.1f);
                 serverPokemonSpawnManager.broadcastPokemonUpdates();
-            }, 0, 100, TimeUnit.MILLISECONDS);// In your GameServer constructor, after worldData is initialized:
+            }, 0, 100, TimeUnit.MILLISECONDS);
+
+            // Server-authoritative pokeball spawning
+            scheduler.scheduleAtFixedRate(() -> {
+                try {
+                    Map<Vector2, Chunk> loadedChunks = getLoadedChunks(MULTIPLAYER_WORLD_NAME);
+                    List<WorldObject> spawnedPokeballs = ServerGameContext.get()
+                        .getWorldObjectManager()
+                        .update(0.1f, MULTIPLAYER_WORLD_NAME, loadedChunks);
+
+                    // Broadcast newly spawned pokeballs to all clients
+                    for (WorldObject pokeball : spawnedPokeballs) {
+                        NetworkProtocol.WorldObjectUpdate update = new NetworkProtocol.WorldObjectUpdate();
+                        update.objectId = pokeball.getId();
+                        update.type = NetworkProtocol.NetworkObjectUpdateType.ADD;
+                        update.data = pokeball.getSerializableData();
+                        networkServer.sendToAllTCP(update);
+                    }
+                } catch (Exception e) {
+                    GameLogger.error("Error updating pokeball spawns: " + e.getMessage());
+                }
+            }, 0, 100, TimeUnit.MILLISECONDS);
+
+            // Update world time
             scheduler.scheduleAtFixedRate(() -> {
                 worldData.updateTime(1.0f);
             }, 0, 1, TimeUnit.SECONDS);
@@ -174,6 +197,26 @@ public class GameServer {
     }
 
     /**
+     * Gets all chunks that are currently loaded (have players nearby)
+     * Used for server-authoritative pokeball spawning
+     */
+    private Map<Vector2, Chunk> getLoadedChunks(String worldName) {
+        Map<Vector2, Chunk> loadedChunks = new HashMap<>();
+        Set<Vector2> occupiedChunks = getPlayerOccupiedChunks();
+
+        for (Vector2 chunkPos : occupiedChunks) {
+            Chunk chunk = ServerGameContext.get().getWorldManager()
+                .loadChunk(worldName, (int)chunkPos.x, (int)chunkPos.y);
+
+            if (chunk != null) {
+                loadedChunks.put(chunkPos, chunk);
+            }
+        }
+
+        return loadedChunks;
+    }
+
+    /**
      * Gets all current player positions for Pokemon AI behaviors.
      * Enables Pokemon to react to players (flee, approach, investigate, etc.)
      */
@@ -186,6 +229,13 @@ public class GameServer {
             }
         }
         return positions;
+    }
+
+    /**
+     * Gets the server Pokemon spawn manager for Pokemon collision detection.
+     */
+    public ServerPokemonSpawnManager getServerPokemonSpawnManager() {
+        return serverPokemonSpawnManager;
     }
 
     /**

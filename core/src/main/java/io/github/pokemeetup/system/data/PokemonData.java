@@ -4,6 +4,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.attacks.LearnableMove;
 import io.github.pokemeetup.pokemon.attacks.Move;
+import io.github.pokemeetup.pokemon.data.PokemonDatabase;
 import io.github.pokemeetup.utils.GameLogger;
 
 import java.io.Serializable;
@@ -78,6 +79,9 @@ public class PokemonData {
         data.setPrimaryType(pokemon.getPrimaryType());
         data.setSecondaryType(pokemon.getSecondaryType());
         data.setCurrentHp(pokemon.getCurrentHp());
+
+        // Log the saved HP for debugging
+        GameLogger.info("Saving Pokemon " + pokemon.getName() + " with HP: " + pokemon.getCurrentHp() + "/" + pokemon.getStats().getHp());
         data.setBaseHp(pokemon.getSpeciesBaseHp());
         data.setBaseAttack(pokemon.getSpeciesBaseAttack());
         data.setBaseDefense(pokemon.getSpeciesBaseDefense());
@@ -307,7 +311,9 @@ public class PokemonData {
             this.currentHp = Math.min(this.stats.getHp(), this.currentHp + amount);
         }
     }
-    private int currentHp;public Pokemon toPokemon() {
+    private int currentHp;
+
+    public Pokemon toPokemon() {
         if (name == null || name.isEmpty()) {
             throw new IllegalStateException("Pokemon name is missing.");
         }
@@ -317,13 +323,43 @@ public class PokemonData {
         pokemon.setPrimaryType(primaryType);
         pokemon.setSecondaryType(secondaryType);
         pokemon.calculateStats();
-        pokemon.setCurrentHp(pokemon.getStats().getHp());
-        for (MoveData moveData : moves) {
-            Move move = moveData.toMove();
-            if (move != null) {
-                pokemon.getMoves().add(move);
+
+        // FIXED: Restore saved HP instead of setting to maximum
+        if (this.currentHp > 0) {
+            // Restore the saved HP value
+            pokemon.setCurrentHp(this.currentHp);
+            GameLogger.info("Restored Pokemon " + name + " with HP: " + this.currentHp + "/" + pokemon.getStats().getHp());
+        } else {
+            // If no saved HP (old save data), start with full HP
+            pokemon.setCurrentHp(pokemon.getStats().getHp());
+            GameLogger.info("No saved HP for " + name + ", setting to full HP");
+        }
+
+        // FIXED: Restore experience from saved data
+        pokemon.setCurrentExperience(this.currentExperience);
+
+        // Restore moves from saved data
+        if (moves != null && !moves.isEmpty()) {
+            for (MoveData moveData : moves) {
+                Move move = moveData.toMove();
+                if (move != null) {
+                    pokemon.getMoves().add(move);
+                }
             }
         }
+
+        // SAFETY: If Pokemon has no moves after restoration, give it default moves for its level
+        if (pokemon.getMoves().isEmpty()) {
+            PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+            if (template != null && template.moves != null && !template.moves.isEmpty()) {
+                List<Move> defaultMoves = PokemonDatabase.getMovesForLevel(template.moves, level);
+                if (defaultMoves != null && !defaultMoves.isEmpty()) {
+                    pokemon.setMoves(defaultMoves);
+                    GameLogger.info("Pokemon " + name + " had no moves - restored default moves for level " + level);
+                }
+            }
+        }
+
         return pokemon;
     }
 

@@ -669,8 +669,17 @@ public class WorldObject {
             float renderX = tree.getPixelX() - World.TILE_SIZE;
             float renderY = tree.getPixelY();
 
-            Vector2 tilePos = new Vector2(tree.getTileX(), tree.getTileY());
-            Float lightLevel = world.getLightLevelAtTile(tilePos);
+            // Sample light at multiple points for better coverage (trees span multiple tiles)
+            Float lightLevel = 0f;
+            for (int dx = 0; dx <= 1; dx++) {
+                for (int dy = 0; dy <= 2; dy++) {
+                    Vector2 samplePos = new Vector2(tree.getTileX() + dx, tree.getTileY() + dy);
+                    Float sampleLight = world.getLightLevelAtTile(samplePos);
+                    if (sampleLight != null && sampleLight > lightLevel) {
+                        lightLevel = sampleLight;
+                    }
+                }
+            }
 
             Color originalColor = batch.getColor().cpy();
             try {
@@ -715,8 +724,17 @@ public class WorldObject {
             float renderX = tree.getPixelX() - World.TILE_SIZE;
             float renderY = tree.getPixelY() + World.TILE_SIZE;
 
-            Vector2 tilePos = new Vector2(tree.getTileX(), tree.getTileY());
-            Float lightLevel = world.getLightLevelAtTile(tilePos);
+            // Sample light at multiple points for better coverage (trees span multiple tiles)
+            Float lightLevel = 0f;
+            for (int dx = 0; dx <= 1; dx++) {
+                for (int dy = 0; dy <= 2; dy++) {
+                    Vector2 samplePos = new Vector2(tree.getTileX() + dx, tree.getTileY() + dy);
+                    Float sampleLight = world.getLightLevelAtTile(samplePos);
+                    if (sampleLight != null && sampleLight > lightLevel) {
+                        lightLevel = sampleLight;
+                    }
+                }
+            }
 
             Color originalColor = batch.getColor().cpy();
             try {
@@ -757,8 +775,21 @@ public class WorldObject {
             float renderY = object.getPixelY();
             float width = object.getType().widthInTiles * World.TILE_SIZE;
             float height = object.getType().heightInTiles * World.TILE_SIZE;
-            Vector2 tilePos = new Vector2(object.getTileX(), object.getTileY());
-            Float lightLevel = world.getLightLevelAtTile(tilePos);
+
+            // Sample light across the entire object footprint
+            Float lightLevel = 0f;
+            int widthInTiles = Math.max(1, object.getType().widthInTiles);
+            int heightInTiles = Math.max(1, object.getType().heightInTiles);
+            for (int dx = 0; dx < widthInTiles; dx++) {
+                for (int dy = 0; dy < heightInTiles; dy++) {
+                    Vector2 samplePos = new Vector2(object.getTileX() + dx, object.getTileY() + dy);
+                    Float sampleLight = world.getLightLevelAtTile(samplePos);
+                    if (sampleLight != null && sampleLight > lightLevel) {
+                        lightLevel = sampleLight;
+                    }
+                }
+            }
+
             Color originalColor = batch.getColor().cpy();
 
             try {
@@ -904,10 +935,14 @@ public class WorldObject {
                         changed = true;
                     }
 
-                    // spawning may add objects
-                    int before = objects.size();
-                    handlePokeballSpawning(chunkPos, entry.getValue());
-                    if (objects.size() != before) changed = true;
+                    // Only spawn pokeballs in singleplayer mode
+                    // In multiplayer, server handles all pokeball spawning
+                    if (!GameContext.get().isMultiplayer()) {
+                        // spawning may add objects
+                        int before = objects.size();
+                        handlePokeballSpawning(chunkPos, entry.getValue());
+                        if (objects.size() != before) changed = true;
+                    }
                 }
                 pokeballSpawnTimer = 0f;
             }
@@ -968,12 +1003,9 @@ public class WorldObject {
                                 WorldObject pokeball = new WorldObject(worldTileX, worldTileY,
                                     pokeballTexture, ObjectType.POKEBALL);
                                 objects.add(pokeball);
-
-                                if (
-                                    GameContext.get().getGameClient() != null && !
-                                        GameContext.get().getGameClient().isSinglePlayer()) {
-                                    sendObjectSpawn(pokeball);
-                                }
+                                // Note: In multiplayer, server handles all pokeball spawning
+                                // This method is only called in singleplayer mode
+                                GameLogger.info("Spawned pokeball at " + worldTileX + "," + worldTileY + " (singleplayer)");
                             }
                         }
                     }

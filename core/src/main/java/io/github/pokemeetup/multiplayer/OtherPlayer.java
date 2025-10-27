@@ -1,6 +1,7 @@
 package io.github.pokemeetup.multiplayer;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -218,6 +219,12 @@ public class OtherPlayer implements Positionable {
                 // Wrap animation time to prevent overflow on long movements
                 float fullCycleDuration = tileDuration; // One full cycle per tile
                 animationTime = animationTime % fullCycleDuration;
+
+                // Clamp to prevent wrapping back to frame 0 at the end of a cycle
+                // This ensures all 4 frames get equal time and the last frame doesn't flash
+                if (animationTime >= fullCycleDuration - 0.001f) {
+                    animationTime = fullCycleDuration - 0.001f;
+                }
             } else {
                 // Not moving - reset everything
                 animationTime = 0f;
@@ -267,12 +274,35 @@ public class OtherPlayer implements Positionable {
                 return;
             }
 
+            // Apply lighting based on world and tile position
+            Color originalColor = batch.getColor().cpy();
+            Color baseColor = GameContext.get().getWorld() != null ?
+                GameContext.get().getWorld().getCurrentWorldColor().cpy() : Color.WHITE.cpy();
+
+            // Apply light level if available (for night-time furnace lighting, etc.)
+            World world = GameContext.get().getWorld();
+            if (world != null) {
+                int tileX = (int) Math.floor(position.x / World.TILE_SIZE);
+                int tileY = (int) Math.floor(position.y / World.TILE_SIZE);
+                Vector2 tilePos = new Vector2(tileX, tileY);
+                Float lightLevel = world.getLightLevelAtTile(tilePos);
+                if (lightLevel != null && lightLevel > 0) {
+                    Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                    baseColor.lerp(lightColor, lightLevel * 0.7f);
+                }
+            }
+
+            batch.setColor(baseColor);
+
             float regionW = currentFrame.getRegionWidth();
             float regionH = currentFrame.getRegionHeight();
             float drawX = position.x - (regionW / 2f);  // Use position directly, not renderPosition
             float drawY = position.y;
 
             batch.draw(currentFrame, drawX, drawY, regionW, regionH);
+
+            // Restore original color before rendering username
+            batch.setColor(originalColor);
             renderUsername(batch, drawX, regionW, drawY, regionH);
         }
     }

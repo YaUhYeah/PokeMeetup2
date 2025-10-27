@@ -190,21 +190,57 @@ public class PokemonAI {
 
     /**
      * Checks if a tile is passable, using either the World or server passability checker.
+     * Also checks for Pokemon-to-Pokemon collision to prevent overlap.
      */
     public boolean checkPassable(World world, int tileX, int tileY) {
+        // First check terrain passability
+        boolean terrainPassable;
+
         if (serverPassabilityChecker != null) {
-            // Use reflection to call isPassable on the server adapter
+            // Server-side: Use reflection to call isPassable on the server adapter
             try {
                 java.lang.reflect.Method method = serverPassabilityChecker.getClass()
                     .getMethod("isPassable", int.class, int.class);
-                return (Boolean) method.invoke(serverPassabilityChecker, tileX, tileY);
+                terrainPassable = (Boolean) method.invoke(serverPassabilityChecker, tileX, tileY);
             } catch (Exception e) {
                 return false;
             }
         } else if (world != null) {
-            return world.isPassable(tileX, tileY);
+            // Client-side: Use world's isPassable method
+            terrainPassable = world.isPassable(tileX, tileY);
+        } else {
+            return false;
         }
-        return false;
+
+        // If terrain is not passable, no need to check Pokemon
+        if (!terrainPassable) {
+            return false;
+        }
+
+        // Check for Pokemon collision
+        if (serverPassabilityChecker != null) {
+            // Server-side: Check if another Pokemon is at this position
+            try {
+                java.lang.reflect.Method method = serverPassabilityChecker.getClass()
+                    .getMethod("isPokemonAt", int.class, int.class, String.class);
+                boolean pokemonPresent = (Boolean) method.invoke(serverPassabilityChecker, tileX, tileY, pokemon.getUuid().toString());
+                if (pokemonPresent) {
+                    return false; // Another Pokemon is at this tile
+                }
+            } catch (Exception e) {
+                // Method not available or error - assume no Pokemon collision
+            }
+        } else if (world != null) {
+            // Client-side: Check if another Pokemon is at this position
+            if (world.isPokemonAt(tileX, tileY)) {
+                // Make sure it's not the current Pokemon itself
+                if (pokemon.getTileX() != tileX || pokemon.getTileY() != tileY) {
+                    return false; // Another Pokemon is at this tile
+                }
+            }
+        }
+
+        return true; // Tile is passable and no Pokemon collision
     }
 
     public void update(float delta, World world) {

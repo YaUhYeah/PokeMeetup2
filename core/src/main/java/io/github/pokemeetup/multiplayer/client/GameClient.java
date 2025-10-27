@@ -686,13 +686,7 @@ public class GameClient {
                     // Operation failed - log the reason
                     GameLogger.info("Chest operation failed: " + response.reason);
 
-                    // Optionally show error message to player
-                    if (response.username.equals(getLocalUsername())) {
-                        NetworkProtocol.ChatMessage errorMsg = createSystemMessage("Chest operation failed: " + response.reason);
-                        if (chatMessageHandler != null) {
-                            chatMessageHandler.accept(errorMsg);
-                        }
-                    }
+
                 }
             } catch (Exception e) {
                 GameLogger.error("Error handling chest operation response: " + e.getMessage());

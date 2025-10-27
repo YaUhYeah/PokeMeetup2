@@ -405,6 +405,7 @@ public class GameMenu extends Group {
     }
 
     private void setupAudioListeners() {
+        // Only update volumes in real-time for immediate feedback
         musicSlider.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
@@ -412,12 +413,8 @@ public class GameMenu extends Group {
             }
         });
 
-        musicEnabled.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                AudioManager.getInstance().setMusicEnabled(musicEnabled.isChecked());
-            }
-        });
+        // Don't apply music enabled/disabled until Save is clicked
+        // This prevents multiple tracks from starting when toggling
 
         soundSlider.addListener(new ChangeListener() {
             @Override
@@ -429,12 +426,7 @@ public class GameMenu extends Group {
             }
         });
 
-        soundEnabled.addListener(new ChangeListener() {
-            @Override
-            public void changed(ChangeEvent event, Actor actor) {
-                AudioManager.getInstance().setSoundEnabled(soundEnabled.isChecked());
-            }
-        });
+        // Don't apply sound enabled/disabled until Save is clicked
     }
 
     private void saveAudioSettings() {

@@ -582,4 +582,39 @@ public class ServerPokemonSpawnManager {
     public Collection<WildPokemon> getActivePokemon() {
         return activePokemon.values();
     }
+
+    /**
+     * Checks if another Pokemon (excluding the specified Pokemon) is at the given tile position.
+     * Used by Pokemon AI to prevent Pokemon from walking on top of each other.
+     *
+     * @param tileX World tile X coordinate
+     * @param tileY World tile Y coordinate
+     * @param excludePokemonUuid UUID of the Pokemon to exclude from the check (as string)
+     * @return true if another Pokemon is at this tile, false otherwise
+     */
+    public boolean isAnotherPokemonAt(int tileX, int tileY, String excludePokemonUuid) {
+        UUID excludeUuid;
+        try {
+            excludeUuid = UUID.fromString(excludePokemonUuid);
+        } catch (Exception e) {
+            GameLogger.error("Invalid Pokemon UUID: " + excludePokemonUuid);
+            return false;
+        }
+
+        for (WildPokemon pokemon : activePokemon.values()) {
+            if (pokemon == null) continue;
+
+            // Skip the Pokemon that is doing the checking
+            if (pokemon.getUuid().equals(excludeUuid)) {
+                continue;
+            }
+
+            // Check if this Pokemon is at the target tile
+            if (pokemon.getTileX() == tileX && pokemon.getTileY() == tileY) {
+                return true; // Another Pokemon is at this position
+            }
+        }
+
+        return false; // No other Pokemon at this position
+    }
 }

@@ -543,9 +543,13 @@ public class Player implements Positionable {
                 float frameCount = 4f;
                 float frameDuration = isRunning ? PlayerAnimations.RUN_FRAME_DURATION : PlayerAnimations.WALK_FRAME_DURATION;
 
+                // Calculate total animation cycle duration
+                float totalAnimDuration = frameCount * frameDuration;
+
                 // Animation progresses linearly with movement
-                // This ensures each frame gets equal screen time
-                animationTime = movementProgress * (frameCount * frameDuration);
+                // Clamp to prevent wrapping back to frame 0 at the end
+                // We subtract a tiny epsilon to ensure we stay in frame 3 at movementProgress = 1.0
+                animationTime = Math.min(movementProgress * totalAnimDuration, totalAnimDuration - 0.001f);
 
                 updateCollisionBoxes();
             } else {
@@ -773,9 +777,19 @@ public class Player implements Positionable {
             }
 
             Color originalColor = batch.getColor().cpy();
+            Color baseColor = world != null ? world.getCurrentWorldColor().cpy() : Color.WHITE.cpy();
+
+            // Apply light level if available (for night-time furnace lighting, etc.)
             if (world != null) {
-                batch.setColor(world.getCurrentWorldColor());
+                Vector2 tilePos = new Vector2(getTileX(), getTileY());
+                Float lightLevel = world.getLightLevelAtTile(tilePos);
+                if (lightLevel != null && lightLevel > 0) {
+                    Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                    baseColor.lerp(lightColor, lightLevel * 0.7f);
+                }
             }
+
+            batch.setColor(baseColor);
 
             float scale = getCharacterType().equalsIgnoreCase("girl") ? 2f : 1f;
             float regionW = currentFrame.getRegionWidth() * scale;

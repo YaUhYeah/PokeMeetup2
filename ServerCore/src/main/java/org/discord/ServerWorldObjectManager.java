@@ -1,18 +1,24 @@
 package org.discord;
 
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.gameplay.overworld.Chunk;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.utils.GameLogger;
+import io.github.pokemeetup.utils.textures.TileType;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class ServerWorldObjectManager {
+    private static final float POKEBALL_SPAWN_CHANCE = 0.025f;
+    private static final int MAX_POKEBALLS_PER_CHUNK = 1;
+    private static final float POKEBALL_SPAWN_INTERVAL = 5.0f; // Try every 5 seconds
 
     private final Map<String, Map<Vector2, List<WorldObject>>> worldObjectsByWorld = new ConcurrentHashMap<>();
     private final Map<Vector2, Long> lastChunkAccess = new ConcurrentHashMap<>();
+    private float pokeballSpawnTimer = 0f;
 
     public void initializeWorld(String worldName) {
         worldObjectsByWorld.putIfAbsent(worldName, new ConcurrentHashMap<>());
@@ -83,6 +89,93 @@ public class ServerWorldObjectManager {
         } catch (Exception e) {
             GameLogger.error("Error setting chunk objects: " + e.getMessage());
         }
+    }
+
+    /**
+     * Update method for server-authoritative pokeball spawning
+     * @param deltaTime Time since last update in seconds
+     * @param worldName World to spawn pokeballs in
+     * @param loadedChunks Chunks that are currently loaded (have players nearby)
+     * @return List of spawned pokeballs (for broadcasting to clients)
+     */
+    public List<WorldObject> update(float deltaTime, String worldName, Map<Vector2, Chunk> loadedChunks) {
+        List<WorldObject> newlySpawnedPokeballs = new ArrayList<>();
+
+        pokeballSpawnTimer += deltaTime;
+
+        if (pokeballSpawnTimer >= POKEBALL_SPAWN_INTERVAL) {
+            pokeballSpawnTimer = 0f;
+
+            Map<Vector2, List<WorldObject>> worldObjects = worldObjectsByWorld.get(worldName);
+            if (worldObjects == null) return newlySpawnedPokeballs;
+
+            // Try to spawn pokeballs in loaded chunks
+            for (Map.Entry<Vector2, Chunk> entry : loadedChunks.entrySet()) {
+                Vector2 chunkPos = entry.getKey();
+                Chunk chunk = entry.getValue();
+
+                List<WorldObject> chunkObjects = worldObjects.computeIfAbsent(chunkPos, k -> new CopyOnWriteArrayList<>());
+
+                // Remove expired pokeballs
+                boolean removedExpired = chunkObjects.removeIf(WorldObject::isExpired);
+
+                // Check if we should spawn a pokeball in this chunk
+                if (shouldSpawnPokeball(chunkObjects)) {
+                    WorldObject pokeball = trySpawnPokeball(chunkPos, chunkObjects, chunk);
+                    if (pokeball != null) {
+                        chunkObjects.add(pokeball);
+                        newlySpawnedPokeballs.add(pokeball);
+                        GameLogger.info("Server spawned pokeball at " + pokeball.getTileX() + "," + pokeball.getTileY() + " in chunk " + chunkPos);
+                    }
+                }
+            }
+        }
+
+        return newlySpawnedPokeballs;
+    }
+
+    private boolean shouldSpawnPokeball(List<WorldObject> chunkObjects) {
+        long count = chunkObjects.stream()
+            .filter(o -> o.getType() == WorldObject.ObjectType.POKEBALL)
+            .count();
+        return count < MAX_POKEBALLS_PER_CHUNK && MathUtils.random() < POKEBALL_SPAWN_CHANCE;
+    }
+
+    private WorldObject trySpawnPokeball(Vector2 chunkPos, List<WorldObject> objects, Chunk chunk) {
+        for (int attempts = 0; attempts < 10; attempts++) {
+            int localX = MathUtils.random(Chunk.CHUNK_SIZE - 1);
+            int localY = MathUtils.random(Chunk.CHUNK_SIZE - 1);
+            int tileType = chunk.getTileType(localX, localY);
+
+            // Only spawn on grass or sand
+            if (tileType == TileType.GRASS || tileType == TileType.SAND) {
+                int worldTileX = (int) (chunkPos.x * Chunk.CHUNK_SIZE) + localX;
+                int worldTileY = (int) (chunkPos.y * Chunk.CHUNK_SIZE) + localY;
+
+                // Check location is clear (no other objects nearby)
+                boolean locationClear = true;
+                for (WorldObject obj : objects) {
+                    if (Math.abs(obj.getTileX() - worldTileX) < 2 &&
+                        Math.abs(obj.getTileY() - worldTileY) < 2) {
+                        locationClear = false;
+                        break;
+                    }
+                }
+
+                if (locationClear) {
+                    // Create pokeball WorldObject (texture will be set by ensureTexture())
+                    WorldObject pokeball = new WorldObject(
+                        worldTileX, worldTileY,
+                        null, // Texture handled by ensureTexture()
+                        WorldObject.ObjectType.POKEBALL
+                    );
+                    pokeball.ensureTexture();
+                    return pokeball;
+                }
+            }
+        }
+
+        return null; // Failed to find valid spawn location
     }
 
     public void cleanup() {

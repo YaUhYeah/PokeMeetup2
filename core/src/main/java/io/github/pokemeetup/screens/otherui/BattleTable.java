@@ -28,6 +28,7 @@ import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.PokemonCaptureAnimation;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.pokemon.attacks.Move;
+import io.github.pokemeetup.pokemon.data.PokemonDatabase;
 import io.github.pokemeetup.screens.GameScreen;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.gameplay.overworld.WeatherSystem;
@@ -106,6 +107,7 @@ public class BattleTable extends Table {
     private int turnCount = 0;
     // MODIFICATION: Changed to Map<Pokemon, Pokemon> for better tracking
     private Map<Pokemon, Pokemon> leechSeedTargets = new HashMap<>();
+    private boolean isForcedSwitch = false; // Track if current switch is forced (after faint)
 
     // Path: src/main/java/io/github/pokemeetup/screens/otherui/BattleTable.java
 
@@ -331,14 +333,19 @@ public class BattleTable extends Table {
     // NEW: This method cleanly ends the switching state.
     private void finishPlayerSwitchAndProceed() {
         isAnimating = false;
-        playerActionTaken = true; // Switching counts as a turn
 
-        // Don't apply end-of-turn effects here, they happen after both players move.
-        // The enemy gets to attack right after the switch.
-
-        if (checkFaintConditions()) return; // Should not happen, but a good safe check
-
-        transitionToState(BattleState.ENEMY_TURN);
+        // Check if this was a forced switch (after Pokemon fainted)
+        if (isForcedSwitch) {
+            // Forced switch: Player gets a free turn to choose action
+            isForcedSwitch = false; // Reset the flag
+            setBattleInterfaceEnabled(true);
+            transitionToState(BattleState.PLAYER_CHOICE);
+        } else {
+            // Voluntary switch: Enemy gets a free attack
+            playerActionTaken = true; // Switching counts as a turn
+            if (checkFaintConditions()) return; // Should not happen, but a good safe check
+            transitionToState(BattleState.ENEMY_TURN);
+        }
     }
 
     private static void initializeTypeEffectiveness() {
@@ -538,6 +545,29 @@ public class BattleTable extends Table {
             barColor = new Color(0.95f, 0.3f, 0.2f, 1f); // Red
         }
         fgPixmap.setColor(barColor);
+        fgPixmap.fill();
+        TextureRegionDrawable knobDrawable = new TextureRegionDrawable(new TextureRegion(new Texture(fgPixmap)));
+        fgPixmap.dispose();
+
+        style.knob = knobDrawable;
+        style.knobBefore = knobDrawable;
+
+        return style;
+    }
+
+    private static ProgressBar.ProgressBarStyle createExpBarStyle() {
+        ProgressBar.ProgressBarStyle style = new ProgressBar.ProgressBarStyle();
+
+        // Background
+        Pixmap bgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        bgPixmap.setColor(0.2f, 0.2f, 0.2f, 0.8f); // Dark grey background
+        bgPixmap.fill();
+        style.background = new TextureRegionDrawable(new TextureRegion(new Texture(bgPixmap)));
+        bgPixmap.dispose();
+
+        // Foreground (knob) - Blue color for experience bar
+        Pixmap fgPixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
+        fgPixmap.setColor(0.2f, 0.6f, 1.0f, 1f); // Blue color for EXP
         fgPixmap.fill();
         TextureRegionDrawable knobDrawable = new TextureRegionDrawable(new TextureRegion(new Texture(fgPixmap)));
         fgPixmap.dispose();
@@ -1346,7 +1376,13 @@ public class BattleTable extends Table {
         playerHPContainer.add(playerStatusIcon).size(STATUS_ICON_WIDTH, STATUS_ICON_HEIGHT).padLeft(5);
         playerSection.add(playerHPContainer).expandX().left().pad(10).row();
 
-        playerSection.add(expBar).width(HP_BAR_WIDTH).height(4).padLeft(10).row();
+        // Add EXP label and bar
+        Table expContainer = new Table();
+        Label expLabel = new Label("EXP", skin);
+        expLabel.setFontScale(0.6f);
+        expContainer.add(expLabel).padRight(5);
+        expContainer.add(expBar).width(HP_BAR_WIDTH - 25).height(6);
+        playerSection.add(expContainer).expandX().left().padLeft(10).row();
 
         Stack playerStack = new Stack();
         playerStack.add(playerPlatform);
@@ -1432,7 +1468,7 @@ public class BattleTable extends Table {
         enemyHPBar.setValue(enemyPokemon.getCurrentHp());
 
         expBar = new ProgressBar(0, playerPokemon.getExperienceForNextLevel(), 1, false,
-            skin.get("default-horizontal", ProgressBar.ProgressBarStyle.class));
+            createExpBarStyle());
         expBar.setSize(HP_BAR_WIDTH, 6);
         expBar.setValue(playerPokemon.getCurrentExperience());
     }
@@ -1502,7 +1538,8 @@ public class BattleTable extends Table {
             case PLAYER_ACTION_EXECUTE:
                 break;
             case ENEMY_TURN:
-                if (stateTimer > 0.5f) {
+                // Wait longer to ensure player's move messages are displayed before enemy attacks
+                if (stateTimer > 1.2f) {
                     executeEnemyMove();
                     stateTimer = 0f;
                 }
@@ -1572,6 +1609,7 @@ public class BattleTable extends Table {
             ),
             Actions.run(() -> {
                 if (hasAvailablePokemon()) {
+                    isForcedSwitch = true; // Mark this as a forced switch
                     transitionToState(BattleState.FORCED_SWITCH);
                     showForcedSwitchPartyScreen();
                 } else {
@@ -1624,12 +1662,36 @@ public class BattleTable extends Table {
     }
 
     private void executeStruggle(Pokemon attacker, Pokemon defender) {
-        float damage = attacker.getStats().getAttack() * 0.5f;
-        float recoil = damage * 0.25f;
-        applyDamage(defender, damage);
-        applyDamage(attacker, recoil);
-        queueMessage(attacker.getName() + " used Struggle!");
-        finishMoveExecution(false);
+        isAnimating = true;
+        setBattleInterfaceEnabled(false);
+
+        SequenceAction struggleSequence = Actions.sequence();
+
+        // Announce struggle
+        struggleSequence.addAction(Actions.run(() -> {
+            AudioManager.getInstance().playSound(AudioManager.SoundEffect.MOVE_SELECT);
+            queueMessage(attacker.getName() + " used Struggle!", 1.8f);
+        }));
+        struggleSequence.addAction(Actions.delay(2.0f));
+
+        // Apply damage and recoil
+        struggleSequence.addAction(Actions.run(() -> {
+            float damage = attacker.getStats().getAttack() * 0.5f;
+            float recoil = damage * 0.25f;
+            applyDamage(defender, damage);
+            applyDamage(attacker, recoil);
+            queueMessage(attacker.getName() + " is hurt by recoil!", 1.2f);
+        }));
+        struggleSequence.addAction(Actions.delay(1.5f));
+
+        // Check faint and finish
+        struggleSequence.addAction(Actions.run(() -> {
+            if (!checkFaintConditions()) {
+                finishMoveExecution(attacker == playerPokemon);
+            }
+        }));
+
+        addAction(struggleSequence);
     }
     private String formatItemName(String itemId) {
         String[] words = itemId.replace("_", " ").split(" ");
@@ -1740,26 +1802,33 @@ public class BattleTable extends Table {
         SequenceAction moveSequence = Actions.sequence();
         final float[] damageHolder = {0f};
 
+        // Step 1: Display move name
         moveSequence.addAction(Actions.run(() -> {
             AudioManager.getInstance().playSound(AudioManager.SoundEffect.MOVE_SELECT);
-            queueMessage(attacker.getName() + " used " + move.getName() + "!");
+            queueMessage(attacker.getName() + " used " + move.getName() + "!", 1.8f);
         }));
-        moveSequence.addAction(Actions.delay(1.2f));
+        moveSequence.addAction(Actions.delay(2.0f)); // Wait for move announcement
 
+        // Step 2: Check accuracy and apply damage/effects
         moveSequence.addAction(Actions.run(() -> {
             if (move.getAccuracy() > 0 && MathUtils.random() * 100 >= move.getAccuracy()) {
-                queueMessage("The attack missed!", 1.5f, () -> finishMoveExecution(isPlayerMove));
-                moveSequence.getActions().clear();
+                queueMessage("The attack missed!", 1.5f);
                 return;
             }
 
-            // BEGIN: NECESSARY CHANGE
+            // Apply damage if damaging move
             if (move.getPower() > 0) {
-                // This is a damaging move
                 float effectiveness = calculateTypeEffectiveness(move, defender);
+
+                // Debug logging for type effectiveness
+                GameLogger.info(String.format("Type Effectiveness: %s (%s) vs %s (%s/%s) = %.2fx",
+                    move.getName(), move.getType(),
+                    defender.getName(), defender.getPrimaryType(), defender.getSecondaryType(),
+                    effectiveness));
+
                 String effectivenessMessage = getEffectivenessMessage(effectiveness);
                 if (!effectivenessMessage.isEmpty()) {
-                    queueMessage(effectivenessMessage, 1.0f);
+                    queueMessage(effectivenessMessage, 1.2f);
                 }
                 playEffectivenessSound(effectiveness);
 
@@ -1770,10 +1839,10 @@ public class BattleTable extends Table {
             }
             // Apply secondary effects for both damaging and status moves
             applyMoveEffect(move.getEffect(), attacker, defender, damageHolder[0]);
-            // END: NECESSARY CHANGE
         }));
-        moveSequence.addAction(Actions.delay(1.2f));
+        moveSequence.addAction(Actions.delay(1.5f)); // Wait for damage/effects to display
 
+        // Step 3: Check for fainting
         moveSequence.addAction(Actions.run(() -> {
             if (checkFaintConditions()) {
                 moveSequence.getActions().clear();
@@ -1781,8 +1850,9 @@ public class BattleTable extends Table {
             }
         }));
 
-        moveSequence.addAction(Actions.delay(0.8f));
+        moveSequence.addAction(Actions.delay(0.3f)); // Brief pause before turn end
 
+        // Step 4: Finish move and transition state
         moveSequence.addAction(Actions.run(() -> finishMoveExecution(isPlayerMove)));
 
         addAction(moveSequence);
@@ -1960,6 +2030,15 @@ public class BattleTable extends Table {
             }
         }
 
+        // FIXED: Delay state transition to allow messages to display
+        // This ensures all battle messages are shown properly before moving to the next state
+        addAction(Actions.sequence(
+            Actions.delay(0.5f), // Give time for queued messages to process
+            Actions.run(() -> performStateTransitionAfterMove(isPlayerMove))
+        ));
+    }
+
+    private void performStateTransitionAfterMove(boolean isPlayerMove) {
         // If it was the player's move, it's now the enemy's turn.
         if (isPlayerMove) {
             transitionToState(BattleState.ENEMY_TURN);
@@ -2324,10 +2403,25 @@ public class BattleTable extends Table {
 
         java.util.List<Move> moves = playerPokemon.getMoves();
         if (moves == null || moves.isEmpty()) {
-            queueMessage(playerPokemon.getName() + " has no moves!");
-            actionMenu.setVisible(true);
-            actionMenu.setTouchable(Touchable.enabled);
-            return;
+            // Safety net: Try to restore moves from the template if missing
+            GameLogger.error("Pokemon " + playerPokemon.getName() + " has no moves! Attempting to restore...");
+            PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(playerPokemon.getName());
+            if (template != null && template.moves != null && !template.moves.isEmpty()) {
+                java.util.List<Move> defaultMoves = PokemonDatabase.getMovesForLevel(template.moves, playerPokemon.getLevel());
+                if (defaultMoves != null && !defaultMoves.isEmpty()) {
+                    playerPokemon.setMoves(defaultMoves);
+                    GameLogger.info("Successfully restored " + defaultMoves.size() + " moves for " + playerPokemon.getName());
+                    moves = defaultMoves; // Update the local reference
+                }
+            }
+
+            // If still no moves after restoration attempt
+            if (moves == null || moves.isEmpty()) {
+                queueMessage(playerPokemon.getName() + " has no moves!");
+                actionMenu.setVisible(true);
+                actionMenu.setTouchable(Touchable.enabled);
+                return;
+            }
         }
 
         Label titleLabel = new Label("Select a move:", skin);

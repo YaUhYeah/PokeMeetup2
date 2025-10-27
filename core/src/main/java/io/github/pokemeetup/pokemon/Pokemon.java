@@ -34,7 +34,6 @@ public class Pokemon {
     private int confusedTurns = 0;
     private String nature;
     private Map<String, Integer> statStages; // "attack", "defense", "spAtk", "spDef", "speed", "accuracy", "evasion"
-    private int paralysisTurns = 0; // Example, may not be needed depending on paralysis implementation
     private int confusionTurns = 0;
     private boolean confused = false; // Separate flag for confusion state
     private boolean isShiny;
@@ -567,6 +566,7 @@ public class Pokemon {
             move.setPp(move.getMaxPp());
         }
     }
+
     private transient boolean evolutionTriggered = false;
 
     public boolean addExperience(int exp) {
@@ -700,7 +700,18 @@ public class Pokemon {
     }
 
     private void learnNewMovesAtLevel(int level) {
-        List<PokemonDatabase.MoveEntry> moveEntries = PokemonDatabase.getTemplate(name).moves;
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template == null) {
+            GameLogger.error("Cannot learn moves: No template found for Pokemon: " + name);
+            return;
+        }
+
+        if (template.moves == null || template.moves.isEmpty()) {
+            GameLogger.info("No moves defined in template for Pokemon: " + name);
+            return;
+        }
+
+        List<PokemonDatabase.MoveEntry> moveEntries = template.moves;
         for (PokemonDatabase.MoveEntry entry : moveEntries) {
             if (entry.level == level) {
                 Move newMove = PokemonDatabase.getMoveByName(entry.name);
@@ -931,6 +942,11 @@ public class Pokemon {
     int calculateStat(int base, int iv, int ev) {
         float natureModifier = 1.0f + (new Random().nextFloat() * 0.2f - 0.1f);
         return (int) (((2 * base + iv + (float) ev / 4) * level / 100f + 5) * natureModifier);
+    }
+
+    public void setCurrentExperience(int experience) {
+          this.currentExperience = Math.max(0, experience);
+
     }
 
     public void calculateStats() {

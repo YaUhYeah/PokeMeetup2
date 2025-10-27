@@ -12,7 +12,6 @@ import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Timer;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.pokemeetup.CreatureCaptureGame;
-import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.utils.GameLogger;
 
@@ -36,7 +35,6 @@ public class DisconnectionScreen implements Screen {
     private float countdownTime = RETRY_INTERVAL;
     private boolean isRetrying = false;
     private boolean disposed = false;
-    private String disconnectReason;
 
     private final Timer.Task countdownTask = new Timer.Task() {
         @Override
@@ -53,7 +51,6 @@ public class DisconnectionScreen implements Screen {
 
     public DisconnectionScreen(CreatureCaptureGame game, String reason, DisconnectionManager manager) {
         this.game = game;
-        this.disconnectReason = reason;
         this.disconnectionManager = manager;
         this.stage = new Stage(new ScreenViewport());
         this.skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
@@ -229,7 +226,7 @@ public class DisconnectionScreen implements Screen {
                         disconnectionManager.onReconnectionSuccess();
                     }
                 }
-            }, 1); // Wait 1 second before returning to game
+            }, 1);
         });
     }
 

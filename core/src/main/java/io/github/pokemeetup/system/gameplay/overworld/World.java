@@ -97,7 +97,8 @@ public class World {
     private long worldSeed;
     private WorldObject.WorldObjectManager objectManager;
     private BiomeTransitionResult currentBiomeTransition;
-    private final Map<Vector2, Float> lightLevelMap = new HashMap<>();
+    // Use String keys instead of Vector2 for 100% reliable HashMap lookups
+    private final Map<String, Float> lightLevelMap = new HashMap<>();
     private boolean isDisposed = false;
     private final WaterEffectsRenderer waterEffects;
     private final ItemEntityManager itemEntityManager;
@@ -379,7 +380,14 @@ public class World {
     }
 
     public Float getLightLevelAtTile(Vector2 tilePos) {
-        return lightLevelMap.get(tilePos);
+        // Use string key for 100% reliable HashMap lookups
+        String key = createTilePosKey((int)tilePos.x, (int)tilePos.y);
+        return lightLevelMap.get(key);
+    }
+
+    // Helper method to create consistent tile position keys for the light map
+    private String createTilePosKey(int x, int y) {
+        return x + "," + y;
     }
 
     public Color getCurrentWorldColor() {
@@ -1845,9 +1853,8 @@ public class World {
     }
 
     /**
-     * Recomputes the per-tile light map. If forceAmbientRefresh is true,
-     * we bypass the "recently updated" early exit so visible chunks follow
-     * the ambient lerp seamlessly.
+     * Recomputes the per-tile light map using the GLOBAL lightLevelMap for seamless cross-chunk lighting.
+     * If forceAmbientRefresh is true, we bypass the "recently updated" early exit.
      */
     public void updateChunkLightMap(Chunk chunk, boolean forceAmbientRefresh) {
         if (chunk == null) return;
@@ -1855,7 +1862,7 @@ public class World {
         // Short-circuit if recently updated and nothing is forcing a refresh
         if (!forceAmbientRefresh
             && !chunk.isLightMapDirty()
-            && System.currentTimeMillis() - chunk.getLastLightUpdate() < 250) { // was 5000
+            && System.currentTimeMillis() - chunk.getLastLightUpdate() < 250) {
             return;
         }
 
@@ -1866,58 +1873,26 @@ public class World {
         }
 
         Color baseColor = getCurrentWorldColor();
-        boolean hasLightSources = false;
+        int chunkWorldX = (int)(chunk.getChunkX() * Chunk.CHUNK_SIZE);
+        int chunkWorldY = (int)(chunk.getChunkY() * Chunk.CHUNK_SIZE);
 
-        // Quick check for local light sources
-        for (PlaceableBlock block : chunk.getBlocks().values()) {
-            if ("furnace".equalsIgnoreCase(block.getId())) {
-                hasLightSources = true;
-                break;
-            }
-        }
+        // NEW: Use the global lightLevelMap for seamless cross-chunk lighting
+        for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
+            for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
+                if (lightMap[x][y] == null) lightMap[x][y] = new Color();
 
-        float hour = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
-        boolean isNight = DayNightCycle.getTimePeriod(hour) == DayNightCycle.TimePeriod.NIGHT;
+                // Start with ambient color
+                lightMap[x][y].set(baseColor);
 
-        // Fast path: no local lights OR not night → uniform ambient per tile
-        if (!hasLightSources || !isNight) {
-            for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
-                for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
-                    if (lightMap[x][y] == null) lightMap[x][y] = new Color();
-                    lightMap[x][y].set(baseColor);
-                }
-            }
-        } else {
-            // Start with ambient
-            for (int x = 0; x < Chunk.CHUNK_SIZE; x++) {
-                for (int y = 0; y < Chunk.CHUNK_SIZE; y++) {
-                    if (lightMap[x][y] == null) lightMap[x][y] = new Color();
-                    lightMap[x][y].set(baseColor);
-                }
-            }
-            // Blend in local warm lights
-            for (PlaceableBlock block : chunk.getBlocks().values()) {
-                if (!"furnace".equalsIgnoreCase(block.getId())) continue;
+                // Check global light level at this world tile position
+                int worldX = chunkWorldX + x;
+                int worldY = chunkWorldY + y;
+                Float lightLevel = getLightLevelAtTile(new Vector2(worldX, worldY));
 
-                Vector2 pos = block.getPosition();
-                int centerX = Math.floorMod((int) pos.x, Chunk.CHUNK_SIZE);
-                int centerY = Math.floorMod((int) pos.y, Chunk.CHUNK_SIZE);
-                int radius = 7;
-                Color torchColor = new Color(1f, 0.9f, 0.7f, 1f);
-
-                for (int dx = -radius; dx <= radius; dx++) {
-                    for (int dy = -radius; dy <= radius; dy++) {
-                        int lx = centerX + dx;
-                        int ly = centerY + dy;
-                        if (lx < 0 || lx >= Chunk.CHUNK_SIZE || ly < 0 || ly >= Chunk.CHUNK_SIZE) continue;
-
-                        float dist = (float) Math.sqrt(dx * dx + dy * dy);
-                        if (dist > radius) continue;
-
-                        float intensity = 1.0f - (dist / radius);
-                        // lerp ambient towards warm light
-                        lightMap[lx][ly].lerp(torchColor, intensity * 0.8f);
-                    }
+                if (lightLevel != null && lightLevel > 0) {
+                    // Apply warm light color based on light level
+                    Color warmLight = new Color(1f, 0.9f, 0.7f, 1f);
+                    lightMap[x][y].lerp(warmLight, lightLevel * 0.8f);
                 }
             }
         }
@@ -2178,39 +2153,39 @@ public class World {
         float hour = DayNightCycle.getHourOfDay(worldData.getWorldTimeInMinutes());
         if (DayNightCycle.getTimePeriod(hour) != DayNightCycle.TimePeriod.NIGHT) return;
 
-        // Get the camera's current view to determine which chunks are visible
-        OrthographicCamera camera = GameContext.get().getGameScreen().getCamera();
-        Rectangle viewBounds = new Rectangle(
-            camera.position.x - camera.viewportWidth * camera.zoom / 2,
-            camera.position.y - camera.viewportHeight * camera.zoom / 2,
-            camera.viewportWidth * camera.zoom,
-            camera.viewportHeight * camera.zoom
-        );
-        Rectangle expandedBounds = getExpandedViewBounds(viewBounds);
+        int lightRadius = 7; // Furnace light radius
 
-        // Iterate ONLY through the currently loaded chunks
+        // Process ALL loaded chunks without any visibility restriction
+        // This ensures seamless lighting across chunk boundaries
         for (Map.Entry<Vector2, Chunk> entry : chunks.entrySet()) {
-            Vector2 chunkPos = entry.getKey();
-
-            // --- THE CORE OPTIMIZATION ---
-            // If the chunk is not visible on screen, skip its lighting calculation entirely.
-            if (!isChunkVisible(chunkPos, expandedBounds)) {
-                continue;
-            }
-
             Chunk chunk = entry.getValue();
+
             for (PlaceableBlock block : chunk.getBlocks().values()) {
                 if ("furnace".equalsIgnoreCase(block.getId())) { // Check for furnace ID
                     Vector2 pos = block.getPosition();
-                    int radius = 7;
+                    // Ensure we use integer tile coordinates
+                    int furnaceTileX = (int)pos.x;
+                    int furnaceTileY = (int)pos.y;
                     float maxLevel = 1.0f;
-                    for (int dx = -radius; dx <= radius; dx++) {
-                        for (int dy = -radius; dy <= radius; dy++) {
-                            Vector2 tilePos = new Vector2(pos.x + dx, pos.y + dy);
-                            float dist = pos.dst(tilePos);
-                            if (dist <= radius) {
-                                float level = maxLevel * (1 - (dist / radius));
-                                lightLevelMap.merge(tilePos, level, Math::max);
+
+                    // Spread light in a radius around the furnace
+                    for (int dx = -lightRadius; dx <= lightRadius; dx++) {
+                        for (int dy = -lightRadius; dy <= lightRadius; dy++) {
+                            int targetX = furnaceTileX + dx;
+                            int targetY = furnaceTileY + dy;
+
+                            // Calculate distance from furnace center
+                            float dist = (float)Math.sqrt(dx * dx + dy * dy);
+
+                            if (dist <= lightRadius) {
+                                // Calculate light falloff (1.0 at center, 0.0 at edge)
+                                float level = maxLevel * (1 - (dist / lightRadius));
+
+                                // Use string key for reliable HashMap storage
+                                String tileKey = createTilePosKey(targetX, targetY);
+
+                                // Merge with existing light (take maximum)
+                                lightLevelMap.merge(tileKey, level, Math::max);
                             }
                         }
                     }
@@ -2577,7 +2552,21 @@ public class World {
             float destX = obj.getPixelX();
             float destY = obj.getPixelY(); // Draw at the bottom of the tile.
 
+            // Apply lighting to tall grass
+            Color originalColor = batch.getColor().cpy();
+            Color baseColor = getCurrentWorldColor().cpy();
+
+            Vector2 tilePos = new Vector2(obj.getTileX(), obj.getTileY());
+            Float lightLevel = getLightLevelAtTile(tilePos);
+
+            if (lightLevel != null && lightLevel > 0) {
+                Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                baseColor.lerp(lightColor, lightLevel * 0.7f);
+            }
+
+            batch.setColor(baseColor);
             batch.draw(bottomHalf, destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f);
+            batch.setColor(originalColor);
         }
     }
 
@@ -2595,7 +2584,21 @@ public class World {
             float destX = obj.getPixelX();
             float destY = obj.getPixelY() + World.TILE_SIZE / 2f; // Draw on the top half of the tile.
 
+            // Apply lighting to tall grass
+            Color originalColor = batch.getColor().cpy();
+            Color baseColor = getCurrentWorldColor().cpy();
+
+            Vector2 tilePos = new Vector2(obj.getTileX(), obj.getTileY());
+            Float lightLevel = getLightLevelAtTile(tilePos);
+
+            if (lightLevel != null && lightLevel > 0) {
+                Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+                baseColor.lerp(lightColor, lightLevel * 0.7f);
+            }
+
+            batch.setColor(baseColor);
             batch.draw(topHalf, destX, destY, World.TILE_SIZE, World.TILE_SIZE / 2f);
+            batch.setColor(originalColor);
         }
     }
 
@@ -2782,7 +2785,21 @@ public class World {
         float destX = grass.getPixelX();
         float destY = grass.getPixelY() + TILE_SIZE / 2f; // Draw on the top half of the tile.
 
+        // Apply lighting to tall grass
+        Color originalColor = batch.getColor().cpy();
+        Color baseColor = getCurrentWorldColor().cpy();
+
+        Vector2 tilePos = new Vector2(grass.getTileX(), grass.getTileY());
+        Float lightLevel = getLightLevelAtTile(tilePos);
+
+        if (lightLevel != null && lightLevel > 0) {
+            Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+            baseColor.lerp(lightColor, lightLevel * 0.7f);
+        }
+
+        batch.setColor(baseColor);
         batch.draw(topHalf, destX, destY, TILE_SIZE, TILE_SIZE / 2f);
+        batch.setColor(originalColor);
     }
 
     /**
@@ -2802,7 +2819,21 @@ public class World {
         float destX = grass.getPixelX();
         float destY = grass.getPixelY(); // Draw at the bottom of the tile.
 
+        // Apply lighting to tall grass
+        Color originalColor = batch.getColor().cpy();
+        Color baseColor = getCurrentWorldColor().cpy();
+
+        Vector2 tilePos = new Vector2(grass.getTileX(), grass.getTileY());
+        Float lightLevel = getLightLevelAtTile(tilePos);
+
+        if (lightLevel != null && lightLevel > 0) {
+            Color lightColor = new Color(1f, 0.8f, 0.6f, 1f);
+            baseColor.lerp(lightColor, lightLevel * 0.7f);
+        }
+
+        batch.setColor(baseColor);
         batch.draw(bottomHalf, destX, destY, TILE_SIZE, TILE_SIZE / 2f);
+        batch.setColor(originalColor);
     }
 
 
