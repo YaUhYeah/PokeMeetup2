@@ -108,7 +108,13 @@ public class CreatureCaptureGame extends Game implements GameStateHandler {
             GameContext.get().setCraftingScreen(null);
             GameContext.get().setChatSystem(null);
         }
-        setScreen(new WorldSelectionScreen(this));
+
+        // CRITICAL FIX: Use Android-specific world selection screen on Android devices
+        if (Gdx.app.getType() == Application.ApplicationType.Android) {
+            setScreen(new AndroidWorldSelectionScreen(this));
+        } else {
+            setScreen(new WorldSelectionScreen(this));
+        }
     }
 
 

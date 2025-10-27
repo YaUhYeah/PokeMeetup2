@@ -745,6 +745,13 @@ public class InputHandler extends InputAdapter {
 
         String dropItemId = obj.getType().dropItemId;
         int dropCount = obj.getType().dropItemCount;
+
+        // ENHANCEMENT: 4x wooden planks when using an axe on trees
+        if (hasAxe && dropItemId != null && dropItemId.equals("wooden_planks")) {
+            dropCount *= 4;
+            GameLogger.info("Chopped tree with axe: dropping " + dropCount + " wooden planks (4x bonus)");
+        }
+
         if (dropItemId != null && dropCount > 0) {
             ItemData droppedItem = new ItemData(dropItemId, dropCount);
             world.getItemEntityManager().spawnItemEntity(droppedItem, obj.getPixelX() + (obj.getTexture().getRegionWidth() / 2f), obj.getPixelY());

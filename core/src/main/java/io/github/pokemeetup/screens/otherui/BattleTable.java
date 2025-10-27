@@ -1637,21 +1637,18 @@ public class BattleTable extends Table {
         super.draw(batch, parentAlpha);
     }
 
+    /**
+     * Enhanced AI move selection with level-based intelligence.
+     * - Lv 1-15: Beginner (mostly random with slight damage preference)
+     * - Lv 16-30: Intermediate (prefers damaging moves, basic strategy)
+     * - Lv 31-50: Advanced (uses type effectiveness, smart move variety)
+     * - Lv 51+: Expert (strategic decision-making, considers HP, status, etc.)
+     */
     private void executeEnemyMove() {
         if (isAnimating || enemyPokemon.getCurrentHp() <= 0) return;
 
-        Move selectedMove = null;
-        float highestExpectedDamage = 0f;
-
-        for (Move move : enemyPokemon.getMoves()) {
-            if (move.getPp() <= 0) continue;
-
-            float expectedDamage = computeExpectedDamage(move, enemyPokemon, playerPokemon);
-            if (expectedDamage > highestExpectedDamage) {
-                highestExpectedDamage = expectedDamage;
-                selectedMove = move;
-            }
-        }
+        int enemyLevel = enemyPokemon.getLevel();
+        Move selectedMove = selectMoveIntelligently(enemyLevel);
 
         if (selectedMove == null) {
             executeStruggle(enemyPokemon, playerPokemon);
@@ -1659,6 +1656,207 @@ public class BattleTable extends Table {
         }
 
         executeMove(selectedMove, enemyPokemon, playerPokemon, false);
+    }
+
+    /**
+     * Intelligent move selection based on Pokemon level and battle conditions.
+     */
+    private Move selectMoveIntelligently(int level) {
+        java.util.List<Move> availableMoves = new java.util.ArrayList<>();
+        for (Move move : enemyPokemon.getMoves()) {
+            if (move.getPp() > 0) {
+                availableMoves.add(move);
+            }
+        }
+
+        if (availableMoves.isEmpty()) return null;
+        if (availableMoves.size() == 1) return availableMoves.get(0);
+
+        // Determine AI intelligence tier
+        if (level <= 15) {
+            return selectMoveBeginnerAI(availableMoves);
+        } else if (level <= 30) {
+            return selectMoveIntermediateAI(availableMoves);
+        } else if (level <= 50) {
+            return selectMoveAdvancedAI(availableMoves);
+        } else {
+            return selectMoveExpertAI(availableMoves);
+        }
+    }
+
+    /**
+     * Beginner AI (Lv 1-15): Mostly random with slight damage preference.
+     */
+    private Move selectMoveBeginnerAI(java.util.List<Move> moves) {
+        // 70% chance to pick randomly, 30% chance to pick highest damage
+        if (MathUtils.random() < 0.7f) {
+            return moves.get(MathUtils.random(moves.size() - 1));
+        }
+
+        Move bestMove = moves.get(0);
+        float highestDamage = computeExpectedDamage(bestMove, enemyPokemon, playerPokemon);
+
+        for (Move move : moves) {
+            float damage = computeExpectedDamage(move, enemyPokemon, playerPokemon);
+            if (damage > highestDamage) {
+                highestDamage = damage;
+                bestMove = move;
+            }
+        }
+
+        return bestMove;
+    }
+
+    /**
+     * Intermediate AI (Lv 16-30): Prefers damaging moves, basic strategy.
+     */
+    private Move selectMoveIntermediateAI(java.util.List<Move> moves) {
+        // Filter damaging moves
+        java.util.List<Move> damagingMoves = new java.util.ArrayList<>();
+        for (Move move : moves) {
+            if (move.getPower() > 0) {
+                damagingMoves.add(move);
+            }
+        }
+
+        // If no damaging moves, use any available move
+        if (damagingMoves.isEmpty()) {
+            return moves.get(MathUtils.random(moves.size() - 1));
+        }
+
+        // Pick from top 2-3 damaging moves for variety
+        java.util.List<Move> topMoves = new java.util.ArrayList<>(damagingMoves);
+        topMoves.sort((m1, m2) -> Float.compare(
+            computeExpectedDamage(m2, enemyPokemon, playerPokemon),
+            computeExpectedDamage(m1, enemyPokemon, playerPokemon)
+        ));
+
+        int selectionPool = Math.min(3, topMoves.size());
+        return topMoves.get(MathUtils.random(selectionPool - 1));
+    }
+
+    /**
+     * Advanced AI (Lv 31-50): Uses type effectiveness and smart move variety.
+     */
+    private Move selectMoveAdvancedAI(java.util.List<Move> moves) {
+        // Score each move based on multiple factors
+        Move bestMove = moves.get(0);
+        float bestScore = scoreMoveAdvanced(bestMove);
+
+        for (Move move : moves) {
+            float score = scoreMoveAdvanced(move);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+
+        // Add variety: 20% chance to pick second-best move
+        if (MathUtils.random() < 0.2f && moves.size() > 1) {
+            java.util.List<Move> sortedMoves = new java.util.ArrayList<>(moves);
+            sortedMoves.sort((m1, m2) -> Float.compare(scoreMoveAdvanced(m2), scoreMoveAdvanced(m1)));
+            return sortedMoves.get(Math.min(1, sortedMoves.size() - 1));
+        }
+
+        return bestMove;
+    }
+
+    /**
+     * Scores a move for advanced AI (considers type effectiveness, power, accuracy).
+     */
+    private float scoreMoveAdvanced(Move move) {
+        if (move.getPower() == 0) return 10f; // Low priority for status moves
+
+        float expectedDamage = computeExpectedDamage(move, enemyPokemon, playerPokemon);
+        float typeEffectiveness = calculateTypeEffectiveness(move, playerPokemon);
+        float accuracy = move.getAccuracy() / 100f;
+
+        // Bonus for super effective moves
+        float effectivenessBonus = (typeEffectiveness >= 2.0f) ? 1.5f : 1.0f;
+
+        return expectedDamage * accuracy * effectivenessBonus;
+    }
+
+    /**
+     * Expert AI (Lv 51+): Strategic decision-making with HP management.
+     */
+    private Move selectMoveExpertAI(java.util.List<Move> moves) {
+        float enemyHpRatio = (float) enemyPokemon.getCurrentHp() / enemyPokemon.getStats().getHp();
+        float playerHpRatio = (float) playerPokemon.getCurrentHp() / playerPokemon.getStats().getHp();
+
+        // If enemy HP is low, prioritize finishing moves
+        if (playerHpRatio < 0.3f) {
+            Move finisher = findBestFinishingMove(moves);
+            if (finisher != null) return finisher;
+        }
+
+        // If enemy HP is critically low and has healing move, consider using it
+        if (enemyHpRatio < 0.25f) {
+            for (Move move : moves) {
+                if (move.getName().toLowerCase().contains("recover") ||
+                    move.getName().toLowerCase().contains("heal") ||
+                    move.getName().toLowerCase().contains("synthesis")) {
+                    return move;
+                }
+            }
+        }
+
+        // Check if status move would be beneficial early in battle
+        if (enemyHpRatio > 0.7f && playerPokemon.getStatus() == Pokemon.Status.NONE) {
+            Move statusMove = findBestStatusMove(moves);
+            if (statusMove != null && MathUtils.random() < 0.3f) {
+                return statusMove;
+            }
+        }
+
+        // Otherwise, use advanced scoring with strategic variety
+        return selectMoveAdvancedAI(moves);
+    }
+
+    /**
+     * Finds the best move to finish off a low-HP opponent.
+     */
+    private Move findBestFinishingMove(java.util.List<Move> moves) {
+        Move bestMove = null;
+        float highestDamage = 0f;
+
+        for (Move move : moves) {
+            if (move.getPower() == 0) continue;
+
+            float expectedDamage = computeExpectedDamage(move, enemyPokemon, playerPokemon);
+            float typeEffectiveness = calculateTypeEffectiveness(move, playerPokemon);
+
+            // Prioritize super effective moves for finishing
+            if (typeEffectiveness >= 2.0f) {
+                expectedDamage *= 1.5f;
+            }
+
+            if (expectedDamage > highestDamage && expectedDamage >= playerPokemon.getCurrentHp()) {
+                highestDamage = expectedDamage;
+                bestMove = move;
+            }
+        }
+
+        return bestMove;
+    }
+
+    /**
+     * Finds a good status move to use strategically.
+     */
+    private Move findBestStatusMove(java.util.List<Move> moves) {
+        for (Move move : moves) {
+            if (move.getEffect() != null && move.getEffect().getStatusEffect() != null) {
+                Pokemon.Status status = move.getEffect().getStatusEffect();
+                // Prioritize strong status effects
+                if (status == Pokemon.Status.PARALYZED ||
+                    status == Pokemon.Status.BURNED ||
+                    status == Pokemon.Status.POISONED ||
+                    status == Pokemon.Status.ASLEEP) {
+                    return move;
+                }
+            }
+        }
+        return null;
     }
 
     private void executeStruggle(Pokemon attacker, Pokemon defender) {
@@ -1941,14 +2139,19 @@ public class BattleTable extends Table {
 
                 // Attempt to modify the stat and check if it was successful
                 if (effectTarget.modifyStatStage(statName, change)) {
-                    // It worked, so show the appropriate message.
-                    String message = effectTarget.getName() + "'s " + formatStatName(statName) + (change > 0 ? " rose!" : " fell!");
-                    queueMessage(message);
-                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.CURSOR_MOVE); // A fitting sound for stat changes
+                    // It worked, so show the appropriate message with intensity
+                    String intensity = getStatChangeIntensity(Math.abs(change));
+                    String direction = change > 0 ? "rose" : "fell";
+                    String message = effectTarget.getName() + "'s " + formatStatName(statName) + " " + direction + intensity + "!";
+                    queueMessage(message, 1.5f);
+                    AudioManager.getInstance().playSound(AudioManager.SoundEffect.CURSOR_MOVE);
+
+                    GameLogger.info(String.format("%s: %s %s by %d stage(s) [%s]",
+                        effectTarget.getName(), formatStatName(statName), direction, Math.abs(change), intensity.trim()));
                 } else {
                     // It failed, so the stat must be maxed out.
                     String message = effectTarget.getName() + "'s " + formatStatName(statName) + " won't go any " + (change > 0 ? "higher!" : "lower!");
-                    queueMessage(message);
+                    queueMessage(message, 1.2f);
                 }
             }
         }
@@ -1957,14 +2160,47 @@ public class BattleTable extends Table {
         if (effect.getEffectType() != null && effect.getEffectType().equalsIgnoreCase("DRAIN")) {
             int healAmount = Math.max(1, (int) (damageDealt * 0.5f)); // Heal 50% of damage, at least 1 HP
             float oldHp = attacker.getCurrentHp();
-            attacker.restoreHealth(healAmount); // Use restoreHealth to avoid side effects
-            float newHp = attacker.getCurrentHp();
+            int maxHp = attacker.getStats().getHp();
 
-            if (newHp > oldHp) {
-                queueMessage(attacker.getName() + "'s health was restored!");
+            // Ensure healing doesn't exceed max HP
+            int actualHealAmount = Math.min(healAmount, maxHp - (int)oldHp);
+
+            if (actualHealAmount > 0) {
+                attacker.restoreHealth(actualHealAmount);
+                float newHp = attacker.getCurrentHp();
+
+                // Enhanced feedback message with exact HP values
+                String drainMessage = String.format("%s drained %d HP! (%d/%d HP)",
+                    attacker.getName(),
+                    actualHealAmount,
+                    (int)newHp,
+                    maxHp);
+                queueMessage(drainMessage, 1.5f);
+
                 ProgressBar attackerBar = (attacker == playerPokemon) ? playerHPBar : enemyHPBar;
-                animateHPChange(attackerBar, oldHp, newHp, attacker.getStats().getHp());
+                animateHPChange(attackerBar, oldHp, newHp, maxHp);
+
+                GameLogger.info(drainMessage);
+            } else {
+                queueMessage(attacker.getName() + "'s HP is already full!", 1.2f);
             }
+        }
+    }
+
+    /**
+     * Returns the intensity descriptor for stat changes based on the number of stages.
+     * @param stages The absolute number of stages changed (1, 2, 3+)
+     * @return The intensity string with leading space (e.g., "", " sharply", " drastically")
+     */
+    private String getStatChangeIntensity(int stages) {
+        switch (stages) {
+            case 1:
+                return ""; // "rose!" or "fell!"
+            case 2:
+                return " sharply"; // "rose sharply!" or "fell harshly!"
+            case 3:
+            default:
+                return " drastically"; // "rose drastically!" or "fell severely!"
         }
     }
 

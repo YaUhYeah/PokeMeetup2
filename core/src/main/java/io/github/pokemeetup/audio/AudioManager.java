@@ -738,6 +738,7 @@ public class AudioManager {
     }
 
     public enum SoundEffect {
+        RUN_AWAY("sounds/RUN_AWAY.mp3"),
         POKEMON_SENDOUT("sounds/SENDOUT.ogg"),
         POKEMON_RETURN("sounds/RETREAT.ogg"),
         ITEM_PICKUP("sounds/pickup.ogg"),

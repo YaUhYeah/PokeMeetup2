@@ -1298,7 +1298,13 @@
       "pp": 40,
       "isSpecial": true,
       "description": "Raises user's Defense by one stage.",
-      "effects": {},
+      "effects": {
+        "chance": 1.0,
+        "effectType": "SELF",
+        "statModifiers": {
+          "defense": 1
+        }
+      },
       "maxPp": 40
     },
     "Barrier": {

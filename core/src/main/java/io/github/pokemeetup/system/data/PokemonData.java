@@ -78,6 +78,11 @@ public class PokemonData {
         data.setUuid(pokemon.getUuid());
         data.setPrimaryType(pokemon.getPrimaryType());
         data.setSecondaryType(pokemon.getSecondaryType());
+
+        // CRITICAL FIX: Set stats BEFORE setting HP so clamping works correctly
+        data.setStats(new PokemonData.Stats(pokemon.getStats()));
+
+        // Now set HP - it will be properly clamped to the correct max HP
         data.setCurrentHp(pokemon.getCurrentHp());
 
         // Log the saved HP for debugging
@@ -98,7 +103,6 @@ public class PokemonData {
                 .collect(Collectors.toList());
             data.setMoves(moveDataList);
         }
-        data.setStats(new PokemonData.Stats(pokemon.getStats()));
         return data;
     }
 
@@ -320,19 +324,57 @@ public class PokemonData {
         Pokemon pokemon = new Pokemon(name, level, baseHp, baseAttack, baseDefense, baseSpAtk, baseSpDef, baseSpeed);
         pokemon.setUuid(uuid);
         pokemon.setNature(nature);
-        pokemon.setPrimaryType(primaryType);
-        pokemon.setSecondaryType(secondaryType);
+
+        // CRITICAL FIX: Validate and correct types from template if they're wrong
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null) {
+            // If saved types don't match template, use template types (fixes old corrupted saves)
+            if (primaryType != template.primaryType || secondaryType != template.secondaryType) {
+                GameLogger.error("! Pokemon " + name + " has incorrect types in save file!");
+                GameLogger.error("  Saved: " + primaryType + "/" + secondaryType);
+                GameLogger.error("  Template: " + template.primaryType + "/" + template.secondaryType);
+                GameLogger.error("  Correcting to template types...");
+                pokemon.setPrimaryType(template.primaryType);
+                pokemon.setSecondaryType(template.secondaryType);
+            } else {
+                // Types are correct, use saved types
+                pokemon.setPrimaryType(primaryType);
+                pokemon.setSecondaryType(secondaryType);
+            }
+        } else {
+            // No template found, use saved types as fallback
+            pokemon.setPrimaryType(primaryType);
+            pokemon.setSecondaryType(secondaryType);
+        }
+
         pokemon.calculateStats();
 
-        // FIXED: Restore saved HP instead of setting to maximum
-        if (this.currentHp > 0) {
-            // Restore the saved HP value
+        // ENHANCED FIX: Restore saved HP with validation (PRESERVE FAINTED STATE)
+        int maxHp = pokemon.getStats().getHp();
+
+        if (this.currentHp >= 0 && this.currentHp <= maxHp) {
+            // Restore the saved HP value (including 0 for fainted Pokemon)
             pokemon.setCurrentHp(this.currentHp);
-            GameLogger.info("Restored Pokemon " + name + " with HP: " + this.currentHp + "/" + pokemon.getStats().getHp());
-        } else {
-            // If no saved HP (old save data), start with full HP
-            pokemon.setCurrentHp(pokemon.getStats().getHp());
-            GameLogger.info("No saved HP for " + name + ", setting to full HP");
+            if (this.currentHp == 0) {
+                GameLogger.info("✓ Restored fainted Pokemon " + name + " (0/" + maxHp + " HP)");
+            } else {
+                GameLogger.info("✓ Restored Pokemon " + name + " with HP: " + this.currentHp + "/" + maxHp);
+            }
+        } else if (this.currentHp > maxHp) {
+            // HP is over max (shouldn't happen, but safeguard)
+            pokemon.setCurrentHp(maxHp);
+            GameLogger.info("! Pokemon " + name + " had HP > max (" + this.currentHp + ">" + maxHp + "), clamped to max");
+        } else if (this.currentHp < 0) {
+            // Negative HP (corrupted data), reset to full HP
+            pokemon.setCurrentHp(maxHp);
+            GameLogger.error("! Pokemon " + name + " had negative HP (" + this.currentHp + "), reset to full HP");
+        }
+
+        // Double-check HP is set correctly after restoration
+        if (pokemon.getCurrentHp() != this.currentHp && this.currentHp >= 0 && this.currentHp <= maxHp) {
+            GameLogger.error("!!! HP RESTORATION FAILED for " + name + "! Expected: " + this.currentHp + ", Got: " + pokemon.getCurrentHp());
+            // Force set it again as a failsafe
+            pokemon.setCurrentHp(this.currentHp);
         }
 
         // FIXED: Restore experience from saved data
@@ -349,8 +391,7 @@ public class PokemonData {
         }
 
         // SAFETY: If Pokemon has no moves after restoration, give it default moves for its level
-        if (pokemon.getMoves().isEmpty()) {
-            PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (pokemon.getMoves().isEmpty()) {template = PokemonDatabase.getTemplate(name);
             if (template != null && template.moves != null && !template.moves.isEmpty()) {
                 List<Move> defaultMoves = PokemonDatabase.getMovesForLevel(template.moves, level);
                 if (defaultMoves != null && !defaultMoves.isEmpty()) {

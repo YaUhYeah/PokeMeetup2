@@ -15,6 +15,7 @@ public class FleeBehavior implements PokemonBehavior {
     private final PokemonAI ai;
     private int fleeStepsRemaining = 0;
     private String fleeDirection;
+    private boolean hasPlayedFleeSound = false; // Track if we've played the flee sound
 
     public FleeBehavior(WildPokemon pokemon, PokemonAI ai) {
         this.pokemon = pokemon;
@@ -36,7 +37,21 @@ public class FleeBehavior implements PokemonBehavior {
         Vector2 playerPos = ai.getSafePlayerPosition();
         if (playerPos == null) {
             fleeStepsRemaining = 0;
+            hasPlayedFleeSound = false;
             return;
+        }
+
+        // Play flee sound and log message when first starting to flee
+        if (!hasPlayedFleeSound) {
+            try {
+                io.github.pokemeetup.audio.AudioManager.getInstance().playSound(
+                    io.github.pokemeetup.audio.AudioManager.SoundEffect.RUN_AWAY
+                );
+                io.github.pokemeetup.utils.GameLogger.info(pokemon.getName() + " is fleeing from the player!");
+                hasPlayedFleeSound = true;
+            } catch (Exception e) {
+                // Silently fail if audio isn't available
+            }
         }
 
         fleeDirection = calculateFleeDirection(playerPos);
@@ -86,6 +101,7 @@ public class FleeBehavior implements PokemonBehavior {
 
         if (fleeStepsRemaining <= 0) {
             ai.setCooldown(getName(), 5.0f);
+            hasPlayedFleeSound = false; // Reset for next flee event
         }
     }
 

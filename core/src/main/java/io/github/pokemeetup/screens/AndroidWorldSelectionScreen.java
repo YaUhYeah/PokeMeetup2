@@ -284,7 +284,8 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         fabContainer.setFillParent(true);
         fabContainer.bottom().right().pad(MOBILE_PADDING * 2f);
 
-        // Create FAB - always visible
+        // Create FAB - always visible with tooltip label
+        Table createFabWithLabel = new Table();
         createFab = createFAB("+", new Color(0.2f, 0.4f, 0.8f, 1f), "Create World");
         createFab.addListener(new ClickListener() {
             @Override
@@ -294,8 +295,15 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
         });
 
         if (selectedWorld != null) {
-            // Delete FAB
-            deleteFab = createFAB("🗑", new Color(0.8f, 0.2f, 0.2f, 1f), "Delete");
+            // Delete FAB with label
+            Table deleteFabWithLabel = new Table();
+            deleteFab = createFAB("✕", new Color(0.8f, 0.2f, 0.2f, 1f), "Delete");
+            Label deleteLabel = new Label("Delete", skin);
+            deleteLabel.setFontScale(MOBILE_FONT_SCALE * 0.8f);
+            deleteLabel.setColor(0.8f, 0.8f, 0.8f, 1f);
+            deleteFabWithLabel.add(deleteLabel).padRight(8f);
+            deleteFabWithLabel.add(deleteFab).size(FAB_SIZE);
+
             deleteFab.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
@@ -303,8 +311,22 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                 }
             });
 
-            // Play FAB - larger and prominent
+            // Create FAB with label
+            Label createLabel = new Label("New", skin);
+            createLabel.setFontScale(MOBILE_FONT_SCALE * 0.8f);
+            createLabel.setColor(0.8f, 0.8f, 0.8f, 1f);
+            createFabWithLabel.add(createLabel).padRight(8f);
+            createFabWithLabel.add(createFab).size(FAB_SIZE);
+
+            // Play FAB - larger and prominent with label
+            Table playFabWithLabel = new Table();
             playFab = createFAB("▶", new Color(0.2f, 0.7f, 0.2f, 1f), "Play");
+            Label playLabel = new Label("Play", skin);
+            playLabel.setFontScale(MOBILE_FONT_SCALE);
+            playLabel.setColor(0.9f, 0.9f, 0.9f, 1f);
+            playFabWithLabel.add(playLabel).padRight(8f);
+            playFabWithLabel.add(playFab).size(FAB_SIZE * 1.2f);
+
             playFab.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
@@ -317,12 +339,17 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
                 }
             });
 
-            // Layout: vertical stack
-            fabContainer.add(deleteFab).size(FAB_SIZE).padBottom(MOBILE_SPACING).row();
-            fabContainer.add(createFab).size(FAB_SIZE).padBottom(MOBILE_SPACING).row();
-            fabContainer.add(playFab).size(FAB_SIZE * 1.2f); // Larger play button
+            // Layout: vertical stack with labels
+            fabContainer.add(deleteFabWithLabel).padBottom(MOBILE_SPACING).row();
+            fabContainer.add(createFabWithLabel).padBottom(MOBILE_SPACING).row();
+            fabContainer.add(playFabWithLabel); // Larger play button
         } else {
-            fabContainer.add(createFab).size(FAB_SIZE);
+            Label createLabel = new Label("New World", skin);
+            createLabel.setFontScale(MOBILE_FONT_SCALE * 0.8f);
+            createLabel.setColor(0.8f, 0.8f, 0.8f, 1f);
+            createFabWithLabel.add(createLabel).padRight(8f);
+            createFabWithLabel.add(createFab).size(FAB_SIZE);
+            fabContainer.add(createFabWithLabel);
         }
 
         stage.addActor(fabContainer);

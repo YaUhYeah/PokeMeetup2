@@ -2016,10 +2016,10 @@ public class GameServer {
         String dropItemId = object.getType().dropItemId;
         int dropCount = object.getType().dropItemCount;
         if (dropItemId != null && dropCount > 0) {
-            if (player.hasAxe()) {
-                int bonus = MathUtils.random(1, 3);
-                dropCount += bonus;
-                GameLogger.info("Player " + player.getUsername() + " gets axe bonus! +" + bonus + " " + dropItemId);
+            // MULTIPLAYER FIX: 4x wooden planks when using an axe (matches client logic)
+            if (player.hasAxe() && dropItemId.equals("wooden_planks")) {
+                dropCount *= 4;
+                GameLogger.info("Player " + player.getUsername() + " chopped tree with axe: " + dropCount + " wooden planks (4x bonus)");
             }
 
             // Create server-authoritative item entity

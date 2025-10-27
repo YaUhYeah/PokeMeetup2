@@ -22,7 +22,8 @@ import static io.github.pokemeetup.system.gameplay.PokemonAnimations.IDLE_BOUNCE
 public class WildPokemon extends Pokemon implements Positionable {
     private static final float SCALE = 2.0f;
     private static final float TILE_SIZE = 32f;
-    private static final float MOVEMENT_DURATION = 0.75f;
+    private static final float BASE_MOVEMENT_DURATION = 0.5f; // Faster base speed (was 0.75f)
+    private float movementDuration = BASE_MOVEMENT_DURATION; // Instance variable for dynamic speed
     private static final float COLLISION_SCALE = 0.6f;
     private static final float COLLISION_HEIGHT_SCALE = 0.4f;
     private static final float FRAME_WIDTH = World.TILE_SIZE;
@@ -190,10 +191,47 @@ public class WildPokemon extends Pokemon implements Positionable {
         if (ai instanceof PokemonAI) {
             this.enhancedAI = (PokemonAI) ai;
             this.legacyAI = null;
+            // Set movement speed based on personality traits
+            updateMovementSpeed();
         } else {
             this.legacyAI = ai;
             this.enhancedAI = null;
         }
+    }
+
+    /**
+     * Updates movement speed based on AI personality traits.
+     * Makes Pokemon feel more alive with varied movement speeds.
+     */
+    private void updateMovementSpeed() {
+        if (enhancedAI == null) {
+            movementDuration = BASE_MOVEMENT_DURATION;
+            return;
+        }
+
+        float speedMultiplier = 1.0f;
+
+        // Aggressive Pokemon move faster
+        if (enhancedAI.hasPersonalityTrait(io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait.AGGRESSIVE)) {
+            speedMultiplier *= 0.7f; // 30% faster
+        }
+
+        // Lazy Pokemon move slower
+        if (enhancedAI.hasPersonalityTrait(io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait.LAZY)) {
+            speedMultiplier *= 1.5f; // 50% slower
+        }
+
+        // Timid Pokemon move faster when fleeing
+        if (enhancedAI.hasPersonalityTrait(io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait.TIMID)) {
+            speedMultiplier *= 0.85f; // 15% faster
+        }
+
+        // Curious Pokemon have slightly faster movement
+        if (enhancedAI.hasPersonalityTrait(io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonPersonalityTrait.CURIOUS)) {
+            speedMultiplier *= 0.9f; // 10% faster
+        }
+
+        movementDuration = BASE_MOVEMENT_DURATION * speedMultiplier;
     }
 
 
@@ -279,7 +317,7 @@ public class WildPokemon extends Pokemon implements Positionable {
         if (!isMoving || !isInterpolating) return;
 
         currentMoveTime += delta;
-        movementProgress = Math.min(currentMoveTime / MOVEMENT_DURATION, 1.0f);
+        movementProgress = Math.min(currentMoveTime / movementDuration, 1.0f);
         float smoothProgress = calculateSmoothProgress(movementProgress);
 
         float newX = MathUtils.lerp(startPosition.x, targetPosition.x, smoothProgress);

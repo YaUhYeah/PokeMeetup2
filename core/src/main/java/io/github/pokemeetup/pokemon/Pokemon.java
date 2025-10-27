@@ -135,6 +135,13 @@ public class Pokemon {
             getBaseStat(name, "spAtk"),
             getBaseStat(name, "spDef"),
             getBaseStat(name, "speed"));
+
+        // CRITICAL FIX: Load types from template
+        PokemonDatabase.PokemonTemplate template = PokemonDatabase.getTemplate(name);
+        if (template != null) {
+            this.primaryType = template.primaryType;
+            this.secondaryType = template.secondaryType;
+        }
     }
 
 

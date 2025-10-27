@@ -22,6 +22,7 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
 
     private final WildPokemon pokemon;
     private final PokemonAI ai;
+    private boolean hasPlayedAlertSound = false; // Track if we've played the alert sound
 
     public ApproachPlayerBehavior(WildPokemon pokemon, PokemonAI ai) {
         this.pokemon = pokemon;
@@ -35,9 +36,25 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
         }
 
         Vector2 playerPos = ai.getSafePlayerPosition();
-        if (playerPos == null) return;
+        if (playerPos == null) {
+            hasPlayedAlertSound = false; // Reset when player is not present
+            return;
+        }
 
         float distance = Vector2.dst(pokemon.getX(), pokemon.getY(), playerPos.x, playerPos.y);
+
+        // Play alert sound when first detecting player
+        if (!hasPlayedAlertSound && distance <= APPROACH_RANGE) {
+            try {
+                io.github.pokemeetup.audio.AudioManager.getInstance().playSound(
+                    io.github.pokemeetup.audio.AudioManager.SoundEffect.CURSOR_MOVE
+                );
+                GameLogger.info(pokemon.getName() + " noticed the player!");
+                hasPlayedAlertSound = true;
+            } catch (Exception e) {
+                // Silently fail if audio isn't available
+            }
+        }
 
         // Stop approaching if close enough (for curious pokemon) or if battle is initiated.
         if (!ai.hasPersonalityTrait(PokemonPersonalityTrait.AGGRESSIVE) && distance <= OPTIMAL_DISTANCE) {
