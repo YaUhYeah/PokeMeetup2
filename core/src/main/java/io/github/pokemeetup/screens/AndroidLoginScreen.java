@@ -1,6 +1,7 @@
 package io.github.pokemeetup.screens;
 
 import com.badlogic.gdx.*;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
@@ -350,12 +351,25 @@ public class AndroidLoginScreen extends LoginScreen {
         container.add(rememberMeBox).left().padBottom(padding * 2).row();
         Table buttonTable = new Table();
 
-        loginButton = new TextButton("Login", skin);
-        registerButton = new TextButton("Register", skin);
+        // ANDROID FIX: Create buttons with explicit styles for better visibility
+        TextButton.TextButtonStyle loginStyle = new TextButton.TextButtonStyle(skin.get(TextButton.TextButtonStyle.class));
+        loginStyle.fontColor = Color.WHITE;
+        loginStyle.downFontColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+
+        TextButton.TextButtonStyle registerStyle = new TextButton.TextButtonStyle(skin.get(TextButton.TextButtonStyle.class));
+        registerStyle.fontColor = Color.WHITE;
+        registerStyle.downFontColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+
+        loginButton = new TextButton("Login", loginStyle);
+        registerButton = new TextButton("Register", registerStyle);
 
         float btnScale = currentFontScale * 1.1f;
         loginButton.getLabel().setFontScale(btnScale);
         registerButton.getLabel().setFontScale(btnScale);
+
+        // Ensure text is always visible
+        loginButton.getLabel().setColor(Color.WHITE);
+        registerButton.getLabel().setColor(Color.WHITE);
 
         float btnHeight = (isSmallScreen ? MIN_BUTTON_HEIGHT : OPTIMAL_BUTTON_HEIGHT) * currentFontScale;
         loginButton.pad(padding, padding * 2, padding, padding * 2);
@@ -486,6 +500,39 @@ public class AndroidLoginScreen extends LoginScreen {
         stage.getRoot().setColor(1, 1, 1, 0);
         stage.getRoot().addAction(Actions.fadeIn(0.3f));
         stage.setKeyboardFocus(usernameField);
+
+        // ANDROID FIX: Preload server icons when screen is shown
+        if (servers != null && !servers.isEmpty()) {
+            for (ServerConnectionConfig server : servers) {
+                downloadAndCacheServerIcon(server);
+            }
+        }
+    }
+
+    /**
+     * Downloads and caches server icon to avoid repeated downloads.
+     */
+    private void downloadAndCacheServerIcon(ServerConnectionConfig server) {
+        if (server == null) return;
+
+        // Check if icon is already cached
+        String cacheFileName = "server_icons/" + server.getServerIP() + "_" + server.getTcpPort() + ".png";
+        FileHandle cacheFile = Gdx.files.local(cacheFileName);
+
+        if (cacheFile.exists()) {
+            GameLogger.info("Server icon already cached for " + server.getServerName());
+            return; // Already cached
+        }
+
+        // TODO: Implement actual server icon download from server
+        // For now, just log that we would download it
+        GameLogger.info("Would download server icon for " + server.getServerName() + " and cache to " + cacheFileName);
+
+        // In a full implementation, you would:
+        // 1. Connect to server
+        // 2. Request ServerInfoRequest
+        // 3. Receive ServerInfoResponse with icon data
+        // 4. Save icon data to cacheFile
     }
 }
 

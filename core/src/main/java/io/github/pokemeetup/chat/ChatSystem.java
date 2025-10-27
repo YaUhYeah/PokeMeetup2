@@ -215,6 +215,7 @@ public class ChatSystem extends Table {
         isActive = true;
         chatWindow.setTouchable(Touchable.enabled);
         inputField.setVisible(true);
+        inputField.setDisabled(false); // Ensure input field is enabled
         inputField.setText(initialText != null ? initialText : "");
         inputField.setCursorPosition(inputField.getText().length());
         messageHistoryIndex = messageHistory.size();
@@ -224,10 +225,16 @@ public class ChatSystem extends Table {
         GameContext.get().getGameScreen().getInputManager().setUIState(InputManager.UIState.CHAT);
         refreshInputProcessors();
 
-        stage.addAction(Actions.run(() -> stage.setKeyboardFocus(inputField)));
+        // ANDROID FIX: Set keyboard focus first, then show keyboard
+        stage.setKeyboardFocus(inputField);
 
         if (Gdx.app.getType() == Application.ApplicationType.Android) {
-            Gdx.app.postRunnable(() -> Gdx.input.setOnscreenKeyboardVisible(true));
+            // Delay keyboard showing to ensure focus is set
+            Gdx.app.postRunnable(() -> {
+                stage.setKeyboardFocus(inputField);
+                Gdx.input.setOnscreenKeyboardVisible(true);
+                GameLogger.info("Android keyboard activated for chat");
+            });
         }
     }
 
@@ -356,11 +363,28 @@ public class ChatSystem extends Table {
             }
         });
 
+        // ANDROID FIX: Make the entire chat window and input field clickable
         chatWindow.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 if (Gdx.app.getType() == Application.ApplicationType.Android && !isActive) {
                     activateChat();
+                }
+            }
+        });
+
+        // ANDROID FIX: Add touch listener to input field to ensure keyboard shows up
+        inputField.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                if (Gdx.app.getType() == Application.ApplicationType.Android) {
+                    if (!isActive) {
+                        activateChat();
+                    } else {
+                        // Force keyboard to show if chat is active but keyboard isn't visible
+                        Gdx.input.setOnscreenKeyboardVisible(true);
+                        stage.setKeyboardFocus(inputField);
+                    }
                 }
             }
         });

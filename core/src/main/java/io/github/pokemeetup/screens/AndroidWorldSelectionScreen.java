@@ -697,12 +697,16 @@ public class AndroidWorldSelectionScreen extends WorldSelectionScreen {
     private TextButton createTabButton(String text, Skin skin) {
         TextButton.TextButtonStyle tabStyle = new TextButton.TextButtonStyle(skin.get(TextButton.TextButtonStyle.class));
         tabStyle.font.getData().setScale(MOBILE_FONT_SCALE);
+        tabStyle.fontColor = new Color(0.9f, 0.9f, 0.9f, 1f); // ANDROID FIX: Bright white text
+        tabStyle.downFontColor = Color.WHITE;
+        tabStyle.checkedFontColor = Color.WHITE; // ANDROID FIX: White text when selected
         tabStyle.up = null;
         tabStyle.down = createBackground(new Color(0.2f, 0.4f, 0.7f, 0.3f));
         tabStyle.checked = createBackground(new Color(0.2f, 0.4f, 0.7f, 0.6f));
 
         TextButton button = new TextButton(text, tabStyle);
         button.pad(14f);
+        button.getLabel().setColor(Color.WHITE); // ANDROID FIX: Force white color
         return button;
     }
 
