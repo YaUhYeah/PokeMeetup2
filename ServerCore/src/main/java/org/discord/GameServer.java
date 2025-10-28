@@ -94,6 +94,7 @@ public class GameServer {
     private final ConcurrentHashMap<Integer, String> connectedPlayers;
     private final PlayerManager playerManager;
     private final ScheduledExecutorService scheduler;
+    private final ExecutorService chunkRequestExecutor;
     private final Map<String, Integer> activeUserConnections = new ConcurrentHashMap<>();
     private final Map<String, ServerPlayer> activePlayers = new ConcurrentHashMap<>();
     private final Map<String, ConnectionInfo> activeConnections = new ConcurrentHashMap<>();
@@ -109,6 +110,11 @@ public class GameServer {
     public GameServer(ServerConnectionConfig config) {
         this.scheduler = Executors.newScheduledThreadPool(SCHEDULER_POOL_SIZE, r -> {
             Thread thread = new Thread(r, "GameServer-Scheduler");
+            thread.setDaemon(true);
+            return thread;
+        });
+        this.chunkRequestExecutor = Executors.newFixedThreadPool(8, r -> {
+            Thread thread = new Thread(r, "ChunkRequest-Worker");
             thread.setDaemon(true);
             return thread;
         });
@@ -363,6 +369,17 @@ public class GameServer {
                     }
                 } catch (InterruptedException e) {
                     scheduler.shutdownNow();
+                }
+            }
+
+            if (chunkRequestExecutor != null) {
+                chunkRequestExecutor.shutdown();
+                try {
+                    if (!chunkRequestExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                        chunkRequestExecutor.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    chunkRequestExecutor.shutdownNow();
                 }
             }
 
@@ -862,8 +879,26 @@ public class GameServer {
         Vector2 chunkPos = new Vector2(request.chunkX, request.chunkY);
         String cacheKey = request.chunkX + "," + request.chunkY;
 
+        // Check cache first for recently compressed chunks (synchronous - fast path)
+        NetworkProtocol.CompressedChunkData cached = chunkCache.get(cacheKey);
+        if (cached != null) {
+            connection.sendTCP(cached);
+            return;
+        }
+
+        // Process chunk generation/loading asynchronously to avoid blocking
+        CompletableFuture.runAsync(() -> {
+            try {
+                processChunkRequest(connection, request, chunkPos, cacheKey);
+            } catch (Exception e) {
+                GameLogger.error("Error in async chunk request: " + e.getMessage());
+            }
+        }, chunkRequestExecutor);
+    }
+
+    private void processChunkRequest(Connection connection, NetworkProtocol.ChunkRequest request, Vector2 chunkPos, String cacheKey) {
         try {
-            // Check cache first for recently compressed chunks
+            // Double-check cache in case another thread filled it
             NetworkProtocol.CompressedChunkData cached = chunkCache.get(cacheKey);
             if (cached != null) {
                 connection.sendTCP(cached);
