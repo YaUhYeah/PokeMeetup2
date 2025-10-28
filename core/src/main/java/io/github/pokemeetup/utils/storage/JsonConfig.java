@@ -349,15 +349,28 @@ public class JsonConfig {
                     PokemonData.Stats stats = json.readValue(PokemonData.Stats.class, statsValue);
                     pokemonData.setStats(stats);
                 }
-                pokemonData.setBaseHp(jsonData.getInt("baseHp", 1));
-                pokemonData.setBaseAttack(jsonData.getInt("baseAttack", 1));
-                pokemonData.setBaseDefense(jsonData.getInt("baseDefense", 1));
-                pokemonData.setBaseSpAtk(jsonData.getInt("baseSpAtk", 1));
-                pokemonData.setBaseSpDef(jsonData.getInt("baseSpDef", 1));
-                pokemonData.setBaseSpeed(jsonData.getInt("baseSpeed", 1));
+
+                // CRITICAL FIX: Only set HP if the field actually exists in JSON
+                // Don't use defaults that might be corrupted (stats.hp might be 1 from default constructor)
+                pokemonData.setBaseHp(jsonData.getInt("baseHp", 20));
+                pokemonData.setBaseAttack(jsonData.getInt("baseAttack", 10));
+                pokemonData.setBaseDefense(jsonData.getInt("baseDefense", 10));
+                pokemonData.setBaseSpAtk(jsonData.getInt("baseSpAtk", 10));
+                pokemonData.setBaseSpDef(jsonData.getInt("baseSpDef", 10));
+                pokemonData.setBaseSpeed(jsonData.getInt("baseSpeed", 10));
                 pokemonData.setCurrentExperience(jsonData.getInt("currentExperience", 0));
                 pokemonData.setExperienceToNextLevel(jsonData.getInt("experienceToNextLevel", 100));
-                pokemonData.setCurrentHp(jsonData.getInt("currentHp", pokemonData.getBaseHp()));
+
+                // CRITICAL FIX: Check if currentHp field exists in JSON
+                if (jsonData.has("currentHp")) {
+                    // Field exists, use the saved value
+                    pokemonData.setCurrentHp(jsonData.getInt("currentHp"));
+                } else {
+                    // Field missing - use full HP based on stats (after they're properly loaded)
+                    PokemonData.Stats loadedStats = pokemonData.getStats();
+                    int defaultHp = (loadedStats != null && loadedStats.getHp() > 1) ? loadedStats.getHp() : 20;
+                    pokemonData.setCurrentHp(defaultHp);
+                }
                 JsonValue movesArray = jsonData.get("moves");
                 if (movesArray != null && movesArray.isArray()) {
                     List<PokemonData.MoveData> moves = new ArrayList<>();
@@ -631,12 +644,16 @@ public class JsonConfig {
                     }
                 }
 
-                wildPokemonData.setCurrentHp(jsonData.getFloat("currentHp", 1f));
                 JsonValue statsValue = jsonData.get("stats");
                 if (statsValue != null) {
                     PokemonData.Stats stats = json.readValue(PokemonData.Stats.class, statsValue);
                     wildPokemonData.setStats(stats);
                 }
+
+                // CRITICAL FIX: Default HP to full health based on stats, not 1
+                PokemonData.Stats loadedStats = wildPokemonData.getStats();
+                float defaultCurrentHp = (loadedStats != null) ? loadedStats.getHp() : 20f;
+                wildPokemonData.setCurrentHp(jsonData.getFloat("currentHp", defaultCurrentHp));
                 JsonValue movesValue = jsonData.get("moves");
                 if (movesValue != null && movesValue.isArray()) {
                     List<PokemonData.MoveData> moves = new ArrayList<>();

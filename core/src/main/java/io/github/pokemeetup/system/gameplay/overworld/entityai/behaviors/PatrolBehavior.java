@@ -27,12 +27,7 @@ public class PatrolBehavior implements PokemonBehavior {
     }
 
     private void moveToNextPatrolPoint() {
-        World world = null;
-        try {
-            world = GameContext.get().getWorld();
-        } catch (IllegalStateException e) {
-            // Server-side
-        }
+        World world = ai.getSafeWorld();
         if (world == null) return;
 
         Vector2 currentTarget = ai.getCurrentPatrolTarget();

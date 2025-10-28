@@ -61,12 +61,7 @@ public class TerritorialBehavior implements PokemonBehavior {
             targetTileY += dy;
         }
 
-        World world = null;
-        try {
-            world = GameContext.get().getWorld();
-        } catch (IllegalStateException e) {
-            // Server-side
-        }
+        World world = ai.getSafeWorld();
         if (ai.checkPassable(world, targetTileX, targetTileY)) {
             pokemon.moveToTile(targetTileX, targetTileY, direction);
             ai.setCurrentState(PokemonAI.AIState.APPROACHING);

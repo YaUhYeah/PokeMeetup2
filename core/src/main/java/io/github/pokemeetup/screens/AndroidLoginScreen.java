@@ -267,7 +267,18 @@ public class AndroidLoginScreen extends LoginScreen {
 
         entry.setBackground(selectedServer == server ? selectedBg : normalBg);
         entry.pad(padding);
-        Image icon = new Image(skin.newDrawable("white", new Color(0.3f, 0.4f, 0.6f, 1f)));
+
+        // ENHANCED: Use cached server icon if available
+        Image icon;
+        Texture cachedIcon = getCachedServerIcon(server);
+        if (cachedIcon != null) {
+            icon = new Image(cachedIcon);
+            icon.setScaling(com.badlogic.gdx.utils.Scaling.fit);
+        } else {
+            // Fallback to colored square
+            icon = new Image(skin.newDrawable("white", new Color(0.3f, 0.4f, 0.6f, 1f)));
+        }
+
         float iconSize = SERVER_ICON_SIZE * currentFontScale;
         Table infoTable = new Table();
         Label nameLabel = new Label(server.getServerName(), skin);
@@ -439,7 +450,8 @@ public class AndroidLoginScreen extends LoginScreen {
         stage.addActor(backContainer);
     }
 
-    private void refreshServerList() {
+    @Override
+    protected void refreshServerList() {
         if (serverScrollPane != null && serverScrollPane.getWidget() instanceof Table) {
             Table container = (Table) serverScrollPane.getWidget();
             container.clear();
@@ -524,15 +536,100 @@ public class AndroidLoginScreen extends LoginScreen {
             return; // Already cached
         }
 
-        // TODO: Implement actual server icon download from server
-        // For now, just log that we would download it
-        GameLogger.info("Would download server icon for " + server.getServerName() + " and cache to " + cacheFileName);
+        // Download server icon in background thread
+        new Thread(() -> {
+            try {
+                GameLogger.info("Downloading server icon for " + server.getServerName() + "...");
 
-        // In a full implementation, you would:
-        // 1. Connect to server
-        // 2. Request ServerInfoRequest
-        // 3. Receive ServerInfoResponse with icon data
-        // 4. Save icon data to cacheFile
+                // Create a temporary client just for fetching server info
+                com.esotericsoftware.kryonet.Client tempClient = new com.esotericsoftware.kryonet.Client(16384, 8192);
+                io.github.pokemeetup.multiplayer.network.NetworkProtocol.registerClasses(tempClient.getKryo());
+
+                // Set up listener to receive server info response
+                final boolean[] responseReceived = {false};
+                tempClient.addListener(new com.esotericsoftware.kryonet.Listener() {
+                    @Override
+                    public void received(com.esotericsoftware.kryonet.Connection connection, Object object) {
+                        if (object instanceof io.github.pokemeetup.multiplayer.network.NetworkProtocol.ServerInfoResponse) {
+                            io.github.pokemeetup.multiplayer.network.NetworkProtocol.ServerInfoResponse response =
+                                (io.github.pokemeetup.multiplayer.network.NetworkProtocol.ServerInfoResponse) object;
+
+                            if (response.serverInfo != null && response.serverInfo.iconBase64 != null) {
+                                try {
+                                    // Decode base64 icon data
+                                    byte[] iconData = java.util.Base64.getDecoder().decode(response.serverInfo.iconBase64);
+
+                                    // Ensure cache directory exists
+                                    FileHandle cacheDir = Gdx.files.local("server_icons");
+                                    if (!cacheDir.exists()) {
+                                        cacheDir.mkdirs();
+                                    }
+
+                                    // Save icon to cache
+                                    cacheFile.writeBytes(iconData, false);
+                                    GameLogger.info("Successfully cached server icon for " + server.getServerName());
+
+                                    // Refresh server list UI on main thread
+                                    Gdx.app.postRunnable(() -> refreshServerList());
+
+                                } catch (Exception e) {
+                                    GameLogger.error("Failed to cache server icon: " + e.getMessage());
+                                }
+                            }
+                            responseReceived[0] = true;
+                        }
+                    }
+                });
+
+                // Start the client and connect
+                tempClient.start();
+                tempClient.connect(5000, server.getServerIP(), server.getTcpPort(), server.getUdpPort());
+
+                // Send server info request
+                io.github.pokemeetup.multiplayer.network.NetworkProtocol.ServerInfoRequest request =
+                    new io.github.pokemeetup.multiplayer.network.NetworkProtocol.ServerInfoRequest();
+                request.timestamp = System.currentTimeMillis();
+                tempClient.sendTCP(request);
+
+                // Wait for response (max 5 seconds)
+                long startTime = System.currentTimeMillis();
+                while (!responseReceived[0] && (System.currentTimeMillis() - startTime) < 5000) {
+                    Thread.sleep(100);
+                }
+
+                // Clean up
+                tempClient.stop();
+                tempClient.close();
+
+                if (!responseReceived[0]) {
+                    GameLogger.error("No server icon response received from " + server.getServerName());
+                }
+
+            } catch (Exception e) {
+                GameLogger.error("Failed to download server icon from " + server.getServerName() + ": " + e.getMessage());
+            }
+        }, "ServerIconDownloader-" + server.getServerName()).start();
+    }
+
+    /**
+     * Gets the cached server icon texture, or returns null if not cached.
+     */
+    protected Texture getCachedServerIcon(ServerConnectionConfig server) {
+        if (server == null) return null;
+
+        String cacheFileName = "server_icons/" + server.getServerIP() + "_" + server.getTcpPort() + ".png";
+        FileHandle cacheFile = Gdx.files.local(cacheFileName);
+
+        if (cacheFile.exists()) {
+            try {
+                return new Texture(cacheFile);
+            } catch (Exception e) {
+                GameLogger.error("Failed to load cached server icon: " + e.getMessage());
+                // Delete corrupted cache file
+                cacheFile.delete();
+            }
+        }
+        return null;
     }
 }
 

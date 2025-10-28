@@ -177,15 +177,50 @@ public class PokemonAI {
      * On server: returns nearest tracked player position
      */
     public Vector2 getSafePlayerPosition() {
+        // Server-side check first - avoid GameContext entirely
+        if (serverPassabilityChecker != null) {
+            return nearestPlayerPosition; // Use server-tracked position
+        }
+
+        // Client-side: get player from GameContext
         try {
             Player player = GameContext.get().getPlayer();
             if (player != null) {
                 return new Vector2(player.getX(), player.getY());
             }
         } catch (IllegalStateException e) {
-            // Server-side: use tracked position
+            // Fallback: use tracked position
         }
         return nearestPlayerPosition;
+    }
+
+    /**
+     * Server-safe method to get the World.
+     * On client: returns the actual World from GameContext
+     * On server: returns null (behaviors should use checkPassable instead)
+     */
+    public World getSafeWorld() {
+        // Server-side check first - avoid GameContext entirely
+        if (serverPassabilityChecker != null) {
+            return null; // Server-side, no World needed
+        }
+
+        // Client-side: get World from GameContext
+        try {
+            if (GameContext.get() != null) {
+                return GameContext.get().getWorld();
+            }
+        } catch (IllegalStateException e) {
+            // Fallback: GameContext not initialized
+        }
+        return null;
+    }
+
+    /**
+     * Returns true if running on server (GameContext not available)
+     */
+    public boolean isServerSide() {
+        return serverPassabilityChecker != null;
     }
 
     /**
@@ -203,12 +238,15 @@ public class PokemonAI {
                     .getMethod("isPassable", int.class, int.class);
                 terrainPassable = (Boolean) method.invoke(serverPassabilityChecker, tileX, tileY);
             } catch (Exception e) {
+                io.github.pokemeetup.utils.GameLogger.error("AI COLLISION ERROR: Failed to call isPassable via reflection: " + e.getMessage());
+                e.printStackTrace();
                 return false;
             }
         } else if (world != null) {
             // Client-side: Use world's isPassable method
             terrainPassable = world.isPassable(tileX, tileY);
         } else {
+            io.github.pokemeetup.utils.GameLogger.error("AI COLLISION ERROR: No world and no server checker!");
             return false;
         }
 
@@ -263,22 +301,11 @@ public class PokemonAI {
         handleSpecialAbilities(world);
         PokemonBehavior newBehavior = selectBehavior();
         if (newBehavior != activeBehavior) {
-            if (activeBehavior != null) {
-                GameLogger.info(pokemon.getName() + " switching from " +
-                    activeBehavior.getName() + " to " + newBehavior.getName());
-            }
             activeBehavior = newBehavior;
             stateTimer = 0f;
         }
 
         if (activeBehavior != null) {
-            // Only log occasionally to avoid spam
-            if (System.currentTimeMillis() % 2000 < 100) {
-                GameLogger.info(pokemon.getName() + " executing behavior: " + activeBehavior.getName() +
-                    " at position (" + pokemon.getX() + "," + pokemon.getY() + ")" +
-                    " isMoving: " + pokemon.isMoving() +
-                    " hasPassabilityChecker: " + (serverPassabilityChecker != null));
-            }
             activeBehavior.execute(delta);
         } else {
             GameLogger.error(pokemon.getName() + " has no active behavior!");

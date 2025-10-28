@@ -372,6 +372,20 @@
                 }
                 Gdx.app.postRunnable(() -> {
                     try {
+                        // CACHE FIX: Save icon to disk for persistent caching
+                        String cacheFileName = "server_icons/" + forServer.getServerIP() + "_" + forServer.getTcpPort() + ".png";
+                        FileHandle cacheFile = Gdx.files.local(cacheFileName);
+
+                        // Ensure directory exists
+                        if (!cacheFile.parent().exists()) {
+                            cacheFile.parent().mkdirs();
+                        }
+
+                        // Write icon bytes to disk
+                        cacheFile.writeBytes(iconBytes, false);
+                        GameLogger.info("Cached server icon to disk: " + cacheFileName);
+
+                        // Create texture for immediate display
                         Pixmap pixmap = new Pixmap(iconBytes, 0, iconBytes.length);
                         Texture iconTexture = new Texture(pixmap);
                         pixmap.dispose(); // Dispose the pixmap after the texture is created
@@ -477,16 +491,24 @@
 
 
             Table iconContainer = new Table();
-            Image iconImage = new Image(); // Create the Image widget
-            iconImage.setSize(32, 32);
-            String serverKey = server.getServerIP() + ":" + server.getTcpPort();
-            if (serverIcons.containsKey(serverKey)) {
-                iconImage.setDrawable(new TextureRegionDrawable(new TextureRegion(serverIcons.get(serverKey))));
-            } else {
-                addDefaultIcon(iconContainer); // Your existing method to show a placeholder
-            }
 
-            iconContainer.add(iconImage).size(32);
+            // ENHANCED: Use cached server icon if available
+            Texture cachedIcon = getCachedServerIcon(server);
+            if (cachedIcon != null) {
+                Image iconImage = new Image(cachedIcon);
+                iconImage.setScaling(com.badlogic.gdx.utils.Scaling.fit);
+                iconContainer.add(iconImage).size(32);
+            } else {
+                // Try old serverIcons map as fallback
+                String serverKey = server.getServerIP() + ":" + server.getTcpPort();
+                if (serverIcons.containsKey(serverKey)) {
+                    Image iconImage = new Image(new TextureRegionDrawable(new TextureRegion(serverIcons.get(serverKey))));
+                    iconImage.setSize(32, 32);
+                    iconContainer.add(iconImage).size(32);
+                } else {
+                    addDefaultIcon(iconContainer); // Your existing method to show a placeholder
+                }
+            }
 
             Table infoPanel = new Table();
             infoPanel.defaults().expandX().fillX().space(5);
@@ -952,6 +974,31 @@
                 passwordField.setText(savedPassword);
                 rememberMeBox.setChecked(true);
             }
+        }
+
+        /**
+         * Gets the cached server icon texture, or returns null if not cached.
+         */
+        protected Texture getCachedServerIcon(ServerConnectionConfig server) {
+            if (server == null) return null;
+
+            String cacheFileName = "server_icons/" + server.getServerIP() + "_" + server.getTcpPort() + ".png";
+            FileHandle cacheFile = Gdx.files.local(cacheFileName);
+
+            if (cacheFile.exists()) {
+                try {
+                    return new Texture(cacheFile);
+                } catch (Exception e) {
+                    GameLogger.error("Failed to load cached server icon: " + e.getMessage());
+                    // Delete corrupted cache file
+                    cacheFile.delete();
+                }
+            }
+            return null;
+        }
+
+        protected void refreshServerList() {
+            // Override in subclasses if needed
         }
 
         private void loadServers() {

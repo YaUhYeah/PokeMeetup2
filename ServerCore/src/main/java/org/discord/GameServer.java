@@ -32,6 +32,7 @@ import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.WorldObject;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
+import io.github.pokemeetup.system.gameplay.overworld.entityai.PokemonAI;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PasswordUtils;
 import io.github.pokemeetup.utils.storage.GameFileSystem;
@@ -136,11 +137,18 @@ public class GameServer {
             this.worldData = initializeMultiplayerWorld();
             this.weatherSystem = new WeatherSystem();
             serverPokemonSpawnManager = new ServerPokemonSpawnManager(MULTIPLAYER_WORLD_NAME);
+            GameLogger.info("ServerPokemonSpawnManager initialized successfully");
             setupNetworkListener();
             scheduler.scheduleAtFixedRate(() -> {
-                serverPokemonSpawnManager.update(0.1f);
-                serverPokemonSpawnManager.broadcastPokemonUpdates();
+                try {
+                    serverPokemonSpawnManager.update(0.1f);
+                    serverPokemonSpawnManager.broadcastPokemonUpdates();
+                } catch (Exception e) {
+                    GameLogger.error("Error in Pokemon spawn manager update: " + e.getMessage());
+                    e.printStackTrace();
+                }
             }, 0, 100, TimeUnit.MILLISECONDS);
+            GameLogger.info("Pokemon spawn scheduler started (updates every 100ms)");
 
             // Server-authoritative pokeball spawning
             scheduler.scheduleAtFixedRate(() -> {
@@ -571,6 +579,11 @@ public class GameServer {
             int cY = (int) Math.floor(update.y / (World.CHUNK_SIZE * World.TILE_SIZE));
             Vector2 chunkPos = new Vector2(cX, cY);
             playerChunkMap.put(username, chunkPos);
+
+            // DEBUG: Log player chunk updates occasionally
+            if (System.currentTimeMillis() % 5000 < 100) {
+                GameLogger.info("DEBUG: Player " + username + " updated to chunk (" + cX + "," + cY + "), total players in map: " + playerChunkMap.size());
+            }
             PlayerData playerData = ServerGameContext.get().getStorageSystem()
                 .getPlayerDataManager().loadPlayerData(UUID.nameUUIDFromBytes(update.username.getBytes()));
 
@@ -704,6 +717,69 @@ public class GameServer {
         return PasswordUtils.verifyPassword(password, storedHash);
     }
 
+    private void handlePokemonBattleLockRequest(Connection connection, NetworkProtocol.PokemonBattleLockRequest request) {
+        NetworkProtocol.PokemonBattleLockResponse response = new NetworkProtocol.PokemonBattleLockResponse();
+        response.pokemonUuid = request.pokemonUuid;
+
+        try {
+            WildPokemon pokemon = serverPokemonSpawnManager.getPokemonByUuid(request.pokemonUuid);
+            if (pokemon == null) {
+                response.success = false;
+                response.message = "Pokemon not found";
+                connection.sendTCP(response);
+                return;
+            }
+
+            if (pokemon.canBattleWith(request.playerUsername)) {
+                pokemon.setBattleLockedByPlayer(request.playerUsername);
+                // Stop pokemon AI when in battle
+                if (pokemon.getAi() instanceof PokemonAI) {
+                    ((PokemonAI) pokemon.getAi()).setPaused(true);
+                }
+                response.success = true;
+                response.lockedByPlayer = request.playerUsername;
+                GameLogger.info("Pokemon " + pokemon.getName() + " locked for battle by " + request.playerUsername);
+            } else {
+                response.success = false;
+                response.lockedByPlayer = pokemon.getBattleLockedByPlayer();
+                response.message = "Pokemon is already in battle with " + pokemon.getBattleLockedByPlayer();
+                GameLogger.info("Pokemon " + pokemon.getName() + " battle lock denied for " + request.playerUsername + " (already locked by " + pokemon.getBattleLockedByPlayer() + ")");
+            }
+
+            connection.sendTCP(response);
+        } catch (Exception e) {
+            GameLogger.error("Error handling pokemon battle lock request: " + e.getMessage());
+            response.success = false;
+            response.message = "Server error: " + e.getMessage();
+            connection.sendTCP(response);
+        }
+    }
+
+    private void handlePokemonBattleUnlockRequest(Connection connection, NetworkProtocol.PokemonBattleUnlockRequest request) {
+        try {
+            WildPokemon pokemon = serverPokemonSpawnManager.getPokemonByUuid(request.pokemonUuid);
+            if (pokemon == null) {
+                GameLogger.error("Cannot unlock pokemon - not found: " + request.pokemonUuid);
+                return;
+            }
+
+            // Only the player who locked it can unlock it (or allow anyone for cleanup)
+            if (pokemon.getBattleLockedByPlayer() == null ||
+                pokemon.getBattleLockedByPlayer().equals(request.playerUsername)) {
+                pokemon.setInBattle(false);
+                // Re-enable pokemon AI when battle ends
+                if (pokemon.getAi() instanceof PokemonAI) {
+                    ((PokemonAI) pokemon.getAi()).setPaused(false);
+                }
+                GameLogger.info("Pokemon " + pokemon.getName() + " unlocked from battle by " + request.playerUsername);
+            } else {
+                GameLogger.info("Player " + request.playerUsername + " tried to unlock pokemon locked by " + pokemon.getBattleLockedByPlayer());
+            }
+        } catch (Exception e) {
+            GameLogger.error("Error handling pokemon battle unlock request: " + e.getMessage());
+        }
+    }
+
     private void handleLoginRequest(Connection connection, NetworkProtocol.LoginRequest request) {
         try {
             GameLogger.info("Processing login request for: " + request.username);
@@ -817,11 +893,17 @@ public class GameServer {
                 chunk.setBiome(transition.getPrimaryBiome());
             }
 
-            List<WorldObject> objects = ServerGameContext.get().getWorldObjectManager()
-                .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+            // CRITICAL FIX: Use chunk's saved objects first (from disk), not WorldObjectManager cache
+            // This ensures removed objects stay removed after server restart/relog
+            List<WorldObject> objects = chunk.getWorldObjects();
             if (objects == null || objects.isEmpty()) {
+                // Only use WorldObjectManager if chunk has no saved objects
                 objects = ServerGameContext.get().getWorldObjectManager()
-                    .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
+                    .getObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos);
+                if (objects == null || objects.isEmpty()) {
+                    objects = ServerGameContext.get().getWorldObjectManager()
+                        .generateObjectsForChunk(MULTIPLAYER_WORLD_NAME, chunkPos, chunk);
+                }
             }
 
             NetworkProtocol.ChunkData chunkData = new NetworkProtocol.ChunkData();
@@ -1094,6 +1176,16 @@ public class GameServer {
                         NetworkProtocol.PingResponse pingResponse = new NetworkProtocol.PingResponse();
                         pingResponse.timestamp = pingRequest.timestamp; // echo back the timestamp
                         connection.sendTCP(pingResponse);
+                        return;
+                    }
+
+                    if (object instanceof NetworkProtocol.PokemonBattleLockRequest) {
+                        handlePokemonBattleLockRequest(connection, (NetworkProtocol.PokemonBattleLockRequest) object);
+                        return;
+                    }
+
+                    if (object instanceof NetworkProtocol.PokemonBattleUnlockRequest) {
+                        handlePokemonBattleUnlockRequest(connection, (NetworkProtocol.PokemonBattleUnlockRequest) object);
                         return;
                     }
 
@@ -1830,6 +1922,10 @@ public class GameServer {
             update.isMoving = pokemon.isMoving();
             update.level = pokemon.getLevel();
             update.timestamp = System.currentTimeMillis();
+
+            // CRITICAL FIX: Set Pokemon data so client knows the species/name/types
+            update.data = PokemonData.fromPokemon(pokemon);
+
             updates.add(update);
         }
         if (!updates.isEmpty()) {
@@ -2005,7 +2101,39 @@ public class GameServer {
         if (object == null || player == null) return;
 
         Vector2 chunkPos = new Vector2((int) Math.floor(object.getPixelX() / (CHUNK_SIZE * TILE_SIZE)), (int) Math.floor(object.getPixelY() / (CHUNK_SIZE * TILE_SIZE)));
+
+        // Remove from WorldObjectManager memory
         ServerGameContext.get().getWorldObjectManager().removeObject(MULTIPLAYER_WORLD_NAME, chunkPos, object.getId());
+
+        // CRITICAL FIX: Update chunk's worldObjects list and save to disk
+        Chunk chunk = ServerGameContext.get().getWorldManager().loadChunk(MULTIPLAYER_WORLD_NAME, (int)chunkPos.x, (int)chunkPos.y);
+        if (chunk != null) {
+            // Log before removal
+            int objectsBeforeRemoval = chunk.getWorldObjects().size();
+            GameLogger.info("DEBUG: Chunk (" + chunkPos.x + "," + chunkPos.y + ") has " + objectsBeforeRemoval + " objects before removal");
+
+            // Remove from chunk's worldObjects list
+            boolean removed = chunk.getWorldObjects().removeIf(obj -> {
+                if (obj != null && obj.getId() != null && obj.getId().equals(object.getId())) {
+                    GameLogger.info("DEBUG: Found and removing object " + obj.getId() + " (type: " + obj.getType() + ") at (" + obj.getTileX() + "," + obj.getTileY() + ")");
+                    return true;
+                }
+                return false;
+            });
+
+            int objectsAfterRemoval = chunk.getWorldObjects().size();
+            GameLogger.info("DEBUG: Chunk (" + chunkPos.x + "," + chunkPos.y + ") has " + objectsAfterRemoval + " objects after removal (removed: " + removed + ")");
+
+            chunk.setDirty(true);
+            ServerGameContext.get().getWorldManager().saveChunk(MULTIPLAYER_WORLD_NAME, chunk);
+            GameLogger.info("Removed object " + object.getId() + " from chunk (" + chunkPos.x + "," + chunkPos.y + ") and saved to disk");
+
+            // CRITICAL FIX: Invalidate chunk cache to force reload from disk with updated objects
+            invalidateChunkCache((int)chunkPos.x, (int)chunkPos.y);
+            GameLogger.info("Invalidated chunk cache for (" + chunkPos.x + "," + chunkPos.y + ")");
+        } else {
+            GameLogger.error("Failed to load chunk for object removal: (" + chunkPos.x + "," + chunkPos.y + ")");
+        }
 
         NetworkProtocol.WorldObjectUpdate removalMsg = new NetworkProtocol.WorldObjectUpdate();
         removalMsg.objectId = object.getId();
@@ -2016,8 +2144,12 @@ public class GameServer {
         String dropItemId = object.getType().dropItemId;
         int dropCount = object.getType().dropItemCount;
         if (dropItemId != null && dropCount > 0) {
+            // DEBUG: Log tree chopping details
+            boolean playerHasAxe = player.hasAxe();
+            GameLogger.info("DEBUG: serverDestroyObject - dropItemId: " + dropItemId + ", dropCount: " + dropCount + ", player: " + player.getUsername() + ", hasAxe: " + playerHasAxe);
+
             // MULTIPLAYER FIX: 4x wooden planks when using an axe (matches client logic)
-            if (player.hasAxe() && dropItemId.equals("wooden_planks")) {
+            if (playerHasAxe && dropItemId.equals("wooden_planks")) {
                 dropCount *= 4;
                 GameLogger.info("Player " + player.getUsername() + " chopped tree with axe: " + dropCount + " wooden planks (4x bonus)");
             }

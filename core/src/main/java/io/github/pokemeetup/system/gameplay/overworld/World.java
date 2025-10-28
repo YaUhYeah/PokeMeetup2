@@ -2067,7 +2067,7 @@ public class World {
 
             renderLowObjects(batch, expandedBounds);
 
-            itemEntityManager.render(batch);
+            itemEntityManager.render(batch, this);
             footstepEffectManager.render(batch);
             renderMidLayer(batch, player, expandedBounds);
             renderHighObjects(batch, expandedBounds);
@@ -2108,10 +2108,10 @@ public class World {
             renderTerrainLayer(batch, sortedChunks, expandedBounds);
 
             // Pass 2: Apply the general world ambient color as a tint for everything else.
-            // This affects players, blocks, items, etc., that don't have per-tile lighting.
+            // This affects players, blocks, etc. Items now have per-tile lighting like terrain.
             batch.setColor(currentWorldColor);
 
-            itemEntityManager.render(batch);
+            itemEntityManager.render(batch, this);
             footstepEffectManager.render(batch);
 
             // Pass 3: Render all y-sorted entities, which will inherit the ambient tint.

@@ -57,13 +57,19 @@ public class PokemonData {
         this.tmMoves = new ArrayList<>();
         wildPokemon = new HashMap<>();
         this.stats = new Stats();
-        this.currentHp = stats.getHp();
+        // Don't initialize currentHp here - it will be set by Kryo during deserialization
+        // or by setCurrentHp() when creating from a Pokemon object
+        this.currentHp = 0;
     }    public int getCurrentHp() {
         return currentHp;
     }
 
     public void setCurrentHp(int hp) {
-        this.currentHp = Math.min(Math.max(0, hp), stats != null ? stats.getHp() : hp);
+        // Don't clamp during deserialization - just set the value
+        // Clamping will be done in toPokemon() when the Pokemon is created
+        int oldHp = this.currentHp;
+        this.currentHp = Math.max(0, hp);
+
     }
 
     public static PokemonData fromPokemon(Pokemon pokemon) {
@@ -84,9 +90,6 @@ public class PokemonData {
 
         // Now set HP - it will be properly clamped to the correct max HP
         data.setCurrentHp(pokemon.getCurrentHp());
-
-        // Log the saved HP for debugging
-        GameLogger.info("Saving Pokemon " + pokemon.getName() + " with HP: " + pokemon.getCurrentHp() + "/" + pokemon.getStats().getHp());
         data.setBaseHp(pokemon.getSpeciesBaseHp());
         data.setBaseAttack(pokemon.getSpeciesBaseAttack());
         data.setBaseDefense(pokemon.getSpeciesBaseDefense());
@@ -352,22 +355,20 @@ public class PokemonData {
         // ENHANCED FIX: Restore saved HP with validation (PRESERVE FAINTED STATE)
         int maxHp = pokemon.getStats().getHp();
 
-        if (this.currentHp >= 0 && this.currentHp <= maxHp) {
+        // CRITICAL FIX: If currentHp is 1 and maxHp is > 1, this is likely corrupted data from the old bug
+        // Repair it by setting to full HP (unless it was intentionally set to 1 in battle)
+        if (this.currentHp == 1 && maxHp > 1) {
+            pokemon.setCurrentHp(maxHp);
+            this.currentHp = maxHp;
+        } else if (this.currentHp >= 0 && this.currentHp <= maxHp) {
             // Restore the saved HP value (including 0 for fainted Pokemon)
             pokemon.setCurrentHp(this.currentHp);
-            if (this.currentHp == 0) {
-                GameLogger.info("✓ Restored fainted Pokemon " + name + " (0/" + maxHp + " HP)");
-            } else {
-                GameLogger.info("✓ Restored Pokemon " + name + " with HP: " + this.currentHp + "/" + maxHp);
-            }
         } else if (this.currentHp > maxHp) {
             // HP is over max (shouldn't happen, but safeguard)
             pokemon.setCurrentHp(maxHp);
-            GameLogger.info("! Pokemon " + name + " had HP > max (" + this.currentHp + ">" + maxHp + "), clamped to max");
         } else if (this.currentHp < 0) {
             // Negative HP (corrupted data), reset to full HP
             pokemon.setCurrentHp(maxHp);
-            GameLogger.error("! Pokemon " + name + " had negative HP (" + this.currentHp + "), reset to full HP");
         }
 
         // Double-check HP is set correctly after restoration

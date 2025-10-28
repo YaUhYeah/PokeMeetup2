@@ -60,15 +60,11 @@ public class FleeBehavior implements PokemonBehavior {
     }
 
     private void continueFleeMovement() {
-        World world = null;
-        try {
-            world = GameContext.get().getWorld();
-        } catch (IllegalStateException e) {
-            // Server-side, end flee behavior
+        World world = ai.getSafeWorld();
+        if (world == null) {
             fleeStepsRemaining = 0;
             return;
         }
-        if (world == null) return;
 
         int currentTileX = (int) (pokemon.getX() / World.TILE_SIZE);
         int currentTileY = (int) (pokemon.getY() / World.TILE_SIZE);

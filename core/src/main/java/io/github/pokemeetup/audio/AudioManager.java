@@ -112,7 +112,7 @@ public class AudioManager {
                 Sound sound = Gdx.audio.newSound(Gdx.files.internal(effect.getPath()));
                 weatherSounds.put(effect, sound);
             } catch (Exception e) {
-                GameLogger.error("Failed to load weather sound: " + effect.getPath());
+                // Silently skip missing weather sounds (common on server/headless environments)
             }
         }
     }
@@ -122,9 +122,8 @@ public class AudioManager {
             try {
                 Sound sound = Gdx.audio.newSound(Gdx.files.internal(type.getPath()));
                 ambientSounds.put(type, sound);
-                GameLogger.info("Loaded ambient sound: " + type.name());
             } catch (Exception e) {
-                GameLogger.error("Failed to load ambient sound: " + type.name() + " - " + e.getMessage());
+                // Silently skip missing ambient sounds (common on server/headless environments)
             }
         }
     }

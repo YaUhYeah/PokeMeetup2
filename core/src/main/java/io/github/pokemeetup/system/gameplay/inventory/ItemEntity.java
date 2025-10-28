@@ -1,10 +1,13 @@
 package io.github.pokemeetup.system.gameplay.inventory;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import io.github.pokemeetup.system.data.ItemData;
+import io.github.pokemeetup.system.gameplay.overworld.Chunk;
+import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.utils.textures.TextureManager;
 
 import java.util.UUID;
@@ -60,14 +63,50 @@ public class ItemEntity {
         }
     }
 
-    public void render(SpriteBatch batch) {
-        if (texture != null) {
-            batch.draw(texture,
-                position.x - ITEM_SIZE/2,
-                position.y - ITEM_SIZE/2,
-                ITEM_SIZE,
-                ITEM_SIZE);
+    public void render(SpriteBatch batch, World world) {
+        if (texture == null) return;
+
+        // Save original batch color components (not reference, to avoid flickering)
+        Color batchColor = batch.getColor();
+        float originalR = batchColor.r;
+        float originalG = batchColor.g;
+        float originalB = batchColor.b;
+        float originalA = batchColor.a;
+
+        // Apply per-tile lighting like BiomeRenderer does
+        if (world != null) {
+            // Calculate which tile the item is on
+            int tileX = (int) Math.floor(position.x / World.TILE_SIZE);
+            int tileY = (int) Math.floor(position.y / World.TILE_SIZE);
+
+            // Get the chunk at this tile position
+            Chunk chunk = world.getChunkAtTile(tileX, tileY);
+            if (chunk != null) {
+                // Get local tile coordinates within the chunk
+                int chunkX = Math.floorDiv(tileX, Chunk.CHUNK_SIZE);
+                int chunkY = Math.floorDiv(tileY, Chunk.CHUNK_SIZE);
+                int localTileX = tileX - (chunkX * Chunk.CHUNK_SIZE);
+                int localTileY = tileY - (chunkY * Chunk.CHUNK_SIZE);
+
+                // Get light map and apply lighting if available
+                Color[][] lightMap = chunk.getLightMap();
+                if (lightMap != null && localTileX >= 0 && localTileX < Chunk.CHUNK_SIZE
+                    && localTileY >= 0 && localTileY < Chunk.CHUNK_SIZE
+                    && lightMap[localTileX] != null && lightMap[localTileX][localTileY] != null) {
+                    batch.setColor(lightMap[localTileX][localTileY]);
+                }
+            }
         }
+
+        // Draw the item
+        batch.draw(texture,
+            position.x - ITEM_SIZE/2,
+            position.y - ITEM_SIZE/2,
+            ITEM_SIZE,
+            ITEM_SIZE);
+
+        // Restore original color using saved components
+        batch.setColor(originalR, originalG, originalB, originalA);
     }
 
     public boolean canBePickedUp() {

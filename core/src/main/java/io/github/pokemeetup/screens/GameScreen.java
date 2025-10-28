@@ -824,6 +824,15 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
     private void initializeBattleComponents(Pokemon validPokemon, WildPokemon nearestPokemon) {
         battleSystem.lockPokemonForBattle(nearestPokemon);
 
+        // In multiplayer, request battle lock from server
+        if (GameContext.get().isMultiplayer() && GameContext.get().getGameClient() != null) {
+            NetworkProtocol.PokemonBattleLockRequest lockRequest = new NetworkProtocol.PokemonBattleLockRequest();
+            lockRequest.pokemonUuid = nearestPokemon.getUuid();
+            lockRequest.playerUsername = GameContext.get().getGameClient().getLocalUsername();
+            GameContext.get().getGameClient().sendPokemonBattleLockRequest(lockRequest);
+            GameLogger.info("Sent battle lock request for pokemon " + nearestPokemon.getName());
+        }
+
         battleStage = new Stage(new FitViewport(800, 480));
         battleStage.getViewport().update(
             Gdx.graphics.getWidth(),
@@ -1092,6 +1101,16 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
         if (nearestPokemon == null || nearestPokemon.isAddedToParty()) {
             return;
         }
+        // In multiplayer, check if pokemon is already in battle with another player
+        if (GameContext.get().isMultiplayer() && nearestPokemon.isInBattle()) {
+            if (GameContext.get().getChatSystem() != null) {
+                NetworkProtocol.ChatMessage message = createSystemMessage(
+                    nearestPokemon.getName() + " is already in battle with " + nearestPokemon.getBattleLockedByPlayer() + "!");
+                GameContext.get().getChatSystem().handleIncomingMessage(message);
+            }
+            GameLogger.info("Cannot battle - Pokemon is already in battle with " + nearestPokemon.getBattleLockedByPlayer());
+            return;
+        }
         if (GameContext.get().getPlayer().getPokemonParty() == null || GameContext.get().getPlayer().getPokemonParty().getSize() == 0) {
             if (GameContext.get().getChatSystem() != null) {
                 NetworkProtocol.ChatMessage message = createSystemMessage(
@@ -1336,6 +1355,18 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
 
         Gdx.app.postRunnable(() -> {
             try {
+                // In multiplayer, unlock the pokemon on the server when battle ends
+                if (GameContext.get().isMultiplayer() && GameContext.get().getGameClient() != null && battleSystem != null) {
+                    WildPokemon lockedPokemon = battleSystem.getLockedPokemon();
+                    if (lockedPokemon != null) {
+                        NetworkProtocol.PokemonBattleUnlockRequest unlockRequest = new NetworkProtocol.PokemonBattleUnlockRequest();
+                        unlockRequest.pokemonUuid = lockedPokemon.getUuid();
+                        unlockRequest.playerUsername = GameContext.get().getGameClient().getLocalUsername();
+                        GameContext.get().getGameClient().sendPokemonBattleUnlockRequest(unlockRequest);
+                        GameLogger.info("Sent battle unlock request for pokemon " + lockedPokemon.getName());
+                    }
+                }
+
                 if (battleTable != null) {
                     battleTable.clear();
                     if (battleStage != null) {
@@ -1431,10 +1462,23 @@ public class GameScreen implements Screen, PickupActionHandler, BattleInitiation
             GameContext.get().getHotbarSystem().updateHotbar(); // Visually update the hotbar
         }
         Random rand = new Random();
+
+        // MULTIPLAYER FIX: In multiplayer, send item drops to server instead of spawning locally
+        boolean isMultiplayer = GameContext.get().isMultiplayer();
         for (ItemData item : itemsToDrop) {
             float offsetX = (rand.nextFloat() - 0.5f) * 64; // Scatter within one tile
             float offsetY = (rand.nextFloat() - 0.5f) * 64;
-            world.getItemEntityManager().spawnItemEntity(item, dropX + offsetX, dropY + offsetY);
+            float finalDropX = dropX + offsetX;
+            float finalDropY = dropY + offsetY;
+
+            if (isMultiplayer && GameContext.get().getGameClient() != null) {
+                // Send to server to spawn the item (server will broadcast to all clients)
+                GameContext.get().getGameClient().sendItemDrop(item, new Vector2(finalDropX, finalDropY));
+                GameLogger.info("Sent death item drop to server: " + item.getItemId() + " x" + item.getCount() + " at (" + finalDropX + "," + finalDropY + ")");
+            } else {
+                // Single player: spawn locally
+                world.getItemEntityManager().spawnItemEntity(item, finalDropX, finalDropY);
+            }
         }
         player.getPokemonParty().healAllPokemon();
         AudioManager.getInstance().playSound(AudioManager.SoundEffect.DAMAGE);

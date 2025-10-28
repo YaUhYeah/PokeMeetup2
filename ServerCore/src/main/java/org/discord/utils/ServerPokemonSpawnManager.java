@@ -10,6 +10,7 @@ import io.github.pokemeetup.system.gameplay.overworld.DayNightCycle;
 import io.github.pokemeetup.system.gameplay.overworld.World;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.Biome;
 import io.github.pokemeetup.system.gameplay.overworld.biomes.BiomeType;
+import io.github.pokemeetup.managers.BiomeTransitionResult;
 import io.github.pokemeetup.system.gameplay.overworld.multiworld.PokemonSpawnManager;
 import io.github.pokemeetup.utils.GameLogger;
 import io.github.pokemeetup.utils.PokemonLevelCalculator;
@@ -66,7 +67,14 @@ public class ServerPokemonSpawnManager {
         // for tile passability checks instead of requiring a full World instance
 
         // Get all player positions from server for AI behaviors
-        Map<String, Vector2> playerPositions = ServerGameContext.get().getGameServer().getAllPlayerPositions();
+        Map<String, Vector2> playerPositions = new HashMap<>();
+        try {
+            if (ServerGameContext.get() != null && ServerGameContext.get().getGameServer() != null) {
+                playerPositions = ServerGameContext.get().getGameServer().getAllPlayerPositions();
+            }
+        } catch (Exception e) {
+            GameLogger.error("Error getting player positions: " + e.getMessage());
+        }
 
         int updatedCount = 0;
         for (WildPokemon pokemon : activePokemon.values()) {
@@ -92,9 +100,6 @@ public class ServerPokemonSpawnManager {
                     e.printStackTrace();
                 }
             }
-        }
-        if (updatedCount > 0 && System.currentTimeMillis() % 10000 < 100) { // Log every 10 seconds
-            GameLogger.info("Updated " + updatedCount + " active Pokemon AI with " + playerPositions.size() + " player positions");
         }
 
         spawnTimer += delta;
@@ -129,7 +134,6 @@ public class ServerPokemonSpawnManager {
             boolean movingChanged = syncData == null || pokemon.isMoving() != syncData.isMoving;
 
             if (distance > MOVEMENT_THRESHOLD || directionChanged || movingChanged) {
-                GameLogger.info("Pokemon " + pokemon.getName() + " moved " + distance + " pixels, broadcasting update");
                 NetworkProtocol.PokemonUpdate update = createPokemonUpdate(pokemon);
                 updates.add(update);
                 lastSentPositions.put(pokemon.getUuid(), new Vector2(pokemon.getX(), pokemon.getY()));
@@ -140,7 +144,6 @@ public class ServerPokemonSpawnManager {
             }
         }
         if (!updates.isEmpty()) {
-            GameLogger.info("Broadcasting " + updates.size() + " Pokemon movement updates");
             broadcastPokemonUpdates(updates);
         }
     }  private NetworkProtocol.PokemonUpdate createPokemonUpdate(WildPokemon pokemon) {
@@ -202,11 +205,15 @@ public class ServerPokemonSpawnManager {
 
 
     private void trySpawnPokemon() {
+        if (ServerGameContext.get() == null || ServerGameContext.get().getWorldManager() == null) {
+            return;
+        }
+
         Map<Vector2, Chunk> loadedChunks =
             ServerGameContext.get().getWorldManager().getLoadedChunks(worldName);
 
         if (loadedChunks == null || loadedChunks.isEmpty()) {
-            return; // Don't spam logs
+            return;
         }
         Set<Vector2> playerChunks =
             ServerGameContext.get().getGameServer().getPlayerOccupiedChunks();
@@ -214,9 +221,6 @@ public class ServerPokemonSpawnManager {
         if (playerChunks.isEmpty()) {
             return;
         }
-
-        int totalPokemon = activePokemon.size();
-        GameLogger.info("Spawn tick: " + totalPokemon + " active Pokemon, checking " + playerChunks.size() + " player chunks");
 
         // Spawn in multiple chunks per tick for balanced world population
         int spawnAttempts = 0;
@@ -228,22 +232,16 @@ public class ServerPokemonSpawnManager {
             }
             Chunk chunk = loadedChunks.get(chunkPos);
             if (chunk == null) {
-                GameLogger.info("Chunk " + chunkPos + " not loaded, skipping");
                 continue;
             }
 
             int count = getPokemonCountInChunk(chunkPos);
 
             if (count < MAX_POKEMON_PER_CHUNK) {
-                // Aggressive spawning - always attempt if below max
-                GameLogger.info("Attempting to spawn Pokemon in chunk " + chunkPos + " (current count: " + count + "/" + MAX_POKEMON_PER_CHUNK + ")");
                 spawnPokemonInChunk(chunkPos, chunk);
                 spawnAttempts++;
-            } else {
-                GameLogger.info("Chunk " + chunkPos + " is full (" + count + "/" + MAX_POKEMON_PER_CHUNK + " Pokemon)");
             }
         }
-        GameLogger.info("Spawn tick complete: attempted " + spawnAttempts + " spawns, total active: " + activePokemon.size());
     }
 
     private int getPokemonCountInChunk(Vector2 chunkPos) {
@@ -329,11 +327,18 @@ public class ServerPokemonSpawnManager {
                 int worldTileY = (int)(chunkPos.y * Chunk.CHUNK_SIZE + localY);
                 float pixelX = worldTileX * TILE_SIZE;
                 float pixelY = worldTileY * TILE_SIZE;
-                Biome biome = chunk.getBiome();
-                if (biome == null) {
-                    GameLogger.error("Null biome at chunk " + chunkPos + ", cannot spawn Pokemon");
+
+                // CRITICAL FIX: Get biome using ServerWorldManager's getBiomeTransitionAt method
+                BiomeTransitionResult btr = ServerGameContext.get().getWorldManager()
+                    .getBiomeTransitionAt(pixelX, pixelY);
+
+                if (btr == null || btr.getPrimaryBiome() == null) {
+                    GameLogger.error("Null biome at position (" + worldTileX + "," + worldTileY + "), cannot spawn Pokemon");
                     return;
                 }
+
+                Biome biome = btr.getPrimaryBiome();
+                GameLogger.info("Spawning in biome: " + biome.getType() + " at chunk " + chunkPos + " tile (" + worldTileX + "," + worldTileY + ")");
                 String pokemonName = selectRandomPokemonForBiome(biome);
                 int level = calculatePokemonLevel(pixelX, pixelY);
 
@@ -401,9 +406,6 @@ public class ServerPokemonSpawnManager {
                         .getNetworkServer()
                         .sendToAllTCP(spawnMsg);
 
-                    GameLogger.info("Successfully spawned " + pokemonName + " level " + level +
-                        " in chunk " + chunkPos + " at (" + (int)(spawnX/TILE_SIZE) + "," + (int)(spawnY/TILE_SIZE) + ")" +
-                        (shouldSpawnPack ? " (pack " + (i+1) + "/" + spawnCount + ")" : ""));
                 }
                 return; // Success!
 
@@ -413,7 +415,6 @@ public class ServerPokemonSpawnManager {
                 return;
             }
         }
-        GameLogger.info("Failed to find passable location in chunk " + chunkPos + " after 5 attempts");
     }
 
 
@@ -581,6 +582,16 @@ public class ServerPokemonSpawnManager {
      */
     public Collection<WildPokemon> getActivePokemon() {
         return activePokemon.values();
+    }
+
+    /**
+     * Gets a specific Pokemon by its UUID.
+     *
+     * @param uuid The UUID of the Pokemon to find
+     * @return The Pokemon with the given UUID, or null if not found
+     */
+    public WildPokemon getPokemonByUuid(UUID uuid) {
+        return activePokemon.get(uuid);
     }
 
     /**

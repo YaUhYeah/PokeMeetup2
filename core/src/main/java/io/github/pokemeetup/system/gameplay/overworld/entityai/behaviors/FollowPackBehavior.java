@@ -36,15 +36,12 @@ public class FollowPackBehavior implements PokemonBehavior {
         UUID leaderId = ai.getPackLeaderId();
         if (leaderId == null) return null;
 
-        Collection<WildPokemon> nearbyPokemon;
-        try {
-            nearbyPokemon = GameContext.get().getWorld()
-                .getPokemonSpawnManager().getPokemonInRange(
-                    pokemon.getX(), pokemon.getY(), MAX_FOLLOW_DISTANCE);
-        } catch (IllegalStateException e) {
-            // Server-side: cannot get nearby Pokemon
-            return null;
-        }
+        World world = ai.getSafeWorld();
+        if (world == null) return null;
+
+        Collection<WildPokemon> nearbyPokemon = world
+            .getPokemonSpawnManager().getPokemonInRange(
+                pokemon.getX(), pokemon.getY(), MAX_FOLLOW_DISTANCE);
 
         for (WildPokemon nearby : nearbyPokemon) {
             if (nearby.getUuid().equals(leaderId)) {
@@ -60,12 +57,7 @@ public class FollowPackBehavior implements PokemonBehavior {
             return; // Already close enough.
         }
 
-        World world = null;
-        try {
-            world = GameContext.get().getWorld();
-        } catch (IllegalStateException e) {
-            // Server-side
-        }
+        World world = ai.getSafeWorld();
         if (world == null) return;
 
         int pokemonTileX = pokemon.getTileX();

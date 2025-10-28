@@ -85,13 +85,7 @@ public class ApproachPlayerBehavior implements PokemonBehavior {
     }
 
     private void moveTowardsPlayer(Vector2 playerPos) {
-        World world;
-        try {
-            world = GameContext.get().getWorld();
-        } catch (IllegalStateException e) {
-            // Server-side: no world available
-            return;
-        }
+        World world = ai.getSafeWorld();
         if (world == null) return;
 
         int pokemonTileX = pokemon.getTileX();

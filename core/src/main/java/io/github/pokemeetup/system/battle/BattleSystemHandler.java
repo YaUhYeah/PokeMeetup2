@@ -30,6 +30,10 @@ public class BattleSystemHandler {
         }
     }
 
+    public WildPokemon getLockedPokemon() {
+        return lockedPokemon;
+    }
+
     public void startBattle() {
         isInBattle = true;
     }

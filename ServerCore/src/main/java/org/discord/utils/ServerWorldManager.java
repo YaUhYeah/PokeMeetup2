@@ -92,6 +92,10 @@ public class ServerWorldManager {
         return wd;
     }
 
+    public BiomeManager getBiomeManager() {
+        return biomeManager;
+    }
+
     /**
      * Saves high-level WorldData only (not chunk data) to server storage.
      */
@@ -148,6 +152,12 @@ public class ServerWorldManager {
                 if (generatedObjects != null && !generatedObjects.isEmpty()) {
                     ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(worldName, pos, generatedObjects);
                     GameLogger.info("Populated WorldObjectManager with " + generatedObjects.size() + " new objects for chunk " + pos);
+
+                    // DEBUG: Log sample generated object IDs
+                    if (!generatedObjects.isEmpty()) {
+                        GameLogger.info("  Generated sample - First: " + generatedObjects.get(0).getType() + " ID: " + generatedObjects.get(0).getId() +
+                            (generatedObjects.size() > 1 ? ", Last: " + generatedObjects.get(generatedObjects.size()-1).getType() + " ID: " + generatedObjects.get(generatedObjects.size()-1).getId() : ""));
+                    }
                 }
                 if (loaded.getBlocks() != null && !loaded.getBlocks().isEmpty()){
                     for(PlaceableBlock block : loaded.getBlocks().values()){
@@ -241,6 +251,17 @@ public class ServerWorldManager {
             chunk.setWorldObjects(objectList);
             ServerGameContext.get().getWorldObjectManager().setObjectsForChunk(worldName, chunkPos, objectList);
             GameLogger.info("Loaded chunk (" + chunkX + "," + chunkY + ") from disk with " + objectList.size() + " objects");
+
+            // DEBUG: Log first few object IDs to verify persistence
+            if (!objectList.isEmpty() && objectList.size() <= 3) {
+                for (WorldObject obj : objectList) {
+                    GameLogger.info("  Object: " + obj.getType() + " at (" + obj.getTileX() + "," + obj.getTileY() + ") ID: " + obj.getId());
+                }
+            } else if (!objectList.isEmpty()) {
+                GameLogger.info("  Sample objects - First: " + objectList.get(0).getType() + " ID: " + objectList.get(0).getId() +
+                    ", Last: " + objectList.get(objectList.size()-1).getType() + " ID: " + objectList.get(objectList.size()-1).getId());
+            }
+
             return chunk;
         } catch (Exception e) {
             GameLogger.error("Error reading chunk from disk: " + e.getMessage());
@@ -336,6 +357,16 @@ public class ServerWorldManager {
                         }
                     }
                 }
+
+                // DEBUG: Log what's actually being saved
+                GameLogger.info("DEBUG saveChunk: Saving " + objects.size() + " objects for chunk (" + chunk.getChunkX() + "," + chunk.getChunkY() + ")");
+                if (objects.size() > 0 && objects.size() <= 5) {
+                    for (WorldObject obj : objects) {
+                        GameLogger.info("  - " + obj.getType() + " at (" + obj.getTileX() + "," + obj.getTileY() + ") ID: " + obj.getId());
+                    }
+                }
+            } else {
+                GameLogger.info("DEBUG saveChunk: No objects to save for chunk (" + chunk.getChunkX() + "," + chunk.getChunkY() + ")");
             }
             Json json = JsonConfig.getInstance();
             json.setOutputType(JsonWriter.OutputType.json);

@@ -43,12 +43,7 @@ public class InvestigateBehavior implements PokemonBehavior {
     }
 
     private void moveTowardsInvestigationTarget() {
-        World world = null;
-        try {
-            world = GameContext.get().getWorld();
-        } catch (IllegalStateException e) {
-            // Server-side: no world available
-        }
+        World world = ai.getSafeWorld();
         if (world == null) return;
 
         int pokemonTileX = (int) (pokemon.getX() / World.TILE_SIZE);

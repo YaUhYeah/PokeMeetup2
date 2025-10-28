@@ -92,12 +92,18 @@ public class Pokemon {
         this.position = new Vector2();
         this.direction = "down";
         this.isMoving = false;
-        this.currentHp = stats.getHp();
-        loadIcons(TextureManager.getPokemonicon());
-        loadFront(TextureManager.getPokemonfront());
-        loadBack(TextureManager.getPokemonback());
-        loadOverworld(TextureManager.getPokemonoverworld());
+        // Don't set HP here - wait until after calculateStats()
+        try {
+            loadIcons(TextureManager.getPokemonicon());
+            loadFront(TextureManager.getPokemonfront());
+            loadBack(TextureManager.getPokemonback());
+            loadOverworld(TextureManager.getPokemonoverworld());
+        } catch (Exception e) {
+            // Texture loading may fail on server-side, that's OK
+            GameLogger.info("Texture loading skipped for " + name + " (likely server-side)");
+        }
         calculateStats();
+        // CRITICAL: Set HP after calculateStats() to ensure it's correct
         this.currentHp = stats.getHp();
     }
 

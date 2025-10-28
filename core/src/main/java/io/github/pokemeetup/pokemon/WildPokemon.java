@@ -59,6 +59,10 @@ public class WildPokemon extends Pokemon implements Positionable {
     private float idleAnimationTime = 0;
     private boolean isIdling = false;
 
+    // Battle locking for multiplayer
+    private boolean inBattle = false;
+    private String battleLockedByPlayer = null; // Username of player who locked this pokemon
+
     public WildPokemon(String name, int level) {
         super(name, level);
         this.pixelX = 0;
@@ -547,6 +551,30 @@ public class WildPokemon extends Pokemon implements Positionable {
         isAddedToParty = addedToParty;
     }
 
+    // Battle locking methods for multiplayer
+    public boolean isInBattle() {
+        return inBattle;
+    }
+
+    public void setInBattle(boolean inBattle) {
+        this.inBattle = inBattle;
+        if (!inBattle) {
+            this.battleLockedByPlayer = null;
+        }
+    }
+
+    public String getBattleLockedByPlayer() {
+        return battleLockedByPlayer;
+    }
+
+    public void setBattleLockedByPlayer(String playerUsername) {
+        this.battleLockedByPlayer = playerUsername;
+        this.inBattle = (playerUsername != null);
+    }
+
+    public boolean canBattleWith(String playerUsername) {
+        return !inBattle || (battleLockedByPlayer != null && battleLockedByPlayer.equals(playerUsername));
+    }
 
     @Override
     public PokemonAnimations getAnimations() {

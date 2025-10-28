@@ -6,6 +6,7 @@ import io.github.pokemeetup.context.GameContext;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
+import io.github.pokemeetup.system.gameplay.overworld.World;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,9 +35,9 @@ public class ItemEntityManager {
         return itemEntities.get(entityId);
     }
 
-    public void render(SpriteBatch batch) {
+    public void render(SpriteBatch batch, World world) {
         for (ItemEntity entity : itemEntities.values()) {
-            entity.render(batch);
+            entity.render(batch, world);
         }
     }
 

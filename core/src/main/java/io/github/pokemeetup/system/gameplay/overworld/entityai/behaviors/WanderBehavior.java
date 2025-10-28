@@ -89,7 +89,7 @@ public class WanderBehavior implements PokemonBehavior {
         }
 
         // Use AI's passability checker which works on both client and server
-        World world = GameContext.get() != null ? GameContext.get().getWorld() : null;
+        World world = ai.getSafeWorld();
         if (ai.checkPassable(world, targetTileX, targetTileY) && isWithinWanderRange(targetTileX, targetTileY)) {
             pokemon.moveToTile(targetTileX, targetTileY, currentWanderDirection);
             stepsRemaining--;

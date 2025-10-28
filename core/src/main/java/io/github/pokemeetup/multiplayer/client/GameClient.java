@@ -19,6 +19,7 @@ import io.github.pokemeetup.managers.DisconnectionManager;
 import io.github.pokemeetup.multiplayer.OtherPlayer;
 import io.github.pokemeetup.multiplayer.network.NetworkProtocol;
 import io.github.pokemeetup.multiplayer.server.config.ServerConnectionConfig;
+import io.github.pokemeetup.pokemon.Pokemon;
 import io.github.pokemeetup.pokemon.WildPokemon;
 import io.github.pokemeetup.screens.ChestScreen;
 import io.github.pokemeetup.screens.GameScreen;
@@ -26,6 +27,7 @@ import io.github.pokemeetup.system.Player;
 import io.github.pokemeetup.system.data.ChestData;
 import io.github.pokemeetup.system.data.ItemData;
 import io.github.pokemeetup.system.data.PlayerData;
+import io.github.pokemeetup.system.data.PokemonData;
 import io.github.pokemeetup.system.data.WorldData;
 import io.github.pokemeetup.system.gameplay.inventory.Inventory;
 import io.github.pokemeetup.system.gameplay.inventory.Item;
@@ -769,17 +771,30 @@ public class GameClient {
     public void sendPlayerUpdate() {
         if (!isConnected() || !isAuthenticated() || GameContext.get().getPlayer() == null) return;
 
-        float playerX = GameContext.get().getPlayer().getX();
-        float playerY = GameContext.get().getPlayer().getY();
+        Player player = GameContext.get().getPlayer();
+        float playerX = player.getX();
+        float playerY = player.getY();
 
         NetworkProtocol.PlayerUpdate update = new NetworkProtocol.PlayerUpdate();
         update.username = getLocalUsername();
         update.x = playerX;
         update.y = playerY;
-        update.wantsToRun = GameContext.get().getPlayer().isRunning();
-        update.direction = GameContext.get().getPlayer().getDirection();
-        update.isMoving = GameContext.get().getPlayer().isMoving();
-        update.inventoryItems = GameContext.get().getPlayer().getInventory().getAllItems().toArray(new ItemData[0]);
+        update.wantsToRun = player.isRunning();
+        update.direction = player.getDirection();
+        update.isMoving = player.isMoving();
+        update.inventoryItems = player.getInventory().getAllItems().toArray(new ItemData[0]);
+
+        // CRITICAL FIX: Send Pokemon party data so HP and other changes persist on server
+        if (player.getPokemonParty() != null && !player.getPokemonParty().getParty().isEmpty()) {
+            List<PokemonData> partyData = new ArrayList<>();
+            for (Pokemon pokemon : player.getPokemonParty().getParty()) {
+                if (pokemon != null) {
+                    partyData.add(PokemonData.fromPokemon(pokemon));
+                }
+            }
+            update.partyPokemon = partyData;
+        }
+
         update.timestamp = System.currentTimeMillis();
         client.sendTCP(update);
     }
@@ -1949,9 +1964,51 @@ public class GameClient {
             WildPokemon pokemon = trackedWildPokemon.get(update.uuid);
 
             if (pokemon == null) {
-                requestPokemonSpawnData(update.uuid);
-                return;
+                // CRITICAL FIX: If update includes data, create Pokemon directly instead of requesting
+                if (update.data != null) {
+                    try {
+                        // CRITICAL FIX: Use TextureManager.getOverworldSprite() to properly load textures
+                        TextureRegion overworldSprite = TextureManager.getOverworldSprite(update.data.getName());
+
+                        if (overworldSprite == null) {
+                            GameLogger.error("Failed to load texture for Pokemon: " + update.data.getName());
+                            requestPokemonSpawnData(update.uuid);
+                            return;
+                        }
+
+                        // Create WildPokemon from the data
+                        pokemon = new WildPokemon(update.data.getName(), update.data.getLevel(),
+                            (int)update.x, (int)update.y, overworldSprite);
+                        pokemon.setUuid(update.uuid);
+                        pokemon.setNetworkControlled(true);
+
+                        // Restore Pokemon stats and HP from data
+                        Pokemon pokemonObj = update.data.toPokemon();
+                        pokemon.setPrimaryType(pokemonObj.getPrimaryType());
+                        pokemon.setSecondaryType(pokemonObj.getSecondaryType());
+                        pokemon.setCurrentHp(pokemonObj.getCurrentHp());
+
+                        trackedWildPokemon.put(update.uuid, pokemon);
+
+                        // Add to world if available
+                        if (GameContext.get() != null && GameContext.get().getWorld() != null) {
+                            int chunkX = (int)Math.floor(update.x / (World.TILE_SIZE * Chunk.CHUNK_SIZE));
+                            int chunkY = (int)Math.floor(update.y / (World.TILE_SIZE * Chunk.CHUNK_SIZE));
+                            GameContext.get().getWorld().getPokemonSpawnManager().addPokemonToChunk(pokemon, new Vector2(chunkX, chunkY));
+                        }
+                    } catch (Exception e) {
+                        GameLogger.error("Failed to create Pokemon from update data: " + e.getMessage());
+                        e.printStackTrace();
+                        requestPokemonSpawnData(update.uuid);
+                        return;
+                    }
+                } else {
+                    // No data provided, request it from server
+                    requestPokemonSpawnData(update.uuid);
+                    return;
+                }
             }
+
             pokemon.setNetworkControlled(true);
             pokemon.applyNetworkUpdate(update.x, update.y, update.direction, update.isMoving, update.timestamp);
             if (update.level > 0) pokemon.setLevel(update.level);
@@ -2050,6 +2107,38 @@ public class GameClient {
             GameLogger.info("Sent Pokemon despawn for ID: " + pokemonId);
         } catch (Exception e) {
             GameLogger.error("Failed to send Pokemon despawn: " + e.getMessage());
+            if (!isConnected()) {
+                handleConnectionFailure(e);
+            }
+        }
+    }
+
+    public void sendPokemonBattleLockRequest(NetworkProtocol.PokemonBattleLockRequest request) {
+        if (!isConnected() || client == null || isSinglePlayer) {
+            return;
+        }
+
+        try {
+            client.sendTCP(request);
+            GameLogger.info("Sent Pokemon battle lock request for: " + request.pokemonUuid);
+        } catch (Exception e) {
+            GameLogger.error("Failed to send Pokemon battle lock request: " + e.getMessage());
+            if (!isConnected()) {
+                handleConnectionFailure(e);
+            }
+        }
+    }
+
+    public void sendPokemonBattleUnlockRequest(NetworkProtocol.PokemonBattleUnlockRequest request) {
+        if (!isConnected() || client == null || isSinglePlayer) {
+            return;
+        }
+
+        try {
+            client.sendTCP(request);
+            GameLogger.info("Sent Pokemon battle unlock request for: " + request.pokemonUuid);
+        } catch (Exception e) {
+            GameLogger.error("Failed to send Pokemon battle unlock request: " + e.getMessage());
             if (!isConnected()) {
                 handleConnectionFailure(e);
             }

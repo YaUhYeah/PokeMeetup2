@@ -388,6 +388,23 @@ public class NetworkProtocol {// In NetworkProtocol.java (or a new file in the s
         public String requestingPlayer; // Username of requesting client
     }
 
+    public static class PokemonBattleLockRequest implements Serializable {
+        public UUID pokemonUuid;
+        public String playerUsername;
+    }
+
+    public static class PokemonBattleLockResponse implements Serializable {
+        public UUID pokemonUuid;
+        public boolean success;
+        public String lockedByPlayer; // null if successfully locked by requester, or username of player who has it locked
+        public String message; // Error message if failed
+    }
+
+    public static class PokemonBattleUnlockRequest implements Serializable {
+        public UUID pokemonUuid;
+        public String playerUsername;
+    }
+
     public static class ChunkUpdate {
         public Vector2 position;
         public World.ChunkData chunkData;
