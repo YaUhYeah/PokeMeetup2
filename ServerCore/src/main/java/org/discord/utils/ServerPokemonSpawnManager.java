@@ -120,12 +120,8 @@ public class ServerPokemonSpawnManager {
 
         for (WildPokemon pokemon : activePokemon.values()) {
             // Get last position, defaulting to current position if not set
-            Vector2 lastPos = lastSentPositions.get(pokemon.getUuid());
-            if (lastPos == null) {
-                // First update for this Pokemon, initialize position
-                lastPos = new Vector2(pokemon.getX(), pokemon.getY());
-                lastSentPositions.put(pokemon.getUuid(), lastPos);
-            }
+           Vector2 lastPos = lastSentPositions.computeIfAbsent(pokemon.getUuid(), k -> new Vector2(pokemon.getX(), pokemon.getY()));
+            // First update for this Pokemon, initialize position
 
             float distance = Vector2.dst(lastPos.x, lastPos.y, pokemon.getX(), pokemon.getY());
 
